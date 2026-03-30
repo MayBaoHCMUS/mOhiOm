@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     MONGODB_URL: str = "mongodb://localhost:27017"
     DATABASE_NAME: str = "mohiom_db"
 
+    # Gemini API
+    GEMINI_API_KEY: str = ""
+
     # CORS
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import mongo_db
-from app.routers import items
+from app.routers import items, gemini, text_to_comic
 
 app = FastAPI(title="mOhiOm Backend", version="0.1.0")
 
@@ -17,6 +17,8 @@ app.add_middleware(
 
 # Include routers
 app.include_router(items.router, prefix=settings.API_PREFIX)
+app.include_router(gemini.router, prefix=settings.API_PREFIX)
+app.include_router(text_to_comic.router, prefix=settings.API_PREFIX)
 
 
 @app.on_event("startup")
