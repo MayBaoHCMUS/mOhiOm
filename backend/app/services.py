@@ -135,7 +135,17 @@ Provide a detailed analysis including:
         """
         return await self.generate_text(prompt)
 
-    async def generate_plot_analysis(self, story_text: str, num_chapters: int = 3) -> str:
+    async def generate_plot_analysis(
+        self,
+        story_text: str,
+        num_chapters: int = 3,
+        desired_main_characters: int = 5,
+        target_total_pages: str = "auto",
+        genre_tone: str = "Shonen action",
+        art_style_reference: str = "classic black-and-white weekly shonen",
+        max_panels_per_page: int = 6,
+        special_requests: str = "None",
+    ) -> str:
         """
         Generate detailed plot analysis for story division.
 
@@ -147,16 +157,73 @@ Provide a detailed analysis including:
             Plot analysis and chapter breakdown
         """
         prompt = f"""
-Analyze this story and divide it into {num_chapters} chapters for manga adaptation:
+You are a professional manga adaptation studio AI. Your only job right now is Step 1: Analysis & Planning. Never generate images or dialogue yet - only the structured plan.
 
-{story_text}
+USER CUSTOMIZATION INPUTS:
 
-For each chapter, provide:
-1. Chapter title
-2. Page estimate
-3. Key scenes
-4. Character development
-5. Cliffhangers or transitions
+Story text: '''{story_text}'''
+Desired total main characters: {desired_main_characters} (example: 5) -> If the story has more, you MUST suggest smart merges or which characters to keep/promote.
+Number of chapters the manga should have: {num_chapters} (example: 8)
+Target total pages for the whole manga: {target_total_pages} (example: 120 or auto)
+Preferred manga genre & tone: {genre_tone}
+Art style reference (optional): {art_style_reference}
+Maximum panels per page allowed: {max_panels_per_page} (default 6-8; you can change to 4 for dramatic pacing)
+Any special requests: {special_requests}
+
+TASK - STEP 1 ONLY
+Read the story and output EXACTLY in this order using clean markdown:
+
+1. Character Breakdown
+
+Total characters detected: __
+Main characters (exactly the number the user requested): list them with 1-sentence role + personality + suggested visual design hook.
+Supporting / minor characters (grouped or merged if needed to respect the user limit).
+Any characters you recommend removing or combining and why.
+
+2. Plot & Arc Analysis
+
+Main plot in one sentence.
+Number of major plot arcs.
+Subplots (list each with importance level: High / Medium / Low).
+Overall story structure (3-act or 4-act) and how it will be divided into the exact number of chapters the user wants.
+
+3. Chapter Division
+Create exactly {num_chapters} chapters.
+For each chapter:
+
+Chapter title (creative manga-style title)
+Chapters covered pages estimate (so total matches user's target pages)
+List of scenes inside this chapter (numbered)
+
+4. Scene-by-Scene Breakdown (the most important part)
+For every single scene across all chapters:
+
+Scene number & chapter it belongs to
+One-sentence summary
+Key emotional/visual moment (what must be shown big)
+Suggested number of pages this scene needs (1-4 pages)
+Suggested number of panels on each of those pages (example: Page 1: 6 panels, Page 2: splash + 3 panels)
+Panel layout notes (e.g. "double-page spread for the betrayal", "vertical 4-panel strip for tension", "cinematic wide panel for city reveal", etc.)
+Whether this scene needs a splash page or double-page spread
+
+5. Global Manga Layout Rules You Will Follow Later
+
+Average panels per page for normal scenes
+How many full splash pages you plan
+Pacing rhythm (e.g. "Chapter 1: fast 5-7 panels/page, Chapter 4 climax: slower 3-4 panels/page")
+Any recurring visual motifs or page tricks you will use
+
+6. Final Statistics Summary (in a boxed table)
+
+Total chapters: __
+Total scenes: __
+Total estimated pages: __
+Main characters used: __
+Average scenes per page across the whole manga: __
+Number of splash/double pages: __
+
+After you output everything above, end with this exact line:
+"Step 1 complete. Reply with 'Proceed to Step 2 - Character Designs' if you want me to create full character sheets, or tell me any changes you want to the plan first."
         """
         return await self.generate_text(prompt)
 

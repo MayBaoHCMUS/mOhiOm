@@ -9,6 +9,29 @@ export const apiClient = axios.create({
   },
 });
 
+const API_LOGGING_ENABLED =
+  typeof window !== "undefined" &&
+  (process.env.NEXT_PUBLIC_API_LOGGING || "true").toLowerCase() !== "false";
+
+const redactHeaders = (headers: unknown): unknown => {
+  if (!headers || typeof headers !== "object") return headers;
+
+  const blockedKeys = new Set(["authorization", "cookie", "set-cookie", "x-api-key"]);
+  const safe: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
+    safe[key] = blockedKeys.has(key.toLowerCase()) ? "[REDACTED]" : value;
+  }
+
+  return safe;
+};
+
+const fullUrl = (baseURL: string | undefined, url: string | undefined): string => {
+  if (!url) return baseURL || "";
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${baseURL || ""}${url}`;
+};
+
 const USER_ID_STORAGE_KEY = "mohiom-user-id";
 
 const getOrCreateUserId = (): string => {
@@ -28,13 +51,83 @@ const getOrCreateUserId = (): string => {
 apiClient.interceptors.request.use((config) => {
   config.headers = config.headers || {};
   config.headers["X-User-Id"] = getOrCreateUserId();
+
+  (config as any).metadata = { startedAt: Date.now() };
+
+  if (API_LOGGING_ENABLED) {
+    const method = (config.method || "GET").toUpperCase();
+    const url = fullUrl(config.baseURL, config.url);
+    console.groupCollapsed(`API REQUEST ${method} ${url}`);
+    console.log("method:", method);
+    console.log("url:", url);
+    console.log("params:", config.params ?? null);
+    console.log("headers:", redactHeaders(config.headers));
+    console.log("data:", config.data ?? null);
+    console.groupEnd();
+  }
+
   return config;
 });
+
+apiClient.interceptors.response.use(
+  (response) => {
+    if (API_LOGGING_ENABLED) {
+      const config: any = response.config || {};
+      const method = (config.method || "GET").toUpperCase();
+      const url = fullUrl(config.baseURL, config.url);
+      const startedAt = config.metadata?.startedAt || Date.now();
+      const durationMs = Date.now() - startedAt;
+
+      console.groupCollapsed(`API RESPONSE ${response.status} ${method} ${url}`);
+      console.log("status:", response.status);
+      console.log("durationMs:", durationMs);
+      console.log("headers:", redactHeaders(response.headers));
+      console.log("data:", response.data ?? null);
+      console.groupEnd();
+    }
+
+    return response;
+  },
+  (error) => {
+    if (API_LOGGING_ENABLED && axios.isAxiosError(error)) {
+      const config: any = error.config || {};
+      const method = (config.method || "GET").toUpperCase();
+      const url = fullUrl(config.baseURL, config.url);
+      const startedAt = config.metadata?.startedAt || Date.now();
+      const durationMs = Date.now() - startedAt;
+
+      console.groupCollapsed(
+        `API ERROR ${error.response?.status || "NO_STATUS"} ${method} ${url}`
+      );
+      console.log("message:", error.message);
+      console.log("status:", error.response?.status ?? null);
+      console.log("durationMs:", durationMs);
+      console.log("requestHeaders:", redactHeaders(config.headers));
+      console.log("requestData:", config.data ?? null);
+      console.log("responseHeaders:", redactHeaders(error.response?.headers));
+      console.log("responseData:", error.response?.data ?? null);
+      console.groupEnd();
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 export interface ApiErrorInfo {
   status: number;
   message: string;
   retryAfterSeconds?: number;
+}
+
+export interface AnalyzeStoryPayload {
+  story_text: string;
+  num_chapters: number;
+  desired_main_characters: number;
+  target_total_pages: string;
+  genre_tone: string;
+  art_style_reference: string;
+  max_panels_per_page: number;
+  special_requests: string;
 }
 
 export const toApiError = (error: unknown): ApiErrorInfo => {
@@ -78,11 +171,8 @@ export const geminiApi = {
   generateText: (prompt: string) =>
     apiClient.post("/gemini/generate-text", { prompt }),
 
-  analyzeStory: (storyText: string, numChapters: number = 3) =>
-    apiClient.post("/gemini/analyze-story", {
-      story_text: storyText,
-      num_chapters: numChapters,
-    }),
+  analyzeStory: (payload: AnalyzeStoryPayload) =>
+    apiClient.post("/gemini/analyze-story", payload),
 
   generateCharacterPrompt: (characterDescription: string) =>
     apiClient.post("/gemini/character-prompt", {

@@ -82,6 +82,7 @@ export default function TextToComicGenerator() {
   const [mangaGenre, setMangaGenre] = useState('Fantasy/Adventure, Epic tone');
   const [artStyle, setArtStyle] = useState('Japanese manga style, detailed');
   const [maxPanelsPerPage, setMaxPanelsPerPage] = useState('6');
+  const [specialRequests, setSpecialRequests] = useState('None');
 
   // Per-step state
   const [step1, setStep1] = useState<StepState<Step1Result>>(emptyStepState(false));
@@ -119,7 +120,7 @@ export default function TextToComicGenerator() {
   const parseLines = (text: string, limit: number) =>
     text
       .split(/\r?\n+/)
-      .map((line) => line.replace(/^[-*\d\.\s]+/, '').trim())
+      .map((line) => line.replace(/^[-*\d.\s]+/, '').trim())
       .filter(Boolean)
       .slice(0, limit);
 
@@ -129,13 +130,25 @@ export default function TextToComicGenerator() {
     }
 
     if (step === 1) {
-      const resp = await geminiApi.analyzeStory(storyText, Number(numChapters) || 3);
+      const resp = await geminiApi.analyzeStory({
+        story_text: storyText,
+        num_chapters: Number(numChapters) || 3,
+        desired_main_characters: Number(mainCharacters) || 5,
+        target_total_pages: (targetPages || 'auto').trim() || 'auto',
+        genre_tone: mangaGenre || 'Shonen action',
+        art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+        max_panels_per_page: Number(maxPanelsPerPage) || 6,
+        special_requests: specialRequests || 'None',
+      });
       const analysis: string = resp.data.analysis || resp.data.generated_text || '';
       const breakdown = parseLines(analysis, Math.max(Number(mainCharacters) || 5, 3));
+      const sceneLines = parseLines(analysis, 6);
       return {
         characterBreakdown: breakdown.length ? breakdown : ['Character arcs pending parsing.'],
         plotAnalysis: analysis,
-        sceneBreakdown: analysis,
+        sceneBreakdown: sceneLines.length
+          ? sceneLines.map((line, idx) => `Scene ${idx + 1}: ${line}`).join('\n')
+          : 'Scene breakdown pending parsing.',
       } satisfies Step1Result;
     }
 
@@ -206,6 +219,7 @@ Output global design rules, main character sheets, and supporting cast prompts. 
       mangaGenre,
       artStyle,
       maxPanelsPerPage,
+      specialRequests,
     };
 
     if (step === 1) {
@@ -256,16 +270,17 @@ Output global design rules, main character sheets, and supporting cast prompts. 
       setActiveStep(step);
     } catch (err: unknown) {
       const apiError = toApiError(err);
-      if (apiError.status === 429 && apiError.retryAfterSeconds) {
+      const retryAfterSeconds = apiError.retryAfterSeconds;
+      if (apiError.status === 429 && typeof retryAfterSeconds === 'number') {
         setCooldownUntil((prev) => ({
           ...prev,
-          [step]: Date.now() + apiError.retryAfterSeconds * 1000,
+          [step]: Date.now() + retryAfterSeconds * 1000,
         }));
       }
 
       const retryHint =
-        apiError.status === 429 && apiError.retryAfterSeconds
-          ? ` Retry in ${Math.ceil(apiError.retryAfterSeconds)}s.`
+        apiError.status === 429 && typeof retryAfterSeconds === 'number'
+          ? ` Retry in ${Math.ceil(retryAfterSeconds)}s.`
           : '';
 
       setStepState(step, (prev) => ({
@@ -507,6 +522,16 @@ Output global design rules, main character sheets, and supporting cast prompts. 
                 value={artStyle}
                 onChange={(e) => setArtStyle(e.target.value)}
                 className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Special Requests</label>
+              <textarea
+                value={specialRequests}
+                onChange={(e) => setSpecialRequests(e.target.value)}
+                placeholder="e.g. include 3 splash pages, every chapter ends on a cliffhanger"
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white h-20 resize-none"
               />
             </div>
 

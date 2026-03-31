@@ -36,6 +36,12 @@ class StoryAnalysisRequest(BaseModel):
 
     story_text: str
     num_chapters: int = 3
+    desired_main_characters: int = 5
+    target_total_pages: str = "auto"
+    genre_tone: str = "Shonen action"
+    art_style_reference: str = "classic black-and-white weekly shonen"
+    max_panels_per_page: int = 6
+    special_requests: str = "None"
 
 
 class CharacterPromptRequest(BaseModel):
@@ -113,7 +119,14 @@ async def analyze_story(request: StoryAnalysisRequest, http_request: Request):
     limit_token = await _acquire_limit_token(http_request)
     try:
         analysis = await gemini_service.generate_plot_analysis(
-            request.story_text, request.num_chapters
+            story_text=request.story_text,
+            num_chapters=request.num_chapters,
+            desired_main_characters=request.desired_main_characters,
+            target_total_pages=request.target_total_pages,
+            genre_tone=request.genre_tone,
+            art_style_reference=request.art_style_reference,
+            max_panels_per_page=request.max_panels_per_page,
+            special_requests=request.special_requests,
         )
         return {"analysis": analysis}
     except GeminiServiceError as e:
