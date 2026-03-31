@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { geminiApi, toApiError } from '@/services/api';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 type StepKey = 1 | 2 | 3 | 4;
 
@@ -15,8 +17,7 @@ interface StepState<T> {
 
 interface Step1Result {
   characterBreakdown: string[];
-  plotAnalysis: string;
-  sceneBreakdown: string;
+  analysisMarkdown: string;
 }
 
 interface Character {
@@ -142,18 +143,14 @@ export default function TextToComicGenerator() {
       });
       const analysis: string = resp.data.analysis || resp.data.generated_text || '';
       const breakdown = parseLines(analysis, Math.max(Number(mainCharacters) || 5, 3));
-      const sceneLines = parseLines(analysis, 6);
       return {
         characterBreakdown: breakdown.length ? breakdown : ['Character arcs pending parsing.'],
-        plotAnalysis: analysis,
-        sceneBreakdown: sceneLines.length
-          ? sceneLines.map((line, idx) => `Scene ${idx + 1}: ${line}`).join('\n')
-          : 'Scene breakdown pending parsing.',
+        analysisMarkdown: analysis,
       } satisfies Step1Result;
     }
 
     if (step === 2) {
-      const context = step1.data?.plotAnalysis || storyText;
+      const context = step1.data?.analysisMarkdown || storyText;
       const prompt = `You are preparing manga character designs. Use the prior analysis:
 ${context}
 
@@ -571,20 +568,36 @@ Output global design rules, main character sheets, and supporting cast prompts. 
             {step1.data && (
               <div className="space-y-4">
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-100 mb-2">Character Breakdown</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-200">
-                    {step1.data.characterBreakdown.map((c, i) => (
-                      <div key={i} className="rounded-lg bg-slate-700/60 px-3 py-2">{c}</div>
-                    ))}
+                  <h4 className="text-sm font-semibold text-gray-100 mb-2">Step 1 API Markdown Response</h4>
+                  <div className="max-w-full overflow-x-auto rounded-lg border border-slate-700 bg-slate-900/40 p-4">
+                    <div className="prose prose-invert max-w-none text-sm leading-6 [overflow-wrap:anywhere]">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          table: ({ children }) => (
+                            <div className="w-full overflow-x-auto">
+                              <table className="w-full min-w-[560px] table-auto border-collapse text-sm">{children}</table>
+                            </div>
+                          ),
+                          thead: ({ children }) => <thead className="bg-slate-800/80">{children}</thead>,
+                          tbody: ({ children }) => <tbody>{children}</tbody>,
+                          tr: ({ children }) => <tr className="border-b border-slate-700">{children}</tr>,
+                          th: ({ children }) => (
+                            <th className="border border-slate-700 px-3 py-2 text-left font-semibold text-gray-100 align-top">
+                              {children}
+                            </th>
+                          ),
+                          td: ({ children }) => (
+                            <td className="border border-slate-700 px-3 py-2 text-gray-200 align-top [overflow-wrap:anywhere]">
+                              {children}
+                            </td>
+                          ),
+                        }}
+                      >
+                        {step1.data.analysisMarkdown}
+                      </ReactMarkdown>
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-100 mb-2">Plot Analysis</h4>
-                  <p className="text-sm text-gray-200 whitespace-pre-wrap">{step1.data.plotAnalysis}</p>
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-100 mb-2">Scene Breakdown</h4>
-                  <p className="text-sm text-gray-200 whitespace-pre-wrap">{step1.data.sceneBreakdown}</p>
                 </div>
               </div>
             )}
