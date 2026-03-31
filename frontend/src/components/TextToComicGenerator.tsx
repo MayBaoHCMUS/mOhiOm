@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { geminiApi, toApiError } from '@/services/api';
 
 type StepKey = 1 | 2 | 3 | 4;
 
@@ -56,6 +57,13 @@ interface Step4Result {
   }[];
 }
 
+type StepData = Step1Result | Step2Result | Step3Result | Step4Result;
+
+interface ApprovedCacheEntry {
+  key: string;
+  data: StepData;
+}
+
 const emptyStepState = <T,>(locked: boolean): StepState<T> => ({
   data: null,
   isLoading: false,
@@ -82,6 +90,19 @@ export default function TextToComicGenerator() {
   const [step4, setStep4] = useState<StepState<Step4Result>>(emptyStepState(true));
   const [activeStep, setActiveStep] = useState<StepKey>(1);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [cooldownUntil, setCooldownUntil] = useState<Record<StepKey, number>>({
+    1: 0,
+    2: 0,
+    3: 0,
+    4: 0,
+  });
+  const [nowMs, setNowMs] = useState<number>(Date.now());
+  const approvedCacheRef = useRef<Partial<Record<StepKey, ApprovedCacheEntry>>>({});
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const stepMap: Record<StepKey, StepState<any>> = useMemo(
     () => ({ 1: step1, 2: step2, 3: step3, 4: step4 }),
@@ -95,78 +116,173 @@ export default function TextToComicGenerator() {
     if (step === 4) setStep4((prev) => updater(prev));
   };
 
-  const mockGenerateStep = async (step: StepKey) => {
-    // Simulate latency and return mock content derived from prior context.
-    await new Promise((resolve) => setTimeout(resolve, 900));
+  const parseLines = (text: string, limit: number) =>
+    text
+      .split(/\r?\n+/)
+      .map((line) => line.replace(/^[-*\d\.\s]+/, '').trim())
+      .filter(Boolean)
+      .slice(0, limit);
+
+  const buildStepPayload = async (step: StepKey): Promise<Step1Result | Step2Result | Step3Result | Step4Result> => {
+    if (!storyText.trim()) {
+      throw new Error('Please provide story text before generating.');
+    }
 
     if (step === 1) {
+      const resp = await geminiApi.analyzeStory(storyText, Number(numChapters) || 3);
+      const analysis: string = resp.data.analysis || resp.data.generated_text || '';
+      const breakdown = parseLines(analysis, Math.max(Number(mainCharacters) || 5, 3));
       return {
-        characterBreakdown: Array.from({ length: parseInt(mainCharacters) || 5 }, (_, i) =>
-          `Hero ${i + 1}: role, motivation, visual motif`
-        ),
-        plotAnalysis: `Arc summary for ${numChapters} chapters in ${mangaGenre}.`,
-        sceneBreakdown: `Scene beats paced across ~${targetPages} pages with max ${maxPanelsPerPage} panels/page.`,
+        characterBreakdown: breakdown.length ? breakdown : ['Character arcs pending parsing.'],
+        plotAnalysis: analysis,
+        sceneBreakdown: analysis,
       } satisfies Step1Result;
     }
 
     if (step === 2) {
-      const makeChar = (label: string, idx: number): Character => ({
+      const context = step1.data?.plotAnalysis || storyText;
+      const prompt = `You are preparing manga character designs. Use the prior analysis:
+${context}
+
+Output global design rules, main character sheets, and supporting cast prompts. Keep concise bullets.`;
+      const resp = await geminiApi.generateText(prompt);
+      const content: string = resp.data.generated_text || resp.data.analysis || '';
+      const lines = parseLines(content, 8);
+      const toCharacter = (label: string, text: string, idx: number): Character => ({
         name: `${label} ${idx + 1}`,
-        description: `Design notes blending ${artStyle} with ${mangaGenre} vibe.`,
-        imagePrompt: `(${artStyle}) portrait of ${label.toLowerCase()} ${idx + 1}, dramatic lighting`,
+        description: text.slice(0, 160) || `Design notes for ${label} ${idx + 1}`,
+        imagePrompt: text.slice(0, 140) || `${artStyle} portrait`,
       });
       return {
-        globalGuidelines: `Use ${artStyle} with consistent palette; echo Step 1 arcs and stakes.`,
-        mainCharacters: Array.from({ length: Math.min(4, parseInt(mainCharacters) || 5) }, (_, i) =>
-          makeChar('Main', i)
-        ),
-        supportingCharacters: Array.from({ length: 3 }, (_, i) => makeChar('Supporting', i)),
+        globalGuidelines: content.slice(0, 500) || 'Awaiting guidelines',
+        mainCharacters: lines.slice(0, 4).map((l, i) => toCharacter('Main', l, i)),
+        supportingCharacters: lines.slice(4, 8).map((l, i) => toCharacter('Supporting', l, i)),
       } satisfies Step2Result;
     }
 
     if (step === 3) {
-      const pages = Math.min(parseInt(targetPages) || 30, 12);
+      const designPrompts = step2.data?.mainCharacters.map((c) => c.imagePrompt).join(' | ') || artStyle;
+      const sceneDescription = `Create panel-by-panel script. Style: ${artStyle}. Prompts: ${designPrompts}. Chapters: ${numChapters}.`;
+      const resp = await geminiApi.generatePanelScript(sceneDescription);
+      const script: string = resp.data.panel_script || resp.data.generated_text || '';
+      const pages = Math.min(Number(targetPages) || 30, 12);
+      const lines = parseLines(script, 12);
       const scripts: PanelScript[] = Array.from({ length: Math.min(3, pages) }, (_, pageIdx) => ({
         pageNumber: pageIdx + 1,
-        layoutSummary: `3-4 panels, focus on action for page ${pageIdx + 1}.`,
-        panels: Array.from({ length: Math.min(parseInt(maxPanelsPerPage) || 6, 3) }, (_, panelIdx) => ({
+        layoutSummary: 'Adapted from Gemini panel guidance.',
+        panels: lines.slice(pageIdx * 3, pageIdx * 3 + 3).map((line, panelIdx) => ({
           panelNumber: panelIdx + 1,
-          description: `Panel ${panelIdx + 1}: carry forward chapter beats from Step 1; show ${artStyle} flair.`,
-          dialogue: `Snippet ${panelIdx + 1} conveying stakes.`,
-          imagePrompt: `${artStyle} panel ${panelIdx + 1}, cinematic angle`,
+          description: line || script.slice(0, 120),
+          dialogue: '',
+          imagePrompt: `${artStyle} panel ${panelIdx + 1}`,
         })),
       }));
       return { totalPages: pages, scripts } satisfies Step3Result;
     }
 
+    const prompt = `Provide ${Math.min(8, Number(targetPages) || 8)} concise image prompts for key panels. Style: ${artStyle}. Use context: ${
+      step3.data?.scripts.map((s) => `Page ${s.pageNumber}`).join(', ') || 'story'
+    }.`;
+    const resp = await geminiApi.generateText(prompt);
+    const text: string = resp.data.generated_text || resp.data.analysis || '';
+    const prompts = parseLines(text, 8);
     return {
-      images: Array.from({ length: 8 }, (_, i) => ({
+      images: prompts.map((p, i) => ({
         id: `img-${i}`,
         pageNumber: Math.floor(i / 2) + 1,
         panelNumber: (i % 2) + 1,
-        prompt: `Styled render for page ${Math.floor(i / 2) + 1}, panel ${(i % 2) + 1}.`,
-        imageUrl: `https://via.placeholder.com/360x480?text=Page+${Math.floor(i / 2) + 1}+Panel+${
-          (i % 2) + 1
-        }`,
+        prompt: p || `Panel ${i + 1}`,
+        imageUrl: `https://via.placeholder.com/360x480?text=Prompt+${i + 1}`,
       })),
     } satisfies Step4Result;
   };
 
+  const getStepCacheKey = (step: StepKey): string => {
+    const baseInputs = {
+      storyText: storyText.trim(),
+      mainCharacters,
+      numChapters,
+      targetPages,
+      mangaGenre,
+      artStyle,
+      maxPanelsPerPage,
+    };
+
+    if (step === 1) {
+      return JSON.stringify({ step, baseInputs });
+    }
+
+    if (step === 2) {
+      return JSON.stringify({ step, baseInputs, step1: step1.data });
+    }
+
+    if (step === 3) {
+      return JSON.stringify({ step, baseInputs, step2: step2.data });
+    }
+
+    return JSON.stringify({ step, baseInputs, step3: step3.data });
+  };
+
+  const getCooldownSeconds = (step: StepKey): number => {
+    const remainingMs = cooldownUntil[step] - nowMs;
+    return remainingMs > 0 ? Math.ceil(remainingMs / 1000) : 0;
+  };
+
   const handleGenerate = async (step: StepKey) => {
     if (stepMap[step].locked) return;
+    const cooldownSeconds = getCooldownSeconds(step);
+    if (cooldownSeconds > 0) {
+      setStepState(step, (prev) => ({
+        ...prev,
+        error: `Rate limited. Retry in ${cooldownSeconds}s.`,
+      }));
+      return;
+    }
+
+    const cacheKey = getStepCacheKey(step);
+    const cached = approvedCacheRef.current[step];
+    if (cached && cached.key === cacheKey) {
+      setStepState(step, (prev) => ({ ...prev, data: cached.data, error: null }));
+      setActiveStep(step);
+      return;
+    }
+
     setGlobalError(null);
     setStepState(step, (prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      const data = await mockGenerateStep(step);
+      const data = await buildStepPayload(step);
       setStepState(step, (prev) => ({ ...prev, data, isLoading: false }));
       setActiveStep(step);
-    } catch (err: any) {
-      setStepState(step, (prev) => ({ ...prev, isLoading: false, error: err?.message || 'Failed to generate' }));
+    } catch (err: unknown) {
+      const apiError = toApiError(err);
+      if (apiError.status === 429 && apiError.retryAfterSeconds) {
+        setCooldownUntil((prev) => ({
+          ...prev,
+          [step]: Date.now() + apiError.retryAfterSeconds * 1000,
+        }));
+      }
+
+      const retryHint =
+        apiError.status === 429 && apiError.retryAfterSeconds
+          ? ` Retry in ${Math.ceil(apiError.retryAfterSeconds)}s.`
+          : '';
+
+      setStepState(step, (prev) => ({
+        ...prev,
+        isLoading: false,
+        error: `${apiError.message}${retryHint}`.trim(),
+      }));
     }
   };
 
   const handleApprove = (step: StepKey) => {
+    const cacheKey = getStepCacheKey(step);
+    const data = stepMap[step].data;
+    if (data) {
+      approvedCacheRef.current[step] = { key: cacheKey, data };
+    }
+
     setStepState(step, (prev) => ({ ...prev, isApproved: true, locked: true }));
     const nextStep = (step + 1) as StepKey;
     if (nextStep <= 4) {
@@ -214,6 +330,8 @@ export default function TextToComicGenerator() {
   }) => {
     const state = stepMap[step];
     const locked = state.locked;
+    const cooldownSeconds = getCooldownSeconds(step);
+    const isCooldown = cooldownSeconds > 0;
 
     return (
       <div className={`rounded-2xl border ${locked ? 'border-slate-800 bg-slate-900/60' : 'border-slate-700 bg-slate-900'} shadow-lg p-6 space-y-4`}>
@@ -230,14 +348,18 @@ export default function TextToComicGenerator() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleGenerate(step)}
-              disabled={locked || state.isLoading}
+              disabled={locked || state.isLoading || isCooldown}
               className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
-                locked
+                locked || isCooldown
                   ? 'bg-slate-800 text-gray-500 cursor-not-allowed'
                   : 'bg-blue-600 text-white hover:bg-blue-700'
               }`}
             >
-              {state.isLoading ? 'Generating...' : `Generate Step ${step}`}
+              {state.isLoading
+                ? 'Generating...'
+                : isCooldown
+                  ? `Retry in ${cooldownSeconds}s`
+                  : `Generate Step ${step}`}
             </button>
             {!state.isApproved && state.data && (
               <button
