@@ -1,9 +1,7 @@
-"""
-API routes for Gemini-based text generation and analysis.
-"""
-
+"""API routes for Gemini-based text generation and analysis."""
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from datetime import datetime, timezone
 from app.config import settings
 from app.rate_limit import PerUserRateLimiter, QueueFullError, RateLimitExceededError
 from app.services import GeminiService, GeminiServiceError
@@ -41,6 +39,23 @@ class StoryAnalysisRequest(BaseModel):
     genre_tone: str = "Shonen action"
     art_style_reference: str = "classic black-and-white weekly shonen"
     max_panels_per_page: int = 6
+    special_requests: str = "None"
+
+
+class StructuredStoryAnalysisRequest(StoryAnalysisRequest):
+    """Request model for story analysis with API-generated JSON snapshot."""
+
+    project_id: str = "manga_project_001"
+
+
+class Step2DesignRequest(BaseModel):
+    """Request model for Step 2 character design generation."""
+
+    project_id: str = "manga_project_001"
+    step1_json: dict
+    desired_main_characters: int = 5
+    genre_tone: str = "Shonen action"
+    art_style_reference: str = "classic black-and-white weekly shonen"
     special_requests: str = "None"
 
 
@@ -142,6 +157,66 @@ async def analyze_story(request: StoryAnalysisRequest, http_request: Request):
         limit_token.release()
 
 
+@router.post("/analyze-story-structured")
+async def analyze_story_structured(
+    request: StructuredStoryAnalysisRequest, http_request: Request
+):
+    """Analyze Step 1 and return both markdown analysis and structured JSON snapshot."""
+    if gemini_service is None:
+        raise HTTPException(
+            status_code=500,
+            detail=gemini_error_message
+            or "Gemini service is not available. Check installation and GEMINI_API_KEY.",
+        )
+
+    limit_token = await _acquire_limit_token(http_request)
+    try:
+        # Keep markdown for user-facing display in Step 1 UI.
+        analysis_markdown = await gemini_service.generate_plot_analysis(
+            story_text=request.story_text,
+            num_chapters=request.num_chapters,
+            desired_main_characters=request.desired_main_characters,
+            target_total_pages=request.target_total_pages,
+            genre_tone=request.genre_tone,
+            art_style_reference=request.art_style_reference,
+            max_panels_per_page=request.max_panels_per_page,
+            special_requests=request.special_requests,
+        )
+
+        last_updated = datetime.now(timezone.utc).isoformat()
+        # Build compact structured JSON for later steps (2/3/4) context.
+        structured_json = await gemini_service.generate_step1_structured_snapshot(
+            project_id=request.project_id,
+            story_text=request.story_text,
+            num_chapters=request.num_chapters,
+            desired_main_characters=request.desired_main_characters,
+            target_total_pages=request.target_total_pages,
+            genre_tone=request.genre_tone,
+            art_style_reference=request.art_style_reference,
+            max_panels_per_page=request.max_panels_per_page,
+            special_requests=request.special_requests,
+            analysis_markdown=analysis_markdown,
+            step_status="review_pending",
+            last_updated=last_updated,
+        )
+
+        return {
+            "analysis": analysis_markdown,
+            "structured_json": structured_json,
+        }
+    except GeminiServiceError as e:
+        detail = (
+            {"message": str(e), "retry_after_seconds": e.retry_after_seconds}
+            if e.retry_after_seconds is not None
+            else str(e)
+        )
+        raise HTTPException(status_code=e.status_code, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        limit_token.release()
+
+
 @router.post("/character-prompt")
 async def generate_character_prompt(
     request: CharacterPromptRequest, http_request: Request
@@ -156,6 +231,54 @@ async def generate_character_prompt(
             request.character_description
         )
         return {"image_prompt": prompt}
+    except GeminiServiceError as e:
+        detail = (
+            {"message": str(e), "retry_after_seconds": e.retry_after_seconds}
+            if e.retry_after_seconds is not None
+            else str(e)
+        )
+        raise HTTPException(status_code=e.status_code, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        limit_token.release()
+
+
+@router.post("/character-designs-structured")
+async def generate_character_designs_structured(
+    request: Step2DesignRequest, http_request: Request
+):
+    """Generate Step 2 markdown + structured JSON using Step 1 JSON context."""
+    if gemini_service is None:
+        raise HTTPException(status_code=500, detail=gemini_error_message)
+
+    limit_token = await _acquire_limit_token(http_request)
+    try:
+        design_markdown = await gemini_service.generate_step2_character_design_markdown(
+            step1_json=request.step1_json,
+            desired_main_characters=request.desired_main_characters,
+            genre_tone=request.genre_tone,
+            art_style_reference=request.art_style_reference,
+            special_requests=request.special_requests,
+        )
+
+        last_updated = datetime.now(timezone.utc).isoformat()
+        structured_json = await gemini_service.generate_step2_structured_snapshot(
+            project_id=request.project_id,
+            step1_json=request.step1_json,
+            desired_main_characters=request.desired_main_characters,
+            genre_tone=request.genre_tone,
+            art_style_reference=request.art_style_reference,
+            special_requests=request.special_requests,
+            step_status="review_pending",
+            last_updated=last_updated,
+            design_markdown=design_markdown,
+        )
+
+        return {
+            "design_markdown": design_markdown,
+            "structured_json": structured_json,
+        }
     except GeminiServiceError as e:
         detail = (
             {"message": str(e), "retry_after_seconds": e.retry_after_seconds}

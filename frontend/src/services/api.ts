@@ -128,6 +128,26 @@ export interface AnalyzeStoryPayload {
   art_style_reference: string;
   max_panels_per_page: number;
   special_requests: string;
+  project_id?: string;
+}
+
+export interface AnalyzeStoryStructuredResponse {
+  analysis: string;
+  structured_json: Record<string, unknown>;
+}
+
+export interface Step2DesignPayload {
+  project_id: string;
+  step1_json: Record<string, unknown>;
+  desired_main_characters: number;
+  genre_tone: string;
+  art_style_reference: string;
+  special_requests: string;
+}
+
+export interface Step2DesignStructuredResponse {
+  design_markdown: string;
+  structured_json: Record<string, unknown>;
 }
 
 export const toApiError = (error: unknown): ApiErrorInfo => {
@@ -173,6 +193,15 @@ export const geminiApi = {
 
   analyzeStory: (payload: AnalyzeStoryPayload) =>
     apiClient.post("/gemini/analyze-story", payload),
+
+  analyzeStoryStructured: (payload: AnalyzeStoryPayload) =>
+    apiClient.post<AnalyzeStoryStructuredResponse>("/gemini/analyze-story-structured", payload),
+
+  generateCharacterDesignsStructured: (payload: Step2DesignPayload) =>
+    apiClient.post<Step2DesignStructuredResponse>(
+      "/gemini/character-designs-structured",
+      payload
+    ),
 
   generateCharacterPrompt: (characterDescription: string) =>
     apiClient.post("/gemini/character-prompt", {

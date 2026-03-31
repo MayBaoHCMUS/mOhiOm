@@ -13,23 +13,19 @@ interface StepState<T> {
   isApproved: boolean;
   locked: boolean;
   error: string | null;
+  lastUpdated: string | null;
 }
 
 interface Step1Result {
   characterBreakdown: string[];
   analysisMarkdown: string;
-}
-
-interface Character {
-  name: string;
-  description: string;
-  imagePrompt: string;
+  structuredJson: Record<string, unknown> | null;
 }
 
 interface Step2Result {
-  globalGuidelines: string;
-  mainCharacters: Character[];
-  supportingCharacters: Character[];
+  designMarkdown: string;
+  structuredJson: Record<string, unknown> | null;
+  aiPrompts: string[];
 }
 
 interface PanelScript {
@@ -71,10 +67,12 @@ const emptyStepState = <T,>(locked: boolean): StepState<T> => ({
   isApproved: false,
   locked,
   error: null,
+  lastUpdated: null,
 });
 
 export default function TextToComicGenerator() {
   // Input and configuration
+  const [projectId, setProjectId] = useState('three_little_pigs_manga_001');
   const [storyFile, setStoryFile] = useState<File | null>(null);
   const [storyText, setStoryText] = useState('');
   const [mainCharacters, setMainCharacters] = useState('5');
@@ -92,6 +90,9 @@ export default function TextToComicGenerator() {
   const [step4, setStep4] = useState<StepState<Step4Result>>(emptyStepState(true));
   const [activeStep, setActiveStep] = useState<StepKey>(1);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [jsonCopied, setJsonCopied] = useState(false);
+  const [jsonDownloaded, setJsonDownloaded] = useState(false);
+  const [lastDownloadedJsonFile, setLastDownloadedJsonFile] = useState<string | null>(null);
   const [cooldownUntil, setCooldownUntil] = useState<Record<StepKey, number>>({
     1: 0,
     2: 0,
@@ -125,13 +126,54 @@ export default function TextToComicGenerator() {
       .filter(Boolean)
       .slice(0, limit);
 
+  const getStep1StructuredJson = (): Record<string, unknown> => {
+    if (step1.data?.structuredJson) {
+      return step1.data.structuredJson;
+    }
+
+    return {
+      project_id: projectId,
+      project_status: 'in_progress',
+      user_inputs: {
+        story_content: storyText,
+        genre: mangaGenre,
+        tone: mangaGenre,
+        art_style_reference: artStyle,
+        max_panels_per_page: Number(maxPanelsPerPage) || 6,
+        user_customizations: { special_requests: specialRequests },
+      },
+      steps: {
+        step_1_analysis: {
+          status: step1.isApproved ? 'approved' : 'review_pending',
+          last_updated: step1.lastUpdated,
+          data: {
+            analysis_markdown: step1.data?.analysisMarkdown || '',
+          },
+        },
+      },
+    };
+  };
+
+  const getStep2PromptList = (): string[] => {
+    const steps = (step2.data?.structuredJson as any)?.steps;
+    const mainDesigns = steps?.step_2_design?.data?.main_characters_designs;
+    if (!mainDesigns || typeof mainDesigns !== 'object') {
+      return step2.data?.aiPrompts || [];
+    }
+
+    return Object.values(mainDesigns)
+      .map((entry: any) => entry?.ai_image_prompt_ready)
+      .filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0);
+  };
+
   const buildStepPayload = async (step: StepKey): Promise<Step1Result | Step2Result | Step3Result | Step4Result> => {
     if (!storyText.trim()) {
       throw new Error('Please provide story text before generating.');
     }
 
     if (step === 1) {
-      const resp = await geminiApi.analyzeStory({
+      const resp = await geminiApi.analyzeStoryStructured({
+        project_id: projectId,
         story_text: storyText,
         num_chapters: Number(numChapters) || 3,
         desired_main_characters: Number(mainCharacters) || 5,
@@ -141,37 +183,44 @@ export default function TextToComicGenerator() {
         max_panels_per_page: Number(maxPanelsPerPage) || 6,
         special_requests: specialRequests || 'None',
       });
-      const analysis: string = resp.data.analysis || resp.data.generated_text || '';
+      const analysis: string = resp.data.analysis || '';
       const breakdown = parseLines(analysis, Math.max(Number(mainCharacters) || 5, 3));
       return {
         characterBreakdown: breakdown.length ? breakdown : ['Character arcs pending parsing.'],
         analysisMarkdown: analysis,
+        structuredJson: (resp.data.structured_json as Record<string, unknown>) || null,
       } satisfies Step1Result;
     }
 
     if (step === 2) {
-      const context = step1.data?.analysisMarkdown || storyText;
-      const prompt = `You are preparing manga character designs. Use the prior analysis:
-${context}
-
-Output global design rules, main character sheets, and supporting cast prompts. Keep concise bullets.`;
-      const resp = await geminiApi.generateText(prompt);
-      const content: string = resp.data.generated_text || resp.data.analysis || '';
-      const lines = parseLines(content, 8);
-      const toCharacter = (label: string, text: string, idx: number): Character => ({
-        name: `${label} ${idx + 1}`,
-        description: text.slice(0, 160) || `Design notes for ${label} ${idx + 1}`,
-        imagePrompt: text.slice(0, 140) || `${artStyle} portrait`,
+      const resp = await geminiApi.generateCharacterDesignsStructured({
+        project_id: projectId,
+        step1_json: getStep1StructuredJson(),
+        desired_main_characters: Number(mainCharacters) || 5,
+        genre_tone: mangaGenre || 'Shonen action',
+        art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+        special_requests: specialRequests || 'None',
       });
+
+      const designMarkdown: string = resp.data.design_markdown || '';
+      const structuredJson = (resp.data.structured_json as Record<string, unknown>) || null;
+      const mainDesigns = ((structuredJson as any)?.steps?.step_2_design?.data?.main_characters_designs || {}) as Record<
+        string,
+        { ai_image_prompt_ready?: string }
+      >;
+      const aiPrompts = Object.values(mainDesigns)
+        .map((entry) => entry?.ai_image_prompt_ready)
+        .filter((prompt): prompt is string => typeof prompt === 'string' && prompt.trim().length > 0);
+
       return {
-        globalGuidelines: content.slice(0, 500) || 'Awaiting guidelines',
-        mainCharacters: lines.slice(0, 4).map((l, i) => toCharacter('Main', l, i)),
-        supportingCharacters: lines.slice(4, 8).map((l, i) => toCharacter('Supporting', l, i)),
+        designMarkdown,
+        structuredJson,
+        aiPrompts,
       } satisfies Step2Result;
     }
 
     if (step === 3) {
-      const designPrompts = step2.data?.mainCharacters.map((c) => c.imagePrompt).join(' | ') || artStyle;
+      const designPrompts = getStep2PromptList().join(' | ') || artStyle;
       const sceneDescription = `Create panel-by-panel script. Style: ${artStyle}. Prompts: ${designPrompts}. Chapters: ${numChapters}.`;
       const resp = await geminiApi.generatePanelScript(sceneDescription);
       const script: string = resp.data.panel_script || resp.data.generated_text || '';
@@ -239,6 +288,123 @@ Output global design rules, main character sheets, and supporting cast prompts. 
     return remainingMs > 0 ? Math.ceil(remainingMs / 1000) : 0;
   };
 
+  const step1JsonStatus = () => {
+    if (!step1.data) return 'pending';
+    if (step1.isApproved) return 'approved';
+    if (step1.isLoading) return 'processing';
+    return 'review_pending';
+  };
+
+  const projectSnapshot = useMemo(() => {
+    const fallbackSnapshot = {
+      project_id: projectId || 'manga_project_001',
+      project_status: step4.isApproved ? 'completed' : 'in_progress',
+      user_inputs: {
+        story_content: storyText,
+        genre: mangaGenre,
+        tone: mangaGenre,
+        art_style_reference: artStyle,
+        max_panels_per_page: Number(maxPanelsPerPage) || 6,
+        user_customizations: {
+          special_requests: specialRequests,
+        },
+      },
+      steps: step1.data
+        ? {
+            step_1_analysis: {
+              status: step1JsonStatus(),
+              last_updated: step1.lastUpdated,
+              data: {
+                analysis_markdown: step1.data.analysisMarkdown,
+                character_breakdown: step1.data.characterBreakdown,
+              },
+            },
+          }
+        : {},
+    };
+
+    if (!step1.data?.structuredJson && !step2.data?.structuredJson) {
+      return fallbackSnapshot;
+    }
+
+    const apiSnapshot =
+      (step2.data?.structuredJson as Record<string, unknown>) ||
+      (step1.data?.structuredJson as Record<string, unknown>);
+    const apiSteps =
+      (apiSnapshot.steps as Record<string, unknown> | undefined) ||
+      ({} as Record<string, unknown>);
+    const apiStep1 =
+      (apiSteps.step_1_analysis as Record<string, unknown> | undefined) ||
+      ({} as Record<string, unknown>);
+
+    const apiStep2 =
+      (apiSteps.step_2_design as Record<string, unknown> | undefined) ||
+      ({} as Record<string, unknown>);
+
+    return {
+      ...apiSnapshot,
+      project_id: projectId || String(apiSnapshot.project_id || 'manga_project_001'),
+      project_status: step4.isApproved ? 'completed' : 'in_progress',
+      user_inputs: {
+        ...(apiSnapshot.user_inputs as Record<string, unknown> | undefined),
+        story_content: storyText,
+        genre: mangaGenre,
+        tone: mangaGenre,
+        art_style_reference: artStyle,
+        max_panels_per_page: Number(maxPanelsPerPage) || 6,
+        user_customizations: {
+          ...(((apiSnapshot.user_inputs as any)?.user_customizations as Record<string, unknown>) || {}),
+          special_requests: specialRequests,
+        },
+      },
+      steps: {
+        ...apiSteps,
+        step_1_analysis: {
+          ...apiStep1,
+          status: step1JsonStatus(),
+          last_updated: step1.lastUpdated,
+        },
+        ...(step2.data
+          ? {
+              step_2_design: {
+                ...apiStep2,
+                status: step2.isApproved ? 'approved' : step2.isLoading ? 'processing' : 'review_pending',
+                last_updated: step2.lastUpdated,
+                data: {
+                  ...((apiStep2.data as Record<string, unknown> | undefined) || {}),
+                  design_markdown: step2.data.designMarkdown,
+                },
+              },
+            }
+          : {}),
+      },
+    };
+  }, [
+    projectId,
+    storyText,
+    mangaGenre,
+    artStyle,
+    maxPanelsPerPage,
+    specialRequests,
+    step1.data,
+    step1.isApproved,
+    step1.isLoading,
+    step1.lastUpdated,
+    step2.data,
+    step2.isApproved,
+    step2.isLoading,
+    step2.lastUpdated,
+    step4.isApproved,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(
+      `mohiom-project-${projectSnapshot.project_id}`,
+      JSON.stringify(projectSnapshot, null, 2)
+    );
+  }, [projectSnapshot]);
+
   const handleGenerate = async (step: StepKey) => {
     if (stepMap[step].locked) return;
     const cooldownSeconds = getCooldownSeconds(step);
@@ -263,7 +429,12 @@ Output global design rules, main character sheets, and supporting cast prompts. 
 
     try {
       const data = await buildStepPayload(step);
-      setStepState(step, (prev) => ({ ...prev, data, isLoading: false }));
+      setStepState(step, (prev) => ({
+        ...prev,
+        data,
+        isLoading: false,
+        lastUpdated: new Date().toISOString(),
+      }));
       setActiveStep(step);
     } catch (err: unknown) {
       const apiError = toApiError(err);
@@ -295,7 +466,12 @@ Output global design rules, main character sheets, and supporting cast prompts. 
       approvedCacheRef.current[step] = { key: cacheKey, data };
     }
 
-    setStepState(step, (prev) => ({ ...prev, isApproved: true, locked: true }));
+    setStepState(step, (prev) => ({
+      ...prev,
+      isApproved: true,
+      locked: true,
+      lastUpdated: new Date().toISOString(),
+    }));
     const nextStep = (step + 1) as StepKey;
     if (nextStep <= 4) {
       setStepState(nextStep, (prev) => ({ ...prev, locked: false }));
@@ -304,8 +480,58 @@ Output global design rules, main character sheets, and supporting cast prompts. 
   };
 
   const handleRetry = (step: StepKey) => {
-    setStepState(step, (prev) => ({ ...prev, data: null, isApproved: false, error: null }));
+    setStepState(step, (prev) => ({
+      ...prev,
+      data: null,
+      isApproved: false,
+      error: null,
+      lastUpdated: null,
+    }));
     handleGenerate(step);
+  };
+
+  const copyProjectJson = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(projectSnapshot, null, 2));
+      setJsonCopied(true);
+      window.setTimeout(() => setJsonCopied(false), 1500);
+    } catch {
+      setGlobalError('Failed to copy JSON to clipboard.');
+    }
+  };
+
+  const downloadProjectJson = () => {
+    try {
+      const safeProjectId = (projectSnapshot.project_id || 'manga_project_001')
+        .toString()
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]/g, '_');
+      const now = new Date();
+      const y = now.getFullYear().toString();
+      const m = (now.getMonth() + 1).toString().padStart(2, '0');
+      const d = now.getDate().toString().padStart(2, '0');
+      const hh = now.getHours().toString().padStart(2, '0');
+      const mm = now.getMinutes().toString().padStart(2, '0');
+      const versionSuffix = `_${y}${m}${d}_${hh}${mm}`;
+      const fileName = `${safeProjectId || 'manga_project_001'}${versionSuffix}.json`;
+      const jsonContent = JSON.stringify(projectSnapshot, null, 2);
+      const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+
+      setJsonDownloaded(true);
+      setLastDownloadedJsonFile(fileName);
+      window.setTimeout(() => setJsonDownloaded(false), 1500);
+    } catch {
+      setGlobalError('Failed to download JSON file.');
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -435,6 +661,16 @@ Output global design rules, main character sheets, and supporting cast prompts. 
 
           <div className="space-y-4">
             <div>
+              <label className="block text-xs text-gray-400 mb-1">Project ID</label>
+              <input
+                type="text"
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div>
               <label className="block text-xs uppercase tracking-wide text-gray-400 mb-2">Upload Story</label>
               <input
                 type="file"
@@ -537,6 +773,34 @@ Output global design rules, main character sheets, and supporting cast prompts. 
                 {globalError}
               </div>
             )}
+
+            <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-wide text-gray-400">Saved Project JSON (before/after Step 1)</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={downloadProjectJson}
+                    className="px-2 py-1 rounded-md text-xs font-semibold bg-blue-700 text-white hover:bg-blue-600"
+                  >
+                    {jsonDownloaded ? 'Downloaded' : 'Download JSON'}
+                  </button>
+                  <button
+                    onClick={copyProjectJson}
+                    className="px-2 py-1 rounded-md text-xs font-semibold bg-slate-700 text-white hover:bg-slate-600"
+                  >
+                    {jsonCopied ? 'Copied' : 'Copy JSON'}
+                  </button>
+                </div>
+              </div>
+              <pre className="text-[11px] leading-5 text-gray-200 whitespace-pre-wrap max-h-64 overflow-auto">
+                {JSON.stringify(projectSnapshot, null, 2)}
+              </pre>
+              {lastDownloadedJsonFile && (
+                <p className="text-[11px] text-green-300">
+                  Last downloaded: <span className="font-semibold">{lastDownloadedJsonFile}</span>
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -620,26 +884,35 @@ Output global design rules, main character sheets, and supporting cast prompts. 
             {step2.data && (
               <div className="space-y-4">
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-100 mb-2">Global Guidelines</h4>
-                  <p className="text-sm text-gray-200 whitespace-pre-wrap">{step2.data.globalGuidelines}</p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {step2.data.mainCharacters.map((c, idx) => (
-                    <div key={idx} className="rounded-xl bg-slate-700/50 border border-slate-700 p-3">
-                      <p className="text-blue-300 font-semibold">{c.name}</p>
-                      <p className="text-sm text-gray-200 mt-1">{c.description}</p>
-                      <p className="text-xs text-gray-400 mt-2">Prompt: {c.imagePrompt}</p>
+                  <h4 className="text-sm font-semibold text-gray-100 mb-2">Step 2 API Markdown Response</h4>
+                  <div className="max-w-full overflow-x-auto rounded-lg border border-slate-700 bg-slate-900/40 p-4">
+                    <div className="prose prose-invert max-w-none text-sm leading-6 [overflow-wrap:anywhere]">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          table: ({ children }) => (
+                            <div className="w-full overflow-x-auto">
+                              <table className="w-full min-w-[560px] table-auto border-collapse text-sm">{children}</table>
+                            </div>
+                          ),
+                          thead: ({ children }) => <thead className="bg-slate-800/80">{children}</thead>,
+                          tbody: ({ children }) => <tbody>{children}</tbody>,
+                          tr: ({ children }) => <tr className="border-b border-slate-700">{children}</tr>,
+                          th: ({ children }) => (
+                            <th className="border border-slate-700 px-3 py-2 text-left font-semibold text-gray-100 align-top">
+                              {children}
+                            </th>
+                          ),
+                          td: ({ children }) => (
+                            <td className="border border-slate-700 px-3 py-2 text-gray-200 align-top [overflow-wrap:anywhere]">
+                              {children}
+                            </td>
+                          ),
+                        }}
+                      >
+                        {step2.data.designMarkdown}
+                      </ReactMarkdown>
                     </div>
-                  ))}
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-100 mb-2">Supporting Cast</h4>
-                  <div className="grid grid-cols-2 gap-2 text-sm text-gray-200">
-                    {step2.data.supportingCharacters.map((c, idx) => (
-                      <div key={idx} className="rounded-lg bg-slate-700/40 px-3 py-2">
-                        {c.name}: {c.imagePrompt}
-                      </div>
-                    ))}
                   </div>
                 </div>
               </div>
@@ -652,7 +925,7 @@ Output global design rules, main character sheets, and supporting cast prompts. 
             context={
               step2.data ? (
                 <div className="text-sm text-gray-200 space-y-1">
-                  <p>Main prompts: {step2.data.mainCharacters.slice(0, 2).map((c) => c.imagePrompt).join(' | ')}...</p>
+                  <p>Main prompts: {getStep2PromptList().slice(0, 2).join(' | ') || 'Using Step 2 design context'}...</p>
                   <p>Art style: {artStyle}</p>
                 </div>
               ) : (
