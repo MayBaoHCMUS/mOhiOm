@@ -2,6 +2,7 @@
 
 import json
 import re
+import hashlib
 from urllib.parse import quote
 
 # google-genai is optional at import time so the app can start without it;
@@ -309,13 +310,24 @@ class GeminiService:
         if not cleaned_prompt:
             raise GeminiServiceError("image_prompt is required.", status_code=400)
 
+        # Provider URLs break easily with very long markdown-style prompts.
+        # Normalize and keep a concise prompt for better reliability.
+        compact_prompt = re.sub(r"\s+", " ", cleaned_prompt)
+        compact_prompt = re.sub(r"\*{1,3}", "", compact_prompt)
+        compact_prompt = re.sub(r"--[a-zA-Z0-9:_-]+(?:\s+[a-zA-Z0-9:./_-]+)?", "", compact_prompt)
+        compact_prompt = compact_prompt.strip()
+        compact_prompt = compact_prompt[:280] if len(compact_prompt) > 280 else compact_prompt
+        if not compact_prompt:
+            compact_prompt = "manga panel black and white dynamic composition"
+
         # Pollinations is used as a lightweight image provider behind backend endpoint.
-        safe_prompt = quote(cleaned_prompt[:1200], safe="")
+        safe_prompt = quote(compact_prompt, safe="")
         safe_width = max(256, min(int(width or 720), 2048))
         safe_height = max(256, min(int(height or 960), 2048))
+        seed = int(hashlib.sha256(compact_prompt.encode("utf-8")).hexdigest()[:8], 16)
         return (
             f"https://image.pollinations.ai/prompt/{safe_prompt}"
-            f"?width={safe_width}&height={safe_height}&seed=42&nologo=true"
+            f"?width={safe_width}&height={safe_height}&seed={seed}&nologo=true"
         )
 
     async def analyze_story(self, story_text: str) -> str:

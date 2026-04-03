@@ -1406,6 +1406,25 @@ export default function TextToComicGenerator() {
                                   src={state.imageUrl}
                                   alt={panel.aiImagePrompt}
                                   className="w-full h-full object-cover"
+                                  onError={() => {
+                                    setStep4((prev) => {
+                                      if (!prev.data) return prev;
+                                      return {
+                                        ...prev,
+                                        data: {
+                                          ...prev.data,
+                                          panelStates: {
+                                            ...prev.data.panelStates,
+                                            [panel.id]: {
+                                              status: 'error',
+                                              imageUrl: null,
+                                              error: 'Image URL could not be loaded in browser. Try Regenerate.',
+                                            },
+                                          },
+                                        },
+                                      };
+                                    });
+                                  }}
                                 />
                               ) : state?.status === 'loading' ? (
                                 <div className="flex flex-col items-center gap-2 text-blue-200 text-sm">
