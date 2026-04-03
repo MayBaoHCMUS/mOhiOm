@@ -167,6 +167,16 @@ export interface Step3ScriptStructuredResponse {
   structured_json: Record<string, unknown>;
 }
 
+export interface PanelImagePayload {
+  image_prompt: string;
+  width?: number;
+  height?: number;
+}
+
+export interface PanelImageResponse {
+  image_url: string;
+}
+
 export const toApiError = (error: unknown): ApiErrorInfo => {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status ?? 0;
@@ -235,6 +245,9 @@ export const geminiApi = {
     apiClient.post("/gemini/panel-script", {
       scene_description: sceneDescription,
     }),
+
+  generatePanelImage: (payload: PanelImagePayload) =>
+    apiClient.post<PanelImageResponse>("/gemini/generate-panel-image", payload),
 
   health: () => apiClient.get("/gemini/health"),
 };

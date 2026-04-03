@@ -2,6 +2,7 @@
 
 import json
 import re
+from urllib.parse import quote
 
 # google-genai is optional at import time so the app can start without it;
 # we surface a clear error when the service is instantiated.
@@ -296,6 +297,26 @@ class GeminiService:
             ) from exc
         except Exception as exc:
             raise GeminiServiceError(f"Failed to generate text: {exc}") from exc
+
+    async def generate_panel_image_url(
+        self,
+        image_prompt: str,
+        width: int = 720,
+        height: int = 960,
+    ) -> str:
+        """Return an image URL generated from prompt via backend-controlled provider."""
+        cleaned_prompt = (image_prompt or "").strip()
+        if not cleaned_prompt:
+            raise GeminiServiceError("image_prompt is required.", status_code=400)
+
+        # Pollinations is used as a lightweight image provider behind backend endpoint.
+        safe_prompt = quote(cleaned_prompt[:1200], safe="")
+        safe_width = max(256, min(int(width or 720), 2048))
+        safe_height = max(256, min(int(height or 960), 2048))
+        return (
+            f"https://image.pollinations.ai/prompt/{safe_prompt}"
+            f"?width={safe_width}&height={safe_height}&seed=42&nologo=true"
+        )
 
     async def analyze_story(self, story_text: str) -> str:
         """

@@ -74,19 +74,28 @@ const emptyStepState = <T,>(locked: boolean): StepState<T> => ({
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
-const hashString = (value: string): string => {
-  let hash = 0;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = (hash << 5) - hash + value.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
-};
-
 const fetchImageFromAI = async (imagePrompt: string): Promise<string> => {
-  await sleep(3000);
-  const seed = encodeURIComponent(hashString(imagePrompt));
-  return `https://picsum.photos/seed/${seed}/720/960`;
+  try {
+    const response = await geminiApi.generatePanelImage({
+      image_prompt: imagePrompt,
+      width: 720,
+      height: 960,
+    });
+
+    const imageUrl = response.data.image_url;
+    if (!imageUrl || typeof imageUrl !== 'string') {
+      throw new Error('Backend did not return a valid image_url.');
+    }
+
+    return imageUrl;
+  } catch (error) {
+    const apiError = toApiError(error);
+    const retryHint =
+      apiError.status === 429 && typeof apiError.retryAfterSeconds === 'number'
+        ? ` Retry in ${Math.ceil(apiError.retryAfterSeconds)}s.`
+        : '';
+    throw new Error(`${apiError.message}${retryHint}`.trim());
+  }
 };
 
 const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {

@@ -85,6 +85,14 @@ class PanelScriptRequest(BaseModel):
     scene_description: str
 
 
+class PanelImageRequest(BaseModel):
+    """Request model for Step 4 panel image generation."""
+
+    image_prompt: str
+    width: int = 720
+    height: int = 960
+
+
 def _resolve_user_key(request: Request) -> str:
     header_user_id = request.headers.get("x-user-id")
     if header_user_id:
@@ -369,6 +377,33 @@ async def generate_panel_script_structured(
             "script_markdown": script_markdown,
             "structured_json": structured_json,
         }
+    except GeminiServiceError as e:
+        detail = (
+            {"message": str(e), "retry_after_seconds": e.retry_after_seconds}
+            if e.retry_after_seconds is not None
+            else str(e)
+        )
+        raise HTTPException(status_code=e.status_code, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        limit_token.release()
+
+
+@router.post("/generate-panel-image")
+async def generate_panel_image(request: PanelImageRequest, http_request: Request):
+    """Generate a panel image URL from prompt via backend endpoint."""
+    if gemini_service is None:
+        raise HTTPException(status_code=500, detail=gemini_error_message)
+
+    limit_token = await _acquire_limit_token(http_request)
+    try:
+        image_url = await gemini_service.generate_panel_image_url(
+            image_prompt=request.image_prompt,
+            width=request.width,
+            height=request.height,
+        )
+        return {"image_url": image_url}
     except GeminiServiceError as e:
         detail = (
             {"message": str(e), "retry_after_seconds": e.retry_after_seconds}
