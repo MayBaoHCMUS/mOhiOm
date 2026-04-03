@@ -150,6 +150,23 @@ export interface Step2DesignStructuredResponse {
   structured_json: Record<string, unknown>;
 }
 
+export interface Step3ScriptPayload {
+  project_id: string;
+  step1_json: Record<string, unknown>;
+  step2_json: Record<string, unknown>;
+  num_chapters: number;
+  target_total_pages: string;
+  genre_tone: string;
+  art_style_reference: string;
+  max_panels_per_page: number;
+  special_requests: string;
+}
+
+export interface Step3ScriptStructuredResponse {
+  script_markdown: string;
+  structured_json: Record<string, unknown>;
+}
+
 export const toApiError = (error: unknown): ApiErrorInfo => {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status ?? 0;
@@ -200,6 +217,12 @@ export const geminiApi = {
   generateCharacterDesignsStructured: (payload: Step2DesignPayload) =>
     apiClient.post<Step2DesignStructuredResponse>(
       "/gemini/character-designs-structured",
+      payload
+    ),
+
+  generatePanelScriptStructured: (payload: Step3ScriptPayload) =>
+    apiClient.post<Step3ScriptStructuredResponse>(
+      "/gemini/panel-script-structured",
       payload
     ),
 

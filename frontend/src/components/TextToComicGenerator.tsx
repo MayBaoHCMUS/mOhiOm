@@ -28,20 +28,9 @@ interface Step2Result {
   aiPrompts: string[];
 }
 
-interface PanelScript {
-  pageNumber: number;
-  layoutSummary: string;
-  panels: {
-    panelNumber: number;
-    description: string;
-    dialogue: string;
-    imagePrompt: string;
-  }[];
-}
-
 interface Step3Result {
-  totalPages: number;
-  scripts: PanelScript[];
+  scriptMarkdown: string;
+  structuredJson: Record<string, unknown> | null;
 }
 
 interface Step4Result {
@@ -166,6 +155,27 @@ export default function TextToComicGenerator() {
       .filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0);
   };
 
+  const getStep2StructuredJson = (): Record<string, unknown> => {
+    if (step2.data?.structuredJson) {
+      return step2.data.structuredJson;
+    }
+
+    const step1Json = getStep1StructuredJson();
+    return {
+      ...step1Json,
+      steps: {
+        ...((step1Json.steps as Record<string, unknown> | undefined) || {}),
+        step_2_design: {
+          status: step2.isApproved ? 'approved' : step2.isLoading ? 'processing' : 'review_pending',
+          last_updated: step2.lastUpdated,
+          data: {
+            design_markdown: step2.data?.designMarkdown || '',
+          },
+        },
+      },
+    };
+  };
+
   const buildStepPayload = async (step: StepKey): Promise<Step1Result | Step2Result | Step3Result | Step4Result> => {
     if (!storyText.trim()) {
       throw new Error('Please provide story text before generating.');
@@ -220,27 +230,29 @@ export default function TextToComicGenerator() {
     }
 
     if (step === 3) {
-      const designPrompts = getStep2PromptList().join(' | ') || artStyle;
-      const sceneDescription = `Create panel-by-panel script. Style: ${artStyle}. Prompts: ${designPrompts}. Chapters: ${numChapters}.`;
-      const resp = await geminiApi.generatePanelScript(sceneDescription);
-      const script: string = resp.data.panel_script || resp.data.generated_text || '';
-      const pages = Math.min(Number(targetPages) || 30, 12);
-      const lines = parseLines(script, 12);
-      const scripts: PanelScript[] = Array.from({ length: Math.min(3, pages) }, (_, pageIdx) => ({
-        pageNumber: pageIdx + 1,
-        layoutSummary: 'Adapted from Gemini panel guidance.',
-        panels: lines.slice(pageIdx * 3, pageIdx * 3 + 3).map((line, panelIdx) => ({
-          panelNumber: panelIdx + 1,
-          description: line || script.slice(0, 120),
-          dialogue: '',
-          imagePrompt: `${artStyle} panel ${panelIdx + 1}`,
-        })),
-      }));
-      return { totalPages: pages, scripts } satisfies Step3Result;
+      const step1Json = getStep1StructuredJson();
+      const step2Json = getStep2StructuredJson();
+      const resp = await geminiApi.generatePanelScriptStructured({
+        project_id: projectId,
+        step1_json: step1Json,
+        step2_json: step2Json,
+        num_chapters: Number(numChapters) || 3,
+        target_total_pages: (targetPages || 'auto').trim() || 'auto',
+        genre_tone: mangaGenre || 'Shonen action',
+        art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+        max_panels_per_page: Number(maxPanelsPerPage) || 6,
+        special_requests: specialRequests || 'None',
+      });
+
+      return {
+        scriptMarkdown: resp.data.script_markdown || '',
+        structuredJson: (resp.data.structured_json as Record<string, unknown>) || null,
+      } satisfies Step3Result;
     }
 
+    const step3Context = step3.data?.scriptMarkdown || 'story';
     const prompt = `Provide ${Math.min(8, Number(targetPages) || 8)} concise image prompts for key panels. Style: ${artStyle}. Use context: ${
-      step3.data?.scripts.map((s) => `Page ${s.pageNumber}`).join(', ') || 'story'
+      parseLines(step3Context, 6).join(' | ') || 'story'
     }.`;
     const resp = await geminiApi.generateText(prompt);
     const text: string = resp.data.generated_text || resp.data.analysis || '';
@@ -323,11 +335,12 @@ export default function TextToComicGenerator() {
         : {},
     };
 
-    if (!step1.data?.structuredJson && !step2.data?.structuredJson) {
+    if (!step1.data?.structuredJson && !step2.data?.structuredJson && !step3.data?.structuredJson) {
       return fallbackSnapshot;
     }
 
     const apiSnapshot =
+      (step3.data?.structuredJson as Record<string, unknown>) ||
       (step2.data?.structuredJson as Record<string, unknown>) ||
       (step1.data?.structuredJson as Record<string, unknown>);
     const apiSteps =
@@ -339,6 +352,9 @@ export default function TextToComicGenerator() {
 
     const apiStep2 =
       (apiSteps.step_2_design as Record<string, unknown> | undefined) ||
+      ({} as Record<string, unknown>);
+    const apiStep3 =
+      (apiSteps.step_3_script as Record<string, unknown> | undefined) ||
       ({} as Record<string, unknown>);
 
     return {
@@ -377,6 +393,19 @@ export default function TextToComicGenerator() {
               },
             }
           : {}),
+        ...(step3.data
+          ? {
+              step_3_script: {
+                ...apiStep3,
+                status: step3.isApproved ? 'approved' : step3.isLoading ? 'processing' : 'review_pending',
+                last_updated: step3.lastUpdated,
+                data: {
+                  ...((apiStep3.data as Record<string, unknown> | undefined) || {}),
+                  script_markdown: step3.data.scriptMarkdown,
+                },
+              },
+            }
+          : {}),
       },
     };
   }, [
@@ -394,6 +423,10 @@ export default function TextToComicGenerator() {
     step2.isApproved,
     step2.isLoading,
     step2.lastUpdated,
+    step3.data,
+    step3.isApproved,
+    step3.isLoading,
+    step3.lastUpdated,
     step4.isApproved,
   ]);
 
@@ -572,8 +605,8 @@ export default function TextToComicGenerator() {
     const isCooldown = cooldownSeconds > 0;
 
     return (
-      <div className={`rounded-2xl border ${locked ? 'border-slate-800 bg-slate-900/60' : 'border-slate-700 bg-slate-900'} shadow-lg p-6 space-y-4`}>
-        <div className="flex items-center justify-between">
+      <div className={`min-w-0 rounded-2xl border ${locked ? 'border-slate-800 bg-slate-900/60' : 'border-slate-700 bg-slate-900'} shadow-lg p-6 space-y-4`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 flex items-center justify-center rounded-full font-bold ${statusBadge(step)}`}>
               {state.isApproved ? '✓' : step}
@@ -583,7 +616,7 @@ export default function TextToComicGenerator() {
               <h3 className="text-xl font-semibold text-white">{title}</h3>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               onClick={() => handleGenerate(step)}
               disabled={locked || state.isLoading || isCooldown}
@@ -619,7 +652,7 @@ export default function TextToComicGenerator() {
         </div>
 
         {context && (
-          <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4 text-sm text-gray-200">
+          <div className="min-w-0 rounded-xl border border-slate-700 bg-slate-800/60 p-4 text-sm text-gray-200 [overflow-wrap:anywhere]">
             <p className="font-semibold text-gray-100 mb-2">Context from previous step</p>
             {context}
           </div>
@@ -647,7 +680,7 @@ export default function TextToComicGenerator() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
+    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
       <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr]">
         {/* LEFT: Inputs */}
         <div className="border-r border-slate-800 bg-slate-900/80 p-6 space-y-6">
@@ -776,7 +809,7 @@ export default function TextToComicGenerator() {
 
             <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <p className="text-xs uppercase tracking-wide text-gray-400">Saved Project JSON (before/after Step 1)</p>
+                <p className="text-xs uppercase tracking-wide text-gray-400">Saved Project JSON (current workflow snapshot)</p>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={downloadProjectJson}
@@ -805,7 +838,7 @@ export default function TextToComicGenerator() {
         </div>
 
         {/* RIGHT: Steps */}
-        <div className="p-8 space-y-6">
+        <div className="min-w-0 p-8 space-y-6">
           <div className="flex items-center gap-3 text-sm text-gray-400">
             {[1, 2, 3, 4].map((step) => (
               <button
@@ -856,6 +889,10 @@ export default function TextToComicGenerator() {
                               {children}
                             </td>
                           ),
+                          pre: ({ children }) => (
+                            <pre className="max-w-full overflow-x-auto whitespace-pre-wrap [overflow-wrap:anywhere]">{children}</pre>
+                          ),
+                          code: ({ children }) => <code className="[overflow-wrap:anywhere]">{children}</code>,
                         }}
                       >
                         {step1.data.analysisMarkdown}
@@ -872,9 +909,9 @@ export default function TextToComicGenerator() {
             title="Character Designs"
             context={
               step1.data ? (
-                <div className="text-sm text-gray-200 space-y-1">
+                <div className="text-sm text-gray-200 space-y-1 min-w-0">
                   <p>Chapters: {numChapters} • Genre: {mangaGenre}</p>
-                  <p>Characters: {step1.data.characterBreakdown.slice(0, 3).join('; ')}...</p>
+                  <p className="[overflow-wrap:anywhere]">Characters: {step1.data.characterBreakdown.slice(0, 3).join('; ')}...</p>
                 </div>
               ) : (
                 <p className="text-sm text-gray-400">Approve Step 1 to pass context.</p>
@@ -908,6 +945,10 @@ export default function TextToComicGenerator() {
                               {children}
                             </td>
                           ),
+                          pre: ({ children }) => (
+                            <pre className="max-w-full overflow-x-auto whitespace-pre-wrap [overflow-wrap:anywhere]">{children}</pre>
+                          ),
+                          code: ({ children }) => <code className="[overflow-wrap:anywhere]">{children}</code>,
                         }}
                       >
                         {step2.data.designMarkdown}
@@ -924,8 +965,8 @@ export default function TextToComicGenerator() {
             title="Panel-by-Panel Script"
             context={
               step2.data ? (
-                <div className="text-sm text-gray-200 space-y-1">
-                  <p>Main prompts: {getStep2PromptList().slice(0, 2).join(' | ') || 'Using Step 2 design context'}...</p>
+                <div className="text-sm text-gray-200 space-y-1 min-w-0">
+                  <p className="[overflow-wrap:anywhere]">Main prompts: {getStep2PromptList().slice(0, 2).join(' | ') || 'Using Step 2 design context'}...</p>
                   <p>Art style: {artStyle}</p>
                 </div>
               ) : (
@@ -935,28 +976,41 @@ export default function TextToComicGenerator() {
           >
             {step3.data && (
               <div className="space-y-4">
-                <div className="flex gap-4 text-sm text-gray-200">
-                  <span className="rounded-lg bg-slate-700/50 px-3 py-2">Pages: {step3.data.totalPages}</span>
-                  <span className="rounded-lg bg-slate-700/50 px-3 py-2">Panels/page ≤ {maxPanelsPerPage}</span>
-                </div>
-                <div className="space-y-3">
-                  {step3.data.scripts.map((script) => (
-                    <div key={script.pageNumber} className="rounded-xl border border-slate-700 bg-slate-800/50 p-4 space-y-2">
-                      <div className="flex justify-between text-sm text-blue-200 font-semibold">
-                        <span>Page {script.pageNumber}</span>
-                        <span>{script.layoutSummary}</span>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {script.panels.map((panel) => (
-                          <div key={panel.panelNumber} className="rounded-lg bg-slate-700/40 p-3 text-sm text-gray-200">
-                            <p className="font-semibold text-blue-300">Panel {panel.panelNumber}</p>
-                            <p>{panel.description}</p>
-                            <p className="text-xs text-gray-400 mt-1">Prompt: {panel.imagePrompt}</p>
-                          </div>
-                        ))}
-                      </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-100 mb-2">Step 3 API Markdown Response</h4>
+                  <div className="max-w-full overflow-x-auto rounded-lg border border-slate-700 bg-slate-900/40 p-4">
+                    <div className="prose prose-invert max-w-none text-sm leading-6 [overflow-wrap:anywhere]">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          table: ({ children }) => (
+                            <div className="w-full overflow-x-auto">
+                              <table className="w-full min-w-[560px] table-auto border-collapse text-sm">{children}</table>
+                            </div>
+                          ),
+                          thead: ({ children }) => <thead className="bg-slate-800/80">{children}</thead>,
+                          tbody: ({ children }) => <tbody>{children}</tbody>,
+                          tr: ({ children }) => <tr className="border-b border-slate-700">{children}</tr>,
+                          th: ({ children }) => (
+                            <th className="border border-slate-700 px-3 py-2 text-left font-semibold text-gray-100 align-top">
+                              {children}
+                            </th>
+                          ),
+                          td: ({ children }) => (
+                            <td className="border border-slate-700 px-3 py-2 text-gray-200 align-top [overflow-wrap:anywhere]">
+                              {children}
+                            </td>
+                          ),
+                          pre: ({ children }) => (
+                            <pre className="max-w-full overflow-x-auto whitespace-pre-wrap [overflow-wrap:anywhere]">{children}</pre>
+                          ),
+                          code: ({ children }) => <code className="[overflow-wrap:anywhere]">{children}</code>,
+                        }}
+                      >
+                        {step3.data.scriptMarkdown}
+                      </ReactMarkdown>
                     </div>
-                  ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -967,7 +1021,7 @@ export default function TextToComicGenerator() {
             title="Image Generation Simulation"
             context={
               step3.data ? (
-                <p className="text-sm text-gray-200">Using panel prompts from Step 3 ({step3.data.scripts.length} pages sampled).</p>
+                <p className="text-sm text-gray-200">Using panel prompts from approved Step 3 script markdown.</p>
               ) : (
                 <p className="text-sm text-gray-400">Approve Step 3 to simulate images.</p>
               )

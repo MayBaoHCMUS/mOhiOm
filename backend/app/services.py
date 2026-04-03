@@ -187,6 +187,53 @@ def _build_step2_fallback_snapshot(
     }
 
 
+def _build_step3_fallback_snapshot(
+    project_id: str,
+    genre_tone: str,
+    art_style_reference: str,
+    max_panels_per_page: int,
+    special_requests: str,
+    step_status: str,
+    last_updated: str,
+    step2_json: dict,
+    script_markdown: str,
+) -> dict:
+    """Build a minimal, valid Step 3 snapshot if model JSON output is malformed."""
+    existing_steps = step2_json.get("steps", {}) if isinstance(step2_json, dict) else {}
+    return {
+        "project_id": project_id,
+        "project_status": "in_progress",
+        "user_inputs": {
+            "genre": genre_tone,
+            "tone": genre_tone,
+            "art_style_reference": art_style_reference,
+            "max_panels_per_page": max_panels_per_page,
+            "user_customizations": {"special_requests": special_requests},
+        },
+        "steps": {
+            **existing_steps,
+            "step_3_script": {
+                "status": step_status,
+                "last_updated": last_updated,
+                "data": {
+                    "chapters": [],
+                    "special_pages_inventory": [],
+                    "final_summary": {
+                        "total_pages_generated": 0,
+                        "total_panels": 0,
+                        "total_image_prompts": 0,
+                        "chapters_completed": 0,
+                        "chapters_target": 0,
+                        "deviations": "",
+                    },
+                    "script_markdown": script_markdown,
+                    "parser_note": "Fallback JSON generated because model output was not valid JSON.",
+                },
+            },
+        },
+    }
+
+
 class GeminiService:
     """Service class for interacting with Google's Gemini API."""
 
@@ -643,6 +690,203 @@ Rules:
                 prior_step1 = step1_json.get("steps", {}).get("step_1_analysis")
                 if prior_step1 is not None:
                     parsed_steps["step_1_analysis"] = prior_step1
+
+        return parsed
+
+    async def generate_step3_panel_script_markdown(
+        self,
+        step1_json: dict,
+        step2_json: dict,
+        num_chapters: int,
+        target_total_pages: str,
+        genre_tone: str,
+        art_style_reference: str,
+        max_panels_per_page: int,
+        special_requests: str,
+    ) -> str:
+        """Generate Step 3 markdown script using Step 1 and Step 2 structured context."""
+        step1_json_text = json.dumps(step1_json, ensure_ascii=True, indent=2)
+        step2_json_text = json.dumps(step2_json, ensure_ascii=True, indent=2)
+        prompt = f"""
+You are a professional manga adaptation studio AI. Your only job right now is Step 3: Panel-by-Panel Script & Image Prompts. Now you can generate detailed scripts and image prompts, but do not actually create images - only text prompts that could be fed into an AI image generator like Midjourney or Stable Diffusion.
+
+REFERENCE FROM PREVIOUS STEPS:
+
+[STEP 1 JSON]
+{step1_json_text}
+
+[STEP 2 JSON]
+{step2_json_text}
+
+USER CUSTOMIZATION INPUTS:
+- Number of chapters: {num_chapters}
+- Target total pages: {target_total_pages}
+- Preferred manga genre & tone: {genre_tone}
+- Art style reference: {art_style_reference}
+- Maximum panels per page: {max_panels_per_page}
+- Any special requests: {special_requests}
+
+TASK - STEP 3 ONLY
+Using the scene breakdowns from Step 1 and designs from Step 2, create a full manga script. Output EXACTLY in this order using clean markdown:
+
+1. Global Scripting Rules
+
+Dialogue style (e.g. "Casual teen speak for protagonists, formal for villains").
+Sound effects & text integration (e.g. "Use bold for SFX, italics for thoughts").
+Pacing adherence: Stick to Step 1's scenes-per-page and panels-per-page.
+Image prompt style: Make them detailed, consistent (include art style, character designs, composition, mood, lighting, etc.).
+
+2. Chapter-by-Chapter Script
+For each chapter (exactly the number from Step 1):
+
+Chapter Title & Page Range: [Title] - Pages [X-Y]
+Then, for each page in the chapter:
+Page Number: [e.g. Page 1 of Chapter 1]
+Layout Summary: Number of panels, any spreads/splashes.
+Panel-by-Panel Breakdown:
+Panel 1: [Description]
+Dialogue/SFX/Thoughts: [content]
+AI Image Prompt: [full prompt]
+
+Repeat for all panels on the page.
+
+End each chapter with: "Chapter End Notes: [Any cliffhanger setup or visual recap]"
+
+3. Special Pages Inventory
+
+List all splash pages, double-spreads, or covers with their prompts.
+Any recurring elements.
+
+4. Final Script Summary (in a boxed table)
+
+Total pages generated: __
+Total panels: __
+Total image prompts: __
+Chapters completed: __ / {num_chapters}
+Any deviations from Step 1 plan and why
+
+After you output everything above, end with this exact line:
+"Step 3 complete. This is the full manga script ready for image generation. Reply with 'Generate Images' if you want me to simulate or batch the image creation process, or tell me any revisions."
+        """
+        return await self.generate_text(prompt)
+
+    async def generate_step3_structured_snapshot(
+        self,
+        project_id: str,
+        step2_json: dict,
+        num_chapters: int,
+        target_total_pages: str,
+        genre_tone: str,
+        art_style_reference: str,
+        max_panels_per_page: int,
+        special_requests: str,
+        step_status: str,
+        last_updated: str,
+        script_markdown: str,
+    ) -> dict:
+        """Generate strict Step 3 structured JSON using markdown + Step 2 JSON context."""
+        step2_json_text = json.dumps(step2_json, ensure_ascii=True, indent=2)
+        prompt = f"""
+Convert the following Step 3 panel script content into one strict JSON object.
+Return JSON only (no markdown, no code fence, no comments).
+
+Use this exact shape:
+{{
+  "project_id": "{project_id}",
+  "project_status": "in_progress",
+  "user_inputs": {{
+    "genre": "{genre_tone}",
+    "tone": "{genre_tone}",
+    "art_style_reference": "{art_style_reference}",
+    "max_panels_per_page": {max_panels_per_page},
+    "user_customizations": {{ "special_requests": "{special_requests}" }}
+  }},
+  "steps": {{
+    "step_1_analysis": {{}},
+    "step_2_design": {{}},
+    "step_3_script": {{
+      "status": "{step_status}",
+      "last_updated": "{last_updated}",
+      "data": {{
+        "chapters": [
+          {{
+            "chapter_number": 1,
+            "title": "",
+            "page_range": "",
+            "pages": [
+              {{
+                "page_number": 1,
+                "layout_summary": "",
+                "panels": [
+                  {{
+                    "panel_number": 1,
+                    "description": "",
+                    "dialogue_sfx_thoughts": "",
+                    "ai_image_prompt": ""
+                  }}
+                ]
+              }}
+            ],
+            "chapter_end_notes": ""
+          }}
+        ],
+        "special_pages_inventory": [
+          {{ "type": "splash", "label": "", "prompt": "" }}
+        ],
+        "final_summary": {{
+          "total_pages_generated": 0,
+          "total_panels": 0,
+          "total_image_prompts": 0,
+          "chapters_completed": 0,
+          "chapters_target": {num_chapters},
+          "deviations": ""
+        }}
+      }}
+    }}
+  }}
+}}
+
+Step 2 JSON reference:
+{step2_json_text}
+
+Step 3 markdown source:
+{script_markdown}
+
+Rules:
+- Keep JSON valid.
+- Preserve step_1_analysis and step_2_design from Step 2 JSON if available.
+- Keep only necessary text for downstream context efficiency.
+- chapters_completed should reflect generated chapter count.
+- target pages input: {target_total_pages}
+        """
+
+        raw_json = await self.generate_text(prompt)
+        try:
+            parsed = _extract_json_payload(raw_json)
+        except GeminiServiceError:
+            return _build_step3_fallback_snapshot(
+                project_id=project_id,
+                genre_tone=genre_tone,
+                art_style_reference=art_style_reference,
+                max_panels_per_page=max_panels_per_page,
+                special_requests=special_requests,
+                step_status=step_status,
+                last_updated=last_updated,
+                step2_json=step2_json,
+                script_markdown=script_markdown,
+            )
+
+        if isinstance(step2_json, dict):
+            parsed_steps = parsed.setdefault("steps", {})
+            prior_steps = step2_json.get("steps", {})
+            if "step_1_analysis" not in parsed_steps and isinstance(prior_steps, dict):
+                prior_step1 = prior_steps.get("step_1_analysis")
+                if prior_step1 is not None:
+                    parsed_steps["step_1_analysis"] = prior_step1
+            if "step_2_design" not in parsed_steps and isinstance(prior_steps, dict):
+                prior_step2 = prior_steps.get("step_2_design")
+                if prior_step2 is not None:
+                    parsed_steps["step_2_design"] = prior_step2
 
         return parsed
 

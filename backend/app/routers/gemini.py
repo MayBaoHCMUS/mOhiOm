@@ -59,6 +59,20 @@ class Step2DesignRequest(BaseModel):
     special_requests: str = "None"
 
 
+class Step3ScriptRequest(BaseModel):
+    """Request model for Step 3 panel script generation."""
+
+    project_id: str = "manga_project_001"
+    step1_json: dict
+    step2_json: dict
+    num_chapters: int = 3
+    target_total_pages: str = "auto"
+    genre_tone: str = "Shonen action"
+    art_style_reference: str = "classic black-and-white weekly shonen"
+    max_panels_per_page: int = 6
+    special_requests: str = "None"
+
+
 class CharacterPromptRequest(BaseModel):
     """Request model for character prompt generation."""
 
@@ -302,6 +316,59 @@ async def generate_panel_script(request: PanelScriptRequest, http_request: Reque
     try:
         script = await gemini_service.generate_panel_script(request.scene_description)
         return {"panel_script": script}
+    except GeminiServiceError as e:
+        detail = (
+            {"message": str(e), "retry_after_seconds": e.retry_after_seconds}
+            if e.retry_after_seconds is not None
+            else str(e)
+        )
+        raise HTTPException(status_code=e.status_code, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        limit_token.release()
+
+
+@router.post("/panel-script-structured")
+async def generate_panel_script_structured(
+    request: Step3ScriptRequest, http_request: Request
+):
+    """Generate Step 3 markdown + structured JSON using Step 1/2 JSON context."""
+    if gemini_service is None:
+        raise HTTPException(status_code=500, detail=gemini_error_message)
+
+    limit_token = await _acquire_limit_token(http_request)
+    try:
+        script_markdown = await gemini_service.generate_step3_panel_script_markdown(
+            step1_json=request.step1_json,
+            step2_json=request.step2_json,
+            num_chapters=request.num_chapters,
+            target_total_pages=request.target_total_pages,
+            genre_tone=request.genre_tone,
+            art_style_reference=request.art_style_reference,
+            max_panels_per_page=request.max_panels_per_page,
+            special_requests=request.special_requests,
+        )
+
+        last_updated = datetime.now(timezone.utc).isoformat()
+        structured_json = await gemini_service.generate_step3_structured_snapshot(
+            project_id=request.project_id,
+            step2_json=request.step2_json,
+            num_chapters=request.num_chapters,
+            target_total_pages=request.target_total_pages,
+            genre_tone=request.genre_tone,
+            art_style_reference=request.art_style_reference,
+            max_panels_per_page=request.max_panels_per_page,
+            special_requests=request.special_requests,
+            step_status="review_pending",
+            last_updated=last_updated,
+            script_markdown=script_markdown,
+        )
+
+        return {
+            "script_markdown": script_markdown,
+            "structured_json": structured_json,
+        }
     except GeminiServiceError as e:
         detail = (
             {"message": str(e), "retry_after_seconds": e.retry_after_seconds}
