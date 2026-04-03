@@ -33,14 +33,27 @@ interface Step3Result {
   structuredJson: Record<string, unknown> | null;
 }
 
+type PanelImageStatus = 'idle' | 'loading' | 'success' | 'error';
+
+interface Step4Panel {
+  id: string;
+  pageNumber: number;
+  panelNumber: number;
+  contextLabel: string;
+  dialogueSfx: string;
+  aiImagePrompt: string;
+}
+
+interface Step4PanelState {
+  status: PanelImageStatus;
+  imageUrl: string | null;
+  error: string | null;
+}
+
 interface Step4Result {
-  images: {
-    id: string;
-    pageNumber: number;
-    panelNumber: number;
-    prompt: string;
-    imageUrl: string;
-  }[];
+  panels: Step4Panel[];
+  panelStates: Record<string, Step4PanelState>;
+  isGenerating: boolean;
 }
 
 type StepData = Step1Result | Step2Result | Step3Result | Step4Result;
@@ -58,6 +71,119 @@ const emptyStepState = <T,>(locked: boolean): StepState<T> => ({
   error: null,
   lastUpdated: null,
 });
+
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const hashString = (value: string): string => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+};
+
+const fetchImageFromAI = async (imagePrompt: string): Promise<string> => {
+  await sleep(3000);
+  const seed = encodeURIComponent(hashString(imagePrompt));
+  return `https://picsum.photos/seed/${seed}/720/960`;
+};
+
+const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {
+  const normalized = (markdown || '').replace(/\r\n?/g, '\n');
+  if (!normalized.trim()) {
+    return [];
+  }
+
+  type WorkingPanel = {
+    pageNumber: number;
+    panelNumber: number;
+    body: string;
+  };
+
+  const workingPanels: WorkingPanel[] = [];
+  const lines = normalized.split('\n');
+  const pageRegex = /^\s*(?:[-*]\s*)?(?:\*{0,2})?Page\s+(\d+)(?:\s+of\s+Chapter\s+\d+)?(?:\*{0,2})?\s*:?.*$/i;
+  const panelRegex = /^\s*(?:[-*]\s*)?(?:\*{0,2})?Panel\s+(\d+)(?:\*{0,2})?\s*:?.*$/i;
+
+  let currentPage = 1;
+  let activePanel: WorkingPanel | null = null;
+
+  const flushPanel = () => {
+    if (activePanel) {
+      workingPanels.push(activePanel);
+    }
+    activePanel = null;
+  };
+
+  for (const line of lines) {
+    const pageMatch = line.match(pageRegex);
+    if (pageMatch) {
+      currentPage = Number(pageMatch[1]) || currentPage;
+      flushPanel();
+      continue;
+    }
+
+    const panelMatch = line.match(panelRegex);
+    if (panelMatch) {
+      flushPanel();
+      activePanel = {
+        pageNumber: currentPage,
+        panelNumber: Number(panelMatch[1]) || 1,
+        body: '',
+      };
+      continue;
+    }
+
+    if (activePanel) {
+      activePanel.body += `${line}\n`;
+    }
+  }
+  flushPanel();
+
+  const dialogueRegex =
+    /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?Dialogue(?:\s*\/\s*SFX)?(?:\s*\/\s*Thoughts)?(?:\*{0,2})?\s*:\s*([\s\S]*?)(?=\n\s*(?:[-*]\s*)?(?:\*{0,2})?(?:AI\s*Image\s*Prompt|Panel\s+\d+|Page\s+\d+|Chapter\s+End\s+Notes|Special\s+Pages|Final\s+Script\s+Summary)\b|$)/i;
+  const promptRegex =
+    /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?AI\s*Image\s*Prompt(?:\*{0,2})?\s*:\s*([\s\S]*?)(?=\n\s*(?:[-*]\s*)?(?:\*{0,2})?(?:Panel\s+\d+|Page\s+\d+|Chapter\s+End\s+Notes|Special\s+Pages|Final\s+Script\s+Summary)\b|$)/i;
+
+  const parsed = workingPanels
+    .map((panel) => {
+      const body = panel.body.trim();
+      const dialogueSfx = (body.match(dialogueRegex)?.[1] || '').trim();
+      const aiImagePrompt = (body.match(promptRegex)?.[1] || '').trim();
+      if (!aiImagePrompt) {
+        return null;
+      }
+
+      const id = `p${panel.pageNumber}-n${panel.panelNumber}`;
+      return {
+        id,
+        pageNumber: panel.pageNumber,
+        panelNumber: panel.panelNumber,
+        contextLabel: `Page ${panel.pageNumber}, Panel ${panel.panelNumber}`,
+        dialogueSfx: dialogueSfx || 'No dialogue/SFX provided.',
+        aiImagePrompt,
+      } satisfies Step4Panel;
+    })
+    .filter((item): item is Step4Panel => item !== null);
+
+  // Fallback for non-standard markdown where panel headers are missing.
+  if (parsed.length === 0) {
+    const promptOnlyRegex =
+      /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?AI\s*Image\s*Prompt(?:\*{0,2})?\s*:\s*([\s\S]*?)(?=\n\s*(?:[-*]\s*)?(?:\*{0,2})?(?:AI\s*Image\s*Prompt|Panel\s+\d+|Page\s+\d+|Chapter\s+End\s+Notes|Special\s+Pages|Final\s+Script\s+Summary)\b|$)/gi;
+    const prompts = [...normalized.matchAll(promptOnlyRegex)].map((match) => (match[1] || '').trim()).filter(Boolean);
+    return prompts.map((prompt, idx) => ({
+      id: `p1-n${idx + 1}`,
+      pageNumber: 1,
+      panelNumber: idx + 1,
+      contextLabel: `Page 1, Panel ${idx + 1}`,
+      dialogueSfx: 'No dialogue/SFX provided.',
+      aiImagePrompt: prompt,
+    }));
+  }
+
+  return parsed.sort((a, b) => a.pageNumber - b.pageNumber || a.panelNumber - b.panelNumber);
+};
 
 export default function TextToComicGenerator() {
   // Input and configuration
@@ -250,21 +376,25 @@ export default function TextToComicGenerator() {
       } satisfies Step3Result;
     }
 
-    const step3Context = step3.data?.scriptMarkdown || 'story';
-    const prompt = `Provide ${Math.min(8, Number(targetPages) || 8)} concise image prompts for key panels. Style: ${artStyle}. Use context: ${
-      parseLines(step3Context, 6).join(' | ') || 'story'
-    }.`;
-    const resp = await geminiApi.generateText(prompt);
-    const text: string = resp.data.generated_text || resp.data.analysis || '';
-    const prompts = parseLines(text, 8);
+    const step3Markdown = step3.data?.scriptMarkdown || '';
+    const panels = parseStep3PanelsFromMarkdown(step3Markdown);
+    if (!panels.length) {
+      throw new Error('No AI Image Prompt blocks found in Step 3 output. Please regenerate Step 3 with panel prompts.');
+    }
+
+    const panelStates: Record<string, Step4PanelState> = {};
+    panels.forEach((panel) => {
+      panelStates[panel.id] = {
+        status: 'idle',
+        imageUrl: null,
+        error: null,
+      };
+    });
+
     return {
-      images: prompts.map((p, i) => ({
-        id: `img-${i}`,
-        pageNumber: Math.floor(i / 2) + 1,
-        panelNumber: (i % 2) + 1,
-        prompt: p || `Panel ${i + 1}`,
-        imageUrl: `https://via.placeholder.com/360x480?text=Prompt+${i + 1}`,
-      })),
+      panels,
+      panelStates,
+      isGenerating: false,
     } satisfies Step4Result;
   };
 
@@ -522,6 +652,185 @@ export default function TextToComicGenerator() {
     }));
     handleGenerate(step);
   };
+
+  const generatePanelImages = async (
+    panelsArray: Step4Panel[],
+    options?: { batchSize?: number; delayMs?: number }
+  ) => {
+    const batchSize = Math.max(1, options?.batchSize ?? 2);
+    const delayMs = Math.max(0, options?.delayMs ?? 10000);
+
+    for (let i = 0; i < panelsArray.length; i += batchSize) {
+      const batch = panelsArray.slice(i, i + batchSize);
+
+      setStep4((prev) => {
+        if (!prev.data) return prev;
+        const nextStates = { ...prev.data.panelStates };
+        batch.forEach((panel) => {
+          const prevState = nextStates[panel.id];
+          nextStates[panel.id] = {
+            status: 'loading',
+            imageUrl: prevState?.imageUrl || null,
+            error: null,
+          };
+        });
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            panelStates: nextStates,
+          },
+        };
+      });
+
+      const results = await Promise.all(
+        batch.map(async (panel) => {
+          try {
+            const imageUrl = await fetchImageFromAI(panel.aiImagePrompt);
+            return {
+              id: panel.id,
+              status: 'success' as const,
+              imageUrl,
+              error: null,
+            };
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Image generation failed.';
+            return {
+              id: panel.id,
+              status: 'error' as const,
+              imageUrl: null,
+              error: message,
+            };
+          }
+        })
+      );
+
+      setStep4((prev) => {
+        if (!prev.data) return prev;
+        const nextStates = { ...prev.data.panelStates };
+        results.forEach((result) => {
+          nextStates[result.id] = {
+            status: result.status,
+            imageUrl: result.imageUrl,
+            error: result.error,
+          };
+        });
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            panelStates: nextStates,
+          },
+          lastUpdated: new Date().toISOString(),
+        };
+      });
+
+      const hasMore = i + batchSize < panelsArray.length;
+      if (hasMore) {
+        await sleep(delayMs);
+      }
+    }
+  };
+
+  const handleStartFullGeneration = async () => {
+    if (!step4.data || step4.data.isGenerating) return;
+
+    const targets = step4.data.panels.filter((panel) => {
+      const state = step4.data?.panelStates[panel.id];
+      return state?.status === 'idle' || state?.status === 'error';
+    });
+
+    if (!targets.length) return;
+
+    setStep4((prev) => {
+      if (!prev.data) return prev;
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          isGenerating: true,
+        },
+        error: null,
+      };
+    });
+
+    try {
+      await generatePanelImages(targets, { batchSize: 2, delayMs: 10000 });
+    } finally {
+      setStep4((prev) => {
+        if (!prev.data) return prev;
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            isGenerating: false,
+          },
+        };
+      });
+    }
+  };
+
+  const handleRegeneratePanel = async (panelId: string) => {
+    if (!step4.data || step4.data.isGenerating) return;
+    const panel = step4.data.panels.find((entry) => entry.id === panelId);
+    if (!panel) return;
+
+    setStep4((prev) => {
+      if (!prev.data) return prev;
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          isGenerating: true,
+        },
+        error: null,
+      };
+    });
+
+    try {
+      await generatePanelImages([panel], { batchSize: 1, delayMs: 0 });
+    } finally {
+      setStep4((prev) => {
+        if (!prev.data) return prev;
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            isGenerating: false,
+          },
+        };
+      });
+    }
+  };
+
+  const step4PanelsByPage = useMemo(() => {
+    if (!step4.data) return [] as Array<[number, Step4Panel[]]>;
+    const pageMap = new Map<number, Step4Panel[]>();
+
+    step4.data.panels.forEach((panel) => {
+      const existing = pageMap.get(panel.pageNumber) || [];
+      existing.push(panel);
+      pageMap.set(panel.pageNumber, existing);
+    });
+
+    return Array.from(pageMap.entries())
+      .map(([pageNumber, panels]) => [
+        pageNumber,
+        panels.sort((a, b) => a.panelNumber - b.panelNumber),
+      ] as [number, Step4Panel[]])
+      .sort((a, b) => a[0] - b[0]);
+  }, [step4.data]);
+
+  const step4Stats = useMemo(() => {
+    const states = step4.data?.panelStates || {};
+    const list = Object.values(states);
+    return {
+      total: step4.data?.panels.length || 0,
+      success: list.filter((entry) => entry.status === 'success').length,
+      loading: list.filter((entry) => entry.status === 'loading').length,
+      error: list.filter((entry) => entry.status === 'error').length,
+    };
+  }, [step4.data]);
 
   const copyProjectJson = async () => {
     try {
@@ -1018,34 +1327,111 @@ export default function TextToComicGenerator() {
 
           <StepCard
             step={4}
-            title="Image Generation Simulation"
+            title="Image Generation & Display"
             context={
               step3.data ? (
-                <p className="text-sm text-gray-200">Using panel prompts from approved Step 3 script markdown.</p>
+                <p className="text-sm text-gray-200">Parse Step 3 markdown into page/panel prompts, then generate images in a rate-limited queue.</p>
               ) : (
-                <p className="text-sm text-gray-400">Approve Step 3 to simulate images.</p>
+                <p className="text-sm text-gray-400">Approve Step 3 to parse panel prompts for image generation.</p>
               )
             }
           >
-            {step4.data && (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {step4.data.images.map((img) => (
-                  <div key={img.id} className="rounded-xl border border-slate-700 bg-slate-800/60 overflow-hidden group">
-                    <div className="aspect-[3/4] bg-slate-700 flex items-center justify-center">
-                      <img
-                        src={img.imageUrl}
-                        alt={img.prompt}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      />
-                    </div>
-                    <div className="p-3 text-xs text-gray-200 space-y-1">
-                      <p className="font-semibold text-blue-300">Page {img.pageNumber} · Panel {img.panelNumber}</p>
-                      <p className="text-gray-400">{img.prompt}</p>
+            {step4.data && (() => {
+              const step4Data = step4.data;
+              return (
+              <div className="space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                  <div className="text-xs text-gray-300">
+                    <p>
+                      Panels: <span className="font-semibold text-white">{step4Stats.total}</span> · Success:{' '}
+                      <span className="font-semibold text-green-300">{step4Stats.success}</span> · Loading:{' '}
+                      <span className="font-semibold text-blue-300">{step4Stats.loading}</span> · Error:{' '}
+                      <span className="font-semibold text-red-300">{step4Stats.error}</span>
+                    </p>
+                    <p className="text-gray-400 mt-1">Batch mode: 2 images/call cycle with 10s delay between batches.</p>
+                  </div>
+                  <button
+                    onClick={handleStartFullGeneration}
+                    disabled={step4Data.isGenerating || step4Stats.total === 0}
+                    className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
+                      step4Data.isGenerating || step4Stats.total === 0
+                        ? 'bg-slate-800 text-gray-500 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
+                  >
+                    {step4Data.isGenerating ? 'Generating...' : 'Start Full Generation'}
+                  </button>
+                </div>
+
+                {step4Stats.total === 0 && (
+                  <p className="text-sm text-amber-300">No panel prompts were parsed from Step 3 markdown. Regenerate Step 3 with explicit “AI Image Prompt:” lines.</p>
+                )}
+
+                {step4PanelsByPage.map(([pageNumber, panels]) => (
+                  <div key={pageNumber} className="space-y-3">
+                    <h4 className="text-sm font-semibold text-blue-200">Page {pageNumber}</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {panels.map((panel) => {
+                        const state = step4Data.panelStates[panel.id];
+
+                        return (
+                          <div key={panel.id} className="rounded-xl border border-slate-700 bg-slate-800/60 overflow-hidden">
+                            <div className="flex items-center justify-between gap-3 border-b border-slate-700 px-3 py-2">
+                              <p className="text-xs font-semibold text-blue-300">{panel.contextLabel}</p>
+                              <button
+                                onClick={() => handleRegeneratePanel(panel.id)}
+                                disabled={step4Data.isGenerating || state?.status === 'loading'}
+                                className={`px-2 py-1 rounded-md text-xs font-semibold transition ${
+                                  step4Data.isGenerating || state?.status === 'loading'
+                                    ? 'bg-slate-700 text-gray-500 cursor-not-allowed'
+                                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                }`}
+                              >
+                                Regenerate
+                              </button>
+                            </div>
+
+                            <div className="aspect-[3/4] bg-slate-700 flex items-center justify-center">
+                              {state?.status === 'success' && state.imageUrl ? (
+                                <img
+                                  src={state.imageUrl}
+                                  alt={panel.aiImagePrompt}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : state?.status === 'loading' ? (
+                                <div className="flex flex-col items-center gap-2 text-blue-200 text-sm">
+                                  <span className="w-6 h-6 rounded-full border-2 border-blue-300 border-t-transparent animate-spin" />
+                                  Generating...
+                                </div>
+                              ) : state?.status === 'error' ? (
+                                <div className="px-4 text-center">
+                                  <p className="text-sm font-semibold text-red-300">Generation failed</p>
+                                  <p className="text-xs text-red-200 mt-1 [overflow-wrap:anywhere]">{state.error}</p>
+                                </div>
+                              ) : (
+                                <p className="text-sm text-gray-300">Idle</p>
+                              )}
+                            </div>
+
+                            <div className="p-3 space-y-2 text-xs text-gray-200">
+                              <div>
+                                <p className="font-semibold text-gray-100">Dialogue/SFX</p>
+                                <p className="text-gray-300 whitespace-pre-wrap [overflow-wrap:anywhere]">{panel.dialogueSfx}</p>
+                              </div>
+                              <details>
+                                <summary className="cursor-pointer text-gray-300">AI Image Prompt</summary>
+                                <p className="mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]">{panel.aiImagePrompt}</p>
+                              </details>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
               </div>
-            )}
+              );
+            })()}
           </StepCard>
         </div>
       </div>
