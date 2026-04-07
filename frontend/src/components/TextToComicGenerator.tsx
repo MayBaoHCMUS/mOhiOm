@@ -28,6 +28,29 @@ interface Step2Result {
   aiPrompts: string[];
 }
 
+type CharacterImageStatus = 'idle' | 'loading' | 'success' | 'error';
+
+interface CharacterImageCandidate {
+  id: string;
+  imageUrl: string;
+  createdAt: string;
+}
+
+interface CharacterImageItem {
+  characterId: string;
+  name: string;
+  prompt: string;
+  status: CharacterImageStatus;
+  error: string | null;
+  candidates: CharacterImageCandidate[];
+  selectedCandidateId: string | null;
+}
+
+interface CharacterImageReviewResult {
+  characters: CharacterImageItem[];
+  isGenerating: boolean;
+}
+
 interface Step3Result {
   scriptMarkdown: string;
   structuredJson: Record<string, unknown> | null;
@@ -82,9 +105,9 @@ const fetchImageFromAI = async (imagePrompt: string): Promise<string> => {
       height: 960,
     });
 
-    const imageUrl = response.data.image_url;
+    const imageUrl = response.data.image_data_url || response.data.image_url;
     if (!imageUrl || typeof imageUrl !== 'string') {
-      throw new Error('Backend did not return a valid image_url.');
+      throw new Error('Backend did not return a valid image payload.');
     }
 
     return imageUrl;
@@ -210,6 +233,9 @@ export default function TextToComicGenerator() {
   // Per-step state
   const [step1, setStep1] = useState<StepState<Step1Result>>(emptyStepState(false));
   const [step2, setStep2] = useState<StepState<Step2Result>>(emptyStepState(true));
+  const [step2ImageReview, setStep2ImageReview] = useState<StepState<CharacterImageReviewResult>>(
+    emptyStepState<CharacterImageReviewResult>(true)
+  );
   const [step3, setStep3] = useState<StepState<Step3Result>>(emptyStepState(true));
   const [step4, setStep4] = useState<StepState<Step4Result>>(emptyStepState(true));
   const [activeStep, setActiveStep] = useState<StepKey>(1);
@@ -235,6 +261,106 @@ export default function TextToComicGenerator() {
     () => ({ 1: step1, 2: step2, 3: step3, 4: step4 }),
     [step1, step2, step3, step4]
   );
+
+  const extractStep2Characters = (): CharacterImageItem[] => {
+    const mainDesigns = ((step2.data?.structuredJson as any)?.steps?.step_2_design?.data
+      ?.main_characters_designs || {}) as Record<string, any>;
+
+    const fromStructured = Object.entries(mainDesigns)
+      .map(([characterId, raw], index) => {
+        const prompt = typeof raw?.ai_image_prompt_ready === 'string' ? raw.ai_image_prompt_ready.trim() : '';
+        if (!prompt) return null;
+
+        const name =
+          (typeof raw?.name === 'string' && raw.name.trim()) ||
+          `Character ${index + 1}`;
+
+        return {
+          characterId,
+          name,
+          prompt,
+          status: 'idle',
+          error: null,
+          candidates: [],
+          selectedCandidateId: null,
+        } satisfies CharacterImageItem;
+      })
+      .filter((entry): entry is CharacterImageItem => entry !== null);
+
+    if (fromStructured.length > 0) {
+      return fromStructured;
+    }
+
+    const markdown = step2.data?.designMarkdown || '';
+    const normalized = markdown.replace(/\r\n?/g, '\n');
+    const characterBlocks = [
+      ...normalized.matchAll(
+        /^###\s+Character\s+\d+\s*:\s*(.+?)\s*$([\s\S]*?)(?=^###\s+Character\s+\d+\s*:|^##\s+\d+\.|$)/gim
+      ),
+    ];
+
+    const fallbackCharacters = characterBlocks
+      .map((match, index) => {
+        const name = (match[1] || '').trim();
+        const body = match[2] || '';
+        const promptMatch = body.match(
+          /AI\s*Image\s*Prompt\s*Ready\s*:\s*([\s\S]*?)(?=\n\s*\*\s*\*|\n\s*###|\n\s*##|$)/i
+        );
+        const prompt = (promptMatch?.[1] || '').trim();
+        if (!name || !prompt) return null;
+
+        const characterId =
+          name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '') || `character_${index + 1}`;
+
+        return {
+          characterId,
+          name,
+          prompt,
+          status: 'idle',
+          error: null,
+          candidates: [],
+          selectedCandidateId: null,
+        } satisfies CharacterImageItem;
+      })
+      .filter((entry): entry is CharacterImageItem => entry !== null);
+
+    return fallbackCharacters;
+  };
+
+  const getSelectedCharacterReferences = (): Array<{
+    character_id: string;
+    name: string;
+    image_url: string;
+    prompt: string;
+  }> => {
+    if (!step2ImageReview.data) return [];
+
+    return step2ImageReview.data.characters
+      .map((character) => {
+        const selected = character.candidates.find((candidate) => candidate.id === character.selectedCandidateId);
+        if (!selected) return null;
+
+        return {
+          character_id: character.characterId,
+          name: character.name,
+          image_url: selected.imageUrl,
+          prompt: character.prompt,
+        };
+      })
+      .filter(
+        (
+          entry
+        ): entry is {
+          character_id: string;
+          name: string;
+          image_url: string;
+          prompt: string;
+        } => entry !== null
+      );
+  };
 
   const setStepState = (step: StepKey, updater: (prev: StepState<any>) => StepState<any>) => {
     if (step === 1) setStep1((prev) => updater(prev));
@@ -291,8 +417,30 @@ export default function TextToComicGenerator() {
   };
 
   const getStep2StructuredJson = (): Record<string, unknown> => {
+    const selectedReferences = getSelectedCharacterReferences();
+
     if (step2.data?.structuredJson) {
-      return step2.data.structuredJson;
+      const cloned = JSON.parse(JSON.stringify(step2.data.structuredJson)) as Record<string, any>;
+      const steps = (cloned.steps || {}) as Record<string, any>;
+      const step2Design = (steps.step_2_design || {}) as Record<string, any>;
+      const step2Data = (step2Design.data || {}) as Record<string, any>;
+      const mainDesigns = (step2Data.main_characters_designs || {}) as Record<string, any>;
+
+      selectedReferences.forEach((reference) => {
+        const existing = (mainDesigns[reference.character_id] || {}) as Record<string, unknown>;
+        mainDesigns[reference.character_id] = {
+          ...existing,
+          selected_reference_image_url: reference.image_url,
+          selected_reference_prompt: reference.prompt,
+        };
+      });
+
+      step2Data.main_characters_designs = mainDesigns;
+      step2Data.selected_character_references = selectedReferences;
+      step2Design.data = step2Data;
+      steps.step_2_design = step2Design;
+      cloned.steps = steps;
+      return cloned;
     }
 
     const step1Json = getStep1StructuredJson();
@@ -305,6 +453,7 @@ export default function TextToComicGenerator() {
           last_updated: step2.lastUpdated,
           data: {
             design_markdown: step2.data?.designMarkdown || '',
+              selected_character_references: selectedReferences,
           },
         },
       },
@@ -492,6 +641,9 @@ export default function TextToComicGenerator() {
     const apiStep2 =
       (apiSteps.step_2_design as Record<string, unknown> | undefined) ||
       ({} as Record<string, unknown>);
+    const apiStep2ImageReview =
+      (apiSteps.step_2_image_review as Record<string, unknown> | undefined) ||
+      ({} as Record<string, unknown>);
     const apiStep3 =
       (apiSteps.step_3_script as Record<string, unknown> | undefined) ||
       ({} as Record<string, unknown>);
@@ -545,6 +697,22 @@ export default function TextToComicGenerator() {
               },
             }
           : {}),
+        ...(step2ImageReview.data
+          ? {
+              step_2_image_review: {
+                ...apiStep2ImageReview,
+                status: step2ImageReview.isApproved
+                  ? 'approved'
+                  : step2ImageReview.isLoading
+                    ? 'processing'
+                    : 'review_pending',
+                last_updated: step2ImageReview.lastUpdated,
+                data: {
+                  selected_character_references: getSelectedCharacterReferences(),
+                },
+              },
+            }
+          : {}),
       },
     };
   }, [
@@ -562,6 +730,10 @@ export default function TextToComicGenerator() {
     step2.isApproved,
     step2.isLoading,
     step2.lastUpdated,
+    step2ImageReview.data,
+    step2ImageReview.isApproved,
+    step2ImageReview.isLoading,
+    step2ImageReview.lastUpdated,
     step3.data,
     step3.isApproved,
     step3.isLoading,
@@ -594,6 +766,12 @@ export default function TextToComicGenerator() {
       setStepState(step, (prev) => ({ ...prev, data: cached.data, error: null }));
       setActiveStep(step);
       return;
+    }
+
+    if (step === 2) {
+      setStep2ImageReview(emptyStepState<CharacterImageReviewResult>(true));
+      setStep3((prev) => ({ ...prev, locked: true, isApproved: false }));
+      setStep4((prev) => ({ ...prev, locked: true, isApproved: false }));
     }
 
     setGlobalError(null);
@@ -644,6 +822,12 @@ export default function TextToComicGenerator() {
       locked: true,
       lastUpdated: new Date().toISOString(),
     }));
+
+    if (step === 2) {
+      setStep2ImageReview((prev) => ({ ...prev, locked: false }));
+      return;
+    }
+
     const nextStep = (step + 1) as StepKey;
     if (nextStep <= 4) {
       setStepState(nextStep, (prev) => ({ ...prev, locked: false }));
@@ -660,6 +844,194 @@ export default function TextToComicGenerator() {
       lastUpdated: null,
     }));
     handleGenerate(step);
+  };
+
+  const handleGenerateCharacterReferences = async () => {
+    if (step2ImageReview.locked || step2ImageReview.isLoading || !step2.data) return;
+
+    const characters = extractStep2Characters();
+    if (!characters.length) {
+      setStep2ImageReview((prev) => ({
+        ...prev,
+        error: 'No character prompts found in Step 2 structured JSON.',
+      }));
+      return;
+    }
+
+    setStep2ImageReview((prev) => ({
+      ...prev,
+      isLoading: true,
+      error: null,
+      data: {
+        characters,
+        isGenerating: true,
+      },
+    }));
+
+    const generatedCharacters = await Promise.all(
+      characters.map(async (character) => {
+        try {
+          const imageUrl = await fetchImageFromAI(character.prompt);
+          const candidateId = `${character.characterId}-${Date.now()}`;
+          return {
+            ...character,
+            status: 'success' as const,
+            candidates: [
+              {
+                id: candidateId,
+                imageUrl,
+                createdAt: new Date().toISOString(),
+              },
+            ],
+            selectedCandidateId: candidateId,
+          };
+        } catch (error) {
+          return {
+            ...character,
+            status: 'error' as const,
+            error: error instanceof Error ? error.message : 'Failed to generate image.',
+          };
+        }
+      })
+    );
+
+    setStep2ImageReview((prev) => ({
+      ...prev,
+      isLoading: false,
+      lastUpdated: new Date().toISOString(),
+      data: {
+        characters: generatedCharacters,
+        isGenerating: false,
+      },
+    }));
+  };
+
+  const handleRegenerateCharacterImage = async (characterId: string) => {
+    if (!step2ImageReview.data || step2ImageReview.data.isGenerating) return;
+    const target = step2ImageReview.data.characters.find((character) => character.characterId === characterId);
+    if (!target) return;
+
+    setStep2ImageReview((prev) => {
+      if (!prev.data) return prev;
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          isGenerating: true,
+          characters: prev.data.characters.map((character) =>
+            character.characterId === characterId
+              ? { ...character, status: 'loading', error: null }
+              : character
+          ),
+        },
+      };
+    });
+
+    try {
+      const imageUrl = await fetchImageFromAI(target.prompt);
+      const candidateId = `${target.characterId}-${Date.now()}`;
+
+      setStep2ImageReview((prev) => {
+        if (!prev.data) return prev;
+        return {
+          ...prev,
+          lastUpdated: new Date().toISOString(),
+          data: {
+            ...prev.data,
+            isGenerating: false,
+            characters: prev.data.characters.map((character) =>
+              character.characterId === characterId
+                ? {
+                    ...character,
+                    status: 'success',
+                    error: null,
+                    candidates: [
+                      ...character.candidates,
+                      {
+                        id: candidateId,
+                        imageUrl,
+                        createdAt: new Date().toISOString(),
+                      },
+                    ],
+                    selectedCandidateId: candidateId,
+                  }
+                : character
+            ),
+          },
+        };
+      });
+    } catch (error) {
+      setStep2ImageReview((prev) => {
+        if (!prev.data) return prev;
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            isGenerating: false,
+            characters: prev.data.characters.map((character) =>
+              character.characterId === characterId
+                ? {
+                    ...character,
+                    status: 'error',
+                    error: error instanceof Error ? error.message : 'Failed to regenerate image.',
+                  }
+                : character
+            ),
+          },
+        };
+      });
+    }
+  };
+
+  const handleSelectCharacterCandidate = (characterId: string, candidateId: string) => {
+    setStep2ImageReview((prev) => {
+      if (!prev.data) return prev;
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          characters: prev.data.characters.map((character) =>
+            character.characterId === characterId
+              ? { ...character, selectedCandidateId: candidateId }
+              : character
+          ),
+        },
+      };
+    });
+  };
+
+  const handleApproveCharacterReferences = () => {
+    if (!step2ImageReview.data) return;
+    const missing = step2ImageReview.data.characters.filter((character) => !character.selectedCandidateId);
+    if (missing.length) {
+      setStep2ImageReview((prev) => ({
+        ...prev,
+        error: 'Please select one final image for every character before approving.',
+      }));
+      return;
+    }
+
+    setStep2ImageReview((prev) => ({
+      ...prev,
+      isApproved: true,
+      locked: true,
+      error: null,
+      lastUpdated: new Date().toISOString(),
+    }));
+    setStep3((prev) => ({ ...prev, locked: false }));
+    setActiveStep(3);
+  };
+
+  const handleRetryCharacterReferences = () => {
+    setStep2ImageReview((prev) => ({
+      ...prev,
+      data: null,
+      isApproved: false,
+      isLoading: false,
+      error: null,
+      lastUpdated: null,
+    }));
+    setStep3((prev) => ({ ...prev, locked: true }));
   };
 
   const generatePanelImages = async (
@@ -1278,6 +1650,153 @@ export default function TextToComicGenerator() {
             )}
           </StepCard>
 
+          <div
+            className={`min-w-0 rounded-2xl border ${step2ImageReview.locked ? 'border-slate-800 bg-slate-900/60' : 'border-slate-700 bg-slate-900'} shadow-lg p-6 space-y-4`}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-10 h-10 flex items-center justify-center rounded-full font-bold ${
+                    step2ImageReview.isApproved
+                      ? 'bg-green-500 text-white'
+                      : step2ImageReview.isLoading
+                        ? 'bg-blue-500 text-white'
+                        : step2ImageReview.locked
+                          ? 'bg-slate-600 text-gray-200'
+                          : 'bg-violet-600 text-white'
+                  }`}
+                >
+                  {step2ImageReview.isApproved ? '✓' : '2.5'}
+                </div>
+                <div>
+                  <p className="text-sm text-gray-400">Step 2.5</p>
+                  <h3 className="text-xl font-semibold text-white">Character Reference Images</h3>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  onClick={handleGenerateCharacterReferences}
+                  disabled={step2ImageReview.locked || step2ImageReview.isLoading}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
+                    step2ImageReview.locked || step2ImageReview.isLoading
+                      ? 'bg-slate-800 text-gray-500 cursor-not-allowed'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  {step2ImageReview.isLoading ? 'Generating...' : 'Generate Character Images'}
+                </button>
+                {!step2ImageReview.isApproved && step2ImageReview.data && (
+                  <button
+                    onClick={handleRetryCharacterReferences}
+                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-slate-700 text-white hover:bg-slate-600"
+                  >
+                    Retry Step 2.5
+                  </button>
+                )}
+                {!step2ImageReview.locked && !step2ImageReview.isApproved && step2ImageReview.data && (
+                  <button
+                    onClick={handleApproveCharacterReferences}
+                    className="px-3 py-2 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700"
+                  >
+                    Approve & Unlock Step 3
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4 text-sm text-gray-200">
+              <p className="font-semibold text-gray-100 mb-1">Context from Step 2</p>
+              <p className="text-gray-300">
+                Generate images from each character&apos;s `AI Image Prompt Ready`, regenerate until satisfied, and select the final reference image.
+                Step 3 and Step 4 will use these selected references.
+              </p>
+            </div>
+
+            <div className="rounded-xl bg-slate-800/60 border border-slate-700 p-4 min-h-[160px]">
+              {step2ImageReview.error && (
+                <div className="mb-3 rounded-md bg-red-900/40 border border-red-600 px-3 py-2 text-red-200 text-sm">
+                  {step2ImageReview.error}
+                </div>
+              )}
+
+              {!step2ImageReview.data && !step2ImageReview.isLoading && (
+                <p className="text-gray-400 text-sm">Approve Step 2, then generate character reference images.</p>
+              )}
+
+              {step2ImageReview.data && (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {step2ImageReview.data.characters.map((character) => {
+                    const selected = character.candidates.find((candidate) => candidate.id === character.selectedCandidateId) || null;
+
+                    return (
+                      <div key={character.characterId} className="rounded-xl border border-slate-700 bg-slate-900/60 overflow-hidden">
+                        <div className="border-b border-slate-700 p-3">
+                          <p className="text-sm font-semibold text-violet-200">{character.name}</p>
+                          <p className="text-[11px] text-gray-400 [overflow-wrap:anywhere]">{character.characterId}</p>
+                        </div>
+
+                        <div className="aspect-[3/4] bg-slate-700 flex items-center justify-center">
+                          {selected ? (
+                            <img src={selected.imageUrl} alt={character.name} className="w-full h-full object-cover" />
+                          ) : character.status === 'loading' ? (
+                            <div className="flex flex-col items-center gap-2 text-blue-200 text-sm">
+                              <span className="w-6 h-6 rounded-full border-2 border-blue-300 border-t-transparent animate-spin" />
+                              Generating...
+                            </div>
+                          ) : character.status === 'error' ? (
+                            <p className="px-4 text-center text-sm text-red-300">{character.error || 'Failed to generate image.'}</p>
+                          ) : (
+                            <p className="text-sm text-gray-300">No image selected yet</p>
+                          )}
+                        </div>
+
+                        <div className="p-3 space-y-2">
+                          <button
+                            onClick={() => handleRegenerateCharacterImage(character.characterId)}
+                            disabled={step2ImageReview.data?.isGenerating}
+                            className={`w-full px-3 py-2 rounded-lg text-xs font-semibold transition ${
+                              step2ImageReview.data?.isGenerating
+                                ? 'bg-slate-700 text-gray-500 cursor-not-allowed'
+                                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                            }`}
+                          >
+                            Regenerate Image
+                          </button>
+
+                          {character.candidates.length > 1 && (
+                            <div className="space-y-1">
+                              <p className="text-[11px] text-gray-300">Generated versions</p>
+                              <div className="flex flex-wrap gap-2">
+                                {character.candidates.map((candidate, idx) => (
+                                  <button
+                                    key={candidate.id}
+                                    onClick={() => handleSelectCharacterCandidate(character.characterId, candidate.id)}
+                                    className={`px-2 py-1 rounded-md text-[11px] font-semibold ${
+                                      character.selectedCandidateId === candidate.id
+                                        ? 'bg-violet-600 text-white'
+                                        : 'bg-slate-700 text-gray-200 hover:bg-slate-600'
+                                    }`}
+                                  >
+                                    v{idx + 1}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <details>
+                            <summary className="cursor-pointer text-[11px] text-gray-300">Image prompt</summary>
+                            <p className="mt-1 text-[11px] text-gray-200 whitespace-pre-wrap [overflow-wrap:anywhere]">{character.prompt}</p>
+                          </details>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
           <StepCard
             step={3}
             title="Panel-by-Panel Script"
@@ -1285,6 +1804,7 @@ export default function TextToComicGenerator() {
               step2.data ? (
                 <div className="text-sm text-gray-200 space-y-1 min-w-0">
                   <p className="[overflow-wrap:anywhere]">Main prompts: {getStep2PromptList().slice(0, 2).join(' | ') || 'Using Step 2 design context'}...</p>
+                  <p>Selected character references: {getSelectedCharacterReferences().length}</p>
                   <p>Art style: {artStyle}</p>
                 </div>
               ) : (

@@ -403,7 +403,11 @@ async def generate_panel_image(request: PanelImageRequest, http_request: Request
             width=request.width,
             height=request.height,
         )
-        return {"image_url": image_url}
+        image_data_url = await gemini_service.generate_panel_image_data_url(image_url)
+        return {
+            "image_url": image_url,
+            "image_data_url": image_data_url,
+        }
     except GeminiServiceError as e:
         detail = (
             {"message": str(e), "retry_after_seconds": e.retry_after_seconds}

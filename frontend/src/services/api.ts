@@ -175,6 +175,7 @@ export interface PanelImagePayload {
 
 export interface PanelImageResponse {
   image_url: string;
+  image_data_url?: string;
 }
 
 export const toApiError = (error: unknown): ApiErrorInfo => {

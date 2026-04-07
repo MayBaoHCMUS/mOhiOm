@@ -3,7 +3,9 @@
 import json
 import re
 import hashlib
+import base64
 from urllib.parse import quote
+import httpx
 
 # google-genai is optional at import time so the app can start without it;
 # we surface a clear error when the service is instantiated.
@@ -87,6 +89,115 @@ def _first_nonempty_line(text: str) -> str:
     return ""
 
 
+def _slugify_identifier(value: str, fallback: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9]+", "_", (value or "").strip().lower()).strip("_")
+    return cleaned or fallback
+
+
+def _extract_main_character_names_from_step1(step1_json: dict) -> list[str]:
+    if not isinstance(step1_json, dict):
+        return []
+
+    main_characters = (
+        step1_json.get("steps", {})
+        .get("step_1_analysis", {})
+        .get("data", {})
+        .get("analysis", {})
+        .get("main_characters", [])
+    )
+    if not isinstance(main_characters, list):
+        return []
+
+    names: list[str] = []
+    for entry in main_characters:
+        if isinstance(entry, dict):
+            name = str(entry.get("name", "")).strip()
+        else:
+            name = str(entry).strip()
+        if name:
+            names.append(name)
+    return names
+
+
+def _extract_step2_markdown_character_prompts(design_markdown: str) -> list[dict[str, str]]:
+    if not design_markdown:
+        return []
+
+    normalized = design_markdown.replace("\r\n", "\n")
+    pattern = re.compile(
+        r"^###\s+Character\s+\d+\s*:\s*(.+?)\s*$([\s\S]*?)(?=^###\s+Character\s+\d+\s*:|^##\s+\d+\.|\Z)",
+        re.MULTILINE,
+    )
+
+    extracted: list[dict[str, str]] = []
+    for match in pattern.finditer(normalized):
+        name = match.group(1).strip()
+        block = match.group(2)
+        prompt_match = re.search(
+            r"AI\s*Image\s*Prompt\s*Ready\s*:\s*([\s\S]*?)(?=\n\s*\*\s*\*|\n\s*###|\n\s*##|\Z)",
+            block,
+            re.IGNORECASE,
+        )
+        prompt = prompt_match.group(1).strip() if prompt_match else ""
+        if name and prompt:
+            extracted.append({"name": name, "prompt": prompt})
+
+    return extracted
+
+
+def _build_step2_main_designs(
+    step1_json: dict,
+    design_markdown: str,
+    desired_main_characters: int,
+    art_style_reference: str,
+) -> dict:
+    markdown_chars = _extract_step2_markdown_character_prompts(design_markdown)
+    markdown_by_name = {entry["name"].lower(): entry for entry in markdown_chars}
+
+    main_names = _extract_main_character_names_from_step1(step1_json)
+    result: dict[str, dict] = {}
+    used_names: set[str] = set()
+
+    for idx, name in enumerate(main_names[: max(1, desired_main_characters)]):
+        fallback_id = f"character_{idx + 1}"
+        character_id = _slugify_identifier(name, fallback_id)
+        prompt_entry = markdown_by_name.get(name.lower())
+        if prompt_entry is None:
+            prompt_entry = next(
+                (entry for entry in markdown_chars if entry["name"].lower() not in used_names),
+                None,
+            )
+
+        prompt_text = (
+            prompt_entry["prompt"]
+            if prompt_entry is not None
+            else f"Detailed manga character design sheet of {name}, {art_style_reference}, full body, expression sheet, high detail"
+        )
+        if prompt_entry is not None:
+            used_names.add(prompt_entry["name"].lower())
+
+        result[character_id] = {
+            "name": name,
+            "physical_appearance": "",
+            "outfit_casual": "",
+            "expressions": {},
+            "ai_image_prompt_ready": prompt_text,
+        }
+
+    if not result:
+        for idx, entry in enumerate(markdown_chars[: max(1, desired_main_characters)]):
+            character_id = _slugify_identifier(entry["name"], f"character_{idx + 1}")
+            result[character_id] = {
+                "name": entry["name"],
+                "physical_appearance": "",
+                "outfit_casual": "",
+                "expressions": {},
+                "ai_image_prompt_ready": entry["prompt"],
+            }
+
+    return result
+
+
 def _build_step1_fallback_snapshot(
     project_id: str,
     story_text: str,
@@ -161,6 +272,7 @@ def _build_step2_fallback_snapshot(
     last_updated: str,
     step1_json: dict,
     design_markdown: str,
+    desired_main_characters: int,
 ) -> dict:
     """Build a minimal, valid Step 2 snapshot if model JSON output is malformed."""
     existing_steps = step1_json.get("steps", {}) if isinstance(step1_json, dict) else {}
@@ -179,7 +291,12 @@ def _build_step2_fallback_snapshot(
                 "status": step_status,
                 "last_updated": last_updated,
                 "data": {
-                    "main_characters_designs": {},
+                    "main_characters_designs": _build_step2_main_designs(
+                        step1_json=step1_json,
+                        design_markdown=design_markdown,
+                        desired_main_characters=desired_main_characters,
+                        art_style_reference=art_style_reference,
+                    ),
                     "supporting_designs": {},
                     "design_markdown": design_markdown,
                     "parser_note": "Fallback JSON generated because model output was not valid JSON.",
@@ -329,6 +446,32 @@ class GeminiService:
             f"https://image.pollinations.ai/prompt/{safe_prompt}"
             f"?width={safe_width}&height={safe_height}&seed={seed}&nologo=true"
         )
+
+    async def generate_panel_image_data_url(self, image_url: str) -> str:
+        """Fetch an image URL and return a browser-safe data URL string."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                response = await client.get(image_url)
+                response.raise_for_status()
+
+            content_type = response.headers.get("content-type", "image/png").split(";")[0].strip()
+            if not content_type.startswith("image/"):
+                raise GeminiServiceError(
+                    f"Unexpected image content type from provider: {content_type}",
+                    status_code=502,
+                )
+
+            encoded = base64.b64encode(response.content).decode("ascii")
+            return f"data:{content_type};base64,{encoded}"
+        except GeminiServiceError:
+            raise
+        except httpx.HTTPStatusError as exc:
+            raise GeminiServiceError(
+                f"Image provider request failed with status {exc.response.status_code}.",
+                status_code=502,
+            ) from exc
+        except Exception as exc:
+            raise GeminiServiceError(f"Failed to fetch generated image bytes: {exc}") from exc
 
     async def analyze_story(self, story_text: str) -> str:
         """
@@ -715,6 +858,7 @@ Rules:
                 last_updated=last_updated,
                 step1_json=step1_json,
                 design_markdown=design_markdown,
+                desired_main_characters=desired_main_characters,
             )
 
         if isinstance(step1_json, dict):
@@ -723,6 +867,21 @@ Rules:
                 prior_step1 = step1_json.get("steps", {}).get("step_1_analysis")
                 if prior_step1 is not None:
                     parsed_steps["step_1_analysis"] = prior_step1
+
+        parsed_steps = parsed.setdefault("steps", {})
+        step2_design = parsed_steps.setdefault("step_2_design", {})
+        step2_data = step2_design.setdefault("data", {})
+        main_designs = step2_data.get("main_characters_designs")
+        if not isinstance(main_designs, dict) or len(main_designs) == 0:
+            step2_data["main_characters_designs"] = _build_step2_main_designs(
+                step1_json=step1_json,
+                design_markdown=design_markdown,
+                desired_main_characters=desired_main_characters,
+                art_style_reference=art_style_reference,
+            )
+            step2_data["parser_note"] = (
+                "Step 2 JSON normalized because main_characters_designs was missing or empty."
+            )
 
         return parsed
 
@@ -761,6 +920,13 @@ USER CUSTOMIZATION INPUTS:
 
 TASK - STEP 3 ONLY
 Using the scene breakdowns from Step 1 and designs from Step 2, create a full manga script. Output EXACTLY in this order using clean markdown:
+
+IMPORTANT CHARACTER CONSISTENCY RULE:
+- Step 2 JSON may include user-approved character reference image URLs at:
+  steps.step_2_design.data.main_characters_designs[*].selected_reference_image_url
+  and/or steps.step_2_design.data.selected_character_references.
+- When present, treat these as the canonical look for that character and mention consistent traits in each AI Image Prompt.
+- Do not output the URLs in every panel line; use them internally as references for appearance consistency.
 
 1. Global Scripting Rules
 
