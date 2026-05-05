@@ -1,4 +1,5 @@
 import axios from "axios";
+import type { AxiosRequestConfig } from "axios";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
@@ -34,6 +35,8 @@ const fullUrl = (baseURL: string | undefined, url: string | undefined): string =
 
 const USER_ID_STORAGE_KEY = "mohiom-user-id";
 
+type RequestWithMetadata = AxiosRequestConfig & { metadata?: { startedAt: number } };
+
 const getOrCreateUserId = (): string => {
   if (typeof window === "undefined") return "server";
   const existing = window.localStorage.getItem(USER_ID_STORAGE_KEY);
@@ -49,30 +52,31 @@ const getOrCreateUserId = (): string => {
 };
 
 apiClient.interceptors.request.use((config) => {
-  config.headers = config.headers || {};
-  config.headers["X-User-Id"] = getOrCreateUserId();
+  const requestConfig = config as RequestWithMetadata;
+  requestConfig.headers = requestConfig.headers || {};
+  requestConfig.headers["X-User-Id"] = getOrCreateUserId();
 
-  (config as any).metadata = { startedAt: Date.now() };
+  requestConfig.metadata = { startedAt: Date.now() };
 
   if (API_LOGGING_ENABLED) {
-    const method = (config.method || "GET").toUpperCase();
-    const url = fullUrl(config.baseURL, config.url);
+    const method = (requestConfig.method || "GET").toUpperCase();
+    const url = fullUrl(requestConfig.baseURL, requestConfig.url);
     console.groupCollapsed(`API REQUEST ${method} ${url}`);
     console.log("method:", method);
     console.log("url:", url);
-    console.log("params:", config.params ?? null);
-    console.log("headers:", redactHeaders(config.headers));
-    console.log("data:", config.data ?? null);
+    console.log("params:", requestConfig.params ?? null);
+    console.log("headers:", redactHeaders(requestConfig.headers));
+    console.log("data:", requestConfig.data ?? null);
     console.groupEnd();
   }
 
-  return config;
+  return requestConfig;
 });
 
 apiClient.interceptors.response.use(
   (response) => {
     if (API_LOGGING_ENABLED) {
-      const config: any = response.config || {};
+      const config = response.config as RequestWithMetadata;
       const method = (config.method || "GET").toUpperCase();
       const url = fullUrl(config.baseURL, config.url);
       const startedAt = config.metadata?.startedAt || Date.now();
@@ -90,7 +94,7 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     if (API_LOGGING_ENABLED && axios.isAxiosError(error)) {
-      const config: any = error.config || {};
+      const config = (error.config || {}) as RequestWithMetadata;
       const method = (config.method || "GET").toUpperCase();
       const url = fullUrl(config.baseURL, config.url);
       const startedAt = config.metadata?.startedAt || Date.now();

@@ -74,10 +74,10 @@ Visit: http://localhost:3000
 
 ```bash
 cd backend
-python -m venv venv
+python3 -m venv venv
 venv\Scripts\activate
-pip install -r requirements.txt
-python -m app.main
+pip3 install -r requirements.txt
+python3 -m app.main
 ```
 
 API running at: http://localhost:8000
