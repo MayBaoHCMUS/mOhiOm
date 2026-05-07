@@ -146,6 +146,30 @@ Available at `http://localhost:8000/api`
 - `DELETE /items/{id}` - Delete item
 - `GET /health` - Health check
 
+## 🧭 Application Routes
+
+Frontend routes available in the Next.js app:
+
+| Route | Description |
+|-------|-------------|
+| `/` | Landing page |
+| `/login` | Sign in |
+| `/register` | Create account |
+| `/forgot-password` | Password reset |
+| `/studio` | Text-to-comic generator |
+| `/studio/dashboard` | Studio dashboard |
+| `/studio/story-setup` | Story input setup |
+| `/studio/character-setup` | Character consistency setup |
+| `/studio/character-manager` | Character manager |
+| `/studio/editor` | Comic editor workspace |
+| `/studio/export` | Export & publish |
+| `/studio/layout-engine` | Layout engine control widget |
+| `/settings` | Creator settings/profile hub |
+| `/pricing` | Pricing & billing |
+| `/gallery` | Public comic reader gallery |
+| `/admin/analytics` | Admin analytics & monitoring |
+| `/admin/moderation` | Trust & safety moderation |
+
 ## 🔐 MongoDB Setup
 
 **Local Installation (No Docker Required):**
