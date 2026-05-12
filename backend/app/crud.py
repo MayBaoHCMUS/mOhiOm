@@ -5,7 +5,8 @@ CRUD operations for database models.
 from pymongo.collection import Collection
 from bson.objectid import ObjectId
 from app.schemas import ItemCreate, Item
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timezone
 
 
 class ItemRepository:
@@ -49,3 +50,79 @@ class ItemRepository:
         result = self.collection.delete_one({"_id": ObjectId(item_id)})
         return result.deleted_count > 0
 
+
+class UserRepository:
+    """Repository for user authentication data."""
+
+    def __init__(self, collection: Collection):
+        self.collection = collection
+
+    @staticmethod
+    def _public_user(doc: Dict[str, Any]) -> Dict[str, Any]:
+        providers = []
+        oauth = doc.get("oauth", {}) or {}
+        if doc.get("password_hash"):
+            providers.append("manual")
+        for provider in ("google", "github"):
+            if oauth.get(provider, {}).get("id"):
+                providers.append(provider)
+
+        return {
+            "id": str(doc["_id"]),
+            "email": doc.get("email"),
+            "first_name": doc.get("first_name"),
+            "last_name": doc.get("last_name"),
+            "providers": providers,
+        }
+
+    async def get_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        return self.collection.find_one({"email": email.lower()})
+
+    async def get_by_oauth(self, provider: str, provider_id: str) -> Optional[Dict[str, Any]]:
+        return self.collection.find_one({f"oauth.{provider}.id": provider_id})
+
+    async def create_manual_user(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        doc = {
+            "email": payload["email"].lower(),
+            "first_name": payload.get("first_name"),
+            "last_name": payload.get("last_name"),
+            "password_hash": payload["password_hash"],
+            "oauth": payload.get("oauth", {}),
+            "created_at": now,
+            "updated_at": now,
+        }
+        result = self.collection.insert_one(doc)
+        doc["_id"] = result.inserted_id
+        return doc
+
+    async def upsert_oauth_user(self, provider: str, provider_profile: Dict[str, Any]) -> Dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        email = provider_profile.get("email")
+        lookup = {f"oauth.{provider}.id": provider_profile["id"]}
+        set_fields: Dict[str, Any] = {
+            "first_name": provider_profile.get("first_name"),
+            "last_name": provider_profile.get("last_name"),
+            f"oauth.{provider}": provider_profile,
+            "updated_at": now,
+        }
+        if email:
+            set_fields["email"] = email.lower()
+
+        update = {
+            "$set": set_fields,
+            "$setOnInsert": {"created_at": now},
+        }
+
+        existing = None
+        if email:
+            existing = self.collection.find_one({"email": email.lower()})
+
+        if existing:
+            self.collection.update_one({"_id": existing["_id"]}, update)
+            return self.collection.find_one({"_id": existing["_id"]})
+
+        result = self.collection.update_one(lookup, update, upsert=True)
+        if result.upserted_id:
+            return self.collection.find_one({"_id": result.upserted_id})
+        return self.collection.find_one(lookup)

@@ -48,6 +48,15 @@
             </PendingDiffInfo>
           </value>
         </entry>
+        <entry key="/requirements (snapshot).txt">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="/requirements (snapshot).txt" />
+              <option name="originalContent" value="fastapi==0.109.0&#10;uvicorn[standard]==0.27.0&#10;pydantic==2.5.0&#10;pydantic-settings==2.1.0&#10;pymongo==4.6.0&#10;python-dotenv==1.0.0&#10;python-multipart==0.0.6&#10;httpx==0.25.0&#10;google-genai&gt;=1.0.0&#10;python-jose[cryptography]==3.3.0&#10;passlib[bcrypt]==1.7.4&#10;" />
+              <option name="updatedContent" value="fastapi==0.109.0&#10;uvicorn[standard]==0.27.0&#10;pydantic==2.5.0&#10;pydantic-settings==2.1.0&#10;pymongo==4.6.0&#10;python-dotenv==1.0.0&#10;python-multipart==0.0.6&#10;httpx==0.25.0&#10;google-genai&gt;=1.0.0&#10;python-jose[cryptography]==3.3.0&#10;passlib[bcrypt]==1.7.4&#10;google-api-core==2.17.1" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
         <entry key="/services (snapshot).py">
           <value>
             <PendingDiffInfo>

@@ -32,6 +32,19 @@ class Settings(BaseSettings):
         "http://localhost:8000",
     ]
 
+    # Auth
+    JWT_SECRET_KEY: str = "change-me"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRES_MINUTES: int = 60 * 24
+
+    AUTH_FRONTEND_URL: str = "http://localhost:3000"
+    AUTH_BACKEND_URL: str = "http://localhost:8000"
+
+    OAUTH_GOOGLE_CLIENT_ID: str = ""
+    OAUTH_GOOGLE_CLIENT_SECRET: str = ""
+    OAUTH_GITHUB_CLIENT_ID: str = ""
+    OAUTH_GITHUB_CLIENT_SECRET: str = ""
+
     class Config:
         env_file = ENV_FILE
         env_file_encoding = "utf-8"

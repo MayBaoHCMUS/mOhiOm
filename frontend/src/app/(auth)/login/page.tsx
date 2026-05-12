@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import AuthShell from '@/components/auth/AuthShell';
-import { authApi, toApiError } from '@/services/api';
+import { authApi, authStorage, toApiError } from '@/services/api';
 
 const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
 
@@ -41,12 +41,28 @@ export default function LoginPage() {
     setIsSubmitting(true);
     try {
       const response = await authApi.login({ email: email.trim(), password });
+      if (response.data?.access_token) {
+        authStorage.setToken(response.data.access_token);
+      }
       setStatusSuccess(response.data.message || 'Signed in successfully.');
     } catch (error) {
       const apiError = toApiError(error);
       setStatusError(apiError.message || 'Sign-in failed.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleOAuth = async (provider: 'google' | 'github') => {
+    setStatusError(null);
+    setStatusSuccess(null);
+
+    try {
+      const response = await authApi.oauthStart(provider, 'login');
+      window.location.assign(response.data.url);
+    } catch (error) {
+      const apiError = toApiError(error);
+      setStatusError(apiError.message || 'Unable to start OAuth sign-in.');
     }
   };
 
@@ -107,6 +123,7 @@ export default function LoginPage() {
       <div className="space-y-4">
         <button
           type="button"
+          onClick={() => handleOAuth('google')}
           className="w-full flex items-center justify-center gap-3 px-6 py-3.5 bg-surface-container-lowest rounded-xl font-semibold text-on-surface shadow-sm hover:shadow-md transition-all border border-outline-variant"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
@@ -119,6 +136,7 @@ export default function LoginPage() {
         </button>
         <button
           type="button"
+          onClick={() => handleOAuth('github')}
           className="w-full flex items-center justify-center gap-3 px-6 py-3.5 bg-surface-container-lowest rounded-xl font-semibold text-on-surface shadow-sm hover:shadow-md transition-all border border-outline-variant"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">

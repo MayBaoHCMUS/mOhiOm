@@ -34,6 +34,7 @@ const fullUrl = (baseURL: string | undefined, url: string | undefined): string =
 };
 
 const USER_ID_STORAGE_KEY = "mohiom-user-id";
+const AUTH_TOKEN_STORAGE_KEY = "mohiom-access-token";
 
 type RequestWithMetadata = AxiosRequestConfig & { metadata?: { startedAt: number } };
 
@@ -51,10 +52,32 @@ const getOrCreateUserId = (): string => {
   return next;
 };
 
+const getAuthToken = (): string | null => {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+};
+
+export const authStorage = {
+  getToken: getAuthToken,
+  setToken: (token: string) => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+  },
+  clearToken: () => {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  },
+};
+
 apiClient.interceptors.request.use((config) => {
   const requestConfig = config as RequestWithMetadata;
   requestConfig.headers = requestConfig.headers || {};
   requestConfig.headers["X-User-Id"] = getOrCreateUserId();
+
+  const authToken = getAuthToken();
+  if (authToken && !requestConfig.headers["Authorization"]) {
+    requestConfig.headers["Authorization"] = `Bearer ${authToken}`;
+  }
 
   requestConfig.metadata = { startedAt: Date.now() };
 
@@ -277,5 +300,16 @@ export const comicApi = {
   listJobs: () => apiClient.get("/comics/jobs"),
 };
 
-export default apiClient;
+export const authApi = {
+  register: (payload: { first_name: string; last_name: string; email: string; password: string }) =>
+    apiClient.post("/auth/register", payload),
 
+  login: (payload: { email: string; password: string }) => apiClient.post("/auth/login", payload),
+
+  forgotPassword: (payload: { email: string }) => apiClient.post("/auth/forgot-password", payload),
+
+  oauthStart: (provider: "google" | "github", mode: "login" | "register") =>
+    apiClient.get<{ url: string }>(`/auth/oauth/${provider}/start`, { params: { mode } }),
+};
+
+export default apiClient;

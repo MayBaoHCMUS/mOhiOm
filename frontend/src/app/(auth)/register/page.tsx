@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import AuthShell from '@/components/auth/AuthShell';
-import { authApi, toApiError } from '@/services/api';
+import { authApi, authStorage, toApiError } from '@/services/api';
 
 const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
 
@@ -73,12 +73,28 @@ export default function RegisterPage() {
         email: email.trim(),
         password,
       });
+      if (response.data?.access_token) {
+        authStorage.setToken(response.data.access_token);
+      }
       setStatusSuccess(response.data.message || 'Account created successfully.');
     } catch (error) {
       const apiError = toApiError(error);
       setStatusError(apiError.message || 'Registration failed.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleOAuth = async (provider: 'google' | 'github') => {
+    setStatusError(null);
+    setStatusSuccess(null);
+
+    try {
+      const response = await authApi.oauthStart(provider, 'register');
+      window.location.assign(response.data.url);
+    } catch (error) {
+      const apiError = toApiError(error);
+      setStatusError(apiError.message || 'Unable to start OAuth sign-up.');
     }
   };
 
@@ -144,6 +160,7 @@ export default function RegisterPage() {
       <div className="space-y-4">
         <button
           type="button"
+          onClick={() => handleOAuth('google')}
           className="w-full flex items-center justify-center gap-3 py-3.5 px-6 rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md transition-all border border-outline-variant"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
@@ -156,6 +173,7 @@ export default function RegisterPage() {
         </button>
         <button
           type="button"
+          onClick={() => handleOAuth('github')}
           className="w-full flex items-center justify-center gap-3 py-3.5 px-6 rounded-xl bg-on-surface text-white hover:opacity-90 transition-all"
         >
           <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24" aria-hidden="true">
