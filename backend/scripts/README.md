@@ -1,6 +1,6 @@
 # Auth Smoke Test
 
-Quick check for manual register/login using the FastAPI app and MongoDB.
+Quick check for manual register/login and session cookies using the FastAPI app and MongoDB.
 
 ## Run
 
@@ -12,4 +12,5 @@ python -m scripts.auth_smoke
 
 - Requires MongoDB configured in `backend/.env`.
 - OAuth flows require provider credentials; they are not exercised here.
+- Password reset emails require SMTP configuration.
 

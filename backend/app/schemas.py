@@ -60,6 +60,14 @@ class ForgotPasswordRequest(BaseModel):
     email: str
 
 
+class ResetPasswordRequest(BaseModel):
+    """Schema for completing a password reset."""
+
+    email: str
+    token: str
+    password: str
+
+
 class OAuthStartResponse(BaseModel):
     """Schema for OAuth start responses."""
 
@@ -76,6 +84,13 @@ class AuthResponse(BaseModel):
     """Schema for login/register responses."""
 
     message: str
-    access_token: str
+    access_token: Optional[str] = None
     token_type: str = "bearer"
     user: UserPublic
+
+
+class AuthMeResponse(BaseModel):
+    """Schema for session lookups."""
+
+    user: UserPublic
+

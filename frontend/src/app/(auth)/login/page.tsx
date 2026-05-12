@@ -2,12 +2,16 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import AuthShell from '@/components/auth/AuthShell';
-import { authApi, authStorage, toApiError } from '@/services/api';
+import { authApi, toApiError } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
 
 const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
 
 export default function LoginPage() {
+  const router = useRouter();
+  const { refresh } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
@@ -41,10 +45,12 @@ export default function LoginPage() {
     setIsSubmitting(true);
     try {
       const response = await authApi.login({ email: email.trim(), password });
-      if (response.data?.access_token) {
-        authStorage.setToken(response.data.access_token);
-      }
+      await refresh();
       setStatusSuccess(response.data.message || 'Signed in successfully.');
+
+      window.setTimeout(() => {
+        router.push('/studio');
+      }, 900);
     } catch (error) {
       const apiError = toApiError(error);
       setStatusError(apiError.message || 'Sign-in failed.');

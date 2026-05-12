@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi.responses import RedirectResponse, JSONResponse
 from app.config import settings
 from app.database import mongo_db
 from app.schemas import (
@@ -8,15 +8,26 @@ from app.schemas import (
     AuthResponse,
     OAuthStartResponse,
     ForgotPasswordRequest,
+    ResetPasswordRequest,
     MessageResponse,
     UserPublic,
+    AuthMeResponse,
 )
-from app.security import hash_password, verify_password, create_access_token, create_oauth_state, decode_token
+from app.security import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    create_oauth_state,
+    decode_token,
+    hash_reset_token,
+)
 from app.crud import UserRepository
+from app.emailer import send_password_reset_email
 from typing import Dict, Any
 import httpx
 import secrets
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
+from datetime import datetime, timedelta, timezone
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -45,6 +56,38 @@ def auth_redirect_url(provider: str) -> str:
     return f"{settings.AUTH_BACKEND_URL}{settings.API_PREFIX}/auth/oauth/{provider}/callback"
 
 
+def set_auth_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        settings.AUTH_COOKIE_NAME,
+        token,
+        httponly=True,
+        secure=settings.AUTH_COOKIE_SECURE,
+        samesite=settings.AUTH_COOKIE_SAMESITE,
+        domain=settings.AUTH_COOKIE_DOMAIN,
+        max_age=settings.JWT_EXPIRES_MINUTES * 60,
+        path="/",
+    )
+
+
+def clear_auth_cookie(response: Response) -> None:
+    response.delete_cookie(
+        settings.AUTH_COOKIE_NAME,
+        domain=settings.AUTH_COOKIE_DOMAIN,
+        path="/",
+    )
+
+
+def token_from_request(request: Request) -> str | None:
+    cookie_token = request.cookies.get(settings.AUTH_COOKIE_NAME)
+    if cookie_token:
+        return cookie_token
+
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        return auth_header.split(" ", 1)[1].strip() or None
+    return None
+
+
 @router.post("/register", response_model=AuthResponse)
 async def register(payload: AuthRegister):
     repo = get_user_repo()
@@ -63,11 +106,14 @@ async def register(payload: AuthRegister):
     )
 
     token = create_access_token({"sub": str(user_doc["_id"]), "email": user_doc.get("email")})
-    return AuthResponse(
-        message="Account created successfully.",
-        access_token=token,
-        user=public_user(user_doc),
+    response = JSONResponse(
+        content=AuthResponse(
+            message="Account created successfully.",
+            user=public_user(user_doc),
+        ).model_dump(exclude_none=True)
     )
+    set_auth_cookie(response, token)
+    return response
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -81,17 +127,89 @@ async def login(payload: AuthLogin):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     token = create_access_token({"sub": str(user_doc["_id"]), "email": user_doc.get("email")})
-    return AuthResponse(
-        message="Signed in successfully.",
-        access_token=token,
-        user=public_user(user_doc),
+    response = JSONResponse(
+        content=AuthResponse(
+            message="Signed in successfully.",
+            user=public_user(user_doc),
+        ).model_dump(exclude_none=True)
     )
+    set_auth_cookie(response, token)
+    return response
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
 async def forgot_password(payload: ForgotPasswordRequest):
-    _ = payload
+    repo = get_user_repo()
+    user_doc = await repo.get_by_email(payload.email)
+
+    if user_doc:
+        token = secrets.token_urlsafe(32)
+        token_hash = hash_reset_token(token)
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES
+        )
+        await repo.set_password_reset(payload.email, token_hash, expires_at)
+
+        reset_url = (
+            f"{settings.AUTH_FRONTEND_URL}/reset-password"
+            f"?token={quote(token)}&email={quote(payload.email)}"
+        )
+        send_password_reset_email(payload.email, reset_url)
+
     return MessageResponse(message="If the account exists, a reset link will be sent.")
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+async def reset_password(payload: ResetPasswordRequest):
+    repo = get_user_repo()
+    user_doc = await repo.get_by_email(payload.email)
+    if not user_doc:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    expected_hash = user_doc.get("reset_token_hash")
+    expires_at = user_doc.get("reset_token_expires_at")
+    if not expected_hash or not expires_at:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    if expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    if hash_reset_token(payload.token) != expected_hash:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    await repo.update_password(str(user_doc["_id"]), hash_password(payload.password))
+    await repo.clear_password_reset(str(user_doc["_id"]))
+    return MessageResponse(message="Password updated. You can sign in now.")
+
+
+@router.get("/me", response_model=AuthMeResponse)
+async def me(request: Request):
+    repo = get_user_repo()
+    token = token_from_request(request)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+    try:
+        payload = decode_token(token)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    user_doc = await repo.get_by_id(user_id)
+    if not user_doc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+    return AuthMeResponse(user=public_user(user_doc))
+
+
+@router.post("/logout", response_model=MessageResponse)
+async def logout():
+    response = JSONResponse(content=MessageResponse(message="Signed out.").model_dump())
+    clear_auth_cookie(response)
+    return response
 
 
 @router.get("/oauth/{provider}/start", response_model=OAuthStartResponse)
@@ -249,8 +367,9 @@ async def oauth_callback(provider: str, code: str | None = None, state: str | No
 
     redirect_to = (
         f"{settings.AUTH_FRONTEND_URL}/callback"
-        f"?token={token}"
-        f"&provider={provider}"
+        f"?provider={provider}"
         f"&mode={state_payload.get('mode', 'login')}"
     )
-    return RedirectResponse(url=redirect_to, status_code=302)
+    response = RedirectResponse(url=redirect_to, status_code=302)
+    set_auth_cookie(response, token)
+    return response

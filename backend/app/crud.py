@@ -78,6 +78,9 @@ class UserRepository:
     async def get_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         return self.collection.find_one({"email": email.lower()})
 
+    async def get_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        return self.collection.find_one({"_id": ObjectId(user_id)})
+
     async def get_by_oauth(self, provider: str, provider_id: str) -> Optional[Dict[str, Any]]:
         return self.collection.find_one({f"oauth.{provider}.id": provider_id})
 
@@ -89,6 +92,8 @@ class UserRepository:
             "last_name": payload.get("last_name"),
             "password_hash": payload["password_hash"],
             "oauth": payload.get("oauth", {}),
+            "reset_token_hash": None,
+            "reset_token_expires_at": None,
             "created_at": now,
             "updated_at": now,
         }
@@ -126,3 +131,37 @@ class UserRepository:
         if result.upserted_id:
             return self.collection.find_one({"_id": result.upserted_id})
         return self.collection.find_one(lookup)
+
+    async def set_password_reset(self, email: str, token_hash: str, expires_at: datetime) -> bool:
+        result = self.collection.update_one(
+            {"email": email.lower()},
+            {
+                "$set": {
+                    "reset_token_hash": token_hash,
+                    "reset_token_expires_at": expires_at,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            },
+        )
+        return result.matched_count > 0
+
+    async def clear_password_reset(self, user_id: str) -> None:
+        self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "reset_token_hash": None,
+                    "reset_token_expires_at": None,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            },
+        )
+
+    async def update_password(self, user_id: str, password_hash: str) -> None:
+        self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {"password_hash": password_hash, "updated_at": datetime.now(timezone.utc)},
+            },
+        )
+

@@ -3,35 +3,43 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AuthShell from '@/components/auth/AuthShell';
-import { authStorage } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
 
 export default function AuthCallbackPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { refresh } = useAuth();
   const [status, setStatus] = useState<'success' | 'error' | 'working'>('working');
   const [message, setMessage] = useState('Finishing sign-in...');
 
-  const token = useMemo(() => searchParams.get('token'), [searchParams]);
   const provider = useMemo(() => searchParams.get('provider'), [searchParams]);
   const mode = useMemo(() => searchParams.get('mode'), [searchParams]);
 
   useEffect(() => {
-    if (!token) {
-      setStatus('error');
-      setMessage('Missing access token. Please try again.');
-      return;
-    }
+    let isMounted = true;
 
-    authStorage.setToken(token);
-    setStatus('success');
-    setMessage(`Signed in with ${provider || 'OAuth'}${mode ? ` (${mode})` : ''}. Redirecting...`);
+    const run = async () => {
+      const user = await refresh();
+      if (!isMounted) return;
 
-    const timer = window.setTimeout(() => {
-      router.push('/studio');
-    }, 1200);
+      if (!user) {
+        setStatus('error');
+        setMessage('Sign-in could not be completed. Please try again.');
+        return;
+      }
 
-    return () => window.clearTimeout(timer);
-  }, [token, provider, mode, router]);
+      setStatus('success');
+      setMessage(`Signed in with ${provider || 'OAuth'}${mode ? ` (${mode})` : ''}. Redirecting...`);
+      window.setTimeout(() => {
+        router.push('/studio');
+      }, 1200);
+    };
+
+    void run();
+    return () => {
+      isMounted = false;
+    };
+  }, [provider, mode, router, refresh]);
 
   return (
     <AuthShell

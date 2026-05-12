@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRES_MINUTES: int = 60 * 24
 
+    AUTH_COOKIE_NAME: str = "mohiom_access_token"
+    AUTH_COOKIE_SECURE: bool = False
+    AUTH_COOKIE_SAMESITE: str = "lax"
+    AUTH_COOKIE_DOMAIN: str | None = None
+
     AUTH_FRONTEND_URL: str = "http://localhost:3000"
     AUTH_BACKEND_URL: str = "http://localhost:8000"
 
@@ -44,6 +49,15 @@ class Settings(BaseSettings):
     OAUTH_GOOGLE_CLIENT_SECRET: str = ""
     OAUTH_GITHUB_CLIENT_ID: str = ""
     OAUTH_GITHUB_CLIENT_SECRET: str = ""
+
+    PASSWORD_RESET_TOKEN_EXPIRES_MINUTES: int = 30
+
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+    SMTP_USE_TLS: bool = True
 
     class Config:
         env_file = ENV_FILE

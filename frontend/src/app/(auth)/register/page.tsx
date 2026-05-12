@@ -2,12 +2,16 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import AuthShell from '@/components/auth/AuthShell';
-import { authApi, authStorage, toApiError } from '@/services/api';
+import { authApi, toApiError } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
 
 const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
 
 export default function RegisterPage() {
+  const router = useRouter();
+  const { refresh } = useAuth();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -73,10 +77,12 @@ export default function RegisterPage() {
         email: email.trim(),
         password,
       });
-      if (response.data?.access_token) {
-        authStorage.setToken(response.data.access_token);
-      }
+      await refresh();
       setStatusSuccess(response.data.message || 'Account created successfully.');
+
+      window.setTimeout(() => {
+        router.push('/studio');
+      }, 900);
     } catch (error) {
       const apiError = toApiError(error);
       setStatusError(apiError.message || 'Registration failed.');
