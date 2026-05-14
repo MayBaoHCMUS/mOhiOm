@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Comic Studio | Story Setup</title>
+<!-- Google Fonts: Plus Jakarta Sans -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "inverse-surface": "#293040",
+                    "surface-container-high": "#e1e8fd",
+                    "on-surface": "#141b2b",
+                    "inverse-primary": "#adc6ff",
+                    "secondary-fixed-dim": "#4edea3",
+                    "tertiary": "#825100",
+                    "secondary-fixed": "#6ffbbe",
+                    "on-secondary": "#ffffff",
+                    "surface-container-lowest": "#ffffff",
+                    "primary-fixed-dim": "#adc6ff",
+                    "outline": "#727785",
+                    "on-primary-fixed-variant": "#004395",
+                    "on-tertiary": "#ffffff",
+                    "tertiary-fixed-dim": "#ffb95f",
+                    "tertiary-fixed": "#ffddb8",
+                    "surface-container-highest": "#dce2f7",
+                    "secondary": "#006c49",
+                    "on-primary": "#ffffff",
+                    "on-secondary-fixed-variant": "#005236",
+                    "error-container": "#ffdad6",
+                    "on-tertiary-fixed": "#2a1700",
+                    "surface": "#f9f9ff",
+                    "primary-container": "#2170e4",
+                    "secondary-container": "#6cf8bb",
+                    "on-secondary-fixed": "#002113",
+                    "inverse-on-surface": "#edf0ff",
+                    "outline-variant": "#c2c6d6",
+                    "primary-fixed": "#d8e2ff",
+                    "primary": "#0058be",
+                    "on-primary-container": "#fefcff",
+                    "background": "#f9f9ff",
+                    "surface-tint": "#005ac2",
+                    "tertiary-container": "#a36700",
+                    "on-primary-fixed": "#001a42",
+                    "surface-dim": "#d3daef",
+                    "surface-container-low": "#f1f3ff",
+                    "on-error-container": "#93000a",
+                    "on-error": "#ffffff",
+                    "on-surface-variant": "#424754",
+                    "on-background": "#141b2b",
+                    "surface-variant": "#dce2f7",
+                    "on-tertiary-container": "#fffbff",
+                    "surface-container": "#e9edff",
+                    "on-secondary-container": "#00714d",
+                    "on-tertiary-fixed-variant": "#653e00",
+                    "error": "#ba1a1a",
+                    "surface-bright": "#f9f9ff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "fontFamily": {
+                    "headline": ["Plus Jakarta Sans"],
+                    "body": ["Plus Jakarta Sans"],
+                    "label": ["Plus Jakarta Sans"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .loading-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen selection:bg-primary-fixed selection:text-on-primary-fixed">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl flex justify-between items-center px-8 h-16 w-full shadow-xl shadow-slate-200/50 dark:shadow-none">
+<div class="flex items-center gap-8">
+<span class="text-xl font-bold tracking-tighter text-slate-900 dark:text-white">Comic Studio</span>
+<div class="hidden md:flex gap-6">
+<a class="text-slate-500 dark:text-slate-400 font-medium hover:text-blue-500 transition-colors duration-200" href="#">Projects</a>
+<a class="text-slate-500 dark:text-slate-400 font-medium hover:text-blue-500 transition-colors duration-200" href="#">Assets</a>
+<a class="text-slate-500 dark:text-slate-400 font-medium hover:text-blue-500 transition-colors duration-200" href="#">Library</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-slate-500 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">help</span>
+</button>
+<button class="p-2 text-slate-500 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant/30">
+<img alt="User profile" data-alt="professional portrait of a creative professional with a friendly expression in a brightly lit studio setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAWuthRimIiXYco1bVBcFsKkJcJa_Via21LqrvR3ggXeOum7tXZLFhwMmEF21finQPdBHCVkSwpzFFVHbWoTmiEDNyADJnhmtnsSe1Ildo-teqvtxvXFV97OYozA1nyhvpZnWI7N9ePdMUJTD7VF8T3Em34GP-7K5q-hGhyRW-j5XrS-M27aUNq3Tq9E0NRXCR7k8ybJrNwJS61BCV-qGjm_bXdys-Wj_lnhgLBI9n2OkZQZrPEyZoLgNwaR0lP-G0KW-rKAPxm0bw"/>
+</div>
+</div>
+</nav>
+<main class="pt-24 pb-32 px-6 max-w-7xl mx-auto">
+<!-- Header -->
+<header class="mb-12">
+<h1 class="text-4xl md:text-5xl font-extrabold tracking-tight text-on-surface mb-2">Create Your Story</h1>
+<p class="text-on-surface-variant body-lg leading-relaxed max-w-2xl">
+                Define your narrative and let Gemini analyze the visual beats. High-end AI-driven panel generation starts with your script.
+            </p>
+</header>
+<!-- Main Content 2-Column Split -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+<!-- Left Column: Narrative Input -->
+<section class="lg:col-span-7">
+<div class="bg-surface-container-lowest rounded-xl p-8 shadow-[0_20px_50px_rgba(0,88,190,0.05)] border border-outline-variant/10">
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-primary text-3xl">edit_note</span>
+<h2 class="text-2xl font-bold tracking-tight">Narrative Input</h2>
+</div>
+<div class="space-y-6">
+<div>
+<textarea class="w-full h-80 bg-surface-container-low border-none rounded-xl p-6 text-on-surface placeholder:text-on-surface-variant/50 focus:ring-2 focus:ring-primary/20 focus:bg-surface-container-lowest transition-all duration-300 resize-none body-lg leading-relaxed" placeholder="Paste your narrative text or script here (Up to 5000 words)"></textarea>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="space-y-2">
+<label class="label-md block uppercase tracking-widest text-on-surface-variant text-xs font-bold px-1">Comic Style</label>
+<div class="relative">
+<select class="w-full appearance-none bg-surface-container-low border-none rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary/20 transition-all cursor-pointer">
+<option value="manga">Manga</option>
+<option value="western">Western Superhero</option>
+<option value="noir">Noir Graphic Novel</option>
+<option value="indie">Hand-drawn Indie</option>
+</select>
+<span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant">expand_more</span>
+</div>
+</div>
+<div class="space-y-2">
+<label class="label-md block uppercase tracking-widest text-on-surface-variant text-xs font-bold px-1">Target Pages</label>
+<div class="relative">
+<select class="w-full appearance-none bg-surface-container-low border-none rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary/20 transition-all cursor-pointer">
+<option value="1">1 Page (Short Action)</option>
+<option value="3">3 Pages (Mini Chapter)</option>
+<option value="5">5 Pages (Standard Scene)</option>
+<option value="12">12+ Pages (Issue)</option>
+</select>
+<span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant">expand_more</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Right Column: AI Story Analysis -->
+<aside class="lg:col-span-5 sticky top-24">
+<div class="bg-surface-container-low rounded-xl p-8 border border-outline-variant/10 min-h-[400px] flex flex-col">
+<div class="flex items-center justify-between mb-8">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary text-3xl" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+<h2 class="text-2xl font-bold tracking-tight">AI Story Analysis</h2>
+</div>
+<span class="text-xs font-bold px-3 py-1 bg-secondary-container text-on-secondary-container rounded-full uppercase tracking-wider">Live</span>
+</div>
+<div class="space-y-8 flex-grow">
+<p class="text-on-surface-variant font-medium flex items-center gap-2">
+<span class="material-symbols-outlined text-sm animate-spin">sync</span>
+                            Gemini is analyzing scenes and extracting characters... (&lt; 10s)
+                        </p>
+<!-- Skeleton Pulse Elements -->
+<div class="space-y-6">
+<div class="flex flex-col gap-4">
+<div class="h-4 bg-surface-container-high rounded-full w-3/4 loading-pulse"></div>
+<div class="h-4 bg-surface-container-high rounded-full w-1/2 loading-pulse"></div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="aspect-square bg-surface-container-high rounded-xl loading-pulse flex items-center justify-center">
+<span class="material-symbols-outlined text-surface-dim text-4xl">person</span>
+</div>
+<div class="aspect-square bg-surface-container-high rounded-xl loading-pulse flex items-center justify-center">
+<span class="material-symbols-outlined text-surface-dim text-4xl">landscape</span>
+</div>
+</div>
+<div class="space-y-3">
+<div class="h-3 bg-surface-container-high rounded-full w-full loading-pulse"></div>
+<div class="h-3 bg-surface-container-high rounded-full w-5/6 loading-pulse"></div>
+<div class="h-3 bg-surface-container-high rounded-full w-4/6 loading-pulse"></div>
+</div>
+</div>
+</div>
+<div class="mt-8 pt-6 border-t border-outline-variant/10 text-center">
+<p class="text-xs text-on-surface-variant italic">Refining story beats for optimal visual continuity...</p>
+</div>
+</div>
+<!-- Decorative Asset Tip -->
+<div class="mt-6 p-6 rounded-xl bg-gradient-to-br from-primary to-primary-container text-on-primary-container shadow-lg shadow-primary/20">
+<div class="flex items-start gap-4">
+<span class="material-symbols-outlined text-3xl">lightbulb</span>
+<div>
+<h4 class="font-bold mb-1">Pro Tip</h4>
+<p class="text-sm opacity-90 leading-relaxed">Describe characters clearly in your text for better AI character sheet generation in the next step.</p>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</main>
+<!-- BottomNavBar (Execution from JSON as Bottom Fixed Bar) -->
+<div class="fixed bottom-0 left-0 w-full flex justify-around items-center px-8 py-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 z-50 shadow-[0_-4px_20px_0_rgba(0,0,0,0.05)]">
+<div class="hidden md:flex gap-12">
+<div class="flex flex-col items-center justify-center bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-xl px-6 py-2">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">menu_book</span>
+<span class="text-[10px] font-bold uppercase tracking-widest mt-1">Story</span>
+</div>
+<div class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-6 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all rounded-xl">
+<span class="material-symbols-outlined">query_stats</span>
+<span class="text-[10px] font-bold uppercase tracking-widest mt-1">Analysis</span>
+</div>
+<div class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-6 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all rounded-xl">
+<span class="material-symbols-outlined">auto_awesome</span>
+<span class="text-[10px] font-bold uppercase tracking-widest mt-1">Canvas</span>
+</div>
+<div class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-6 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all rounded-xl">
+<span class="material-symbols-outlined">ios_share</span>
+<span class="text-[10px] font-bold uppercase tracking-widest mt-1">Export</span>
+</div>
+</div>
+<div class="flex-grow md:flex-grow-0 md:ml-auto">
+<button class="w-full md:w-auto px-8 py-4 bg-surface-container-high text-on-surface-variant font-bold rounded-xl flex items-center justify-center gap-3 cursor-not-allowed opacity-60" disabled="">
+                Next: Character Setup
+                <span class="material-symbols-outlined">chevron_right</span>
+</button>
+</div>
+</div>
+</body></html>

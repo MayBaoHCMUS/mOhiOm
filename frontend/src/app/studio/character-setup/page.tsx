@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import StudioSidebar from '@/components/StudioSidebar';
+import StudioTopBar from '@/components/StudioTopBar';
 
 const castMembers = [
   { name: 'The Hero', detail: 'Emma - 25yr Detective', icon: 'person', active: true },
@@ -17,47 +19,11 @@ const variations = [
 export default function CharacterSetupPage() {
   return (
     <div className="min-h-screen bg-surface text-on-surface flex flex-col">
-      <nav className="fixed top-0 w-full z-50 glass-nav flex items-center justify-between px-6 h-16 shadow-sm">
-        <div className="flex items-center gap-8">
-          <Link className="text-xl font-bold bg-gradient-to-br from-primary to-primary-container bg-clip-text text-transparent" href="/studio/dashboard">
-            ComicGen AI
-          </Link>
-          <div className="hidden md:flex items-center gap-4 text-sm font-medium">
-            <div className="flex items-center gap-2 text-on-surface-variant">
-              <span className="w-6 h-6 rounded-full bg-surface-container-high flex items-center justify-center text-xs">1</span>
-              <span>Script Import</span>
-            </div>
-            <div className="h-px w-8 bg-outline-variant"></div>
-            <div className="flex items-center gap-2 text-primary">
-              <span className="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center text-xs">2</span>
-              <span className="font-bold">Character Design</span>
-            </div>
-            <div className="h-px w-8 bg-outline-variant"></div>
-            <div className="flex items-center gap-2 text-on-surface-variant">
-              <span className="w-6 h-6 rounded-full bg-surface-container-high flex items-center justify-center text-xs">3</span>
-              <span>Layout</span>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex gap-1">
-            <button className="p-2 hover:bg-surface-container-low rounded-lg text-on-surface-variant transition-colors">
-              <span className="material-symbols-outlined">notifications</span>
-            </button>
-            <button className="p-2 hover:bg-surface-container-low rounded-lg text-on-surface-variant transition-colors">
-              <span className="material-symbols-outlined">settings</span>
-            </button>
-          </div>
-          <img
-            alt="User profile"
-            className="w-8 h-8 rounded-full ring-2 ring-primary/10"
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuCYXZlwlR1RW_1aK25rHPWQFbpwzKXsCcWimFkwe8NdxFwA9uPGF5rl1zJuT9msOhAlONdfYkYG21ONk9KCia32uGbR9UF76f9HuM9cJ6alinNGnhBWGd-HktAJgEqWMOuUWaWLQacIqkMTU_aqzuGY0xq3e6PS3yNN_02bsyQMogPCVbFyv5UZDGYR_SVF3fuMJbjl0eBqo8VHFhalRMsHbvjCZIYDgNyMDgd9oR1rXfb2xhGj6DvkHnmceghtT3F1O9LAK0yB0AI"
-          />
-        </div>
-      </nav>
+      <StudioSidebar />
+      <StudioTopBar />
 
-      <div className="flex pt-16 flex-1 overflow-hidden">
-        <aside className="h-[calc(100vh-64px)] w-64 border-r border-outline-variant/30 bg-surface-container-low flex flex-col py-6 fixed left-0 top-16 overflow-y-auto">
+      <div className="flex pt-16 flex-1 overflow-hidden ml-[var(--studio-sidebar-width)]">
+        <aside className="h-[calc(100vh-64px)] w-64 border-r border-outline-variant/30 bg-surface-container-low flex flex-col py-6 sticky top-16 overflow-y-auto">
           <div className="px-6 mb-8">
             <div className="flex items-center gap-3 mb-1">
               <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white">
@@ -97,7 +63,7 @@ export default function CharacterSetupPage() {
           </div>
         </aside>
 
-        <main className="flex-1 ml-64 p-8 pb-32 bg-surface">
+        <main className="flex-1 p-8 pb-32 bg-surface">
           <div className="max-w-5xl mx-auto space-y-12">
             <header>
               <div className="flex items-end justify-between mb-2">
@@ -171,7 +137,7 @@ export default function CharacterSetupPage() {
         </main>
       </div>
 
-      <footer className="fixed bottom-0 left-0 w-full z-50 flex justify-end px-8 py-4 bg-white/90 backdrop-blur-lg shadow-[0_-4px_20px_rgba(0,0,0,0.05)] border-t border-outline-variant/20">
+      <footer className="fixed bottom-0 left-[var(--studio-sidebar-width)] right-0 z-50 flex justify-end px-8 py-4 bg-white/90 backdrop-blur-lg shadow-[0_-4px_20px_rgba(0,0,0,0.05)] border-t border-outline-variant/20">
         <div className="flex items-center gap-6">
           <div className="flex flex-col items-end">
             <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Next Step</span>
@@ -188,4 +154,3 @@ export default function CharacterSetupPage() {
     </div>
   );
 }
-

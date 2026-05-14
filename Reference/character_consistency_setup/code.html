@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ComicGen AI - Character Consistency Setup</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-container": "#2170e4",
+                        "surface-tint": "#005ac2",
+                        "on-primary-container": "#fefcff",
+                        "surface": "#f9f9ff",
+                        "on-surface-variant": "#424754",
+                        "on-primary-fixed-variant": "#004395",
+                        "surface-container-high": "#e1e8fd",
+                        "tertiary-container": "#a36700",
+                        "surface-container-lowest": "#ffffff",
+                        "primary-fixed": "#d8e2ff",
+                        "surface-bright": "#f9f9ff",
+                        "secondary": "#006c49",
+                        "outline-variant": "#c2c6d6",
+                        "on-primary-fixed": "#001a42",
+                        "surface-dim": "#d3daef",
+                        "error": "#ba1a1a",
+                        "surface-container": "#e9edff",
+                        "inverse-surface": "#293040",
+                        "tertiary-fixed": "#ffddb8",
+                        "secondary-fixed": "#6ffbbe",
+                        "on-tertiary": "#ffffff",
+                        "surface-variant": "#dce2f7",
+                        "on-error": "#ffffff",
+                        "on-tertiary-container": "#fffbff",
+                        "on-surface": "#141b2b",
+                        "outline": "#727785",
+                        "error-container": "#ffdad6",
+                        "primary-fixed-dim": "#adc6ff",
+                        "inverse-on-surface": "#edf0ff",
+                        "secondary-fixed-dim": "#4edea3",
+                        "secondary-container": "#6cf8bb",
+                        "surface-container-highest": "#dce2f7",
+                        "on-error-container": "#93000a",
+                        "on-tertiary-fixed": "#2a1700",
+                        "background": "#f9f9ff",
+                        "tertiary": "#825100",
+                        "surface-container-low": "#f1f3ff",
+                        "on-secondary": "#ffffff",
+                        "on-secondary-fixed": "#002113",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "inverse-primary": "#adc6ff",
+                        "tertiary-fixed-dim": "#ffb95f",
+                        "on-secondary-fixed-variant": "#005236",
+                        "on-secondary-container": "#00714d",
+                        "primary": "#0058be",
+                        "on-background": "#141b2b",
+                        "on-primary": "#ffffff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Plus Jakarta Sans"],
+                        "body": ["Plus Jakarta Sans"],
+                        "label": ["Plus Jakarta Sans"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .tonal-shift { transition: background-color 0.3s ease; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen flex flex-col">
+<!-- TopAppBar -->
+<nav class="fixed top-0 w-full z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl flex items-center justify-between px-6 h-16 w-full shadow-sm font-['Plus_Jakarta_Sans'] tracking-tight">
+<div class="flex items-center gap-8">
+<span class="text-xl font-bold bg-gradient-to-br from-blue-600 to-blue-400 bg-clip-text text-transparent">ComicGen AI</span>
+<!-- Stepper Component -->
+<div class="hidden md:flex items-center gap-4 text-sm font-medium">
+<div class="flex items-center gap-2 text-slate-400">
+<span class="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-xs">1</span>
+<span>Script Import</span>
+</div>
+<div class="h-px w-8 bg-slate-200"></div>
+<div class="flex items-center gap-2 text-blue-600">
+<span class="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs">2</span>
+<span class="font-bold">Character Design</span>
+</div>
+<div class="h-px w-8 bg-slate-200"></div>
+<div class="flex items-center gap-2 text-slate-400">
+<span class="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-xs">3</span>
+<span>Layout</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex gap-1">
+<button class="p-2 hover:bg-slate-100/50 rounded-lg text-slate-500 transition-colors"><span class="material-symbols-outlined" data-icon="notifications">notifications</span></button>
+<button class="p-2 hover:bg-slate-100/50 rounded-lg text-slate-500 transition-colors"><span class="material-symbols-outlined" data-icon="settings">settings</span></button>
+</div>
+<img alt="User profile" class="w-8 h-8 rounded-full ring-2 ring-blue-50/50" data-alt="Close-up portrait of a professional male designer in a bright studio, soft natural lighting, high resolution" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCYXZlwlR1RW_1aK25rHPWQFbpwzKXsCcWimFkwe8NdxFwA9uPGF5rl1zJuT9msOhAlONdfYkYG21ONk9KCia32uGbR9UF76f9HuM9cJ6alinNGnhBWGd-HktAJgEqWMOuUWaWLQacIqkMTU_aqzuGY0xq3e6PS3yNN_02bsyQMogPCVbFyv5UZDGYR_SVF3fuMJbjl0eBqo8VHFhalRMsHbvjCZIYDgNyMDgd9oR1rXfb2xhGj6DvkHnmceghtT3F1O9LAK0yB0AI"/>
+</div>
+</nav>
+<div class="flex pt-16 flex-1 overflow-hidden">
+<!-- SideNavBar -->
+<aside class="h-[calc(100vh-64px)] w-64 border-r border-slate-200/20 bg-slate-50 dark:bg-slate-950 flex flex-col py-6 fixed left-0 top-16 overflow-y-auto">
+<div class="px-6 mb-8">
+<div class="flex items-center gap-3 mb-1">
+<div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
+<span class="material-symbols-outlined text-sm" data-icon="auto_stories">auto_stories</span>
+</div>
+<div>
+<h3 class="font-bold text-slate-900 text-sm leading-tight">Project: Cyber City</h3>
+<p class="text-xs text-slate-500">5 Characters Found</p>
+</div>
+</div>
+</div>
+<nav class="space-y-1 flex-1 px-4">
+<div class="px-2 mb-2 text-[10px] font-bold tracking-widest text-slate-400 uppercase">Extracted Cast</div>
+<a class="flex items-center gap-3 px-3 py-3 bg-white text-blue-600 shadow-sm rounded-lg transition-all active:scale-98" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="person">person</span>
+<div class="flex flex-col">
+<span class="font-semibold text-sm">The Hero</span>
+<span class="text-[10px] text-slate-500">Emma - 25yr Detective</span>
+</div>
+</a>
+<a class="flex items-center gap-3 px-3 py-3 text-slate-500 hover:bg-slate-200/50 rounded-lg transition-transform hover:translate-x-1" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="psychology">psychology</span>
+<div class="flex flex-col">
+<span class="font-medium text-sm">Antagonist</span>
+<span class="text-[10px] text-slate-400">Minh - Cyborg companion</span>
+</div>
+</a>
+<a class="flex items-center gap-3 px-3 py-3 text-slate-500 hover:bg-slate-200/50 rounded-lg transition-transform hover:translate-x-1" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="group">group</span>
+<div class="flex flex-col">
+<span class="font-medium text-sm">Sidekick</span>
+<span class="text-[10px] text-slate-400">Kael - Rogue pilot</span>
+</div>
+</a>
+<a class="flex items-center gap-3 px-3 py-3 text-slate-500 hover:bg-slate-200/50 rounded-lg transition-transform hover:translate-x-1" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="face_6">face_6</span>
+<span class="font-medium text-sm">Mentor</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-3 text-slate-500 hover:bg-slate-200/50 rounded-lg transition-transform hover:translate-x-1" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="skull">skull</span>
+<span class="font-medium text-sm">Villain</span>
+</a>
+</nav>
+<div class="px-4 mt-auto pt-6">
+<button class="w-full flex items-center justify-center gap-2 py-3 px-4 bg-slate-200/50 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+                    Extract New Character
+                </button>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 ml-64 p-8 pb-32 bg-surface">
+<div class="max-w-5xl mx-auto space-y-12">
+<!-- Header Section -->
+<header>
+<div class="flex items-end justify-between mb-2">
+<h1 class="text-3xl font-extrabold tracking-tight text-on-surface">Emma - Character Tuning</h1>
+<span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold uppercase tracking-wider">Draft Phase</span>
+</div>
+<p class="text-on-surface-variant max-w-2xl text-lg leading-relaxed">Refine the visual identity for Emma. These variations will serve as the grounding reference for all comic panels to ensure cinematic consistency.</p>
+</header>
+<!-- AI Prompt Editor -->
+<section class="bg-surface-container-lowest rounded-2xl p-8 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-outline-variant/10">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-blue-600" data-icon="smart_toy">smart_toy</span>
+<label class="text-sm font-bold tracking-wider text-slate-500 uppercase">AI Prompt Editor</label>
+</div>
+<div class="relative group">
+<textarea class="w-full min-h-[160px] p-6 bg-surface-container-low border-none rounded-xl text-on-surface focus:ring-0 focus:bg-white transition-all text-lg leading-relaxed resize-none" placeholder="Describe Emma's visual traits, clothing, and the specific comic art style...">Young woman, 25 years old, sharp detective features, messy dark bob haircut, wearing a tan futuristic trench coat over a neon-accented tactical suit, glowing blue eyes, gritty cyberpunk noir style, detailed digital painting, high contrast lighting, cinematic atmosphere.</textarea>
+<div class="absolute bottom-4 right-4 flex gap-2">
+<button class="px-4 py-2 bg-white/80 backdrop-blur rounded-lg shadow-sm border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-white transition-colors">
+                                Use Suggestion
+                            </button>
+</div>
+</div>
+</section>
+<!-- Character Variations Grid -->
+<section>
+<div class="flex items-center justify-between mb-8">
+<div>
+<h2 class="text-xl font-bold text-on-surface">Character Variations</h2>
+<p class="text-sm text-on-surface-variant">Select a variation to lock in the character ID.</p>
+</div>
+<div class="flex gap-2">
+<button class="p-2 bg-surface-container-high rounded-lg text-primary transition-all active:scale-95">
+<span class="material-symbols-outlined" data-icon="grid_view" style="font-variation-settings: 'FILL' 1;">grid_view</span>
+</button>
+<button class="p-2 hover:bg-slate-100 rounded-lg text-slate-400 transition-all">
+<span class="material-symbols-outlined" data-icon="view_list">view_list</span>
+</button>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<!-- Variation Card 1 -->
+<div class="group bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-500 transform hover:-translate-y-1 border border-outline-variant/5">
+<div class="aspect-[3/4] relative overflow-hidden">
+<img alt="Emma Variation 1" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Cinematic digital painting of a female detective with dark bob, neon blue eyes, wearing tan trench coat, cyberpunk city background, vibrant colors" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCldXfcldU--L84uOB8AGgsX5BdPjtzypvf4pundkvZ5mYcf-J__I85VeiKDTuxRsmVlbaxG8LT_twooqpooyLxx-zc1pynDhWN60tvmj2Y3zFLRlp2uQXDXW7ILmkeR-bTEC8g7bUAQok8aYm_YpluhDMf1AWF1mAiFaRA8X7T5p1pRgyReRxV4FmnmcU40dUeKobzOXUywmXQtrGeyBHlVg67_MHrlT0O-Uql3_0hEcLA7bwEZNhmm9yMEWQHp2eOKn2jhYOQg9I"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</div>
+<div class="p-5 space-y-3">
+<button class="w-full py-3 bg-gradient-to-br from-blue-600 to-blue-500 text-white rounded-xl font-bold text-sm shadow-md shadow-blue-500/20 hover:opacity-95 active:scale-95 transition-all">
+                                    Set as Reference ID
+                                </button>
+<button class="w-full py-3 bg-surface-container-high text-blue-600 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-100 transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="casino">casino</span>
+                                    Regenerate
+                                </button>
+</div>
+</div>
+<!-- Variation Card 2 -->
+<div class="group bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-500 transform hover:-translate-y-1 border border-outline-variant/5">
+<div class="aspect-[3/4] relative overflow-hidden">
+<img alt="Emma Variation 2" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Digital art of a young woman in tactical gear, intense gaze, futuristic cyberpunk laboratory background, cool blue and purple lighting, intricate details" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC0X1QtQWcSJtGXLILUVFcPDhi0XyEKfcLQ2q0wXgIATl-CezvVXcQecsqJ5mVzEJTWW7sQY1o3UWtCWg6mC0CPgNpAZZvG1Ms0F8sO9dmOG19MaHGeC3uGDlxg_6u3UqBy8BWwC2r36zZJ106c3nTqypGs2A4ekm1wL9x0-KjlbIko3icBzhxL5Jpop_mWfD-DV9l0n5sZSrOFdAoy17Avqk5LUJ7tYL36JfEcDyQoRJsJ85eyGZ7nwCthDGW4NFFcthHba9OANKA"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</div>
+<div class="p-5 space-y-3">
+<button class="w-full py-3 bg-gradient-to-br from-blue-600 to-blue-500 text-white rounded-xl font-bold text-sm shadow-md shadow-blue-500/20 hover:opacity-95 active:scale-95 transition-all">
+                                    Set as Reference ID
+                                </button>
+<button class="w-full py-3 bg-surface-container-high text-blue-600 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-100 transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="casino">casino</span>
+                                    Regenerate
+                                </button>
+</div>
+</div>
+<!-- Variation Card 3 -->
+<div class="group bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-500 transform hover:-translate-y-1 border border-outline-variant/5">
+<div class="aspect-[3/4] relative overflow-hidden">
+<img alt="Emma Variation 3" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Futuristic character portrait of a female detective, cyberpunk noir aesthetic, soft glowing elements, sharp focus, digital concept art" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDsyNsxJnGez0ABOHOUeJuf_OFra9GB1rmCQOnEGhVO4Fw-SkI1XI1eeIQYXCEFijaYIok1UZcmrkhCssf8opaPKh0CrK11gK9hUz6dnRjSjNI35j3g-h62lqWbbdkbyilkrFOpo3L8m9ZJzAP2lCIwDZ-LWdzmrVR-65Xv-c2PSx24kyh1fOcJxo-e-71R2N4BvJ4WkDuboTbsHt0G4jrVBauWBQsaaAm2RBdMIQiT028S_tjNQmllTpsTZlYc8o39M9WlRVMWvLs"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</div>
+<div class="p-5 space-y-3">
+<button class="w-full py-3 bg-gradient-to-br from-blue-600 to-blue-500 text-white rounded-xl font-bold text-sm shadow-md shadow-blue-500/20 hover:opacity-95 active:scale-95 transition-all">
+                                    Set as Reference ID
+                                </button>
+<button class="w-full py-3 bg-surface-container-high text-blue-600 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-100 transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="casino">casino</span>
+                                    Regenerate
+                                </button>
+</div>
+</div>
+</div>
+</section>
+</div>
+</main>
+</div>
+<!-- BottomNavBar -->
+<footer class="fixed bottom-0 left-0 w-full z-50 flex justify-end px-8 py-4 bg-white/90 dark:bg-slate-900/90 backdrop-blur-lg shadow-[0_-4px_20px_rgba(0,0,0,0.05)] border-t border-slate-200/20">
+<div class="flex items-center gap-6">
+<div class="flex flex-col items-end">
+<span class="text-xs font-bold text-slate-400 uppercase tracking-widest">Next Step</span>
+<span class="text-sm font-semibold text-slate-900">Generate Panels &amp; Backgrounds</span>
+</div>
+<button class="bg-gradient-to-br from-blue-600 to-blue-500 text-white rounded-xl py-4 px-12 flex items-center justify-center gap-2 font-['Plus_Jakarta_Sans'] font-bold hover:opacity-90 hover:shadow-lg hover:shadow-blue-500/20 active:scale-[0.97] transition-all duration-300">
+                Generate Comic Pages
+                <span class="material-symbols-outlined" data-icon="auto_awesome" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+</button>
+</div>
+</footer>
+</body></html>

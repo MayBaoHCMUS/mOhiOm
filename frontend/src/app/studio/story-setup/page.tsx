@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import StudioSidebar from '@/components/StudioSidebar';
+import StudioTopBar from '@/components/StudioTopBar';
 
 const bottomSteps = [
   { label: 'Story', icon: 'menu_book', active: true, href: '/studio/story-setup' },
@@ -10,40 +12,10 @@ const bottomSteps = [
 export default function StorySetupPage() {
   return (
     <div className="min-h-screen bg-surface text-on-surface">
-      <nav className="fixed top-0 w-full z-50 glass-nav flex justify-between items-center px-8 h-16 shadow-xl shadow-slate-200/50">
-        <div className="flex items-center gap-8">
-          <Link className="text-xl font-bold tracking-tighter" href="/studio/dashboard">
-            Comic Studio
-          </Link>
-          <div className="hidden md:flex gap-6">
-            <Link className="text-on-surface-variant font-medium hover:text-primary transition-colors duration-200" href="/studio/dashboard">
-              Projects
-            </Link>
-            <Link className="text-on-surface-variant font-medium hover:text-primary transition-colors duration-200" href="/studio/character-manager">
-              Assets
-            </Link>
-            <Link className="text-on-surface-variant font-medium hover:text-primary transition-colors duration-200" href="/gallery">
-              Library
-            </Link>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <button className="p-2 text-on-surface-variant hover:text-primary transition-colors">
-            <span className="material-symbols-outlined">help</span>
-          </button>
-          <button className="p-2 text-on-surface-variant hover:text-primary transition-colors">
-            <span className="material-symbols-outlined">settings</span>
-          </button>
-          <div className="w-8 h-8 rounded-full overflow-hidden border border-outline-variant/30">
-            <img
-              alt="User profile"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuAWuthRimIiXYco1bVBcFsKkJcJa_Via21LqrvR3ggXeOum7tXZLFhwMmEF21finQPdBHCVkSwpzFFVHbWoTmiEDNyADJnhmtnsSe1Ildo-teqvtxvXFV97OYozA1nyhvpZnWI7N9ePdMUJTD7VF8T3Em34GP-7K5q-hGhyRW-j5XrS-M27aUNq3Tq9E0NRXCR7k8ybJrNwJS61BCV-qGjm_bXdys-Wj_lnhgLBI9n2OkZQZrPEyZoLgNwaR0lP-G0KW-rKAPxm0bw"
-            />
-          </div>
-        </div>
-      </nav>
+      <StudioSidebar />
+      <StudioTopBar />
 
-      <main className="pt-24 pb-32 px-6 max-w-7xl mx-auto">
+      <main className="pt-24 pb-32 px-6 max-w-7xl mx-auto ml-[var(--studio-sidebar-width)]">
         <header className="mb-12">
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-on-surface mb-2">Create Your Story</h1>
           <p className="text-on-surface-variant leading-relaxed max-w-2xl">
@@ -96,7 +68,7 @@ export default function StorySetupPage() {
             </div>
           </section>
           <aside className="lg:col-span-5 sticky top-24">
-            <div className="bg-surface-container-low rounded-xl p-8 border border-outline-variant/10 min-h-[400px] flex flex-col">
+            <div className="bg-surface-container-lowest rounded-xl p-8 border border-outline-variant/10 min-h-[400px] flex flex-col">
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-3">
                   <span className="material-symbols-outlined text-primary text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -152,7 +124,7 @@ export default function StorySetupPage() {
         </div>
       </main>
 
-      <div className="fixed bottom-0 left-0 w-full flex justify-around items-center px-8 py-4 bg-white border-t border-outline-variant/30 z-50 shadow-[0_-4px_20px_0_rgba(0,0,0,0.05)]">
+      <div className="fixed bottom-0 left-[var(--studio-sidebar-width)] right-0 flex justify-around items-center px-8 py-4 bg-white border-t border-outline-variant/30 z-50 shadow-[0_-4px_20px_0_rgba(0,0,0,0.05)]">
         <div className="hidden md:flex gap-12">
           {bottomSteps.map((step) => (
             <Link
@@ -179,4 +151,3 @@ export default function StorySetupPage() {
     </div>
   );
 }
-

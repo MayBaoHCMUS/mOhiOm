@@ -55,9 +55,7 @@ Thesis/
 Make sure MongoDB is running on your machine:
 
 ```bash
-# MongoDB should be running as a Windows Service by default
-# Or manually start with:
-mongosh  # Just verify it connects
+mongosh
 ```
 
 #### 2. Start Frontend

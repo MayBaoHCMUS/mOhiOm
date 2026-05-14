@@ -1,4 +1,5 @@
-import Link from 'next/link';
+import StudioSidebar from '@/components/StudioSidebar';
+import StudioTopBar from '@/components/StudioTopBar';
 
 const previewPages = [
   {
@@ -25,35 +26,11 @@ const previewPages = [
 export default function ExportPublishPage() {
   return (
     <div className="min-h-screen bg-surface text-on-surface">
-      <header className="fixed top-0 w-full z-50 glass-nav shadow-[0_20px_40px_rgba(0,0,0,0.05)] flex justify-between items-center px-8 py-4">
-        <div className="flex items-center gap-8">
-          <Link className="text-xl font-bold bg-gradient-to-br from-primary to-primary-container bg-clip-text text-transparent" href="/studio/dashboard">
-            ComicGen AI
-          </Link>
-          <nav className="hidden md:flex gap-8">
-            <Link className="text-on-surface-variant hover:text-on-surface transition-all" href="/studio/dashboard">
-              My Projects
-            </Link>
-            <Link className="text-on-surface-variant hover:text-on-surface transition-all" href="/gallery">
-              Library
-            </Link>
-            <Link className="text-on-surface-variant hover:text-on-surface transition-all" href="/studio/character-manager">
-              Assets
-            </Link>
-          </nav>
-        </div>
-        <div className="flex items-center gap-4">
-          <button className="material-symbols-outlined text-on-surface-variant hover:opacity-80 transition-all scale-95 active:scale-90 duration-200">
-            account_circle
-          </button>
-          <button className="bg-primary text-on-primary px-6 py-2 rounded-full font-semibold hover:opacity-80 transition-all scale-95 active:scale-90 duration-200">
-            Publish
-          </button>
-        </div>
-      </header>
+      <StudioSidebar />
+      <StudioTopBar />
 
-      <div className="flex h-screen pt-20">
-        <aside className="h-screen w-72 fixed left-0 top-0 pt-20 bg-surface-container-low flex flex-col gap-2 p-4">
+      <div className="flex h-screen pt-24 ml-[var(--studio-sidebar-width)]">
+        <aside className="w-72 shrink-0 bg-surface-container-low flex flex-col gap-2 p-4">
           <div className="px-4 py-6 mb-4">
             <div className="flex items-center gap-3 mb-2">
               <div className="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center overflow-hidden">
@@ -92,7 +69,7 @@ export default function ExportPublishPage() {
           </div>
         </aside>
 
-        <main className="flex-1 ml-72 mr-80 overflow-y-auto hide-scrollbar p-12 bg-surface-container-low">
+        <main className="flex-1 mr-80 overflow-y-auto hide-scrollbar p-12 bg-surface-container-low">
           <div className="max-w-4xl mx-auto space-y-16 pb-32">
             {previewPages.map((page) => (
               <div key={page.index} className="bg-surface-container-lowest rounded-xl overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.08)] transform hover:-translate-y-1 transition-transform duration-500">
@@ -127,6 +104,9 @@ export default function ExportPublishPage() {
 
         <aside className="fixed right-0 top-0 h-screen w-80 bg-surface-container-lowest pt-24 px-6 border-l border-outline-variant/10 shadow-[-20px_0_40px_rgba(0,0,0,0.02)]">
           <div className="space-y-8">
+            <button className="w-full bg-primary text-on-primary px-6 py-3 rounded-full font-semibold hover:opacity-80 transition-all scale-95 active:scale-90 duration-200">
+              Publish
+            </button>
             <div>
               <h3 className="text-xl font-extrabold tracking-tight mb-6">Export Settings</h3>
               <div className="space-y-4">
@@ -174,7 +154,7 @@ export default function ExportPublishPage() {
         </aside>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-[60] bg-white/90 backdrop-blur-xl px-12 py-6 border-t border-outline-variant/10 flex items-center justify-between shadow-[0_-10px_30px_rgba(0,0,0,0.03)]">
+      <div className="fixed bottom-0 left-[var(--studio-sidebar-width)] right-0 z-[60] bg-white/90 backdrop-blur-xl px-12 py-6 border-t border-outline-variant/10 flex items-center justify-between shadow-[0_-10px_30px_rgba(0,0,0,0.03)]">
         <div className="flex-1 max-w-2xl">
           <div className="flex justify-between items-center mb-3">
             <span className="text-sm font-bold text-on-surface-variant">Generating final file...</span>
@@ -196,4 +176,3 @@ export default function ExportPublishPage() {
     </div>
   );
 }
-

@@ -1,18 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Bell,
-  ChevronRight,
-  Edit3,
-  HelpCircle,
-  LayoutTemplate,
-  Layers,
-  MousePointer2,
-  Plus,
-  Search,
-  Zap,
-} from 'lucide-react';
+import StudioSidebar from '@/components/StudioSidebar';
+import StudioTopBar from '@/components/StudioTopBar';
+import { ChevronRight, Edit3, LayoutTemplate, Layers, MousePointer2, Zap } from 'lucide-react';
 import { geminiApi, toApiError } from '@/services/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -685,7 +676,7 @@ export default function TextToComicGenerator() {
     const apiStep2 = toRecord(apiSteps.step_2_design);
     const apiStep2ImageReview = toRecord(apiSteps.step_2_image_review);
     const apiStep3 = toRecord(apiSteps.step_3_script);
-    const apiUserInputs = toRecord(apiSnapshot.user_inputs);
+    const apiUserInputs = toRecord(apiSnapshot.user.inputs);
     const apiUserCustomizations = toRecord(apiUserInputs.user_customizations);
 
     return {
@@ -1439,72 +1430,10 @@ export default function TextToComicGenerator() {
 
   return (
     <div className="min-h-screen bg-surface text-on-surface">
-      <aside className="h-screen w-64 fixed left-0 top-0 bg-surface-container-low/50 border-r border-outline-variant/30 flex flex-col p-4 z-[60]">
-        <div className="mb-8 px-2 pt-4">
-          <h1 className="text-xl font-bold tracking-tight text-on-surface">ComicGen AI</h1>
-          <p className="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant/60 mt-1">Creative Hub</p>
-        </div>
+      <StudioSidebar />
+      <StudioTopBar />
 
-        <nav className="flex-1 space-y-1">
-          {[{ label: 'Story Lab' }, { label: 'Characters' }, { label: 'Storyboard' }, { label: 'Exports' }].map(
-            (item) => (
-              <button
-                key={item.label}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all"
-              >
-                <span className="w-2 h-2 rounded-full bg-primary/50" />
-                <span className="font-semibold text-sm">{item.label}</span>
-              </button>
-            )
-          )}
-        </nav>
-
-        <div className="mt-auto pt-6 space-y-4">
-          <button className="w-full bg-primary-container text-on-primary py-3 rounded-xl font-bold text-sm shadow-lg shadow-primary/20">
-            Upgrade to Pro
-          </button>
-          <div className="flex items-center gap-3 px-2 py-4 border-t border-outline-variant/30">
-            <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-sm font-bold">
-              AI
-            </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-sm font-bold truncate">Studio Session</span>
-              <span className="text-[10px] uppercase font-bold text-on-surface-variant/70 tracking-tight">Active</span>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      <header className="fixed top-0 right-0 left-64 h-16 z-50 glass-nav flex items-center justify-between px-8 w-full shadow-sm">
-        <div className="flex-1 max-w-xl">
-          <div className="relative flex items-center group">
-            <Search size={18} className="absolute left-4 text-on-surface-variant group-focus-within:text-primary transition-colors" />
-            <input
-              type="text"
-              placeholder="Search projects, characters, panels..."
-              className="w-full pl-12 pr-4 py-2 bg-surface-container-low border-none rounded-full text-sm focus:ring-2 focus:ring-primary/20 focus:bg-surface-container-lowest transition-all"
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-4 text-on-surface-variant">
-            <button className="hover:text-on-surface transition-colors">
-              <Bell size={20} />
-            </button>
-            <button className="hover:text-on-surface transition-colors">
-              <HelpCircle size={20} />
-            </button>
-          </div>
-
-          <button className="bg-primary text-on-primary px-6 py-2.5 rounded-full font-bold text-sm shadow-md transition-all flex items-center gap-2">
-            <Plus size={16} />
-            Create New Comic
-          </button>
-        </div>
-      </header>
-
-      <main className="ml-64 pt-20 min-h-screen pb-28">
+      <main className="ml-[var(--studio-sidebar-width)] pt-24 min-h-screen pb-28">
         <div className="px-10 py-10 max-w-7xl mx-auto">
           <header className="mb-10">
             <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-3">Text-to-Comic Studio</h2>
@@ -1910,7 +1839,9 @@ export default function TextToComicGenerator() {
                                 Generating...
                               </div>
                             ) : character.status === 'error' ? (
-                              <p className="px-4 text-center text-sm text-red-600">{character.error || 'Failed to generate image.'}</p>
+                              <p className="px-4 text-center text-sm text-red-600">
+                                {character.error || 'Failed to generate image.'}
+                              </p>
                             ) : (
                               <p className="text-sm text-on-surface-variant">No image selected yet</p>
                             )}
@@ -1951,7 +1882,7 @@ export default function TextToComicGenerator() {
                             )}
 
                             <details>
-                              <summary className="cursor-pointer text-[11px] text-on-surface-variant">Image prompt</summary>
+                              <summary className="cursor-pointer text-on-surface-variant">Image prompt</summary>
                               <p className="mt-1 text-[11px] text-on-surface whitespace-pre-wrap [overflow-wrap:anywhere]">
                                 {character.prompt}
                               </p>
@@ -2157,7 +2088,7 @@ export default function TextToComicGenerator() {
         </div>
       </main>
 
-      <div className="fixed bottom-0 left-64 right-0 h-20 bg-surface/90 backdrop-blur-xl border-t border-outline-variant/40 px-10 flex items-center justify-between z-[40]">
+      <div className="fixed bottom-0 left-[var(--studio-sidebar-width)] right-0 h-20 bg-surface/90 backdrop-blur-xl border-t border-outline-variant/40 px-10 flex items-center justify-between z-[40]">
         <div className="flex gap-10">
           {[
             { step: 1, label: 'Story', icon: Edit3 },

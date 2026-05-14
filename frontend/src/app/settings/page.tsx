@@ -1,4 +1,5 @@
-import Link from 'next/link';
+import StudioSidebar from '@/components/StudioSidebar';
+import StudioTopBar from '@/components/StudioTopBar';
 
 const profileActions = [
   {
@@ -18,92 +19,11 @@ const profileActions = [
 export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-surface text-on-surface">
-      <nav className="glass-nav fixed top-0 left-0 right-0 z-50 flex h-16 items-center justify-between px-6 shadow-xl shadow-primary/5">
-        <div className="flex items-center gap-2">
-          <Link className="text-xl font-bold bg-gradient-to-br from-primary to-primary-container bg-clip-text text-transparent" href="/">
-            ComicGen AI
-          </Link>
-        </div>
-        <div className="hidden items-center space-x-6 md:flex">
-          <Link className="text-on-surface-variant hover:bg-surface-container-low/60 transition-colors px-3 py-2 rounded-lg" href="/gallery">
-            Explore
-          </Link>
-          <Link className="text-on-surface-variant hover:bg-surface-container-low/60 transition-colors px-3 py-2 rounded-lg" href="/studio">
-            Create
-          </Link>
-          <Link className="text-primary font-semibold px-3 py-2 rounded-lg" href="/settings">
-            Creator Hub
-          </Link>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="hidden items-center rounded-full bg-surface-container-low px-4 py-1.5 sm:flex">
-            <span className="material-symbols-outlined text-on-surface-variant text-lg mr-2">search</span>
-            <input
-              className="bg-transparent border-none focus:ring-0 text-sm w-40"
-              placeholder="Search projects..."
-              type="text"
-            />
-          </div>
-          <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low/60 p-2 rounded-full transition-colors">
-            notifications
-          </button>
-          <button className="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-low/60 p-2 rounded-full transition-colors">
-            settings
-          </button>
-          <img
-            alt="User profile avatar"
-            className="w-8 h-8 rounded-full ring-2 ring-primary/10"
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuC69imlKCWdurtnQi0bFS97BaDgV2Ol_sNj6_i14JrCYnRXSdtvGK7xH1w8HrUDO-vaht6JPGazyNPZY54bLG7Uw687XSQ6qlNiiK-_1fJEuZW8_6XRe3-O_zIxFtLe6JoU9jJUufRCBDADvhGfZ7pO-5W-Fs-KjsXjwnwMawdYC9TIMtMUdzpPFIWkL9_Ok_lnkSPx-0CNOc8eTBjQtleSbPhJMw7d-afMiyLcG3nfRQg42_5cxqBdq1vZN7NAAAmRSfjE_QJtFbI"
-          />
-        </div>
-      </nav>
+      <StudioSidebar />
+      <StudioTopBar />
 
-      <div className="flex pt-16 min-h-screen">
-        <aside className="hidden md:flex h-[calc(100vh-64px)] w-64 fixed left-0 top-16 bg-surface-container-low flex-col p-6 space-y-2">
-          <div className="mb-8 px-2">
-            <h2 className="text-lg font-black">Creator Hub</h2>
-            <p className="text-xs text-on-surface-variant font-medium tracking-wide uppercase">Pro Plan</p>
-          </div>
-          <nav className="flex-1 space-y-1">
-            <a className="flex items-center gap-3 px-4 py-3 text-primary bg-surface-container-lowest shadow-sm rounded-lg font-medium text-sm" href="#profile">
-              <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
-                account_circle
-              </span>
-              Profile
-            </a>
-            <a className="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:text-on-surface hover:translate-x-1 transition-transform duration-200 font-medium text-sm" href="#preferences">
-              <span className="material-symbols-outlined">tune</span>
-              Preferences
-            </a>
-            <a className="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:text-on-surface hover:translate-x-1 transition-transform duration-200 font-medium text-sm" href="#privacy">
-              <span className="material-symbols-outlined">lock</span>
-              Privacy
-            </a>
-            <a className="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:text-on-surface hover:translate-x-1 transition-transform duration-200 font-medium text-sm" href="#integrations">
-              <span className="material-symbols-outlined">extension</span>
-              Integrations
-            </a>
-          </nav>
-          <div className="mt-auto pt-6 border-t border-outline-variant/40 space-y-1">
-            <Link
-              className="block text-center bg-gradient-to-br from-primary to-primary-container text-white py-3 rounded-xl font-bold text-sm mb-4 shadow-lg shadow-primary/20 scale-95 active:scale-90 duration-200"
-              href="/pricing"
-            >
-              Upgrade to Max
-            </Link>
-            <Link className="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:text-on-surface text-sm font-medium" href="/support">
-              <span className="material-symbols-outlined text-base">help</span>
-              Help Center
-            </Link>
-            <Link className="flex items-center gap-3 px-4 py-2 text-on-surface-variant hover:text-on-surface text-sm font-medium" href="/login">
-              <span className="material-symbols-outlined text-base">logout</span>
-              Sign Out
-            </Link>
-          </div>
-        </aside>
-
-        <main className="flex-1 md:ml-64 p-8 md:p-12 overflow-y-auto">
-          <div className="max-w-4xl mx-auto space-y-12">
+      <main className="flex-1 ml-[var(--studio-sidebar-width)] p-8 md:p-12 pt-24 overflow-y-auto">
+        <div className="max-w-4xl mx-auto space-y-12">
             <section id="profile">
               <header className="mb-8">
                 <h1 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2">My Profile</h1>
@@ -206,8 +126,6 @@ export default function SettingsPage() {
             </section>
           </div>
         </main>
-      </div>
     </div>
   );
 }
-

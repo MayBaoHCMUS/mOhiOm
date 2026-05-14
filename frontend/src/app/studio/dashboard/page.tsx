@@ -1,4 +1,5 @@
-import Link from 'next/link';
+import StudioSidebar from '@/components/StudioSidebar';
+import StudioTopBar from '@/components/StudioTopBar';
 
 const recentProjects = [
   {
@@ -53,75 +54,9 @@ const savedCharacters = [
 export default function StudioDashboardPage() {
   return (
     <div className="min-h-screen bg-surface text-on-surface">
-      <aside className="h-screen w-64 fixed left-0 top-0 bg-surface-container-low border-r-0 z-[60] flex flex-col p-4">
-        <div className="mb-8 px-2 pt-4">
-          <h1 className="text-xl font-bold tracking-tight">ComicGen AI</h1>
-          <p className="text-xs text-on-surface-variant font-medium tracking-wide mt-1">Creative Hub</p>
-        </div>
-        <nav className="flex-1 space-y-1">
-          <Link className="flex items-center gap-3 px-4 py-3 text-primary bg-white rounded-lg shadow-sm transition-all duration-200" href="/studio/dashboard">
-            <span className="material-symbols-outlined">home</span>
-            <span className="font-semibold text-sm">Home</span>
-          </Link>
-          <Link className="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-200" href="/studio/story-setup">
-            <span className="material-symbols-outlined">auto_stories</span>
-            <span className="text-sm">My Comics</span>
-          </Link>
-          <Link className="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-200" href="/studio/character-manager">
-            <span className="material-symbols-outlined">face_6</span>
-            <span className="text-sm">Character Library</span>
-          </Link>
-          <Link className="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-200" href="/settings">
-            <span className="material-symbols-outlined">settings</span>
-            <span className="text-sm">Settings</span>
-          </Link>
-        </nav>
-        <div className="mt-auto pt-6 space-y-4">
-          <Link className="w-full text-center bg-primary-container text-white py-3 rounded-xl font-semibold text-sm shadow-sm transition-transform active:scale-95" href="/pricing">
-            Upgrade to Pro
-          </Link>
-          <div className="flex items-center gap-3 px-2 py-4 border-t border-outline-variant/30">
-            <img
-              alt="User avatar"
-              className="w-10 h-10 rounded-full object-cover"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1K3JyojfDa09ZT0Jo9CtSiAFvzzeO0elWMvXORRnyXKaiFcpkE-vcHL31HRjVeeRjaVxf_xuui3wHmvTYPVw41Ldbgs-PLn3GDQP7tcj59xvMojLBSTwYtS4qFtt4lxRXnUh5NKbS1G-emVds5iXZoFSQxR0DBV0QsEDmZft4FmvVqWn9Ox6UwpO4Dz-JAZk445jdxSwkFtnr20GE_FfqaQv5dfPl0gs9dxi7TujN5HRuyzabr7Fg6VDLG0RAY6Btoe58s-Nhfcw"
-            />
-            <div className="flex flex-col">
-              <span className="text-sm font-bold">Alex Rivera</span>
-              <span className="text-xs text-on-surface-variant">Free Tier</span>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      <header className="fixed top-0 right-0 left-64 h-16 z-50 glass-nav flex items-center justify-between px-8 w-full shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
-        <div className="flex-1 max-w-xl">
-          <div className="relative flex items-center">
-            <span className="material-symbols-outlined absolute left-4 text-outline">search</span>
-            <input
-              className="w-full pl-12 pr-4 py-2 bg-surface-container-low border-none rounded-full text-sm focus:ring-2 focus:ring-primary/20 focus:bg-surface-container-lowest transition-all"
-              placeholder="Search your creative universe..."
-              type="text"
-            />
-          </div>
-        </div>
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-4 text-on-surface-variant">
-            <button className="hover:opacity-80 transition-opacity">
-              <span className="material-symbols-outlined">notifications</span>
-            </button>
-            <button className="hover:opacity-80 transition-opacity">
-              <span className="material-symbols-outlined">help</span>
-            </button>
-          </div>
-          <Link className="bg-gradient-to-br from-primary to-primary-container text-white px-6 py-2.5 rounded-full font-bold text-sm transition-transform active:scale-95 flex items-center gap-2" href="/studio/story-setup">
-            <span className="material-symbols-outlined text-sm">add</span>
-            Create New Comic
-          </Link>
-        </div>
-      </header>
-
-      <main className="ml-64 pt-24 px-8 pb-12 min-h-screen">
+      <StudioSidebar />
+      <StudioTopBar />
+      <main className="ml-[var(--studio-sidebar-width)] pt-24 px-8 pb-12 min-h-screen">
         <section className="mb-12">
           <div className="bg-surface-container-low rounded-[2rem] p-10 relative overflow-hidden flex items-center">
             <div className="relative z-10 max-w-2xl">
@@ -232,4 +167,3 @@ export default function StudioDashboardPage() {
     </div>
   );
 }
-

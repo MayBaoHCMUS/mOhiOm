@@ -1,4 +1,5 @@
-import Link from 'next/link';
+import StudioSidebar from '@/components/StudioSidebar';
+import StudioTopBar from '@/components/StudioTopBar';
 
 const characters = [
   {
@@ -42,77 +43,22 @@ const recentPanels = [
 export default function CharacterManagerPage() {
   return (
     <div className="min-h-screen bg-surface text-on-surface flex overflow-hidden">
-      <aside className="fixed left-0 top-0 h-full flex flex-col p-6 overflow-y-auto bg-surface-container-low h-screen w-72 shadow-xl shadow-slate-200/50 text-sm tracking-tight font-medium">
-        <div className="flex items-center gap-3 mb-10 px-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary-container flex items-center justify-center text-white">
-            <span className="material-symbols-outlined">auto_awesome</span>
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tighter leading-none">ComicGen Pro</h1>
-            <p className="text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">Consistency Engine</p>
-          </div>
-        </div>
-        <nav className="flex-1 space-y-1">
-          <Link className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" href="/studio/dashboard">
-            <span className="material-symbols-outlined">dashboard</span>
-            Dashboard
-          </Link>
-          <Link className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-primary font-bold border-r-2 border-primary bg-surface-container-high" href="/studio/character-manager">
-            <span className="material-symbols-outlined">face_6</span>
-            Character Manager
-          </Link>
-          <Link className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" href="/studio/layout-engine">
-            <span className="material-symbols-outlined">psychology_alt</span>
-            Style Seeds
-          </Link>
-          <Link className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" href="/studio/editor">
-            <span className="material-symbols-outlined">auto_stories</span>
-            Asset Library
-          </Link>
-          <Link className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" href="/settings">
-            <span className="material-symbols-outlined">settings</span>
-            Project Settings
-          </Link>
-        </nav>
-        <div className="mt-auto pt-6 space-y-1">
-          <button className="w-full mb-6 bg-gradient-to-br from-primary to-primary-container text-white py-3 px-4 rounded-xl font-bold shadow-lg shadow-primary/20 active:scale-95 duration-150 ease-in-out">
-            Create New Character
-          </button>
-          <Link className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors" href="/support">
-            <span className="material-symbols-outlined">help</span>
-            Help Center
-          </Link>
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl mt-2 bg-surface-container-high">
-            <div className="w-8 h-8 rounded-full overflow-hidden">
-              <img
-                alt="Comic Artist Profile"
-                className="w-full h-full object-cover"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuD7w6im02FfAjeNZSLZ-5DQPxmqgj9M_vkrus3EKfEVp25ZQ6E6jl4H8krafnWO_xsvS9CZ86UfcuR5nhtmF_fJeLsAr7sTRHPaYQZ_QnfDg0eD4wH8b7cQRRCLwEL1Q7_cZUeiAM9HeKcFtr8FvVkTbPPcBySWr0lOyQdV0Kdwzm99dGQrDGkvm0A6E93AFZyk2b6nBJAQ9EakYpW9qlsLt8DZIoFhi0Z_ikDY569c-oB-iEJfN4743HyACpMnMNMkX0mwuT-MG0s"
-              />
+      <StudioSidebar />
+      <StudioTopBar />
+      <main className="flex-1 ml-[var(--studio-sidebar-width)] h-screen overflow-y-auto relative px-10 pt-24 pb-12">
+        <div className="max-w-7xl mx-auto space-y-12">
+          <header className="flex justify-between items-end">
+            <div>
+              <h2 className="text-4xl font-extrabold tracking-tighter text-on-surface">Character Manager</h2>
+              <p className="text-on-surface-variant mt-1">Maintain identity and consistency across all panels.</p>
             </div>
-            <div className="flex-1 overflow-hidden">
-              <p className="truncate text-on-surface font-bold">Account</p>
+            <div className="flex gap-4">
+              <div className="flex bg-surface-container-low p-1 rounded-full">
+                <button className="px-6 py-2 rounded-full bg-surface-container-lowest shadow-sm font-bold text-primary text-sm">Active Engine</button>
+                <button className="px-6 py-2 rounded-full text-on-surface-variant font-medium text-sm">Archived</button>
+              </div>
             </div>
-            <span className="material-symbols-outlined text-on-surface-variant">account_circle</span>
-          </div>
-        </div>
-      </aside>
-
-      <main className="flex-1 ml-72 h-screen overflow-y-auto relative px-10 pt-24 pb-12">
-        <header className="fixed top-0 right-0 left-72 z-20 glass-nav px-10 py-6 flex justify-between items-end">
-          <div>
-            <h2 className="text-4xl font-extrabold tracking-tighter text-on-surface">Character Manager</h2>
-            <p className="text-on-surface-variant mt-1">Maintain identity and consistency across all panels.</p>
-          </div>
-          <div className="flex gap-4">
-            <div className="flex bg-surface-container-low p-1 rounded-full">
-              <button className="px-6 py-2 rounded-full bg-surface-container-lowest shadow-sm font-bold text-primary text-sm">Active Engine</button>
-              <button className="px-6 py-2 rounded-full text-on-surface-variant font-medium text-sm">Archived</button>
-            </div>
-          </div>
-        </header>
-
-        <div className="max-w-7xl mx-auto space-y-12 mt-10">
+          </header>
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
             <section className="xl:col-span-2 space-y-6">
               <div className="flex items-center justify-between">
@@ -211,4 +157,3 @@ export default function CharacterManagerPage() {
     </div>
   );
 }
-
