@@ -1,0 +1,1582 @@
+'use client';
+
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { geminiApi, toApiError } from '@/services/api';
+
+export type StepKey = 1 | 2 | 3 | 4;
+export type WizardStepKey = 0 | StepKey;
+
+export interface StepState<T> {
+  data: T | null;
+  isLoading: boolean;
+  isApproved: boolean;
+  locked: boolean;
+  error: string | null;
+  lastUpdated: string | null;
+}
+
+export interface Step1Result {
+  characterBreakdown: string[];
+  analysisMarkdown: string;
+  structuredJson: Record<string, unknown> | null;
+}
+
+export interface Step2Result {
+  designMarkdown: string;
+  structuredJson: Record<string, unknown> | null;
+  aiPrompts: string[];
+}
+
+export type CharacterImageStatus = 'idle' | 'loading' | 'success' | 'error';
+
+export interface CharacterImageCandidate {
+  id: string;
+  imageUrl: string;
+  createdAt: string;
+}
+
+export interface CharacterImageItem {
+  characterId: string;
+  name: string;
+  prompt: string;
+  status: CharacterImageStatus;
+  error: string | null;
+  candidates: CharacterImageCandidate[];
+  selectedCandidateId: string | null;
+}
+
+export interface CharacterImageReviewResult {
+  characters: CharacterImageItem[];
+  isGenerating: boolean;
+}
+
+export interface Step3Result {
+  scriptMarkdown: string;
+  structuredJson: Record<string, unknown> | null;
+}
+
+export type PanelImageStatus = 'idle' | 'loading' | 'success' | 'error';
+
+export interface Step4Panel {
+  id: string;
+  pageNumber: number;
+  panelNumber: number;
+  contextLabel: string;
+  dialogueSfx: string;
+  aiImagePrompt: string;
+}
+
+export interface Step4PanelState {
+  status: PanelImageStatus;
+  imageUrl: string | null;
+  error: string | null;
+}
+
+export interface Step4Result {
+  panels: Step4Panel[];
+  panelStates: Record<string, Step4PanelState>;
+  isGenerating: boolean;
+}
+
+type StepData = Step1Result | Step2Result | Step3Result | Step4Result;
+
+interface ApprovedCacheEntry {
+  key: string;
+  data: StepData;
+}
+
+interface Step2CharacterDesign {
+  ai_image_prompt_ready?: string;
+  name?: string;
+}
+
+interface Step2StructuredJson {
+  steps?: {
+    step_2_design?: {
+      data?: {
+        main_characters_designs?: Record<string, Step2CharacterDesign>;
+      };
+    };
+    step_2_image_review?: Record<string, unknown>;
+  };
+}
+
+interface Step1StructuredJson {
+  steps?: {
+    step_1_analysis?: Record<string, unknown>;
+  };
+}
+
+interface Step3StructuredJson {
+  steps?: {
+    step_3_script?: Record<string, unknown>;
+  };
+}
+
+interface ApiSnapshot {
+  project_id?: string;
+  user_inputs?: {
+    user_customizations?: Record<string, unknown>;
+  };
+  steps?: Record<string, unknown>;
+}
+
+const toRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+
+const emptyStepState = <T,>(locked: boolean): StepState<T> => ({
+  data: null,
+  isLoading: false,
+  isApproved: false,
+  locked,
+  error: null,
+  lastUpdated: null,
+});
+
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const fetchImageFromAI = async (imagePrompt: string): Promise<string> => {
+  try {
+    const response = await geminiApi.generatePanelImage({
+      image_prompt: imagePrompt,
+      width: 720,
+      height: 960,
+    });
+
+    const imageUrl = response.data.image_data_url || response.data.image_url;
+    if (!imageUrl || typeof imageUrl !== 'string') {
+      throw new Error('Backend did not return a valid image payload.');
+    }
+
+    return imageUrl;
+  } catch (error) {
+    const apiError = toApiError(error);
+    const retryHint =
+      apiError.status === 429 && typeof apiError.retryAfterSeconds === 'number'
+        ? ` Retry in ${Math.ceil(apiError.retryAfterSeconds)}s.`
+        : '';
+    throw new Error(`${apiError.message}${retryHint}`.trim());
+  }
+};
+
+const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {
+  const normalized = (markdown || '').replace(/\r\n?/g, '\n');
+  if (!normalized.trim()) {
+    return [];
+  }
+
+  type WorkingPanel = {
+    pageNumber: number;
+    panelNumber: number;
+    body: string;
+  };
+
+  const workingPanels: WorkingPanel[] = [];
+  const lines = normalized.split('\n');
+  const pageRegex = /^\s*(?:[-*]\s*)?(?:\*{0,2})?Page\s+(\d+)(?:\s+of\s+Chapter\s+\d+)?(?:\*{0,2})?\s*:?.*$/i;
+  const panelRegex = /^\s*(?:[-*]\s*)?(?:\*{0,2})?Panel\s+(\d+)(?:\*{0,2})?\s*:?.*$/i;
+
+  let currentPage = 1;
+  let activePanel: WorkingPanel | null = null;
+
+  const flushPanel = () => {
+    if (activePanel) {
+      workingPanels.push(activePanel);
+    }
+    activePanel = null;
+  };
+
+  for (const line of lines) {
+    const pageMatch = line.match(pageRegex);
+    if (pageMatch) {
+      currentPage = Number(pageMatch[1]) || currentPage;
+      flushPanel();
+      continue;
+    }
+
+    const panelMatch = line.match(panelRegex);
+    if (panelMatch) {
+      flushPanel();
+      activePanel = {
+        pageNumber: currentPage,
+        panelNumber: Number(panelMatch[1]) || 1,
+        body: '',
+      };
+      continue;
+    }
+
+    if (activePanel) {
+      activePanel.body += `${line}\n`;
+    }
+  }
+  flushPanel();
+
+  const dialogueRegex =
+    /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?Dialogue(?:\s*\/\s*SFX)?(?:\s*\/\s*Thoughts)?(?:\*{0,2})?\s*:\s*([\s\S]*?)(?=\n\s*(?:[-*]\s*)?(?:\*{0,2})?(?:AI\s*Image\s*Prompt|Panel\s+\d+|Page\s+\d+|Chapter\s+End\s+Notes|Special\s+Pages|Final\s+Script\s+Summary)\b|$)/i;
+  const promptRegex =
+    /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?AI\s*Image\s*Prompt(?:\*{0,2})?\s*:\s*([\s\S]*?)(?=\n\s*(?:[-*]\s*)?(?:\*{0,2})?(?:Panel\s+\d+|Page\s+\d+|Chapter\s+End\s+Notes|Special\s+Pages|Final\s+Script\s+Summary)\b|$)/i;
+
+  const parsed = workingPanels
+    .map((panel) => {
+      const body = panel.body.trim();
+      const dialogueSfx = (body.match(dialogueRegex)?.[1] || '').trim();
+      const aiImagePrompt = (body.match(promptRegex)?.[1] || '').trim();
+      if (!aiImagePrompt) {
+        return null;
+      }
+
+      const id = `p${panel.pageNumber}-n${panel.panelNumber}`;
+      return {
+        id,
+        pageNumber: panel.pageNumber,
+        panelNumber: panel.panelNumber,
+        contextLabel: `Page ${panel.pageNumber}, Panel ${panel.panelNumber}`,
+        dialogueSfx: dialogueSfx || 'No dialogue/SFX provided.',
+        aiImagePrompt,
+      } satisfies Step4Panel;
+    })
+    .filter((item): item is Step4Panel => item !== null);
+
+  if (parsed.length === 0) {
+    const promptOnlyRegex =
+      /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?AI\s*Image\s*Prompt(?:\*{0,2})?\s*:\s*([\s\S]*?)(?=\n\s*(?:[-*]\s*)?(?:\*{0,2})?(?:AI\s*Image\s*Prompt|Panel\s+\d+|Page\s+\d+|Chapter\s+End\s+Notes|Special\s+Pages|Final\s+Script\s+Summary)\b|$)/gi;
+    const prompts = [...normalized.matchAll(promptOnlyRegex)].map((match) => (match[1] || '').trim()).filter(Boolean);
+    return prompts.map((prompt, idx) => ({
+      id: `p1-n${idx + 1}`,
+      pageNumber: 1,
+      panelNumber: idx + 1,
+      contextLabel: `Page 1, Panel ${idx + 1}`,
+      dialogueSfx: 'No dialogue/SFX provided.',
+      aiImagePrompt: prompt,
+    }));
+  }
+
+  return parsed.sort((a, b) => a.pageNumber - b.pageNumber || a.panelNumber - b.panelNumber);
+};
+
+export interface ComicGenerationContextValue {
+  projectId: string;
+  storyFile: File | null;
+  storyText: string;
+  mainCharacters: string;
+  numChapters: string;
+  targetPages: string;
+  mangaGenre: string;
+  artStyle: string;
+  maxPanelsPerPage: string;
+  specialRequests: string;
+  step1: StepState<Step1Result>;
+  step2: StepState<Step2Result>;
+  step2ImageReview: StepState<CharacterImageReviewResult>;
+  step3: StepState<Step3Result>;
+  step4: StepState<Step4Result>;
+  activeStep: WizardStepKey;
+  globalError: string | null;
+  jsonCopied: boolean;
+  jsonDownloaded: boolean;
+  lastDownloadedJsonFile: string | null;
+  stepMap: Record<StepKey, StepState<unknown>>;
+  step4PanelsByPage: Array<[number, Step4Panel[]]>;
+  step4Stats: { total: number; success: number; loading: number; error: number };
+  projectSnapshot: Record<string, unknown>;
+  setProjectId: (value: string) => void;
+  setStoryText: (value: string) => void;
+  setMainCharacters: (value: string) => void;
+  setNumChapters: (value: string) => void;
+  setTargetPages: (value: string) => void;
+  setMangaGenre: (value: string) => void;
+  setArtStyle: (value: string) => void;
+  setMaxPanelsPerPage: (value: string) => void;
+  setSpecialRequests: (value: string) => void;
+  setActiveStep: (value: WizardStepKey) => void;
+  handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  handleGenerate: (step: StepKey) => Promise<void>;
+  handleApprove: (step: StepKey) => void;
+  handleRetry: (step: StepKey) => void;
+  handleGenerateCharacterReferences: () => Promise<void>;
+  handleRegenerateCharacterImage: (characterId: string) => Promise<void>;
+  handleSelectCharacterCandidate: (characterId: string, candidateId: string) => void;
+  handleApproveCharacterReferences: () => void;
+  handleRetryCharacterReferences: () => void;
+  handleStartFullGeneration: () => Promise<void>;
+  handleRegeneratePanel: (panelId: string) => Promise<void>;
+  copyProjectJson: () => Promise<void>;
+  downloadProjectJson: () => void;
+  getStep2PromptList: () => string[];
+  getSelectedCharacterReferences: () => Array<{
+    character_id: string;
+    name: string;
+    image_url: string;
+    prompt: string;
+  }>;
+  getCooldownSeconds: (step: StepKey) => number;
+  loadMockStepData: (step: StepKey) => void;
+  loadMockCharacterReview: () => void;
+  loadMockPipeline: () => void;
+}
+
+const ComicGenerationContext = createContext<ComicGenerationContextValue | null>(null);
+
+export function ComicGenerationProvider({ children }: { children: React.ReactNode }) {
+  const [projectId, setProjectId] = useState('three_little_pigs_manga_001');
+  const [storyFile, setStoryFile] = useState<File | null>(null);
+  const [storyText, setStoryText] = useState('');
+  const [mainCharacters, setMainCharacters] = useState('5');
+  const [numChapters, setNumChapters] = useState('4');
+  const [targetPages, setTargetPages] = useState('100');
+  const [mangaGenre, setMangaGenre] = useState('Fantasy/Adventure, Epic tone');
+  const [artStyle, setArtStyle] = useState('Japanese manga style, detailed');
+  const [maxPanelsPerPage, setMaxPanelsPerPage] = useState('6');
+  const [specialRequests, setSpecialRequests] = useState('None');
+
+  const [step1, setStep1] = useState<StepState<Step1Result>>(emptyStepState(false));
+  const [step2, setStep2] = useState<StepState<Step2Result>>(emptyStepState(true));
+  const [step2ImageReview, setStep2ImageReview] = useState<StepState<CharacterImageReviewResult>>(
+    emptyStepState<CharacterImageReviewResult>(true)
+  );
+  const [step3, setStep3] = useState<StepState<Step3Result>>(emptyStepState(true));
+  const [step4, setStep4] = useState<StepState<Step4Result>>(emptyStepState(true));
+  const [activeStep, setActiveStep] = useState<WizardStepKey>(0);
+  const [globalError, setGlobalError] = useState<string | null>(null);
+  const [jsonCopied, setJsonCopied] = useState(false);
+  const [jsonDownloaded, setJsonDownloaded] = useState(false);
+  const [lastDownloadedJsonFile, setLastDownloadedJsonFile] = useState<string | null>(null);
+  const [cooldownUntil, setCooldownUntil] = useState<Record<StepKey, number>>({
+    1: 0,
+    2: 0,
+    3: 0,
+    4: 0,
+  });
+  const [nowMs, setNowMs] = useState<number>(Date.now());
+  const approvedCacheRef = useRef<Partial<Record<StepKey, ApprovedCacheEntry>>>({});
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const stepMap: Record<StepKey, StepState<unknown>> = useMemo(
+    () => ({ 1: step1, 2: step2, 3: step3, 4: step4 }),
+    [step1, step2, step3, step4]
+  );
+
+  const extractStep2Characters = (): CharacterImageItem[] => {
+    const structured = (step2.data?.structuredJson as Step2StructuredJson | null) || null;
+    const mainDesigns = structured?.steps?.step_2_design?.data?.main_characters_designs || {};
+
+    const fromStructured = Object.entries(mainDesigns)
+      .map(([characterId, raw], index) => {
+        const prompt = typeof raw?.ai_image_prompt_ready === 'string' ? raw.ai_image_prompt_ready.trim() : '';
+        if (!prompt) return null;
+
+        const name = (typeof raw?.name === 'string' && raw.name.trim()) || `Character ${index + 1}`;
+
+        return {
+          characterId,
+          name,
+          prompt,
+          status: 'idle',
+          error: null,
+          candidates: [],
+          selectedCandidateId: null,
+        } satisfies CharacterImageItem;
+      })
+      .filter((entry): entry is CharacterImageItem => entry !== null);
+
+    if (fromStructured.length > 0) {
+      return fromStructured;
+    }
+
+    const markdown = step2.data?.designMarkdown || '';
+    const normalized = markdown.replace(/\r\n?/g, '\n');
+    const characterBlocks = [
+      ...normalized.matchAll(
+        /^###\s+Character\s+\d+\s*:\s*(.+?)\s*$([\s\S]*?)(?=^###\s+Character\s+\d+\s*:|^##\s+\d+\.|$)/gim
+      ),
+    ];
+
+    const fallbackCharacters = characterBlocks
+      .map((match, index) => {
+        const name = (match[1] || '').trim();
+        const body = match[2] || '';
+        const promptMatch = body.match(
+          /AI\s*Image\s*Prompt\s*Ready\s*:\s*([\s\S]*?)(?=\n\s*\*\s*\*|\n\s*###|\n\s*##|$)/i
+        );
+        const prompt = (promptMatch?.[1] || '').trim();
+        if (!name || !prompt) return null;
+
+        const characterId =
+          name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '') || `character_${index + 1}`;
+
+        return {
+          characterId,
+          name,
+          prompt,
+          status: 'idle',
+          error: null,
+          candidates: [],
+          selectedCandidateId: null,
+        } satisfies CharacterImageItem;
+      })
+      .filter((entry): entry is CharacterImageItem => entry !== null);
+
+    return fallbackCharacters;
+  };
+
+  const getSelectedCharacterReferences = useCallback((): Array<{
+    character_id: string;
+    name: string;
+    image_url: string;
+    prompt: string;
+  }> => {
+    if (!step2ImageReview.data) return [];
+
+    return step2ImageReview.data.characters
+      .map((character) => {
+        const selected = character.candidates.find((candidate) => candidate.id === character.selectedCandidateId);
+        if (!selected) return null;
+
+        return {
+          character_id: character.characterId,
+          name: character.name,
+          image_url: selected.imageUrl,
+          prompt: character.prompt,
+        };
+      })
+      .filter(
+        (
+          entry
+        ): entry is {
+          character_id: string;
+          name: string;
+          image_url: string;
+          prompt: string;
+        } => entry !== null
+      );
+  }, [step2ImageReview.data]);
+
+  const setStepState = (step: StepKey, updater: (prev: StepState<unknown>) => StepState<unknown>) => {
+    if (step === 1) setStep1((prev) => updater(prev as StepState<unknown>) as StepState<Step1Result>);
+    if (step === 2) setStep2((prev) => updater(prev as StepState<unknown>) as StepState<Step2Result>);
+    if (step === 3) setStep3((prev) => updater(prev as StepState<unknown>) as StepState<Step3Result>);
+    if (step === 4) setStep4((prev) => updater(prev as StepState<unknown>) as StepState<Step4Result>);
+  };
+
+  const parseLines = (text: string, limit: number) =>
+    text
+      .split(/\r?\n+/)
+      .map((line) => line.replace(/^[-*\d.\s]+/, '').trim())
+      .filter(Boolean)
+      .slice(0, limit);
+
+  const getStep1StructuredJson = (): Record<string, unknown> => {
+    if (step1.data?.structuredJson) {
+      return step1.data.structuredJson;
+    }
+
+    return {
+      project_id: projectId,
+      project_status: 'in_progress',
+      user_inputs: {
+        story_content: storyText,
+        genre: mangaGenre,
+        tone: mangaGenre,
+        art_style_reference: artStyle,
+        max_panels_per_page: Number(maxPanelsPerPage) || 6,
+        user_customizations: { special_requests: specialRequests },
+      },
+      steps: {
+        step_1_analysis: {
+          status: step1.isApproved ? 'approved' : 'review_pending',
+          last_updated: step1.lastUpdated,
+          data: {
+            analysis_markdown: step1.data?.analysisMarkdown || '',
+          },
+        },
+      },
+    };
+  };
+
+  const getStep2PromptList = (): string[] => {
+    const structured = (step2.data?.structuredJson as Step2StructuredJson | null) || null;
+    const mainDesigns = structured?.steps?.step_2_design?.data?.main_characters_designs;
+    if (!mainDesigns || typeof mainDesigns !== 'object') {
+      return step2.data?.aiPrompts || [];
+    }
+
+    return Object.values(mainDesigns)
+      .map((entry) => entry?.ai_image_prompt_ready)
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  };
+
+  const getStep2StructuredJson = (): Record<string, unknown> => {
+    const selectedReferences = getSelectedCharacterReferences();
+
+    if (step2.data?.structuredJson) {
+      const cloned = JSON.parse(JSON.stringify(step2.data.structuredJson)) as Record<string, unknown>;
+      const steps = toRecord(cloned.steps);
+      const step2Design = toRecord(steps.step_2_design);
+      const step2Data = toRecord(step2Design.data);
+      const mainDesigns = toRecord(step2Data.main_characters_designs);
+
+      selectedReferences.forEach((reference) => {
+        const existing = toRecord(mainDesigns[reference.character_id]);
+        mainDesigns[reference.character_id] = {
+          ...existing,
+          selected_reference_image_url: reference.image_url,
+          selected_reference_prompt: reference.prompt,
+        };
+      });
+
+      step2Data.main_characters_designs = mainDesigns;
+      step2Data.selected_character_references = selectedReferences;
+      step2Design.data = step2Data;
+      steps.step_2_design = step2Design;
+      cloned.steps = steps;
+      return cloned;
+    }
+
+    const step1Json = getStep1StructuredJson();
+    return {
+      ...step1Json,
+      steps: {
+        ...((step1Json.steps as Record<string, unknown> | undefined) || {}),
+        step_2_design: {
+          status: step2.isApproved ? 'approved' : step2.isLoading ? 'processing' : 'review_pending',
+          last_updated: step2.lastUpdated,
+          data: {
+            design_markdown: step2.data?.designMarkdown || '',
+            selected_character_references: selectedReferences,
+          },
+        },
+      },
+    };
+  };
+
+  const buildStepPayload = async (step: StepKey): Promise<Step1Result | Step2Result | Step3Result | Step4Result> => {
+    if (!storyText.trim()) {
+      throw new Error('Please provide story text before generating.');
+    }
+
+    if (step === 1) {
+      const resp = await geminiApi.analyzeStoryStructured({
+        project_id: projectId,
+        story_text: storyText,
+        num_chapters: Number(numChapters) || 3,
+        desired_main_characters: Number(mainCharacters) || 5,
+        target_total_pages: (targetPages || 'auto').trim() || 'auto',
+        genre_tone: mangaGenre || 'Shonen action',
+        art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+        max_panels_per_page: Number(maxPanelsPerPage) || 6,
+        special_requests: specialRequests || 'None',
+      });
+      const analysis: string = resp.data.analysis || '';
+      const breakdown = parseLines(analysis, Math.max(Number(mainCharacters) || 5, 3));
+      return {
+        characterBreakdown: breakdown.length ? breakdown : ['Character arcs pending parsing.'],
+        analysisMarkdown: analysis,
+        structuredJson: (resp.data.structured_json as Record<string, unknown>) || null,
+      } satisfies Step1Result;
+    }
+
+    if (step === 2) {
+      const resp = await geminiApi.generateCharacterDesignsStructured({
+        project_id: projectId,
+        step1_json: getStep1StructuredJson(),
+        desired_main_characters: Number(mainCharacters) || 5,
+        genre_tone: mangaGenre || 'Shonen action',
+        art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+        special_requests: specialRequests || 'None',
+      });
+
+      const designMarkdown: string = resp.data.design_markdown || '';
+      const structuredJson = (resp.data.structured_json as Record<string, unknown>) || null;
+      const structured = structuredJson as Step2StructuredJson | null;
+      const mainDesigns = structured?.steps?.step_2_design?.data?.main_characters_designs || {};
+      const aiPrompts = Object.values(mainDesigns)
+        .map((entry) => entry?.ai_image_prompt_ready)
+        .filter((prompt): prompt is string => typeof prompt === 'string' && prompt.trim().length > 0);
+
+      return {
+        designMarkdown,
+        structuredJson,
+        aiPrompts,
+      } satisfies Step2Result;
+    }
+
+    if (step === 3) {
+      const step1Json = getStep1StructuredJson();
+      const step2Json = getStep2StructuredJson();
+      const resp = await geminiApi.generatePanelScriptStructured({
+        project_id: projectId,
+        step1_json: step1Json,
+        step2_json: step2Json,
+        num_chapters: Number(numChapters) || 3,
+        target_total_pages: (targetPages || 'auto').trim() || 'auto',
+        genre_tone: mangaGenre || 'Shonen action',
+        art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+        max_panels_per_page: Number(maxPanelsPerPage) || 6,
+        special_requests: specialRequests || 'None',
+      });
+
+      return {
+        scriptMarkdown: resp.data.script_markdown || '',
+        structuredJson: (resp.data.structured_json as Record<string, unknown>) || null,
+      } satisfies Step3Result;
+    }
+
+    const step3Markdown = step3.data?.scriptMarkdown || '';
+    const panels = parseStep3PanelsFromMarkdown(step3Markdown);
+    if (!panels.length) {
+      throw new Error('No AI Image Prompt blocks found in Step 3 output. Please regenerate Step 3 with panel prompts.');
+    }
+
+    const panelStates: Record<string, Step4PanelState> = {};
+    panels.forEach((panel) => {
+      panelStates[panel.id] = {
+        status: 'idle',
+        imageUrl: null,
+        error: null,
+      };
+    });
+
+    return {
+      panels,
+      panelStates,
+      isGenerating: false,
+    } satisfies Step4Result;
+  };
+
+  const getStepCacheKey = (step: StepKey): string => {
+    const baseInputs = {
+      storyText: storyText.trim(),
+      mainCharacters,
+      numChapters,
+      targetPages,
+      mangaGenre,
+      artStyle,
+      maxPanelsPerPage,
+      specialRequests,
+    };
+
+    if (step === 1) {
+      return JSON.stringify({ step, baseInputs });
+    }
+
+    if (step === 2) {
+      return JSON.stringify({ step, baseInputs, step1: step1.data });
+    }
+
+    if (step === 3) {
+      return JSON.stringify({ step, baseInputs, step2: step2.data });
+    }
+
+    return JSON.stringify({ step, baseInputs, step3: step3.data });
+  };
+
+  const getCooldownSeconds = (step: StepKey): number => {
+    const remainingMs = cooldownUntil[step] - nowMs;
+    return remainingMs > 0 ? Math.ceil(remainingMs / 1000) : 0;
+  };
+
+  const step1JsonStatus = useCallback(() => {
+    if (!step1.data) return 'pending';
+    if (step1.isApproved) return 'approved';
+    if (step1.isLoading) return 'processing';
+    return 'review_pending';
+  }, [step1.data, step1.isApproved, step1.isLoading]);
+
+  const projectSnapshot = useMemo(() => {
+    const fallbackSnapshot = {
+      project_id: projectId || 'manga_project_001',
+      project_status: step4.isApproved ? 'completed' : 'in_progress',
+      user_inputs: {
+        story_content: storyText,
+        genre: mangaGenre,
+        tone: mangaGenre,
+        art_style_reference: artStyle,
+        max_panels_per_page: Number(maxPanelsPerPage) || 6,
+        user_customizations: {
+          special_requests: specialRequests,
+        },
+      },
+      steps: step1.data
+        ? {
+            step_1_analysis: {
+              status: step1JsonStatus(),
+              last_updated: step1.lastUpdated,
+              data: {
+                analysis_markdown: step1.data.analysisMarkdown,
+                character_breakdown: step1.data.characterBreakdown,
+              },
+            },
+          }
+        : {},
+    };
+
+    if (!step1.data?.structuredJson && !step2.data?.structuredJson && !step3.data?.structuredJson) {
+      return fallbackSnapshot;
+    }
+
+    const apiSnapshot =
+      ((step3.data?.structuredJson as Step3StructuredJson | null) ||
+        (step2.data?.structuredJson as Step2StructuredJson | null) ||
+        (step1.data?.structuredJson as Step1StructuredJson | null) ||
+        {}) as ApiSnapshot;
+    const apiSteps = toRecord(apiSnapshot.steps);
+    const apiStep1 = toRecord(apiSteps.step_1_analysis);
+
+    const apiStep2 = toRecord(apiSteps.step_2_design);
+    const apiStep2ImageReview = toRecord(apiSteps.step_2_image_review);
+    const apiStep3 = toRecord(apiSteps.step_3_script);
+    const apiUserInputs = toRecord(apiSnapshot.user_inputs);
+    const apiUserCustomizations = toRecord(apiUserInputs.user_customizations);
+
+    return {
+      ...apiSnapshot,
+      project_id: projectId || String(apiSnapshot.project_id || 'manga_project_001'),
+      project_status: step4.isApproved ? 'completed' : 'in_progress',
+      user_inputs: {
+        ...apiUserInputs,
+        story_content: storyText,
+        genre: mangaGenre,
+        tone: mangaGenre,
+        art_style_reference: artStyle,
+        max_panels_per_page: Number(maxPanelsPerPage) || 6,
+        user_customizations: {
+          ...apiUserCustomizations,
+          special_requests: specialRequests,
+        },
+      },
+      steps: {
+        ...apiSteps,
+        step_1_analysis: {
+          ...apiStep1,
+          status: step1JsonStatus(),
+          last_updated: step1.lastUpdated,
+        },
+        ...(step2.data
+          ? {
+              step_2_design: {
+                ...apiStep2,
+                status: step2.isApproved ? 'approved' : step2.isLoading ? 'processing' : 'review_pending',
+                last_updated: step2.lastUpdated,
+                data: {
+                  ...toRecord(apiStep2.data),
+                  design_markdown: step2.data.designMarkdown,
+                },
+              },
+            }
+          : {}),
+        ...(step3.data
+          ? {
+              step_3_script: {
+                ...apiStep3,
+                status: step3.isApproved ? 'approved' : step3.isLoading ? 'processing' : 'review_pending',
+                last_updated: step3.lastUpdated,
+                data: {
+                  ...toRecord(apiStep3.data),
+                  script_markdown: step3.data.scriptMarkdown,
+                },
+              },
+            }
+          : {}),
+        ...(step2ImageReview.data
+          ? {
+              step_2_image_review: {
+                ...apiStep2ImageReview,
+                status: step2ImageReview.isApproved
+                  ? 'approved'
+                  : step2ImageReview.isLoading
+                    ? 'processing'
+                    : 'review_pending',
+                last_updated: step2ImageReview.lastUpdated,
+                data: {
+                  selected_character_references: getSelectedCharacterReferences(),
+                },
+              },
+            }
+          : {}),
+      },
+    };
+  }, [
+    projectId,
+    storyText,
+    mangaGenre,
+    artStyle,
+    maxPanelsPerPage,
+    specialRequests,
+    step1.data,
+    step1.lastUpdated,
+    step2.data,
+    step2.isApproved,
+    step2.isLoading,
+    step2.lastUpdated,
+    step2ImageReview.data,
+    step2ImageReview.isApproved,
+    step2ImageReview.isLoading,
+    step2ImageReview.lastUpdated,
+    step3.data,
+    step3.isApproved,
+    step3.isLoading,
+    step3.lastUpdated,
+    step4.isApproved,
+    getSelectedCharacterReferences,
+    step1JsonStatus,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(
+      `mohiom-project-${projectSnapshot.project_id}`,
+      JSON.stringify(projectSnapshot, null, 2)
+    );
+  }, [projectSnapshot]);
+
+  const handleGenerate = async (step: StepKey) => {
+    if (stepMap[step].locked) return;
+    const cooldownSeconds = getCooldownSeconds(step);
+    if (cooldownSeconds > 0) {
+      setStepState(step, (prev) => ({
+        ...prev,
+        error: `Rate limited. Retry in ${cooldownSeconds}s.`,
+      }));
+      return;
+    }
+
+    const cacheKey = getStepCacheKey(step);
+    const cached = approvedCacheRef.current[step];
+    if (cached && cached.key === cacheKey) {
+      setStepState(step, (prev) => ({ ...prev, data: cached.data, error: null }));
+      setActiveStep(step);
+      return;
+    }
+
+    if (step === 2) {
+      setStep2ImageReview(emptyStepState<CharacterImageReviewResult>(true));
+      setStep3((prev) => ({ ...prev, locked: true, isApproved: false }));
+      setStep4((prev) => ({ ...prev, locked: true, isApproved: false }));
+    }
+
+    setGlobalError(null);
+    setStepState(step, (prev) => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      const data = await buildStepPayload(step);
+      setStepState(step, (prev) => ({
+        ...prev,
+        data,
+        isLoading: false,
+        lastUpdated: new Date().toISOString(),
+      }));
+      setActiveStep(step);
+    } catch (err: unknown) {
+      const apiError = toApiError(err);
+      const retryAfterSeconds = apiError.retryAfterSeconds;
+      if (apiError.status === 429 && typeof retryAfterSeconds === 'number') {
+        setCooldownUntil((prev) => ({
+          ...prev,
+          [step]: Date.now() + retryAfterSeconds * 1000,
+        }));
+      }
+
+      const retryHint =
+        apiError.status === 429 && typeof retryAfterSeconds === 'number'
+          ? ` Retry in ${Math.ceil(retryAfterSeconds)}s.`
+          : '';
+
+      setStepState(step, (prev) => ({
+        ...prev,
+        isLoading: false,
+        error: `${apiError.message}${retryHint}`.trim(),
+      }));
+    }
+  };
+
+  const handleApprove = (step: StepKey) => {
+    const cacheKey = getStepCacheKey(step);
+    const data = stepMap[step].data;
+    if (data) {
+      approvedCacheRef.current[step] = { key: cacheKey, data };
+    }
+
+    setStepState(step, (prev) => ({
+      ...prev,
+      isApproved: true,
+      locked: true,
+      lastUpdated: new Date().toISOString(),
+    }));
+
+    if (step === 2) {
+      setStep2ImageReview((prev) => ({ ...prev, locked: false }));
+      return;
+    }
+
+    const nextStep = (step + 1) as StepKey;
+    if (nextStep <= 4) {
+      setStepState(nextStep, (prev) => ({ ...prev, locked: false }));
+      setActiveStep(nextStep);
+    }
+  };
+
+  const handleRetry = (step: StepKey) => {
+    setStepState(step, (prev) => ({
+      ...prev,
+      data: null,
+      isApproved: false,
+      error: null,
+      lastUpdated: null,
+    }));
+    handleGenerate(step);
+  };
+
+  const handleGenerateCharacterReferences = async () => {
+    if (step2ImageReview.locked || step2ImageReview.isLoading || !step2.data) return;
+
+    const characters = extractStep2Characters();
+    if (!characters.length) {
+      setStep2ImageReview((prev) => ({
+        ...prev,
+        error: 'No character prompts found in Step 2 structured JSON.',
+      }));
+      return;
+    }
+
+    setStep2ImageReview((prev) => ({
+      ...prev,
+      isLoading: true,
+      error: null,
+      data: {
+        characters,
+        isGenerating: true,
+      },
+    }));
+
+    const generatedCharacters = await Promise.all(
+      characters.map(async (character) => {
+        try {
+          const imageUrl = await fetchImageFromAI(character.prompt);
+          const candidateId = `${character.characterId}-${Date.now()}`;
+          return {
+            ...character,
+            status: 'success' as const,
+            candidates: [
+              {
+                id: candidateId,
+                imageUrl,
+                createdAt: new Date().toISOString(),
+              },
+            ],
+            selectedCandidateId: candidateId,
+          };
+        } catch (error) {
+          return {
+            ...character,
+            status: 'error' as const,
+            error: error instanceof Error ? error.message : 'Failed to generate image.',
+          };
+        }
+      })
+    );
+
+    setStep2ImageReview((prev) => ({
+      ...prev,
+      isLoading: false,
+      lastUpdated: new Date().toISOString(),
+      data: {
+        characters: generatedCharacters,
+        isGenerating: false,
+      },
+    }));
+  };
+
+  const handleRegenerateCharacterImage = async (characterId: string) => {
+    if (!step2ImageReview.data || step2ImageReview.data.isGenerating) return;
+    const target = step2ImageReview.data.characters.find((character) => character.characterId === characterId);
+    if (!target) return;
+
+    setStep2ImageReview((prev) => {
+      if (!prev.data) return prev;
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          isGenerating: true,
+          characters: prev.data.characters.map((character) =>
+            character.characterId === characterId
+              ? { ...character, status: 'loading', error: null }
+              : character
+          ),
+        },
+      };
+    });
+
+    try {
+      const imageUrl = await fetchImageFromAI(target.prompt);
+      const candidateId = `${target.characterId}-${Date.now()}`;
+
+      setStep2ImageReview((prev) => {
+        if (!prev.data) return prev;
+        return {
+          ...prev,
+          lastUpdated: new Date().toISOString(),
+          data: {
+            ...prev.data,
+            isGenerating: false,
+            characters: prev.data.characters.map((character) =>
+              character.characterId === characterId
+                ? {
+                    ...character,
+                    status: 'success',
+                    error: null,
+                    candidates: [
+                      ...character.candidates,
+                      {
+                        id: candidateId,
+                        imageUrl,
+                        createdAt: new Date().toISOString(),
+                      },
+                    ],
+                    selectedCandidateId: candidateId,
+                  }
+                : character
+            ),
+          },
+        };
+      });
+    } catch (error) {
+      setStep2ImageReview((prev) => {
+        if (!prev.data) return prev;
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            isGenerating: false,
+            characters: prev.data.characters.map((character) =>
+              character.characterId === characterId
+                ? {
+                    ...character,
+                    status: 'error',
+                    error: error instanceof Error ? error.message : 'Failed to regenerate image.',
+                  }
+                : character
+            ),
+          },
+        };
+      });
+    }
+  };
+
+  const handleSelectCharacterCandidate = (characterId: string, candidateId: string) => {
+    setStep2ImageReview((prev) => {
+      if (!prev.data) return prev;
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          characters: prev.data.characters.map((character) =>
+            character.characterId === characterId ? { ...character, selectedCandidateId: candidateId } : character
+          ),
+        },
+      };
+    });
+  };
+
+  const handleApproveCharacterReferences = () => {
+    if (!step2ImageReview.data) return;
+    const missing = step2ImageReview.data.characters.filter((character) => !character.selectedCandidateId);
+    if (missing.length) {
+      setStep2ImageReview((prev) => ({
+        ...prev,
+        error: 'Please select one final image for every character before approving.',
+      }));
+      return;
+    }
+
+    setStep2ImageReview((prev) => ({
+      ...prev,
+      isApproved: true,
+      locked: true,
+      error: null,
+      lastUpdated: new Date().toISOString(),
+    }));
+    setStep3((prev) => ({ ...prev, locked: false }));
+    setActiveStep(3);
+  };
+
+  const handleRetryCharacterReferences = () => {
+    setStep2ImageReview((prev) => ({
+      ...prev,
+      data: null,
+      isApproved: false,
+      isLoading: false,
+      error: null,
+      lastUpdated: null,
+    }));
+    setStep3((prev) => ({ ...prev, locked: true }));
+  };
+
+  const generatePanelImages = async (
+    panelsArray: Step4Panel[],
+    options?: { batchSize?: number; delayMs?: number }
+  ) => {
+    const batchSize = Math.max(1, options?.batchSize ?? 2);
+    const delayMs = Math.max(0, options?.delayMs ?? 10000);
+
+    for (let i = 0; i < panelsArray.length; i += batchSize) {
+      const batch = panelsArray.slice(i, i + batchSize);
+
+      setStep4((prev) => {
+        if (!prev.data) return prev;
+        const nextStates = { ...prev.data.panelStates };
+        batch.forEach((panel) => {
+          const prevState = nextStates[panel.id];
+          nextStates[panel.id] = {
+            status: 'loading',
+            imageUrl: prevState?.imageUrl || null,
+            error: null,
+          };
+        });
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            panelStates: nextStates,
+          },
+        };
+      });
+
+      const results = await Promise.all(
+        batch.map(async (panel) => {
+          try {
+            const imageUrl = await fetchImageFromAI(panel.aiImagePrompt);
+            return {
+              id: panel.id,
+              status: 'success' as const,
+              imageUrl,
+              error: null,
+            };
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Image generation failed.';
+            return {
+              id: panel.id,
+              status: 'error' as const,
+              imageUrl: null,
+              error: message,
+            };
+          }
+        })
+      );
+
+      setStep4((prev) => {
+        if (!prev.data) return prev;
+        const nextStates = { ...prev.data.panelStates };
+        results.forEach((result) => {
+          nextStates[result.id] = {
+            status: result.status,
+            imageUrl: result.imageUrl,
+            error: result.error,
+          };
+        });
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            panelStates: nextStates,
+          },
+          lastUpdated: new Date().toISOString(),
+        };
+      });
+
+      const hasMore = i + batchSize < panelsArray.length;
+      if (hasMore) {
+        await sleep(delayMs);
+      }
+    }
+  };
+
+  const handleStartFullGeneration = async () => {
+    if (!step4.data || step4.data.isGenerating) return;
+
+    const targets = step4.data.panels.filter((panel) => {
+      const state = step4.data?.panelStates[panel.id];
+      return state?.status === 'idle' || state?.status === 'error';
+    });
+
+    if (!targets.length) return;
+
+    setStep4((prev) => {
+      if (!prev.data) return prev;
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          isGenerating: true,
+        },
+        error: null,
+      };
+    });
+
+    try {
+      await generatePanelImages(targets, { batchSize: 2, delayMs: 10000 });
+    } finally {
+      setStep4((prev) => {
+        if (!prev.data) return prev;
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            isGenerating: false,
+          },
+        };
+      });
+    }
+  };
+
+  const handleRegeneratePanel = async (panelId: string) => {
+    if (!step4.data || step4.data.isGenerating) return;
+    const panel = step4.data.panels.find((entry) => entry.id === panelId);
+    if (!panel) return;
+
+    setStep4((prev) => {
+      if (!prev.data) return prev;
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          isGenerating: true,
+        },
+        error: null,
+      };
+    });
+
+    try {
+      await generatePanelImages([panel], { batchSize: 1, delayMs: 0 });
+    } finally {
+      setStep4((prev) => {
+        if (!prev.data) return prev;
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            isGenerating: false,
+          },
+        };
+      });
+    }
+  };
+
+  const step4PanelsByPage = useMemo(() => {
+    if (!step4.data) return [] as Array<[number, Step4Panel[]]>;
+    const pageMap = new Map<number, Step4Panel[]>();
+
+    step4.data.panels.forEach((panel) => {
+      const existing = pageMap.get(panel.pageNumber) || [];
+      existing.push(panel);
+      pageMap.set(panel.pageNumber, existing);
+    });
+
+    return Array.from(pageMap.entries())
+      .map(([pageNumber, panels]) => [
+        pageNumber,
+        panels.sort((a, b) => a.panelNumber - b.panelNumber),
+      ] as [number, Step4Panel[]])
+      .sort((a, b) => a[0] - b[0]);
+  }, [step4.data]);
+
+  const step4Stats = useMemo(() => {
+    const states = step4.data?.panelStates || {};
+    const list = Object.values(states);
+    return {
+      total: step4.data?.panels.length || 0,
+      success: list.filter((entry) => entry.status === 'success').length,
+      loading: list.filter((entry) => entry.status === 'loading').length,
+      error: list.filter((entry) => entry.status === 'error').length,
+    };
+  }, [step4.data]);
+
+  const copyProjectJson = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(projectSnapshot, null, 2));
+      setJsonCopied(true);
+      window.setTimeout(() => setJsonCopied(false), 1500);
+    } catch {
+      setGlobalError('Failed to copy JSON to clipboard.');
+    }
+  };
+
+  const downloadProjectJson = () => {
+    try {
+      const safeProjectId = (projectSnapshot.project_id || 'manga_project_001')
+        .toString()
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]/g, '_');
+      const now = new Date();
+      const y = now.getFullYear().toString();
+      const m = (now.getMonth() + 1).toString().padStart(2, '0');
+      const d = now.getDate().toString().padStart(2, '0');
+      const hh = now.getHours().toString().padStart(2, '0');
+      const mm = now.getMinutes().toString().padStart(2, '0');
+      const versionSuffix = `_${y}${m}${d}_${hh}${mm}`;
+      const fileName = `${safeProjectId || 'manga_project_001'}${versionSuffix}.json`;
+      const jsonContent = JSON.stringify(projectSnapshot, null, 2);
+      const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+
+      setJsonDownloaded(true);
+      setLastDownloadedJsonFile(fileName);
+      window.setTimeout(() => setJsonDownloaded(false), 1500);
+    } catch {
+      setGlobalError('Failed to download JSON file.');
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStoryFile(file);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      setStoryText(content || '');
+    };
+    reader.readAsText(file);
+  };
+
+  const mockImageUrl = (label: string) => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="960" viewBox="0 0 720 960"><rect width="100%" height="100%" fill="#f3f4f6"/><rect x="40" y="40" width="640" height="880" fill="#111827"/><text x="50%" y="50%" font-family="Arial" font-size="32" fill="#f3f4f6" text-anchor="middle">${label}</text></svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  };
+
+  const loadMockStepData = (step: StepKey) => {
+    const nowIso = new Date().toISOString();
+    setGlobalError(null);
+
+    if (step === 1) {
+      setStep1({
+        data: {
+          characterBreakdown: ['Hana - determined heroine', 'Ryo - cautious mentor', 'Kira - rival turned ally'],
+          analysisMarkdown:
+            '## Story Summary\nA rising hero faces early trials, meets a rival, and unites for the final chapter.\n\n## Themes\n- Courage vs fear\n- Found family\n- Legacy and choice',
+          structuredJson: null,
+        },
+        isLoading: false,
+        isApproved: false,
+        locked: false,
+        error: null,
+        lastUpdated: nowIso,
+      });
+      setStep2((prev) => ({ ...prev, locked: false }));
+      setActiveStep(1);
+      return;
+    }
+
+    if (step === 2) {
+      setStep2({
+        data: {
+          designMarkdown:
+            '### Character 1: Hana\n- Outfit: layered travel cloak\n- Palette: midnight blue + white\n- AI Image Prompt Ready: heroine, cloak, confident stance\n\n### Character 2: Ryo\n- Outfit: sage robes\n- Palette: muted greens\n- AI Image Prompt Ready: mentor, staff, calm aura',
+          structuredJson: null,
+          aiPrompts: ['heroine, cloak, confident stance', 'mentor, staff, calm aura'],
+        },
+        isLoading: false,
+        isApproved: false,
+        locked: false,
+        error: null,
+        lastUpdated: nowIso,
+      });
+      setStep2ImageReview((prev) => ({ ...prev, locked: false }));
+      setStep3((prev) => ({ ...prev, locked: false }));
+      setActiveStep(2);
+      return;
+    }
+
+    if (step === 3) {
+      setStep3({
+        data: {
+          scriptMarkdown:
+            'Page 1\nPanel 1: Hana stands at the city gate.\nDialogue/SFX: "I will find the truth."\nAI Image Prompt: heroine at city gate, dramatic light\n\nPanel 2: Ryo watches from the shadows.\nDialogue/SFX: Whispered wind\nAI Image Prompt: mentor in shadows, moody alley',
+          structuredJson: null,
+        },
+        isLoading: false,
+        isApproved: false,
+        locked: false,
+        error: null,
+        lastUpdated: nowIso,
+      });
+      setStep4((prev) => ({ ...prev, locked: false }));
+      setActiveStep(3);
+      return;
+    }
+
+    const panels: Step4Panel[] = [
+      {
+        id: 'p1-n1',
+        pageNumber: 1,
+        panelNumber: 1,
+        contextLabel: 'Page 1, Panel 1',
+        dialogueSfx: '"I will find the truth."',
+        aiImagePrompt: 'heroine at city gate, dramatic light',
+      },
+      {
+        id: 'p1-n2',
+        pageNumber: 1,
+        panelNumber: 2,
+        contextLabel: 'Page 1, Panel 2',
+        dialogueSfx: 'Whispered wind',
+        aiImagePrompt: 'mentor in shadows, moody alley',
+      },
+      {
+        id: 'p2-n1',
+        pageNumber: 2,
+        panelNumber: 1,
+        contextLabel: 'Page 2, Panel 1',
+        dialogueSfx: 'A challenge appears.',
+        aiImagePrompt: 'rival enters, dynamic pose, street scene',
+      },
+    ];
+
+    const panelStates: Record<string, Step4PanelState> = {
+      'p1-n1': { status: 'success', imageUrl: mockImageUrl('Panel 1'), error: null },
+      'p1-n2': { status: 'idle', imageUrl: null, error: null },
+      'p2-n1': { status: 'error', imageUrl: null, error: 'Mock: generation failed.' },
+    };
+
+    setStep4({
+      data: {
+        panels,
+        panelStates,
+        isGenerating: false,
+      },
+      isLoading: false,
+      isApproved: false,
+      locked: false,
+      error: null,
+      lastUpdated: nowIso,
+    });
+    setActiveStep(4);
+  };
+
+  const loadMockCharacterReview = () => {
+    const nowIso = new Date().toISOString();
+    const characters: CharacterImageItem[] = [
+      {
+        characterId: 'hana',
+        name: 'Hana',
+        prompt: 'heroine, cloak, confident stance',
+        status: 'success',
+        error: null,
+        candidates: [
+          { id: 'hana-1', imageUrl: mockImageUrl('Hana A'), createdAt: nowIso },
+          { id: 'hana-2', imageUrl: mockImageUrl('Hana B'), createdAt: nowIso },
+        ],
+        selectedCandidateId: 'hana-1',
+      },
+      {
+        characterId: 'ryo',
+        name: 'Ryo',
+        prompt: 'mentor, staff, calm aura',
+        status: 'success',
+        error: null,
+        candidates: [{ id: 'ryo-1', imageUrl: mockImageUrl('Ryo'), createdAt: nowIso }],
+        selectedCandidateId: 'ryo-1',
+      },
+    ];
+
+    setStep2ImageReview({
+      data: { characters, isGenerating: false },
+      isLoading: false,
+      isApproved: false,
+      locked: false,
+      error: null,
+      lastUpdated: nowIso,
+    });
+  };
+
+  const loadMockPipeline = () => {
+    loadMockStepData(1);
+    loadMockStepData(2);
+    loadMockCharacterReview();
+    loadMockStepData(3);
+    loadMockStepData(4);
+    setActiveStep(0);
+  };
+
+  const value: ComicGenerationContextValue = {
+    projectId,
+    storyFile,
+    storyText,
+    mainCharacters,
+    numChapters,
+    targetPages,
+    mangaGenre,
+    artStyle,
+    maxPanelsPerPage,
+    specialRequests,
+    step1,
+    step2,
+    step2ImageReview,
+    step3,
+    step4,
+    activeStep,
+    globalError,
+    jsonCopied,
+    jsonDownloaded,
+    lastDownloadedJsonFile,
+    stepMap,
+    step4PanelsByPage,
+    step4Stats,
+    projectSnapshot,
+    setProjectId,
+    setStoryText,
+    setMainCharacters,
+    setNumChapters,
+    setTargetPages,
+    setMangaGenre,
+    setArtStyle,
+    setMaxPanelsPerPage,
+    setSpecialRequests,
+    setActiveStep,
+    handleFileUpload,
+    handleGenerate,
+    handleApprove,
+    handleRetry,
+    handleGenerateCharacterReferences,
+    handleRegenerateCharacterImage,
+    handleSelectCharacterCandidate,
+    handleApproveCharacterReferences,
+    handleRetryCharacterReferences,
+    handleStartFullGeneration,
+    handleRegeneratePanel,
+    copyProjectJson,
+    downloadProjectJson,
+    getStep2PromptList,
+    getSelectedCharacterReferences,
+    getCooldownSeconds,
+    loadMockStepData,
+    loadMockCharacterReview,
+    loadMockPipeline,
+  };
+
+  return <ComicGenerationContext.Provider value={value}>{children}</ComicGenerationContext.Provider>;
+}
+
+export function useComicGeneration(): ComicGenerationContextValue {
+  const context = useContext(ComicGenerationContext);
+  if (!context) {
+    throw new Error('useComicGeneration must be used within a ComicGenerationProvider.');
+  }
+  return context;
+}
+
