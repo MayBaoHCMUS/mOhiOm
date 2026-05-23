@@ -52,30 +52,53 @@ function WizardContent() {
               </div>
               <div className="text-sm text-gray-600">Step {activeStep + 1} of {wizardSteps.length}</div>
             </div>
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-5 gap-3">
-              {wizardSteps.map((step) => {
-                const isActive = step.key === activeStep;
-                const isLocked = step.key >= 1 && step.key !== activeStep && stepMap[step.key as StepKey]?.locked;
-                return (
-                  <button
-                    key={step.key}
-                    type="button"
-                    onClick={() => !isLocked && setActiveStep(step.key)}
-                    className={`p-4 rounded-2xl text-left transition-transform ${
-                      isLocked
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : isActive
-                          ? 'bg-gray-900 text-white hover:scale-[1.02]'
-                          : 'bg-gray-100 text-gray-900 hover:scale-[1.02]'
-                    }`}
-                    aria-current={isActive ? 'step' : undefined}
-                    disabled={isLocked}
-                  >
-                    <p className="text-xs uppercase tracking-[0.2em]">{step.label}</p>
-                    <p className="text-sm font-semibold mt-1">{step.subtitle}</p>
-                  </button>
-                );
-              })}
+
+            <div className="mt-8">
+              <div className="flex items-start gap-4">
+                {wizardSteps.map((step, index) => {
+                  const isActive = step.key === activeStep;
+                  const isComplete = step.key < activeStep;
+                  const isLocked = step.key >= 1 && step.key !== activeStep && stepMap[step.key as StepKey]?.locked;
+
+                  return (
+                    <div key={step.key} className="flex-1 min-w-[140px]">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => !isLocked && setActiveStep(step.key)}
+                          className={`h-8 w-8 rounded-full border-2 flex items-center justify-center transition-transform ${
+                            isLocked
+                              ? 'border-gray-200 text-gray-300 cursor-not-allowed'
+                              : isComplete
+                                ? 'border-emerald-500 bg-emerald-500 text-white hover:scale-105'
+                                : isActive
+                                  ? 'border-blue-600 bg-blue-600 text-white hover:scale-105'
+                                  : 'border-gray-300 text-gray-400 hover:scale-105'
+                          }`}
+                          aria-current={isActive ? 'step' : undefined}
+                          disabled={isLocked}
+                        >
+                          {isComplete ? (
+                            <span className="material-symbols-outlined text-base">check</span>
+                          ) : (
+                            <span className="text-xs font-semibold">{index + 1}</span>
+                          )}
+                        </button>
+                        {index < wizardSteps.length - 1 && (
+                          <div className={`h-1 w-full rounded-full ${isComplete ? 'bg-emerald-500' : 'bg-gray-200'}`} />
+                        )}
+                      </div>
+                      <div className="mt-4">
+                        <p className="text-[11px] uppercase tracking-[0.25em] text-gray-400">Step {index + 1}</p>
+                        <p className="text-sm font-semibold text-gray-900">{step.subtitle}</p>
+                        <p className={`text-xs mt-1 ${isComplete ? 'text-emerald-600' : isActive ? 'text-blue-600' : 'text-gray-400'}`}>
+                          {isComplete ? 'Completed' : isActive ? 'In Progress' : 'Pending'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </section>
 

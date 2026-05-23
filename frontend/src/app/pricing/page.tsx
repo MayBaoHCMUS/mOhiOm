@@ -78,12 +78,13 @@ export default function PricingPage() {
           <span className="material-symbols-outlined text-lg">close</span>
         </button>
         <div className="max-h-[88vh] overflow-y-auto px-6 pb-12 pt-10 md:px-10">
-          <div className="flex justify-center">
+          <div className="mb-12 flex flex-col items-center gap-6 text-center">
             <div className="flex items-center gap-2 rounded-full bg-surface-container-lowest p-1 text-xs font-semibold text-on-surface-variant">
               <button
                 type="button"
                 onClick={() => setBillingCadence('weekly')}
-                className={`rounded-full px-4 py-2 transition-transform ${
+                aria-pressed={billingCadence === 'weekly'}
+                className={`rounded-full px-5 py-2 transition-transform ${
                   billingCadence === 'weekly' ? 'bg-blue-600 text-white' : 'text-on-surface-variant hover:scale-105'
                 }`}
               >
@@ -92,76 +93,71 @@ export default function PricingPage() {
               <button
                 type="button"
                 onClick={() => setBillingCadence('monthly')}
-                className={`rounded-full px-4 py-2 transition-transform ${
+                aria-pressed={billingCadence === 'monthly'}
+                className={`rounded-full px-5 py-2 transition-transform ${
                   billingCadence === 'monthly' ? 'bg-blue-600 text-white' : 'text-on-surface-variant hover:scale-105'
                 }`}
               >
                 Monthly
               </button>
             </div>
-          </div>
-          <div className="text-center mb-16 mt-10">
-            <p className="text-xs uppercase tracking-[0.3em] text-on-surface-variant">Pricing</p>
-            <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6 text-on-surface">
-              Choose the perfect plan for your story.
-            </h2>
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-on-surface-variant">Pricing</p>
+              <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight text-on-surface">
+                Choose the perfect plan for your story.
+              </h2>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-24">
-            {pricingTiers.map((tier) => (
-              <div
-                key={tier.name}
-                className={`bg-surface-container-lowest p-8 rounded-2xl flex flex-col transition-all duration-300 ${
-                  tier.highlight
-                    ? 'hover:scale-[1.05] neon-purple-glow relative border-2 border-blue-500/20'
-                    : 'hover:scale-[1.02] hover:border-outline-variant/60 border border-transparent'
-                }`}
-              >
-                {tier.highlight && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-4 py-1 rounded-full text-xs font-bold tracking-tighter uppercase shadow-xl shadow-blue-200">
-                    Most Popular
-                  </div>
-                )}
-                <div className="mb-8">
-                  <span
-                    className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-widest uppercase mb-4 inline-block ${
-                      tier.highlight ? 'bg-blue-100 text-blue-700' : 'bg-surface-container'
-                    }`}
-                  >
-                    {tier.badge}
-                  </span>
-                  <h3 className="text-2xl font-bold mb-2">{tier.label}</h3>
-                  <div className="space-y-2">
+            {pricingTiers.map((tier) => {
+              const price = billingCadence === 'weekly' ? tier.weeklyPrice : tier.monthlyPrice;
+              const cadenceLabel = billingCadence === 'weekly' ? 'week' : 'month';
+
+              return (
+                <div
+                  key={tier.name}
+                  className={`bg-surface-container-lowest p-8 rounded-2xl flex flex-col transition-all duration-300 ${
+                    tier.highlight
+                      ? 'hover:scale-[1.05] neon-purple-glow relative border-2 border-blue-500/20'
+                      : 'hover:scale-[1.02] hover:border-outline-variant/60 border border-transparent'
+                  }`}
+                >
+                  {tier.highlight && (
+                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-4 py-1 rounded-full text-xs font-bold tracking-tighter uppercase shadow-xl shadow-blue-200">
+                      Most Popular
+                    </div>
+                  )}
+                  <div className="mb-8">
+                    <span
+                      className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-widest uppercase mb-4 inline-block ${
+                        tier.highlight ? 'bg-blue-100 text-blue-700' : 'bg-surface-container'
+                      }`}
+                    >
+                      {tier.badge}
+                    </span>
+                    <h3 className="text-2xl font-bold mb-2">{tier.label}</h3>
                     <div className="flex items-baseline gap-2">
-                      <span className={`text-4xl font-extrabold ${tier.accent}`}>
-                        {billingCadence === 'weekly' ? tier.weeklyPrice : tier.monthlyPrice}
-                      </span>
-                      <span className="text-on-surface-variant">
-                        {billingCadence === 'weekly' ? '/week' : '/month'}
-                      </span>
-                    </div>
-                    <div className="text-sm text-on-surface-variant">
-                      {billingCadence === 'weekly'
-                        ? `Monthly equivalent: ${tier.monthlyPrice}`
-                        : `Weekly equivalent: ${tier.weeklyPrice}`}
+                      <span className={`text-4xl font-extrabold ${tier.accent}`}>{price}</span>
+                      <span className="text-on-surface-variant">/{cadenceLabel}</span>
                     </div>
                   </div>
+                  <ul className="space-y-4 mb-10 flex-grow">
+                    {tier.features.map((feature) => (
+                      <li key={feature} className={`flex items-center gap-3 ${tier.highlight ? 'font-medium' : 'text-on-surface-variant'}`}>
+                        <span className={`material-symbols-outlined ${tier.highlight ? 'text-blue-600' : 'text-primary'} text-xl`}>
+                          check_circle
+                        </span>
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <button className={`w-full py-4 rounded-xl font-bold transition-all scale-100 active:scale-95 ${tier.ctaStyle}`}>
+                    {tier.cta}
+                  </button>
                 </div>
-                <ul className="space-y-4 mb-10 flex-grow">
-                  {tier.features.map((feature) => (
-                    <li key={feature} className={`flex items-center gap-3 ${tier.highlight ? 'font-medium' : 'text-on-surface-variant'}`}>
-                      <span className={`material-symbols-outlined ${tier.highlight ? 'text-blue-600' : 'text-primary'} text-xl`}>
-                        check_circle
-                      </span>
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-                <button className={`w-full py-4 rounded-xl font-bold transition-all scale-100 active:scale-95 ${tier.ctaStyle}`}>
-                  {tier.cta}
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <section className="bg-surface-container-low rounded-2xl p-8 md:p-12">
@@ -216,4 +212,3 @@ export default function PricingPage() {
     </div>
   );
 }
-
