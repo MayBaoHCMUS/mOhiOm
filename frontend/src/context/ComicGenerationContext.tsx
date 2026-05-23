@@ -78,6 +78,13 @@ export interface Step4Result {
   isGenerating: boolean;
 }
 
+export interface SetupValidationState {
+  isValid: boolean;
+  errorCount: number;
+  requiredComplete: number;
+  requiredTotal: number;
+}
+
 type StepData = Step1Result | Step2Result | Step3Result | Step4Result;
 
 interface ApprovedCacheEntry {
@@ -279,7 +286,10 @@ export interface ComicGenerationContextValue {
   step4PanelsByPage: Array<[number, Step4Panel[]]>;
   step4Stats: { total: number; success: number; loading: number; error: number };
   projectSnapshot: Record<string, unknown>;
+  setupValidation: SetupValidationState | null;
+  setupSubmitAttempted: boolean;
   setProjectId: (value: string) => void;
+  setStoryFile: (value: File | null) => void;
   setStoryText: (value: string) => void;
   setMainCharacters: (value: string) => void;
   setNumChapters: (value: string) => void;
@@ -289,6 +299,8 @@ export interface ComicGenerationContextValue {
   setMaxPanelsPerPage: (value: string) => void;
   setSpecialRequests: (value: string) => void;
   setActiveStep: (value: WizardStepKey) => void;
+  setSetupValidation: (value: SetupValidationState) => void;
+  setSetupSubmitAttempted: (value: boolean) => void;
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleGenerate: (step: StepKey) => Promise<void>;
   handleApprove: (step: StepKey) => void;
@@ -328,6 +340,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   const [artStyle, setArtStyle] = useState('Japanese manga style, detailed');
   const [maxPanelsPerPage, setMaxPanelsPerPage] = useState('6');
   const [specialRequests, setSpecialRequests] = useState('None');
+  const [setupValidation, setSetupValidation] = useState<SetupValidationState | null>(null);
+  const [setupSubmitAttempted, setSetupSubmitAttempted] = useState(false);
 
   const [step1, setStep1] = useState<StepState<Step1Result>>(emptyStepState(false));
   const [step2, setStep2] = useState<StepState<Step2Result>>(emptyStepState(true));
@@ -732,7 +746,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     const apiStep2 = toRecord(apiSteps.step_2_design);
     const apiStep2ImageReview = toRecord(apiSteps.step_2_image_review);
     const apiStep3 = toRecord(apiSteps.step_3_script);
-    const apiUserInputs = toRecord(apiSnapshot.user_inputs);
+    const apiUserInputs = toRecord((apiSnapshot.user as { inputs?: Record<string, unknown> } | undefined)?.inputs);
     const apiUserCustomizations = toRecord(apiUserInputs.user_customizations);
 
     return {
@@ -1538,7 +1552,10 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     step4PanelsByPage,
     step4Stats,
     projectSnapshot,
+    setupValidation,
+    setupSubmitAttempted,
     setProjectId,
+    setStoryFile,
     setStoryText,
     setMainCharacters,
     setNumChapters,
@@ -1548,6 +1565,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     setMaxPanelsPerPage,
     setSpecialRequests,
     setActiveStep,
+    setSetupValidation,
+    setSetupSubmitAttempted,
     handleFileUpload,
     handleGenerate,
     handleApprove,

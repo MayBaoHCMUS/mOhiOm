@@ -19,13 +19,14 @@ const wizardSteps = [
 ] as const;
 
 function WizardContent() {
-  const { activeStep, setActiveStep, stepMap } = useComicGeneration();
+  const { activeStep, setActiveStep, stepMap, setupValidation, setSetupSubmitAttempted } = useComicGeneration();
 
   const current = wizardSteps.find((step) => step.key === activeStep) ?? wizardSteps[0];
   const CurrentComponent = current.Component;
 
+  const isSetupInvalid = activeStep === 0 && setupValidation && !setupValidation.isValid;
   const isNextDisabled =
-    activeStep === 4 || (activeStep >= 1 && stepMap[activeStep as StepKey]?.locked);
+    activeStep === 4 || (activeStep >= 1 && stepMap[activeStep as StepKey]?.locked) || Boolean(isSetupInvalid);
 
   const handlePrevious = () => {
     if (activeStep === 0) return;
@@ -33,6 +34,10 @@ function WizardContent() {
   };
 
   const handleNext = () => {
+    if (isSetupInvalid) {
+      setSetupSubmitAttempted(true);
+      return;
+    }
     if (isNextDisabled) return;
     setActiveStep((activeStep + 1) as WizardStepKey);
   };
@@ -123,6 +128,7 @@ function WizardContent() {
               type="button"
               onClick={handleNext}
               disabled={isNextDisabled}
+              title={isSetupInvalid ? 'Please fix errors before continuing' : undefined}
               className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
                 isNextDisabled
                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
