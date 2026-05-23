@@ -43,6 +43,7 @@ export default function Step1() {
     artStyle,
     maxPanelsPerPage,
     specialRequests,
+    localImageApiUrl,
     step1,
     globalError,
     setProjectId,
@@ -55,6 +56,7 @@ export default function Step1() {
     setArtStyle,
     setMaxPanelsPerPage,
     setSpecialRequests,
+    setLocalImageApiUrl,
     handleGenerate,
     getCooldownSeconds,
     loadMockPipeline,
@@ -273,7 +275,7 @@ export default function Step1() {
 
       <div className="mt-6 flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600">
         <span>Complete {requiredComplete} of {requiredTotal} required fields</span>
-        <span className="text-xs text-gray-500">9 total inputs</span>
+        <span className="text-xs text-gray-500">10 total inputs</span>
       </div>
 
       {setupSubmitAttempted && errorCount > 0 ? (
@@ -562,6 +564,23 @@ export default function Step1() {
           </FormField>
 
           <FormField
+            id="image-api-url"
+            label="Image API URL"
+            optionalTag
+            helperText="Local image generation endpoint (e.g., https://.../generate). Required for image generation."
+            tooltip="Stored for this browser session only. The app will POST prompts to this URL."
+          >
+            <input
+              id="image-api-url"
+              value={localImageApiUrl}
+              onChange={(event) => setLocalImageApiUrl(event.target.value)}
+              className="mt-2 w-full rounded-2xl bg-white px-4 py-3 text-sm text-gray-900 focus:outline-none border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              placeholder="https://your-tunnel.loca.lt/generate"
+              disabled={isFormDisabled}
+            />
+          </FormField>
+
+          <FormField
             id="special-requests"
             label="Special requests"
             optionalTag
@@ -611,4 +630,3 @@ export default function Step1() {
     </section>
   );
 }
-

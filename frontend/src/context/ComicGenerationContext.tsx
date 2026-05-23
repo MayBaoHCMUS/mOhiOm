@@ -142,28 +142,43 @@ const emptyStepState = <T,>(locked: boolean): StepState<T> => ({
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
-const fetchImageFromAI = async (imagePrompt: string): Promise<string> => {
-  try {
-    const response = await geminiApi.generatePanelImage({
-      image_prompt: imagePrompt,
-      width: 720,
-      height: 960,
-    });
+const fetchImageFromAI = async (imagePrompt: string, localImageApiUrl?: string): Promise<string> => {
+  if (localImageApiUrl) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 120000);
 
-    const imageUrl = response.data.image_data_url || response.data.image_url;
-    if (!imageUrl || typeof imageUrl !== 'string') {
-      throw new Error('Backend did not return a valid image payload.');
+    try {
+      const response = await fetch('/api/image-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: localImageApiUrl,
+          prompt: imagePrompt,
+          negative_prompt: 'lowres, bad anatomy',
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Local image API error (${response.status}).`);
+      }
+
+      const result = (await response.json()) as { status?: string; image_base64?: string; message?: string };
+      if (result.status !== 'success' || !result.image_base64) {
+        throw new Error(result.message || 'Local image API did not return an image.');
+      }
+
+      if (result.image_base64.startsWith('data:')) {
+        return result.image_base64;
+      }
+
+      return `data:image/png;base64,${result.image_base64}`;
+    } finally {
+      window.clearTimeout(timeout);
     }
-
-    return imageUrl;
-  } catch (error) {
-    const apiError = toApiError(error);
-    const retryHint =
-      apiError.status === 429 && typeof apiError.retryAfterSeconds === 'number'
-        ? ` Retry in ${Math.ceil(apiError.retryAfterSeconds)}s.`
-        : '';
-    throw new Error(`${apiError.message}${retryHint}`.trim());
   }
+
+  throw new Error('Image API URL is not set. Please provide one in Step 1 before generating images.');
 };
 
 const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {
@@ -272,6 +287,7 @@ export interface ComicGenerationContextValue {
   artStyle: string;
   maxPanelsPerPage: string;
   specialRequests: string;
+  localImageApiUrl: string;
   step1: StepState<Step1Result>;
   step2: StepState<Step2Result>;
   step2ImageReview: StepState<CharacterImageReviewResult>;
@@ -298,6 +314,7 @@ export interface ComicGenerationContextValue {
   setArtStyle: (value: string) => void;
   setMaxPanelsPerPage: (value: string) => void;
   setSpecialRequests: (value: string) => void;
+  setLocalImageApiUrl: (value: string) => void;
   setActiveStep: (value: WizardStepKey) => void;
   setSetupValidation: (value: SetupValidationState) => void;
   setSetupSubmitAttempted: (value: boolean) => void;
@@ -340,6 +357,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   const [artStyle, setArtStyle] = useState('Japanese manga style, detailed');
   const [maxPanelsPerPage, setMaxPanelsPerPage] = useState('6');
   const [specialRequests, setSpecialRequests] = useState('None');
+  const [localImageApiUrl, setLocalImageApiUrl] = useState('');
   const [setupValidation, setSetupValidation] = useState<SetupValidationState | null>(null);
   const [setupSubmitAttempted, setSetupSubmitAttempted] = useState(false);
 
@@ -368,6 +386,23 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.sessionStorage.getItem('mohiom-image-api-url');
+    if (stored) {
+      setLocalImageApiUrl(stored);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!localImageApiUrl.trim()) {
+      window.sessionStorage.removeItem('mohiom-image-api-url');
+      return;
+    }
+    window.sessionStorage.setItem('mohiom-image-api-url', localImageApiUrl.trim());
+  }, [localImageApiUrl]);
 
   const stepMap: Record<StepKey, StepState<unknown>> = useMemo(
     () => ({ 1: step1, 2: step2, 3: step3, 4: step4 }),
@@ -972,7 +1007,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     const generatedCharacters = await Promise.all(
       characters.map(async (character) => {
         try {
-          const imageUrl = await fetchImageFromAI(character.prompt);
+          const imageUrl = await fetchImageFromAI(character.prompt, localImageApiUrl || undefined);
           const candidateId = `${character.characterId}-${Date.now()}`;
           return {
             ...character,
@@ -1029,7 +1064,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     });
 
     try {
-      const imageUrl = await fetchImageFromAI(target.prompt);
+      const imageUrl = await fetchImageFromAI(target.prompt, localImageApiUrl || undefined);
       const candidateId = `${target.characterId}-${Date.now()}`;
 
       setStep2ImageReview((prev) => {
@@ -1166,7 +1201,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       const results = await Promise.all(
         batch.map(async (panel) => {
           try {
-            const imageUrl = await fetchImageFromAI(panel.aiImagePrompt);
+            const imageUrl = await fetchImageFromAI(panel.aiImagePrompt, localImageApiUrl || undefined);
             return {
               id: panel.id,
               status: 'success' as const,
@@ -1538,6 +1573,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     artStyle,
     maxPanelsPerPage,
     specialRequests,
+    localImageApiUrl,
     step1,
     step2,
     step2ImageReview,
@@ -1564,6 +1600,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     setArtStyle,
     setMaxPanelsPerPage,
     setSpecialRequests,
+    setLocalImageApiUrl,
     setActiveStep,
     setSetupValidation,
     setSetupSubmitAttempted,
