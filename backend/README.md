@@ -77,6 +77,15 @@ DEBUG=False
 CORS_ORIGINS=["http://localhost:3000"]
 ```
 
+Optional 9Router text generation (replaces Gemini when `NINE_ROUTER_URL` is set):
+
+```env
+NINE_ROUTER_URL=https://your-tunnel.trycloudflare.com/v1
+NINE_ROUTER_API_KEY=your_9router_api_key
+NINE_ROUTER_MODEL=kr/claude-sonnet-4.5
+NINE_ROUTER_TIMEOUT_SECONDS=60
+```
+
 ## Database
 
 ### Using Docker Compose
@@ -86,4 +95,3 @@ See the `database/` folder for MongoDB setup with Docker.
 ### Local MongoDB
 
 Make sure MongoDB is running on `localhost:27017`
-

@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     GEMINI_MAX_QUEUE_SIZE: int = 8
     GEMINI_MAX_QUEUE_WAIT_SECONDS: float = 8.0
 
+    # 9Router (optional text generation provider)
+    NINE_ROUTER_URL: str = ""
+    NINE_ROUTER_API_KEY: str = ""
+    NINE_ROUTER_MODEL: str = "kr/claude-sonnet-4.5"
+    NINE_ROUTER_TIMEOUT_SECONDS: float = 60.0
+
     # CORS
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",

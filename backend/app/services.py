@@ -94,6 +94,44 @@ def _slugify_identifier(value: str, fallback: str) -> str:
     return cleaned or fallback
 
 
+def _normalize_nine_router_url(raw_url: str) -> str:
+    """Normalize a 9Router base URL by trimming whitespace and trailing slashes."""
+    cleaned = (raw_url or "").strip()
+    return cleaned.rstrip("/")
+
+
+def _parse_nine_router_sse(raw_text: str) -> str:
+    """Parse SSE-style chat.completion.chunk responses into a single string."""
+    if not raw_text:
+        return ""
+
+    chunks: list[str] = []
+    for line in raw_text.splitlines():
+        cleaned = line.strip()
+        if not cleaned.startswith("data:"):
+            continue
+        payload = cleaned[5:].strip()
+        if not payload or payload == "[DONE]":
+            continue
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        choices = data.get("choices") if isinstance(data, dict) else None
+        if not isinstance(choices, list) or not choices:
+            continue
+        first_choice = choices[0] if isinstance(choices[0], dict) else None
+        if not isinstance(first_choice, dict):
+            continue
+        delta = first_choice.get("delta")
+        if isinstance(delta, dict) and delta.get("content"):
+            chunks.append(str(delta.get("content")))
+        elif first_choice.get("text"):
+            chunks.append(str(first_choice.get("text")))
+
+    return "".join(chunks)
+
+
 def _extract_main_character_names_from_step1(step1_json: dict) -> list[str]:
     if not isinstance(step1_json, dict):
         return []
@@ -239,25 +277,25 @@ def _build_step1_fallback_snapshot(
                         "supporting_characters": [],
                         "plot": plot_line,
                         "arcs": [],
-                        "structure": "",
+                        "structure": ""
                     },
                     "chapters_structure": [
                         {
                             "chapter_number": idx + 1,
                             "title": f"Chapter {idx + 1}",
                             "pages_estimate": "auto",
-                            "scenes": [],
+                            "scenes": []
                         }
                         for idx in range(max(1, num_chapters))
                     ],
                     "final_statistics": {
                         "total_chapters": max(1, num_chapters),
                         "total_pages": 0,
-                        "total_scenes": total_scenes_guess,
+                        "total_scenes": total_scenes_guess
                     },
                     "analysis_markdown": analysis_markdown,
                     "parser_note": "Fallback JSON generated because model output was not valid JSON.",
-                },
+                }
             }
         },
     }
@@ -343,7 +381,7 @@ def _build_step3_fallback_snapshot(
                         "total_image_prompts": 0,
                         "chapters_completed": 0,
                         "chapters_target": 0,
-                        "deviations": "",
+                        "deviations": ""
                     },
                     "script_markdown": script_markdown,
                     "parser_note": "Fallback JSON generated because model output was not valid JSON.",
@@ -358,6 +396,16 @@ class GeminiService:
 
     def __init__(self, model: str | None = None):
         """Initialize Gemini API with API key from settings."""
+        self.use_nine_router = bool(settings.NINE_ROUTER_URL)
+        if self.use_nine_router:
+            self.nine_router_url = _normalize_nine_router_url(settings.NINE_ROUTER_URL)
+            if not self.nine_router_url:
+                raise ValueError("NINE_ROUTER_URL is set but empty.")
+            self.nine_router_api_key = settings.NINE_ROUTER_API_KEY
+            self.nine_router_model = settings.NINE_ROUTER_MODEL
+            self.nine_router_timeout = settings.NINE_ROUTER_TIMEOUT_SECONDS
+            return
+
         if genai is None:
             raise ImportError(
                 "google-genai is not installed. Run `pip install google-genai`."
@@ -379,6 +427,9 @@ class GeminiService:
         Returns:
             Generated text response
         """
+        if self.use_nine_router:
+            return await self._generate_text_nine_router(prompt)
+
         try:
             response = self.client.models.generate_content(
                 model=self.model_name, contents=prompt
@@ -416,6 +467,66 @@ class GeminiService:
         except Exception as exc:
             raise GeminiServiceError(f"Failed to generate text: {exc}") from exc
 
+    async def _generate_text_nine_router(self, prompt: str) -> str:
+        cleaned_prompt = (prompt or "").strip()
+        if not cleaned_prompt:
+            raise GeminiServiceError("Prompt is required.", status_code=400)
+
+        payload = {
+            "model": self.nine_router_model,
+            "messages": [{"role": "user", "content": cleaned_prompt}],
+        }
+        headers = {"Content-Type": "application/json"}
+        if self.nine_router_api_key:
+            headers["Authorization"] = f"Bearer {self.nine_router_api_key}"
+
+        try:
+            async with httpx.AsyncClient(timeout=self.nine_router_timeout) as client:
+                response = await client.post(
+                    f"{self.nine_router_url}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                )
+        except Exception as exc:
+            raise GeminiServiceError(f"9Router request failed: {exc}") from exc
+
+        if response.status_code >= 400:
+            snippet = response.text.strip()[:500]
+            message = f"9Router request failed with status {response.status_code}."
+            if snippet:
+                message = f"{message} Body preview: {snippet}"
+            raise GeminiServiceError(message, status_code=502)
+
+        try:
+            data = response.json()
+        except json.JSONDecodeError:
+            streamed_text = _parse_nine_router_sse(response.text)
+            if streamed_text:
+                return streamed_text
+            snippet = response.text.strip()[:500]
+            message = "9Router response parsing failed: received non-JSON content."
+            if snippet:
+                message = f"{message} Body preview: {snippet}"
+            raise GeminiServiceError(message, status_code=502)
+
+        choices = data.get("choices") if isinstance(data, dict) else None
+        if not isinstance(choices, list) or not choices:
+            raise GeminiServiceError("9Router response missing choices.", status_code=502)
+
+        first_choice = choices[0] if isinstance(choices[0], dict) else None
+        content = None
+        if isinstance(first_choice, dict):
+            message = first_choice.get("message")
+            if isinstance(message, dict):
+                content = message.get("content")
+            if not content:
+                content = first_choice.get("text")
+
+        if not content:
+            raise GeminiServiceError("9Router response missing message content.", status_code=502)
+
+        return str(content).strip()
+
     async def generate_panel_image_url(
         self,
         image_prompt: str,
@@ -431,7 +542,9 @@ class GeminiService:
         # Normalize and keep a concise prompt for better reliability.
         compact_prompt = re.sub(r"\s+", " ", cleaned_prompt)
         compact_prompt = re.sub(r"\*{1,3}", "", compact_prompt)
-        compact_prompt = re.sub(r"--[a-zA-Z0-9:_-]+(?:\s+[a-zA-Z0-9:./_-]+)?", "", compact_prompt)
+        compact_prompt = re.sub(
+            r"--[a-zA-Z0-9:_-]+(?:\s+[a-zA-Z0-9:./_-]+)?", "", compact_prompt
+        )
         compact_prompt = compact_prompt.strip()
         compact_prompt = compact_prompt[:280] if len(compact_prompt) > 280 else compact_prompt
         if not compact_prompt:
