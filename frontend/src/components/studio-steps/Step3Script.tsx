@@ -10,7 +10,6 @@ export default function Step3Script() {
     handleApprove,
     handleRetry,
     getCooldownSeconds,
-    loadMockStepData,
   } = useComicGeneration();
 
   const cooldownSeconds = getCooldownSeconds(3);
@@ -33,6 +32,15 @@ export default function Step3Script() {
         <div className="text-sm text-gray-600">Status: {statusLabel}</div>
       </div>
 
+      <div className="mt-6 rounded-3xl bg-gray-100 p-6">
+        <h3 className="text-lg font-semibold">Script output</h3>
+        {step3.data?.scriptMarkdown ? (
+          <pre className="mt-4 whitespace-pre-wrap text-sm text-gray-700">{step3.data.scriptMarkdown}</pre>
+        ) : (
+          <p className="mt-4 text-sm text-gray-500">Generate Step 3 to see the full script.</p>
+        )}
+      </div>
+
       <div className="mt-6 flex flex-wrap items-center gap-4">
         <button
           type="button"
@@ -49,13 +57,6 @@ export default function Step3Script() {
               : step3.data
                 ? 'Regenerate script'
                 : 'Generate script'}
-        </button>
-        <button
-          type="button"
-          onClick={() => loadMockStepData(3)}
-          className="px-6 py-3 rounded-2xl text-sm font-semibold transition-transform bg-gray-100 text-gray-900 hover:scale-105"
-        >
-          Load mock script
         </button>
         <button
           type="button"
@@ -79,15 +80,6 @@ export default function Step3Script() {
           </button>
         ) : null}
         {step3.error ? <span className="text-sm text-red-600">{step3.error}</span> : null}
-      </div>
-
-      <div className="mt-6 rounded-3xl bg-gray-100 p-6">
-        <h3 className="text-lg font-semibold">Script output</h3>
-        {step3.data?.scriptMarkdown ? (
-          <pre className="mt-4 whitespace-pre-wrap text-sm text-gray-700">{step3.data.scriptMarkdown}</pre>
-        ) : (
-          <p className="mt-4 text-sm text-gray-500">Generate Step 3 to see the full script.</p>
-        )}
       </div>
     </section>
   );

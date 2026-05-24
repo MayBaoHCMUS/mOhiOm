@@ -10,7 +10,6 @@ export default function Step1Analysis() {
     handleApprove,
     handleRetry,
     getCooldownSeconds,
-    loadMockStepData,
   } = useComicGeneration();
 
   const cooldownSeconds = getCooldownSeconds(1);
@@ -31,54 +30,6 @@ export default function Step1Analysis() {
           <p className="mt-2 text-gray-600">Review narrative insights and character breakdowns.</p>
         </div>
         <div className="text-sm text-gray-600">Status: {statusLabel}</div>
-      </div>
-
-      <div className="mt-6 flex flex-wrap items-center gap-4">
-        <button
-          type="button"
-          onClick={() => handleGenerate(1)}
-          disabled={isGenerateDisabled}
-          className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
-            isGenerateDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-900 text-white hover:scale-105'
-          }`}
-        >
-          {step1.isLoading
-            ? 'Generating...'
-            : cooldownSeconds > 0
-              ? `Retry in ${cooldownSeconds}s`
-              : step1.data
-                ? 'Regenerate analysis'
-                : 'Generate analysis'}
-        </button>
-        <button
-          type="button"
-          onClick={() => loadMockStepData(1)}
-          className="px-6 py-3 rounded-2xl text-sm font-semibold transition-transform bg-gray-100 text-gray-900 hover:scale-105"
-        >
-          Load mock analysis
-        </button>
-        <button
-          type="button"
-          onClick={() => handleApprove(1)}
-          disabled={!step1.data || step1.isApproved}
-          className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
-            !step1.data || step1.isApproved
-              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              : 'bg-gray-100 text-gray-900 hover:scale-105'
-          }`}
-        >
-          {step1.isApproved ? 'Approved' : 'Approve analysis'}
-        </button>
-        {step1.error ? (
-          <button
-            type="button"
-            onClick={() => handleRetry(1)}
-            className="px-6 py-3 rounded-2xl text-sm font-semibold bg-gray-100 text-gray-900 hover:scale-105 transition-transform"
-          >
-            Retry
-          </button>
-        ) : null}
-        {step1.error ? <span className="text-sm text-red-600">{step1.error}</span> : null}
       </div>
 
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-6">
@@ -104,6 +55,47 @@ export default function Step1Analysis() {
             <p className="mt-4 text-sm text-gray-500">No character breakdown yet. Generate Step 1 first.</p>
           )}
         </div>
+      </div>
+
+      <div className="mt-6 flex flex-wrap items-center gap-4">
+        <button
+          type="button"
+          onClick={() => handleGenerate(1)}
+          disabled={isGenerateDisabled}
+          className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
+            isGenerateDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-900 text-white hover:scale-105'
+          }`}
+        >
+          {step1.isLoading
+            ? 'Generating...'
+            : cooldownSeconds > 0
+              ? `Retry in ${cooldownSeconds}s`
+              : step1.data
+                ? 'Regenerate analysis'
+                : 'Generate analysis'}
+        </button>
+        <button
+          type="button"
+          onClick={() => handleApprove(1)}
+          disabled={!step1.data || step1.isApproved}
+          className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
+            !step1.data || step1.isApproved
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              : 'bg-gray-100 text-gray-900 hover:scale-105'
+          }`}
+        >
+          {step1.isApproved ? 'Approved' : 'Approve analysis'}
+        </button>
+        {step1.error ? (
+          <button
+            type="button"
+            onClick={() => handleRetry(1)}
+            className="px-6 py-3 rounded-2xl text-sm font-semibold bg-gray-100 text-gray-900 hover:scale-105 transition-transform"
+          >
+            Retry
+          </button>
+        ) : null}
+        {step1.error ? <span className="text-sm text-red-600">{step1.error}</span> : null}
       </div>
     </section>
   );

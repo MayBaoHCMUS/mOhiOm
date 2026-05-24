@@ -18,8 +18,6 @@ export default function Step2Characters() {
     handleRetryCharacterReferences,
     getStep2PromptList,
     getCooldownSeconds,
-    loadMockStepData,
-    loadMockCharacterReview,
   } = useComicGeneration();
 
   const cooldownSeconds = getCooldownSeconds(2);
@@ -52,13 +50,6 @@ export default function Step2Characters() {
               : step2.data
                 ? 'Regenerate designs'
                 : 'Generate designs'}
-        </button>
-        <button
-          type="button"
-          onClick={() => loadMockStepData(2)}
-          className="px-6 py-3 rounded-2xl text-sm font-semibold transition-transform bg-gray-100 text-gray-900 hover:scale-105"
-        >
-          Load mock designs
         </button>
         <button
           type="button"
@@ -134,13 +125,6 @@ export default function Step2Characters() {
             }`}
           >
             {step2ImageReview.isLoading ? 'Generating images...' : 'Generate references'}
-          </button>
-          <button
-            type="button"
-            onClick={loadMockCharacterReview}
-            className="px-6 py-3 rounded-2xl text-sm font-semibold transition-transform bg-gray-100 text-gray-900 hover:scale-105"
-          >
-            Load mock references
           </button>
           <button
             type="button"

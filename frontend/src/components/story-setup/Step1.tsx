@@ -59,7 +59,6 @@ export default function Step1() {
     setLocalImageApiUrl,
     handleGenerate,
     getCooldownSeconds,
-    loadMockPipeline,
     setupValidation,
     setSetupValidation,
     setupSubmitAttempted,
@@ -617,13 +616,6 @@ export default function Step1() {
               : step1.data
                 ? 'Regenerate analysis'
                 : 'Generate analysis'}
-        </button>
-        <button
-          type="button"
-          onClick={loadMockPipeline}
-          className="px-6 py-3 rounded-2xl text-sm font-semibold transition-transform bg-gray-100 text-gray-900 hover:scale-105"
-        >
-          Load full mock pipeline
         </button>
         {step1.error ? <span className="text-sm text-red-600">{step1.error}</span> : null}
       </div>

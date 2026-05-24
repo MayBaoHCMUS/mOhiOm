@@ -22,7 +22,6 @@ export default function Step4Generation() {
     copyProjectJson,
     downloadProjectJson,
     getCooldownSeconds,
-    loadMockStepData,
   } = useComicGeneration();
 
   const cooldownSeconds = getCooldownSeconds(4);
@@ -56,13 +55,6 @@ export default function Step4Generation() {
               : step4.data
                 ? 'Rebuild panel list'
                 : 'Build panels from script'}
-        </button>
-        <button
-          type="button"
-          onClick={() => loadMockStepData(4)}
-          className="px-6 py-3 rounded-2xl text-sm font-semibold transition-transform bg-gray-100 text-gray-900 hover:scale-105"
-        >
-          Load mock panels
         </button>
         <button
           type="button"
