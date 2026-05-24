@@ -417,24 +417,71 @@ class GeminiService:
         # Client-based SDK surface; avoids global state.
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-    async def generate_text(self, prompt: str) -> str:
+    async def generate_text(self, prompt: str, stream: bool = False):
         """
         Generate text using Gemini API.
 
         Args:
             prompt: The input prompt for text generation
+            stream: If True, returns an async generator for streaming responses
 
         Returns:
-            Generated text response
+            Generated text response (str) or async generator for streaming
         """
         if self.use_nine_router:
+            if stream:
+                return self._generate_text_nine_router_stream(prompt)
             return await self._generate_text_nine_router(prompt)
+
+        if stream:
+            return self._generate_text_gemini_stream(prompt)
 
         try:
             response = self.client.models.generate_content(
                 model=self.model_name, contents=prompt
             )
             return response.text
+        except google_exceptions.ResourceExhausted as exc:
+            retry_after = _extract_retry_after_seconds(str(exc))
+            raise GeminiServiceError(
+                "Gemini quota exceeded. Please retry later or check your billing/limits.",
+                status_code=429,
+                retry_after_seconds=retry_after,
+            ) from exc
+        except google_exceptions.NotFound as exc:
+            raise GeminiServiceError(
+                f"Gemini model '{self.model_name}' not found. Update GEMINI_MODEL to an available model.",
+                status_code=404,
+            ) from exc
+        except genai_errors.ClientError as exc:
+            status_code = int(getattr(exc, "code", 500) or 500)
+            retry_after = _extract_retry_after_seconds(str(exc))
+            if status_code == 429:
+                raise GeminiServiceError(
+                    "Gemini quota exceeded. Please retry later or check your billing/limits.",
+                    status_code=429,
+                    retry_after_seconds=retry_after,
+                ) from exc
+            if status_code == 404:
+                raise GeminiServiceError(
+                    f"Gemini model '{self.model_name}' not found. Update GEMINI_MODEL to an available model.",
+                    status_code=404,
+                ) from exc
+            raise GeminiServiceError(
+                f"Gemini API request failed: {exc}", status_code=status_code
+            ) from exc
+        except Exception as exc:
+            raise GeminiServiceError(f"Failed to generate text: {exc}") from exc
+
+    async def _generate_text_gemini_stream(self, prompt: str):
+        """Stream text generation from Gemini API."""
+        try:
+            response = self.client.models.generate_content_stream(
+                model=self.model_name, contents=prompt
+            )
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
         except google_exceptions.ResourceExhausted as exc:
             retry_after = _extract_retry_after_seconds(str(exc))
             raise GeminiServiceError(
@@ -526,6 +573,68 @@ class GeminiService:
             raise GeminiServiceError("9Router response missing message content.", status_code=502)
 
         return str(content).strip()
+
+    async def _generate_text_nine_router_stream(self, prompt: str):
+        """Stream text generation from 9Router API."""
+        cleaned_prompt = (prompt or "").strip()
+        if not cleaned_prompt:
+            raise GeminiServiceError("Prompt is required.", status_code=400)
+
+        payload = {
+            "model": self.nine_router_model,
+            "messages": [{"role": "user", "content": cleaned_prompt}],
+            "stream": True,
+        }
+        headers = {"Content-Type": "application/json"}
+        if self.nine_router_api_key:
+            headers["Authorization"] = f"Bearer {self.nine_router_api_key}"
+
+        try:
+            async with httpx.AsyncClient(timeout=self.nine_router_timeout) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.nine_router_url}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                ) as response:
+                    if response.status_code >= 400:
+                        snippet = (await response.aread()).decode("utf-8", errors="ignore")[:500]
+                        message = f"9Router request failed with status {response.status_code}."
+                        if snippet:
+                            message = f"{message} Body preview: {snippet}"
+                        raise GeminiServiceError(message, status_code=502)
+
+                    async for line in response.aiter_lines():
+                        line = line.strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+
+                        payload_text = line[5:].strip()
+                        if not payload_text or payload_text == "[DONE]":
+                            continue
+
+                        try:
+                            data = json.loads(payload_text)
+                        except json.JSONDecodeError:
+                            continue
+
+                        choices = data.get("choices") if isinstance(data, dict) else None
+                        if not isinstance(choices, list) or not choices:
+                            continue
+
+                        first_choice = choices[0] if isinstance(choices[0], dict) else None
+                        if not isinstance(first_choice, dict):
+                            continue
+
+                        delta = first_choice.get("delta")
+                        if isinstance(delta, dict) and delta.get("content"):
+                            yield str(delta.get("content"))
+                        elif first_choice.get("text"):
+                            yield str(first_choice.get("text"))
+        except GeminiServiceError:
+            raise
+        except Exception as exc:
+            raise GeminiServiceError(f"9Router streaming request failed: {exc}") from exc
 
     async def generate_panel_image_url(
         self,
@@ -624,7 +733,8 @@ Provide a detailed analysis including:
         project_id: str = "manga_project_001",
         step_status: str = "review_pending",
         last_updated: str | None = None,
-    ) -> str:
+        stream: bool = False,
+    ):
         """
         Generate detailed plot analysis for story division.
 
@@ -779,7 +889,7 @@ Number of splash/double pages: __
 After you output everything above, end with this exact line:
 "Step 1 complete. Reply with 'Proceed to Step 2 - Character Designs' if you want me to create full character sheets, or tell me any changes you want to the plan first."
         """
-        return await self.generate_text(prompt)
+        return await self.generate_text(prompt, stream=stream)
 
     async def generate_plot_analysis_structured(
         self,
@@ -858,7 +968,8 @@ The prompt should include:
         genre_tone: str,
         art_style_reference: str,
         special_requests: str,
-    ) -> str:
+        stream: bool = False,
+    ):
         """Generate Step 2 markdown design sheets using Step 1 structured JSON context."""
         step1_json_text = json.dumps(step1_json, ensure_ascii=True, indent=2)
         prompt = f"""
@@ -895,7 +1006,7 @@ For each main character include:
 After you output everything above, end with this exact line:
 "Step 2 complete. Reply with 'Proceed to Step 3 - Panel-by-Panel Script & Image Prompts' if you want me to generate the full manga script with per-panel details, or tell me any changes you want to the designs first."
         """
-        return await self.generate_text(prompt)
+        return await self.generate_text(prompt, stream=stream)
 
     async def generate_step2_structured_snapshot(
         self,
@@ -1008,7 +1119,8 @@ Rules:
         art_style_reference: str,
         max_panels_per_page: int,
         special_requests: str,
-    ) -> str:
+        stream: bool = False,
+    ):
         """Generate Step 3 markdown script using Step 1 and Step 2 structured context."""
         step1_json_text = json.dumps(step1_json, ensure_ascii=True, indent=2)
         step2_json_text = json.dumps(step2_json, ensure_ascii=True, indent=2)
@@ -1080,7 +1192,7 @@ Any deviations from Step 1 plan and why
 After you output everything above, end with this exact line:
 "Step 3 complete. This is the full manga script ready for image generation. Reply with 'Generate Images' if you want me to simulate or batch the image creation process, or tell me any revisions."
         """
-        return await self.generate_text(prompt)
+        return await self.generate_text(prompt, stream=stream)
 
     async def generate_step3_structured_snapshot(
         self,

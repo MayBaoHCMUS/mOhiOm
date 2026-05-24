@@ -135,6 +135,7 @@ export interface AnalyzeStoryPayload {
   max_panels_per_page: number;
   special_requests: string;
   project_id?: string;
+  stream?: boolean;
 }
 
 export interface AnalyzeStoryStructuredResponse {
@@ -149,6 +150,7 @@ export interface Step2DesignPayload {
   genre_tone: string;
   art_style_reference: string;
   special_requests: string;
+  stream?: boolean;
 }
 
 export interface Step2DesignStructuredResponse {
@@ -166,6 +168,7 @@ export interface Step3ScriptPayload {
   art_style_reference: string;
   max_panels_per_page: number;
   special_requests: string;
+  stream?: boolean;
 }
 
 export interface Step3ScriptStructuredResponse {
@@ -222,8 +225,74 @@ export const toApiError = (error: unknown): ApiErrorInfo => {
 
 // Gemini API endpoints
 export const geminiApi = {
-  generateText: (prompt: string) =>
-    apiClient.post("/gemini/generate-text", { prompt }),
+  generateText: (prompt: string, stream: boolean = false) =>
+    apiClient.post("/gemini/generate-text", { prompt, stream }),
+
+  generateTextStream: async (
+    prompt: string,
+    onChunk: (chunk: string) => void,
+    onComplete: () => void,
+    onError: (error: string) => void
+  ) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/gemini/generate-text`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Id": getOrCreateUserId(),
+        },
+        body: JSON.stringify({ prompt, stream: true }),
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        onError(errorData.detail?.message || errorData.detail || "Request failed");
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        onError("No response body");
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") {
+              onComplete();
+              return;
+            }
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.error) {
+                onError(parsed.error);
+                return;
+              }
+            } catch {
+              onChunk(data);
+            }
+          }
+        }
+      }
+
+      onComplete();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Stream failed");
+    }
+  },
 
   analyzeStory: (payload: AnalyzeStoryPayload) =>
     apiClient.post("/gemini/analyze-story", payload),
@@ -231,17 +300,242 @@ export const geminiApi = {
   analyzeStoryStructured: (payload: AnalyzeStoryPayload) =>
     apiClient.post<AnalyzeStoryStructuredResponse>("/gemini/analyze-story-structured", payload),
 
+  analyzeStoryStructuredStream: async (
+    payload: AnalyzeStoryPayload,
+    onChunk: (chunk: string) => void,
+    onComplete: (structuredJson: Record<string, unknown>) => void,
+    onError: (error: string) => void
+  ) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/gemini/analyze-story-structured`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Id": getOrCreateUserId(),
+        },
+        body: JSON.stringify({ ...payload, stream: true }),
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        onError(errorData.detail?.message || errorData.detail || "Request failed");
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        onError("No response body");
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let structuredJson: Record<string, unknown> | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") {
+              onComplete(structuredJson || {});
+              return;
+            }
+            if (data.startsWith("[STRUCTURED_JSON]")) {
+              try {
+                structuredJson = JSON.parse(data.slice(17));
+              } catch {
+                // ignore parse errors
+              }
+              continue;
+            }
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.error) {
+                onError(parsed.error);
+                return;
+              }
+            } catch {
+              onChunk(data);
+            }
+          }
+        }
+      }
+
+      onComplete(structuredJson || {});
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Stream failed");
+    }
+  },
+
   generateCharacterDesignsStructured: (payload: Step2DesignPayload) =>
     apiClient.post<Step2DesignStructuredResponse>(
       "/gemini/character-designs-structured",
       payload
     ),
 
+  generateCharacterDesignsStructuredStream: async (
+    payload: Step2DesignPayload,
+    onChunk: (chunk: string) => void,
+    onComplete: (structuredJson: Record<string, unknown>) => void,
+    onError: (error: string) => void
+  ) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/gemini/character-designs-structured`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Id": getOrCreateUserId(),
+        },
+        body: JSON.stringify({ ...payload, stream: true }),
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        onError(errorData.detail?.message || errorData.detail || "Request failed");
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        onError("No response body");
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let structuredJson: Record<string, unknown> | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") {
+              onComplete(structuredJson || {});
+              return;
+            }
+            if (data.startsWith("[STRUCTURED_JSON]")) {
+              try {
+                structuredJson = JSON.parse(data.slice(17));
+              } catch {
+                // ignore parse errors
+              }
+              continue;
+            }
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.error) {
+                onError(parsed.error);
+                return;
+              }
+            } catch {
+              onChunk(data);
+            }
+          }
+        }
+      }
+
+      onComplete(structuredJson || {});
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Stream failed");
+    }
+  },
+
   generatePanelScriptStructured: (payload: Step3ScriptPayload) =>
     apiClient.post<Step3ScriptStructuredResponse>(
       "/gemini/panel-script-structured",
       payload
     ),
+
+  generatePanelScriptStructuredStream: async (
+    payload: Step3ScriptPayload,
+    onChunk: (chunk: string) => void,
+    onComplete: (structuredJson: Record<string, unknown>) => void,
+    onError: (error: string) => void
+  ) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/gemini/panel-script-structured`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Id": getOrCreateUserId(),
+        },
+        body: JSON.stringify({ ...payload, stream: true }),
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        onError(errorData.detail?.message || errorData.detail || "Request failed");
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        onError("No response body");
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let structuredJson: Record<string, unknown> | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") {
+              onComplete(structuredJson || {});
+              return;
+            }
+            if (data.startsWith("[STRUCTURED_JSON]")) {
+              try {
+                structuredJson = JSON.parse(data.slice(17));
+              } catch {
+                // ignore parse errors
+              }
+              continue;
+            }
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.error) {
+                onError(parsed.error);
+                return;
+              }
+            } catch {
+              onChunk(data);
+            }
+          }
+        }
+      }
+
+      onComplete(structuredJson || {});
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Stream failed");
+    }
+  },
 
   generateCharacterPrompt: (characterDescription: string) =>
     apiClient.post("/gemini/character-prompt", {

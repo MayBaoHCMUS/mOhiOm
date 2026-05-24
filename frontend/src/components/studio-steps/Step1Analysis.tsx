@@ -10,6 +10,8 @@ export default function Step1Analysis() {
     handleApprove,
     handleRetry,
     getCooldownSeconds,
+    useStreaming,
+    streamingText,
   } = useComicGeneration();
 
   const cooldownSeconds = getCooldownSeconds(1);
@@ -22,6 +24,8 @@ export default function Step1Analysis() {
         ? 'Ready for review'
         : 'Not generated';
 
+  const displayText = step1.isLoading && useStreaming ? streamingText : step1.data?.analysisMarkdown;
+
   return (
     <section className="bg-white text-gray-900 rounded-3xl p-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -29,14 +33,22 @@ export default function Step1Analysis() {
           <h2 className="text-2xl font-semibold">Story analysis</h2>
           <p className="mt-2 text-gray-600">Review narrative insights and character breakdowns.</p>
         </div>
-        <div className="text-sm text-gray-600">Status: {statusLabel}</div>
+        <div className="flex items-center gap-3">
+          {step1.isLoading && useStreaming && (
+            <span className="flex items-center gap-2 text-sm text-blue-600">
+              <span className="animate-pulse">●</span>
+              Streaming...
+            </span>
+          )}
+          <div className="text-sm text-gray-600">Status: {statusLabel}</div>
+        </div>
       </div>
 
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-6">
         <div className="rounded-3xl bg-gray-100 p-6">
           <h3 className="text-lg font-semibold">Analysis output</h3>
-          {step1.data?.analysisMarkdown ? (
-            <pre className="mt-4 whitespace-pre-wrap text-sm text-gray-700">{step1.data.analysisMarkdown}</pre>
+          {displayText ? (
+            <pre className="mt-4 whitespace-pre-wrap text-sm text-gray-700">{displayText}</pre>
           ) : (
             <p className="mt-4 text-sm text-gray-500">Generate the analysis to see the full breakdown here.</p>
           )}

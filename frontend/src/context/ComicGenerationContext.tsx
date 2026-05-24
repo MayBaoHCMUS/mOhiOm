@@ -288,6 +288,7 @@ export interface ComicGenerationContextValue {
   maxPanelsPerPage: string;
   specialRequests: string;
   localImageApiUrl: string;
+  useStreaming: boolean;
   step1: StepState<Step1Result>;
   step2: StepState<Step2Result>;
   step2ImageReview: StepState<CharacterImageReviewResult>;
@@ -304,6 +305,7 @@ export interface ComicGenerationContextValue {
   projectSnapshot: Record<string, unknown>;
   setupValidation: SetupValidationState | null;
   setupSubmitAttempted: boolean;
+  streamingText: string;
   setProjectId: (value: string) => void;
   setStoryFile: (value: File | null) => void;
   setStoryText: (value: string) => void;
@@ -315,6 +317,7 @@ export interface ComicGenerationContextValue {
   setMaxPanelsPerPage: (value: string) => void;
   setSpecialRequests: (value: string) => void;
   setLocalImageApiUrl: (value: string) => void;
+  setUseStreaming: (value: boolean) => void;
   setActiveStep: (value: WizardStepKey) => void;
   setSetupValidation: (value: SetupValidationState) => void;
   setSetupSubmitAttempted: (value: boolean) => void;
@@ -358,8 +361,10 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   const [maxPanelsPerPage, setMaxPanelsPerPage] = useState('6');
   const [specialRequests, setSpecialRequests] = useState('None');
   const [localImageApiUrl, setLocalImageApiUrl] = useState('');
+  const [useStreaming, setUseStreaming] = useState(true);
   const [setupValidation, setSetupValidation] = useState<SetupValidationState | null>(null);
   const [setupSubmitAttempted, setSetupSubmitAttempted] = useState(false);
+  const [streamingText, setStreamingText] = useState('');
 
   const [step1, setStep1] = useState<StepState<Step1Result>>(emptyStepState(false));
   const [step2, setStep2] = useState<StepState<Step2Result>>(emptyStepState(true));
@@ -611,70 +616,179 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
 
     if (step === 1) {
-      const resp = await geminiApi.analyzeStoryStructured({
-        project_id: projectId,
-        story_text: storyText,
-        num_chapters: Number(numChapters) || 3,
-        desired_main_characters: Number(mainCharacters) || 5,
-        target_total_pages: (targetPages || 'auto').trim() || 'auto',
-        genre_tone: mangaGenre || 'Shonen action',
-        art_style_reference: artStyle || 'classic black-and-white weekly shonen',
-        max_panels_per_page: Number(maxPanelsPerPage) || 6,
-        special_requests: specialRequests || 'None',
-      });
-      const analysis: string = resp.data.analysis || '';
-      const breakdown = parseLines(analysis, Math.max(Number(mainCharacters) || 5, 3));
-      return {
-        characterBreakdown: breakdown.length ? breakdown : ['Character arcs pending parsing.'],
-        analysisMarkdown: analysis,
-        structuredJson: (resp.data.structured_json as Record<string, unknown>) || null,
-      } satisfies Step1Result;
+      if (useStreaming) {
+        return new Promise((resolve, reject) => {
+          setStreamingText('');
+          let analysisMarkdown = '';
+
+          geminiApi.analyzeStoryStructuredStream(
+            {
+              project_id: projectId,
+              story_text: storyText,
+              num_chapters: Number(numChapters) || 3,
+              desired_main_characters: Number(mainCharacters) || 5,
+              target_total_pages: (targetPages || 'auto').trim() || 'auto',
+              genre_tone: mangaGenre || 'Shonen action',
+              art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+              max_panels_per_page: Number(maxPanelsPerPage) || 6,
+              special_requests: specialRequests || 'None',
+            },
+            (chunk) => {
+              analysisMarkdown += chunk;
+              setStreamingText(analysisMarkdown);
+            },
+            (structuredJson) => {
+              const breakdown = parseLines(analysisMarkdown, Math.max(Number(mainCharacters) || 5, 3));
+              resolve({
+                characterBreakdown: breakdown.length ? breakdown : ['Character arcs pending parsing.'],
+                analysisMarkdown,
+                structuredJson: structuredJson || null,
+              } satisfies Step1Result);
+            },
+            (error) => {
+              reject(new Error(error));
+            }
+          );
+        });
+      } else {
+        const resp = await geminiApi.analyzeStoryStructured({
+          project_id: projectId,
+          story_text: storyText,
+          num_chapters: Number(numChapters) || 3,
+          desired_main_characters: Number(mainCharacters) || 5,
+          target_total_pages: (targetPages || 'auto').trim() || 'auto',
+          genre_tone: mangaGenre || 'Shonen action',
+          art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+          max_panels_per_page: Number(maxPanelsPerPage) || 6,
+          special_requests: specialRequests || 'None',
+        });
+        const analysis: string = resp.data.analysis || '';
+        const breakdown = parseLines(analysis, Math.max(Number(mainCharacters) || 5, 3));
+        return {
+          characterBreakdown: breakdown.length ? breakdown : ['Character arcs pending parsing.'],
+          analysisMarkdown: analysis,
+          structuredJson: (resp.data.structured_json as Record<string, unknown>) || null,
+        } satisfies Step1Result;
+      }
     }
 
     if (step === 2) {
-      const resp = await geminiApi.generateCharacterDesignsStructured({
-        project_id: projectId,
-        step1_json: getStep1StructuredJson(),
-        desired_main_characters: Number(mainCharacters) || 5,
-        genre_tone: mangaGenre || 'Shonen action',
-        art_style_reference: artStyle || 'classic black-and-white weekly shonen',
-        special_requests: specialRequests || 'None',
-      });
+      if (useStreaming) {
+        return new Promise((resolve, reject) => {
+          setStreamingText('');
+          let designMarkdown = '';
 
-      const designMarkdown: string = resp.data.design_markdown || '';
-      const structuredJson = (resp.data.structured_json as Record<string, unknown>) || null;
-      const structured = structuredJson as Step2StructuredJson | null;
-      const mainDesigns = structured?.steps?.step_2_design?.data?.main_characters_designs || {};
-      const aiPrompts = Object.values(mainDesigns)
-        .map((entry) => entry?.ai_image_prompt_ready)
-        .filter((prompt): prompt is string => typeof prompt === 'string' && prompt.trim().length > 0);
+          geminiApi.generateCharacterDesignsStructuredStream(
+            {
+              project_id: projectId,
+              step1_json: getStep1StructuredJson(),
+              desired_main_characters: Number(mainCharacters) || 5,
+              genre_tone: mangaGenre || 'Shonen action',
+              art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+              special_requests: specialRequests || 'None',
+            },
+            (chunk) => {
+              designMarkdown += chunk;
+              setStreamingText(designMarkdown);
+            },
+            (structuredJson) => {
+              const structured = structuredJson as Step2StructuredJson | null;
+              const mainDesigns = structured?.steps?.step_2_design?.data?.main_characters_designs || {};
+              const aiPrompts = Object.values(mainDesigns)
+                .map((entry) => entry?.ai_image_prompt_ready)
+                .filter((prompt): prompt is string => typeof prompt === 'string' && prompt.trim().length > 0);
 
-      return {
-        designMarkdown,
-        structuredJson,
-        aiPrompts,
-      } satisfies Step2Result;
+              resolve({
+                designMarkdown,
+                structuredJson,
+                aiPrompts,
+              } satisfies Step2Result);
+            },
+            (error) => {
+              reject(new Error(error));
+            }
+          );
+        });
+      } else {
+        const resp = await geminiApi.generateCharacterDesignsStructured({
+          project_id: projectId,
+          step1_json: getStep1StructuredJson(),
+          desired_main_characters: Number(mainCharacters) || 5,
+          genre_tone: mangaGenre || 'Shonen action',
+          art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+          special_requests: specialRequests || 'None',
+        });
+
+        const designMarkdown: string = resp.data.design_markdown || '';
+        const structuredJson = (resp.data.structured_json as Record<string, unknown>) || null;
+        const structured = structuredJson as Step2StructuredJson | null;
+        const mainDesigns = structured?.steps?.step_2_design?.data?.main_characters_designs || {};
+        const aiPrompts = Object.values(mainDesigns)
+          .map((entry) => entry?.ai_image_prompt_ready)
+          .filter((prompt): prompt is string => typeof prompt === 'string' && prompt.trim().length > 0);
+
+        return {
+          designMarkdown,
+          structuredJson,
+          aiPrompts,
+        } satisfies Step2Result;
+      }
     }
 
     if (step === 3) {
       const step1Json = getStep1StructuredJson();
       const step2Json = getStep2StructuredJson();
-      const resp = await geminiApi.generatePanelScriptStructured({
-        project_id: projectId,
-        step1_json: step1Json,
-        step2_json: step2Json,
-        num_chapters: Number(numChapters) || 3,
-        target_total_pages: (targetPages || 'auto').trim() || 'auto',
-        genre_tone: mangaGenre || 'Shonen action',
-        art_style_reference: artStyle || 'classic black-and-white weekly shonen',
-        max_panels_per_page: Number(maxPanelsPerPage) || 6,
-        special_requests: specialRequests || 'None',
-      });
 
-      return {
-        scriptMarkdown: resp.data.script_markdown || '',
-        structuredJson: (resp.data.structured_json as Record<string, unknown>) || null,
-      } satisfies Step3Result;
+      if (useStreaming) {
+        return new Promise((resolve, reject) => {
+          setStreamingText('');
+          let scriptMarkdown = '';
+
+          geminiApi.generatePanelScriptStructuredStream(
+            {
+              project_id: projectId,
+              step1_json: step1Json,
+              step2_json: step2Json,
+              num_chapters: Number(numChapters) || 3,
+              target_total_pages: (targetPages || 'auto').trim() || 'auto',
+              genre_tone: mangaGenre || 'Shonen action',
+              art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+              max_panels_per_page: Number(maxPanelsPerPage) || 6,
+              special_requests: specialRequests || 'None',
+            },
+            (chunk) => {
+              scriptMarkdown += chunk;
+              setStreamingText(scriptMarkdown);
+            },
+            (structuredJson) => {
+              resolve({
+                scriptMarkdown,
+                structuredJson: structuredJson || null,
+              } satisfies Step3Result);
+            },
+            (error) => {
+              reject(new Error(error));
+            }
+          );
+        });
+      } else {
+        const resp = await geminiApi.generatePanelScriptStructured({
+          project_id: projectId,
+          step1_json: step1Json,
+          step2_json: step2Json,
+          num_chapters: Number(numChapters) || 3,
+          target_total_pages: (targetPages || 'auto').trim() || 'auto',
+          genre_tone: mangaGenre || 'Shonen action',
+          art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+          max_panels_per_page: Number(maxPanelsPerPage) || 6,
+          special_requests: specialRequests || 'None',
+        });
+
+        return {
+          scriptMarkdown: resp.data.script_markdown || '',
+          structuredJson: (resp.data.structured_json as Record<string, unknown>) || null,
+        } satisfies Step3Result;
+      }
     }
 
     const step3Markdown = step3.data?.scriptMarkdown || '';
@@ -1574,6 +1688,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     maxPanelsPerPage,
     specialRequests,
     localImageApiUrl,
+    useStreaming,
     step1,
     step2,
     step2ImageReview,
@@ -1590,6 +1705,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     projectSnapshot,
     setupValidation,
     setupSubmitAttempted,
+    streamingText,
     setProjectId,
     setStoryFile,
     setStoryText,
@@ -1601,6 +1717,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     setMaxPanelsPerPage,
     setSpecialRequests,
     setLocalImageApiUrl,
+    setUseStreaming,
     setActiveStep,
     setSetupValidation,
     setSetupSubmitAttempted,

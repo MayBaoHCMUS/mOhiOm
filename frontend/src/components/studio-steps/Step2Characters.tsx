@@ -18,11 +18,15 @@ export default function Step2Characters() {
     handleRetryCharacterReferences,
     getStep2PromptList,
     getCooldownSeconds,
+    useStreaming,
+    streamingText,
   } = useComicGeneration();
 
   const cooldownSeconds = getCooldownSeconds(2);
   const isGenerateDisabled = step2.isLoading || cooldownSeconds > 0;
   const prompts = getStep2PromptList();
+
+  const displayText = step2.isLoading && useStreaming ? streamingText : step2.data?.designMarkdown;
 
   return (
     <section className="bg-white text-gray-900 rounded-3xl p-8">
@@ -31,7 +35,15 @@ export default function Step2Characters() {
           <h2 className="text-2xl font-semibold">Character designs</h2>
           <p className="mt-2 text-gray-600">Generate design sheets, then approve references for final rendering.</p>
         </div>
-        <div className="text-sm text-gray-600">Status: {step2.isApproved ? 'Approved' : step2.data ? 'Ready' : 'Not generated'}</div>
+        <div className="flex items-center gap-3">
+          {step2.isLoading && useStreaming && (
+            <span className="flex items-center gap-2 text-sm text-blue-600">
+              <span className="animate-pulse">●</span>
+              Streaming...
+            </span>
+          )}
+          <div className="text-sm text-gray-600">Status: {step2.isApproved ? 'Approved' : step2.data ? 'Ready' : 'Not generated'}</div>
+        </div>
       </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-4">
@@ -78,8 +90,8 @@ export default function Step2Characters() {
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1.3fr_0.7fr] gap-6">
         <div className="rounded-3xl bg-gray-100 p-6">
           <h3 className="text-lg font-semibold">Design sheet output</h3>
-          {step2.data?.designMarkdown ? (
-            <pre className="mt-4 whitespace-pre-wrap text-sm text-gray-700">{step2.data.designMarkdown}</pre>
+          {displayText ? (
+            <pre className="mt-4 whitespace-pre-wrap text-sm text-gray-700">{displayText}</pre>
           ) : (
             <p className="mt-4 text-sm text-gray-500">Generate Step 2 to view the character design sheet.</p>
           )}
