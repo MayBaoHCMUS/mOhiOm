@@ -223,6 +223,121 @@ export const toApiError = (error: unknown): ApiErrorInfo => {
   };
 };
 
+// ─── Streaming helpers ───────────────────────────────────────────────────────
+
+export interface Step1StreamCallbacks {
+  onToken: (token: string) => void;
+  onDone: (result: AnalyzeStoryStructuredResponse) => void;
+  onError: (message: string, statusCode?: number) => void;
+}
+
+/**
+ * Stream Step 1 story analysis via SSE.
+ * The backend sends {"type":"token","content":"..."} events as the LLM generates
+ * tokens, then a final {"type":"done","analysis":"...","structured_json":{...}}.
+ * Returns an AbortController so the caller can cancel mid-stream.
+ */
+export function analyzeStoryStructuredStream(
+  payload: AnalyzeStoryPayload,
+  callbacks: Step1StreamCallbacks,
+): AbortController {
+  const controller = new AbortController();
+
+  const getUserId = (): string => {
+    const key = "mohiom-user-id";
+    if (typeof window === "undefined") return "server";
+    const existing = window.localStorage.getItem(key);
+    if (existing) return existing;
+    const next =
+      "randomUUID" in window.crypto
+        ? window.crypto.randomUUID()
+        : `user-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    window.localStorage.setItem(key, next);
+    return next;
+  };
+
+  (async () => {
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE_URL}/gemini/analyze-story-structured`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Id": getUserId(),
+        },
+        credentials: "include",
+        body: JSON.stringify({ ...payload, stream: true }),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if ((err as { name?: string })?.name !== "AbortError") {
+        callbacks.onError(err instanceof Error ? err.message : "Network error");
+      }
+      return;
+    }
+
+    if (!response.ok) {
+      let msg = `Request failed (${response.status})`;
+      try {
+        const body = await response.json() as { detail?: string | { message?: string } };
+        const detail = body?.detail;
+        msg = typeof detail === "string" ? detail : detail?.message ?? msg;
+      } catch { /* ignore */ }
+      callbacks.onError(msg, response.status);
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) { callbacks.onError("No response body"); return; }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim().startsWith("data:")) continue;
+          const raw = line.trim().slice(5).trim();
+          if (!raw || raw === "[DONE]") continue;
+
+          let event: {
+            type?: "token" | "done" | "error";
+            content?: string;
+            analysis?: string;
+            structured_json?: Record<string, unknown>;
+            message?: string;
+            status_code?: number;
+          };
+          try { event = JSON.parse(raw) as typeof event; } catch { continue; }
+
+          if (event.type === "token" && event.content) {
+            callbacks.onToken(event.content);
+          } else if (event.type === "done") {
+            callbacks.onDone({ analysis: event.analysis ?? "", structured_json: event.structured_json ?? {} });
+          } else if (event.type === "error") {
+            callbacks.onError(event.message ?? "Unknown error", event.status_code);
+          }
+        }
+      }
+    } catch (err) {
+      if ((err as { name?: string })?.name !== "AbortError") {
+        callbacks.onError(err instanceof Error ? err.message : "Stream read error");
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  })();
+
+  return controller;
+}
+
 // Gemini API endpoints
 export const geminiApi = {
   generateText: (prompt: string, stream: boolean = false) =>

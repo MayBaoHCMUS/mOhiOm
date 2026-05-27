@@ -636,6 +636,196 @@ class GeminiService:
         except Exception as exc:
             raise GeminiServiceError(f"9Router streaming request failed: {exc}") from exc
 
+    def _raw_stream(self, prompt: str):
+        """Return the right async-generator for the active provider (9Router or Gemini)."""
+        if self.use_nine_router:
+            return self._generate_text_nine_router_stream(prompt)
+        return self._generate_text_gemini_stream(prompt)
+
+    async def generate_step1_stream(
+        self,
+        project_id: str,
+        story_text: str,
+        num_chapters: int,
+        desired_main_characters: int,
+        target_total_pages: str,
+        genre_tone: str,
+        art_style_reference: str,
+        max_panels_per_page: int,
+        special_requests: str,
+        step_status: str,
+        last_updated: str,
+    ):
+        """
+        Stream Step 1: Analysis & Planning.
+
+        Yields 3-tuples:
+          ("token", str)            – markdown analysis token (show to the user)
+          ("status", str)           – brief status message ("Building structured data…")
+          ("done", str, dict)       – (full_analysis_markdown, structured_json)
+          ("error", str, int)       – (message, http_status_code)
+
+        The LLM is asked to produce the full markdown analysis THEN write the separator
+        "===JSON===" on its own line and output the structured JSON immediately after.
+        This means there is exactly ONE LLM round-trip: no second call, no second 524.
+        """
+        sep = "===JSON==="
+
+        prompt = f"""You are a professional manga adaptation studio AI. Your only job right now is Step 1: Analysis & Planning.
+
+USER CUSTOMIZATION INPUTS:
+
+Story text: '''{story_text}'''
+Desired total main characters: {desired_main_characters}
+Number of chapters: {num_chapters}
+Target total pages: {target_total_pages}
+Genre & tone: {genre_tone}
+Art style reference: {art_style_reference}
+Maximum panels per page: {max_panels_per_page}
+Special requests: {special_requests}
+
+TASK – STEP 1 ONLY
+Output EXACTLY in this order using clean markdown:
+
+1. Character Breakdown
+Total characters detected: __
+Main characters (exactly {desired_main_characters}): list with 1-sentence role + personality + visual design hook.
+Supporting / minor characters (grouped or merged).
+Characters you recommend removing or combining and why.
+
+2. Plot & Arc Analysis
+Main plot in one sentence.
+Number of major plot arcs.
+Subplots (each with importance: High / Medium / Low).
+Overall story structure (3-act or 4-act) divided into exactly {num_chapters} chapters.
+
+3. Chapter Division
+Create exactly {num_chapters} chapters with: title, page estimate, scene list.
+
+4. Scene-by-Scene Breakdown
+For every scene: scene number, chapter, one-sentence summary, key visual moment, page count, panel layout notes, splash/spread needed?
+
+5. Global Manga Layout Rules
+
+6. Final Statistics Summary (boxed table)
+Total chapters / scenes / pages / main characters / avg scenes per page / splash pages.
+
+After completing the analysis above, write this separator on its own line (nothing else on that line):
+{sep}
+Then immediately write one valid JSON object (no markdown, no code fence):
+{{
+  "project_id": "{project_id}",
+  "project_status": "in_progress",
+  "user_inputs": {{
+    "story_content": "<first 400 chars of story>",
+    "genre": "{genre_tone}",
+    "tone": "{genre_tone}",
+    "art_style_reference": "{art_style_reference}",
+    "max_panels_per_page": {max_panels_per_page},
+    "user_customizations": {{"special_requests": "{special_requests}"}}
+  }},
+  "steps": {{
+    "step_1_analysis": {{
+      "status": "{step_status}",
+      "last_updated": "{last_updated}",
+      "data": {{
+        "analysis": {{
+          "total_characters_detected": 0,
+          "main_characters": [{{"id":"","name":"","role":"","visual_hook":""}}],
+          "supporting_characters": [{{"id":"","name":"","role":""}}],
+          "plot": "",
+          "arcs": [],
+          "structure": ""
+        }},
+        "chapters_structure": [{{"chapter_number":1,"title":"","pages_estimate":"","scenes":[]}}],
+        "final_statistics": {{"total_chapters":0,"total_pages":0,"total_scenes":0}}
+      }}
+    }}
+  }}
+}}
+Rules: chapters_structure must have exactly {num_chapters} entries. main_characters must list exactly {desired_main_characters} characters. Return valid JSON only after the separator."""
+
+        analysis_parts: list[str] = []
+        json_parts: list[str] = []
+        phase = "analysis"
+        pending = ""
+
+        try:
+            async for token in self._raw_stream(prompt):
+                if phase == "analysis":
+                    pending += token
+                    idx = pending.find(sep)
+                    if idx >= 0:
+                        pre = pending[:idx]
+                        if pre:
+                            yield ("token", pre)
+                            analysis_parts.append(pre)
+                        phase = "json"
+                        after = pending[idx + len(sep):]
+                        if after.strip():
+                            json_parts.append(after)
+                        pending = ""
+                    else:
+                        # Keep a tail equal to sep-length to catch cross-chunk separators
+                        safe_until = max(0, len(pending) - len(sep) + 1)
+                        if safe_until > 0:
+                            safe = pending[:safe_until]
+                            yield ("token", safe)
+                            analysis_parts.append(safe)
+                            pending = pending[safe_until:]
+                else:
+                    json_parts.append(token)
+        except GeminiServiceError as exc:
+            yield ("error", str(exc), exc.status_code)
+            return
+        except Exception as exc:
+            yield ("error", f"Streaming failed: {exc}", 500)
+            return
+
+        # Flush any pending analysis tail
+        if pending:
+            if phase == "analysis":
+                yield ("token", pending)
+                analysis_parts.append(pending)
+            else:
+                json_parts.append(pending)
+
+        analysis_markdown = "".join(analysis_parts)
+        raw_json = "".join(json_parts).strip()
+
+        if raw_json:
+            try:
+                structured = _extract_json_payload(raw_json)
+            except GeminiServiceError:
+                structured = _build_step1_fallback_snapshot(
+                    project_id=project_id,
+                    story_text=story_text,
+                    genre_tone=genre_tone,
+                    art_style_reference=art_style_reference,
+                    max_panels_per_page=max_panels_per_page,
+                    special_requests=special_requests,
+                    step_status=step_status,
+                    last_updated=last_updated,
+                    num_chapters=num_chapters,
+                    analysis_markdown=analysis_markdown,
+                )
+        else:
+            # Model didn't include the separator – treat full output as markdown
+            structured = _build_step1_fallback_snapshot(
+                project_id=project_id,
+                story_text=story_text,
+                genre_tone=genre_tone,
+                art_style_reference=art_style_reference,
+                max_panels_per_page=max_panels_per_page,
+                special_requests=special_requests,
+                step_status=step_status,
+                last_updated=last_updated,
+                num_chapters=num_chapters,
+                analysis_markdown=analysis_markdown,
+            )
+
+        yield ("done", analysis_markdown, structured)
+
     async def generate_panel_image_url(
         self,
         image_prompt: str,

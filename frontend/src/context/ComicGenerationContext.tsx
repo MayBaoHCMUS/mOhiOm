@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { geminiApi, toApiError } from '@/services/api';
+import { geminiApi, analyzeStoryStructuredStream, toApiError } from '@/services/api';
 
 export type StepKey = 1 | 2 | 3 | 4;
 export type WizardStepKey = 0 | StepKey;
@@ -13,6 +13,8 @@ export interface StepState<T> {
   locked: boolean;
   error: string | null;
   lastUpdated: string | null;
+  /** Live markdown text streamed token-by-token while isLoading=true (step 1 only). */
+  streamingText?: string | null;
 }
 
 export interface Step1Result {
@@ -138,6 +140,7 @@ const emptyStepState = <T,>(locked: boolean): StepState<T> => ({
   locked,
   error: null,
   lastUpdated: null,
+  streamingText: null,
 });
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -1013,7 +1016,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     const cacheKey = getStepCacheKey(step);
     const cached = approvedCacheRef.current[step];
     if (cached && cached.key === cacheKey) {
-      setStepState(step, (prev) => ({ ...prev, data: cached.data, error: null }));
+      setStepState(step, (prev) => ({ ...prev, data: cached.data, error: null, streamingText: null }));
       setActiveStep(step);
       return;
     }
@@ -1025,8 +1028,78 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
 
     setGlobalError(null);
-    setStepState(step, (prev) => ({ ...prev, isLoading: true, error: null }));
+    setStepState(step, (prev) => ({ ...prev, isLoading: true, error: null, streamingText: null }));
 
+    // ── Step 1: stream analysis tokens so the user sees text in real-time ──
+    if (step === 1) {
+      await new Promise<void>((resolve) => {
+        analyzeStoryStructuredStream(
+          {
+            project_id: projectId,
+            story_text: storyText,
+            num_chapters: Number(numChapters) || 3,
+            desired_main_characters: Number(mainCharacters) || 5,
+            target_total_pages: (targetPages || 'auto').trim() || 'auto',
+            genre_tone: mangaGenre || 'Shonen action',
+            art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+            max_panels_per_page: Number(maxPanelsPerPage) || 6,
+            special_requests: specialRequests || 'None',
+          },
+          {
+            onToken(token) {
+              setStep1((prev) => ({
+                ...prev,
+                streamingText: (prev.streamingText ?? '') + token,
+              }));
+            },
+            onDone(result) {
+              const analysis = result.analysis || '';
+              const breakdown = analysis
+                .split(/\r?\n+/)
+                .map((line) => line.replace(/^[-*\d.\s]+/, '').trim())
+                .filter(Boolean)
+                .slice(0, Math.max(Number(mainCharacters) || 5, 3));
+              setStep1({
+                data: {
+                  characterBreakdown: breakdown.length ? breakdown : ['Character arcs pending parsing.'],
+                  analysisMarkdown: analysis,
+                  structuredJson: (result.structured_json as Record<string, unknown>) || null,
+                },
+                isLoading: false,
+                isApproved: false,
+                locked: false,
+                error: null,
+                lastUpdated: new Date().toISOString(),
+                streamingText: null,
+              });
+              setActiveStep(1);
+              resolve();
+            },
+            onError(message, statusCode) {
+              if (statusCode === 429) {
+                // Estimate a cooldown from the message if possible
+                const match = message.match(/(\d+(?:\.\d+)?)\s*s/);
+                const retryAfterSeconds = match ? parseFloat(match[1]) : 30;
+                setCooldownUntil((prev) => ({
+                  ...prev,
+                  1: Date.now() + retryAfterSeconds * 1000,
+                }));
+              }
+              setStep1((prev) => ({
+                ...prev,
+                isLoading: false,
+                streamingText: null,
+                error: message,
+              }));
+              resolve();
+            },
+          },
+        );
+      });
+      return;
+    }
+
+    // ── Steps 2-4: non-streaming (these are fast enough) ──
     try {
       const data = await buildStepPayload(step);
       setStepState(step, (prev) => ({
@@ -1034,6 +1107,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         data,
         isLoading: false,
         lastUpdated: new Date().toISOString(),
+        streamingText: null,
       }));
       setActiveStep(step);
     } catch (err: unknown) {
@@ -1054,6 +1128,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       setStepState(step, (prev) => ({
         ...prev,
         isLoading: false,
+        streamingText: null,
         error: `${apiError.message}${retryHint}`.trim(),
       }));
     }
