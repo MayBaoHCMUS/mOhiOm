@@ -10,7 +10,6 @@ export default function Step1Analysis() {
     handleApprove,
     handleRetry,
     getCooldownSeconds,
-    loadMockStepData,
   } = useComicGeneration();
 
   const cooldownSeconds = getCooldownSeconds(1);
@@ -67,14 +66,7 @@ export default function Step1Analysis() {
                 ? 'Regenerate analysis'
                 : 'Generate analysis'}
         </button>
-        <button
-          type="button"
-          onClick={() => loadMockStepData(1)}
-          className="px-6 py-3 rounded-2xl text-sm font-semibold transition-transform bg-gray-100 text-gray-900 hover:scale-105"
-        >
-          Load mock analysis
-        </button>
-        <button
+<button
           type="button"
           onClick={() => handleApprove(1)}
           disabled={!step1.data || step1.isApproved}

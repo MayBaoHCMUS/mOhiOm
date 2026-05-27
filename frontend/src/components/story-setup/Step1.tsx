@@ -117,7 +117,7 @@ export default function Step1() {
         label: 'Target pages',
         type: 'number',
         required: true,
-        validation: (value) => validateRange(value, 10, 1000, 'Please enter a number between 10 and 1000'),
+        validation: (value) => validateRange(value, 1, 1000, 'Please enter a number between 1 and 1000'),
         helperText: 'Total pages you want to generate',
         tooltip: 'Higher page counts take longer to render.',
       },
@@ -418,7 +418,7 @@ export default function Step1() {
                   handleChange('targetPages', value);
                 }}
                 onBlur={() => handleBlur('targetPages')}
-                min={10}
+                min={1}
                 max={1000}
                 required
                 helperText="Total pages you want to generate"

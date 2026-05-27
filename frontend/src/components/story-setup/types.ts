@@ -1,4 +1,5 @@
 export interface FormData {
+  [key: string]: unknown;
   projectId: string;
   mainCharacters: number;
   chapters: number;

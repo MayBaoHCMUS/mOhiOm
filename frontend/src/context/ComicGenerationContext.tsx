@@ -1,7 +1,13 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { geminiApi, analyzeStoryStructuredStream, toApiError } from '@/services/api';
+import {
+  geminiApi,
+  analyzeStoryStructuredStream,
+  characterDesignsStructuredStream,
+  panelScriptStructuredStream,
+  toApiError,
+} from '@/services/api';
 
 export type StepKey = 1 | 2 | 3 | 4;
 export type WizardStepKey = 0 | StepKey;
@@ -150,23 +156,44 @@ const fetchImageFromAI = async (imagePrompt: string, localImageApiUrl?: string):
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 120000);
 
+    const requestBody = {
+      url: localImageApiUrl,
+      prompt: imagePrompt,
+      negative_prompt: 'lowres, bad anatomy',
+    };
+
+    console.group('[fetchImageFromAI] Image generation request');
+    console.log('Proxy URL   :', '/api/image-proxy');
+    console.log('Target URL  :', localImageApiUrl);
+    console.log('Request body:', requestBody);
+
     try {
       const response = await fetch('/api/image-proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: localImageApiUrl,
-          prompt: imagePrompt,
-          negative_prompt: 'lowres, bad anatomy',
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
 
+      console.log('HTTP status :', response.status, response.statusText);
+
       if (!response.ok) {
+        const errText = await response.text().catch(() => '(unreadable)');
+        console.error('Error body  :', errText);
+        console.groupEnd();
         throw new Error(`Local image API error (${response.status}).`);
       }
 
       const result = (await response.json()) as { status?: string; image_base64?: string; message?: string };
+      console.log('Response    :', {
+        status: result.status,
+        message: result.message,
+        image_base64: result.image_base64
+          ? `[base64, ${result.image_base64.length} chars]`
+          : undefined,
+      });
+      console.groupEnd();
+
       if (result.status !== 'success' || !result.image_base64) {
         throw new Error(result.message || 'Local image API did not return an image.');
       }
@@ -176,11 +203,18 @@ const fetchImageFromAI = async (imagePrompt: string, localImageApiUrl?: string):
       }
 
       return `data:image/png;base64,${result.image_base64}`;
+    } catch (err) {
+      if (!(err instanceof Error && err.message.startsWith('Local image API error'))) {
+        console.error('[fetchImageFromAI] Unexpected error:', err);
+        console.groupEnd();
+      }
+      throw err;
     } finally {
       window.clearTimeout(timeout);
     }
   }
 
+  console.warn('[fetchImageFromAI] No localImageApiUrl provided — cannot generate image.');
   throw new Error('Image API URL is not set. Please provide one in Step 1 before generating images.');
 };
 
@@ -432,11 +466,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
           characterId,
           name,
           prompt,
-          status: 'idle',
+          status: 'idle' as CharacterImageStatus,
           error: null,
           candidates: [],
           selectedCandidateId: null,
-        } satisfies CharacterImageItem;
+        } as CharacterImageItem;
       })
       .filter((entry): entry is CharacterImageItem => entry !== null);
 
@@ -472,11 +506,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
           characterId,
           name,
           prompt,
-          status: 'idle',
+          status: 'idle' as CharacterImageStatus,
           error: null,
           candidates: [],
           selectedCandidateId: null,
-        } satisfies CharacterImageItem;
+        } as CharacterImageItem;
       })
       .filter((entry): entry is CharacterImageItem => entry !== null);
 
@@ -898,7 +932,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     const apiStep2 = toRecord(apiSteps.step_2_design);
     const apiStep2ImageReview = toRecord(apiSteps.step_2_image_review);
     const apiStep3 = toRecord(apiSteps.step_3_script);
-    const apiUserInputs = toRecord((apiSnapshot.user as { inputs?: Record<string, unknown> } | undefined)?.inputs);
+    const apiUserInputs = toRecord(apiSnapshot.user_inputs);
     const apiUserCustomizations = toRecord(apiUserInputs.user_customizations);
 
     return {
@@ -1099,36 +1133,116 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       return;
     }
 
-    // ── Steps 2-4: non-streaming (these are fast enough) ──
+    // ── Step 2: stream character design sheet ────────────────────────────────
+    if (step === 2) {
+      await new Promise<void>((resolve) => {
+        characterDesignsStructuredStream(
+          {
+            project_id: projectId,
+            step1_json: getStep1StructuredJson(),
+            desired_main_characters: Number(mainCharacters) || 5,
+            genre_tone: mangaGenre || 'Shonen action',
+            art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+            special_requests: specialRequests || 'None',
+          },
+          {
+            onToken(token) {
+              setStep2((prev) => ({ ...prev, streamingText: (prev.streamingText ?? '') + token }));
+            },
+            onDone(result) {
+              const designMarkdown = result.design_markdown || '';
+              const structuredJson = (result.structured_json as Record<string, unknown>) || null;
+              const structured = structuredJson as { steps?: { step_2_design?: { data?: { main_characters_designs?: Record<string, { ai_image_prompt_ready?: string }> } } } } | null;
+              const mainDesigns = structured?.steps?.step_2_design?.data?.main_characters_designs || {};
+              const aiPrompts = Object.values(mainDesigns)
+                .map((e) => e?.ai_image_prompt_ready)
+                .filter((p): p is string => typeof p === 'string' && p.trim().length > 0);
+              setStep2({
+                data: { designMarkdown, structuredJson, aiPrompts },
+                isLoading: false, isApproved: false, locked: false,
+                error: null, lastUpdated: new Date().toISOString(), streamingText: null,
+              });
+              setStep2ImageReview((prev) => ({ ...prev, locked: false }));
+              setActiveStep(2);
+              resolve();
+            },
+            onError(message, statusCode) {
+              if (statusCode === 429) {
+                const match = message.match(/(\d+(?:\.\d+)?)\s*s/);
+                setCooldownUntil((prev) => ({ ...prev, 2: Date.now() + (match ? parseFloat(match[1]) : 30) * 1000 }));
+              }
+              setStep2((prev) => ({ ...prev, isLoading: false, streamingText: null, error: message }));
+              resolve();
+            },
+          },
+        );
+      });
+      return;
+    }
+
+    // ── Step 3: stream panel script ───────────────────────────────────────────
+    if (step === 3) {
+      await new Promise<void>((resolve) => {
+        panelScriptStructuredStream(
+          {
+            project_id: projectId,
+            step1_json: getStep1StructuredJson(),
+            step2_json: getStep2StructuredJson(),
+            num_chapters: Number(numChapters) || 3,
+            target_total_pages: (targetPages || 'auto').trim() || 'auto',
+            genre_tone: mangaGenre || 'Shonen action',
+            art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+            max_panels_per_page: Number(maxPanelsPerPage) || 6,
+            special_requests: specialRequests || 'None',
+          },
+          {
+            onToken(token) {
+              setStep3((prev) => ({ ...prev, streamingText: (prev.streamingText ?? '') + token }));
+            },
+            onDone(result) {
+              setStep3({
+                data: {
+                  scriptMarkdown: result.script_markdown || '',
+                  structuredJson: (result.structured_json as Record<string, unknown>) || null,
+                },
+                isLoading: false, isApproved: false, locked: false,
+                error: null, lastUpdated: new Date().toISOString(), streamingText: null,
+              });
+              setStep4((prev) => ({ ...prev, locked: false }));
+              setActiveStep(3);
+              resolve();
+            },
+            onError(message, statusCode) {
+              if (statusCode === 429) {
+                const match = message.match(/(\d+(?:\.\d+)?)\s*s/);
+                setCooldownUntil((prev) => ({ ...prev, 3: Date.now() + (match ? parseFloat(match[1]) : 30) * 1000 }));
+              }
+              setStep3((prev) => ({ ...prev, isLoading: false, streamingText: null, error: message }));
+              resolve();
+            },
+          },
+        );
+      });
+      return;
+    }
+
+    // ── Step 4: build panel list from step 3 markdown (no LLM call) ──────────
     try {
       const data = await buildStepPayload(step);
       setStepState(step, (prev) => ({
-        ...prev,
-        data,
-        isLoading: false,
-        lastUpdated: new Date().toISOString(),
-        streamingText: null,
+        ...prev, data, isLoading: false, lastUpdated: new Date().toISOString(), streamingText: null,
       }));
       setActiveStep(step);
     } catch (err: unknown) {
       const apiError = toApiError(err);
       const retryAfterSeconds = apiError.retryAfterSeconds;
       if (apiError.status === 429 && typeof retryAfterSeconds === 'number') {
-        setCooldownUntil((prev) => ({
-          ...prev,
-          [step]: Date.now() + retryAfterSeconds * 1000,
-        }));
+        setCooldownUntil((prev) => ({ ...prev, [step]: Date.now() + retryAfterSeconds * 1000 }));
       }
-
-      const retryHint =
-        apiError.status === 429 && typeof retryAfterSeconds === 'number'
-          ? ` Retry in ${Math.ceil(retryAfterSeconds)}s.`
-          : '';
-
+      const retryHint = apiError.status === 429 && typeof retryAfterSeconds === 'number'
+        ? ` Retry in ${Math.ceil(retryAfterSeconds)}s.` : '';
       setStepState(step, (prev) => ({
-        ...prev,
-        isLoading: false,
-        streamingText: null,
+        ...prev, isLoading: false, streamingText: null,
         error: `${apiError.message}${retryHint}`.trim(),
       }));
     }
@@ -1138,7 +1252,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     const cacheKey = getStepCacheKey(step);
     const data = stepMap[step].data;
     if (data) {
-      approvedCacheRef.current[step] = { key: cacheKey, data };
+      approvedCacheRef.current[step] = { key: cacheKey, data: data as StepData };
     }
 
     setStepState(step, (prev) => ({

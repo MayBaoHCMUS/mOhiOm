@@ -72,7 +72,7 @@ apiClient.interceptors.request.use((config) => {
     console.groupEnd();
   }
 
-  return requestConfig;
+  return config;
 });
 
 apiClient.interceptors.response.use(
@@ -336,6 +336,124 @@ export function analyzeStoryStructuredStream(
   })();
 
   return controller;
+}
+
+/** Reusable SSE reader — shared by all step stream helpers. */
+function _readSseStream<TDone>(
+  url: string,
+  body: object,
+  onToken: (token: string) => void,
+  onDone: (result: TDone) => void,
+  onError: (message: string, statusCode?: number) => void,
+  parseDone: (event: Record<string, unknown>) => TDone | null,
+): AbortController {
+  const controller = new AbortController();
+  const getUserId = (): string => {
+    const key = "mohiom-user-id";
+    if (typeof window === "undefined") return "server";
+    const existing = window.localStorage.getItem(key);
+    if (existing) return existing;
+    const next =
+      "randomUUID" in window.crypto
+        ? window.crypto.randomUUID()
+        : `user-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    window.localStorage.setItem(key, next);
+    return next;
+  };
+
+  (async () => {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-User-Id": getUserId() },
+        credentials: "include",
+        body: JSON.stringify({ ...body, stream: true }),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if ((err as { name?: string })?.name !== "AbortError") onError(err instanceof Error ? err.message : "Network error");
+      return;
+    }
+    if (!response.ok) {
+      let msg = `Request failed (${response.status})`;
+      try { const b = await response.json() as { detail?: string | { message?: string } }; const d = b?.detail; msg = typeof d === "string" ? d : d?.message ?? msg; } catch { /* ignore */ }
+      onError(msg, response.status); return;
+    }
+    const reader = response.body?.getReader();
+    if (!reader) { onError("No response body"); return; }
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim().startsWith("data:")) continue;
+          const raw = line.trim().slice(5).trim();
+          if (!raw || raw === "[DONE]") continue;
+          let event: Record<string, unknown>;
+          try { event = JSON.parse(raw) as Record<string, unknown>; } catch { continue; }
+          const type = event.type as string | undefined;
+          if (type === "token" && typeof event.content === "string") onToken(event.content);
+          else if (type === "done") { const result = parseDone(event); if (result) onDone(result); }
+          else if (type === "error") onError((event.message as string) ?? "Unknown error", event.status_code as number | undefined);
+        }
+      }
+    } catch (err) {
+      if ((err as { name?: string })?.name !== "AbortError") onError(err instanceof Error ? err.message : "Stream read error");
+    } finally { reader.releaseLock(); }
+  })();
+  return controller;
+}
+
+export interface Step2StreamCallbacks {
+  onToken: (token: string) => void;
+  onDone: (result: Step2DesignStructuredResponse) => void;
+  onError: (message: string, statusCode?: number) => void;
+}
+
+export function characterDesignsStructuredStream(
+  payload: Step2DesignPayload,
+  callbacks: Step2StreamCallbacks,
+): AbortController {
+  return _readSseStream(
+    `${API_BASE_URL}/gemini/character-designs-structured`,
+    payload,
+    callbacks.onToken,
+    callbacks.onDone,
+    callbacks.onError,
+    (event) => {
+      if (typeof event.design_markdown !== "string") return null;
+      return { design_markdown: event.design_markdown, structured_json: (event.structured_json as Record<string, unknown>) ?? {} };
+    },
+  );
+}
+
+export interface Step3StreamCallbacks {
+  onToken: (token: string) => void;
+  onDone: (result: Step3ScriptStructuredResponse) => void;
+  onError: (message: string, statusCode?: number) => void;
+}
+
+export function panelScriptStructuredStream(
+  payload: Step3ScriptPayload,
+  callbacks: Step3StreamCallbacks,
+): AbortController {
+  return _readSseStream(
+    `${API_BASE_URL}/gemini/panel-script-structured`,
+    payload,
+    callbacks.onToken,
+    callbacks.onDone,
+    callbacks.onError,
+    (event) => {
+      if (typeof event.script_markdown !== "string") return null;
+      return { script_markdown: event.script_markdown, structured_json: (event.structured_json as Record<string, unknown>) ?? {} };
+    },
+  );
 }
 
 // Gemini API endpoints

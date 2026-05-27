@@ -14,13 +14,16 @@ export default function Step3Script() {
 
   const cooldownSeconds = getCooldownSeconds(3);
   const isGenerateDisabled = step3.isLoading || cooldownSeconds > 0;
+
   const statusLabel = step3.isApproved
     ? 'Approved'
     : step3.isLoading
-      ? 'Processing'
+      ? step3.streamingText ? 'Streaming…' : 'Processing…'
       : step3.data
         ? 'Ready for review'
         : 'Not generated';
+
+  const displayText = step3.streamingText ?? step3.data?.scriptMarkdown ?? null;
 
   return (
     <section className="bg-white text-gray-900 rounded-3xl p-8">
@@ -29,13 +32,26 @@ export default function Step3Script() {
           <h2 className="text-2xl font-semibold">Panel script</h2>
           <p className="mt-2 text-gray-600">Review the full page-by-page, panel-by-panel script.</p>
         </div>
-        <div className="text-sm text-gray-600">Status: {statusLabel}</div>
+        <div className="flex items-center gap-3">
+          {step3.isLoading && step3.streamingText && (
+            <span className="flex items-center gap-1.5 text-sm text-blue-600">
+              <span className="animate-pulse">●</span>
+              Streaming
+            </span>
+          )}
+          <div className="text-sm text-gray-600">Status: {statusLabel}</div>
+        </div>
       </div>
 
       <div className="mt-6 rounded-3xl bg-gray-100 p-6">
         <h3 className="text-lg font-semibold">Script output</h3>
-        {step3.data?.scriptMarkdown ? (
-          <pre className="mt-4 whitespace-pre-wrap text-sm text-gray-700">{step3.data.scriptMarkdown}</pre>
+        {displayText ? (
+          <pre className="mt-4 whitespace-pre-wrap text-sm text-gray-700">
+            {displayText}
+            {step3.isLoading && step3.streamingText && (
+              <span className="inline-block w-[2px] h-[1em] ml-px bg-gray-500 animate-pulse align-text-bottom" />
+            )}
+          </pre>
         ) : (
           <p className="mt-4 text-sm text-gray-500">Generate Step 3 to see the full script.</p>
         )}
@@ -51,7 +67,7 @@ export default function Step3Script() {
           }`}
         >
           {step3.isLoading
-            ? 'Generating...'
+            ? 'Generating…'
             : cooldownSeconds > 0
               ? `Retry in ${cooldownSeconds}s`
               : step3.data
@@ -70,7 +86,7 @@ export default function Step3Script() {
         >
           {step3.isApproved ? 'Approved' : 'Approve script'}
         </button>
-        {step3.error ? (
+        {step3.error && (
           <button
             type="button"
             onClick={() => handleRetry(3)}
@@ -78,8 +94,8 @@ export default function Step3Script() {
           >
             Retry
           </button>
-        ) : null}
-        {step3.error ? <span className="text-sm text-red-600">{step3.error}</span> : null}
+        )}
+        {step3.error && <span className="text-sm text-red-600">{step3.error}</span>}
       </div>
     </section>
   );

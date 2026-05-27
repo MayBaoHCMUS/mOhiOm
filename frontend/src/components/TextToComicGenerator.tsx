@@ -56,22 +56,6 @@ function WizardContent() {
                 <h1 className="text-3xl font-semibold">Text-to-Comic Pipeline</h1>
               </div>
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-xl border border-gray-200">
-                  <span className="material-symbols-outlined text-sm text-gray-600">
-                    {useStreaming ? 'stream' : 'hourglass_empty'}
-                  </span>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={useStreaming}
-                      onChange={(e) => setUseStreaming(e.target.checked)}
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                    />
-                    <span className="text-sm font-medium text-gray-700">
-                      Stream Response
-                    </span>
-                  </label>
-                </div>
                 <div className="text-sm text-gray-600">Step {activeStep + 1} of {wizardSteps.length}</div>
               </div>
             </div>

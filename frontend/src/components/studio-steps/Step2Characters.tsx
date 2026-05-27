@@ -18,15 +18,21 @@ export default function Step2Characters() {
     handleRetryCharacterReferences,
     getStep2PromptList,
     getCooldownSeconds,
-    useStreaming,
-    streamingText,
   } = useComicGeneration();
 
   const cooldownSeconds = getCooldownSeconds(2);
   const isGenerateDisabled = step2.isLoading || cooldownSeconds > 0;
   const prompts = getStep2PromptList();
 
-  const displayText = step2.isLoading && useStreaming ? streamingText : step2.data?.designMarkdown;
+  const displayText = step2.streamingText ?? step2.data?.designMarkdown ?? null;
+
+  const statusLabel = step2.isApproved
+    ? 'Approved'
+    : step2.isLoading
+      ? step2.streamingText ? 'Streaming…' : 'Processing…'
+      : step2.data
+        ? 'Ready for review'
+        : 'Not generated';
 
   return (
     <section className="bg-white text-gray-900 rounded-3xl p-8">
@@ -36,13 +42,13 @@ export default function Step2Characters() {
           <p className="mt-2 text-gray-600">Generate design sheets, then approve references for final rendering.</p>
         </div>
         <div className="flex items-center gap-3">
-          {step2.isLoading && useStreaming && (
-            <span className="flex items-center gap-2 text-sm text-blue-600">
+          {step2.isLoading && step2.streamingText && (
+            <span className="flex items-center gap-1.5 text-sm text-blue-600">
               <span className="animate-pulse">●</span>
-              Streaming...
+              Streaming
             </span>
           )}
-          <div className="text-sm text-gray-600">Status: {step2.isApproved ? 'Approved' : step2.data ? 'Ready' : 'Not generated'}</div>
+          <div className="text-sm text-gray-600">Status: {statusLabel}</div>
         </div>
       </div>
 
@@ -56,7 +62,7 @@ export default function Step2Characters() {
           }`}
         >
           {step2.isLoading
-            ? 'Generating...'
+            ? 'Generating…'
             : cooldownSeconds > 0
               ? `Retry in ${cooldownSeconds}s`
               : step2.data
@@ -75,7 +81,7 @@ export default function Step2Characters() {
         >
           {step2.isApproved ? 'Approved' : 'Approve design sheet'}
         </button>
-        {step2.error ? (
+        {step2.error && (
           <button
             type="button"
             onClick={() => handleRetry(2)}
@@ -83,15 +89,20 @@ export default function Step2Characters() {
           >
             Retry
           </button>
-        ) : null}
-        {step2.error ? <span className="text-sm text-red-600">{step2.error}</span> : null}
+        )}
+        {step2.error && <span className="text-sm text-red-600">{step2.error}</span>}
       </div>
 
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1.3fr_0.7fr] gap-6">
         <div className="rounded-3xl bg-gray-100 p-6">
           <h3 className="text-lg font-semibold">Design sheet output</h3>
           {displayText ? (
-            <pre className="mt-4 whitespace-pre-wrap text-sm text-gray-700">{displayText}</pre>
+            <pre className="mt-4 whitespace-pre-wrap text-sm text-gray-700">
+              {displayText}
+              {step2.isLoading && step2.streamingText && (
+                <span className="inline-block w-[2px] h-[1em] ml-px bg-gray-500 animate-pulse align-text-bottom" />
+              )}
+            </pre>
           ) : (
             <p className="mt-4 text-sm text-gray-500">Generate Step 2 to view the character design sheet.</p>
           )}
@@ -112,6 +123,7 @@ export default function Step2Characters() {
         </div>
       </div>
 
+      {/* ── Reference image review ────────────────────────────────────────── */}
       <div className="mt-8 rounded-3xl bg-gray-100 p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -121,7 +133,11 @@ export default function Step2Characters() {
             </p>
           </div>
           <div className="text-sm text-gray-600">
-            {step2ImageReview.locked ? 'Locked until Step 2 approved' : step2ImageReview.isApproved ? 'Approved' : 'In review'}
+            {step2ImageReview.locked
+              ? 'Locked until Step 2 approved'
+              : step2ImageReview.isApproved
+                ? 'Approved'
+                : 'In review'}
           </div>
         </div>
 
@@ -136,7 +152,7 @@ export default function Step2Characters() {
                 : 'bg-gray-900 text-white hover:scale-105'
             }`}
           >
-            {step2ImageReview.isLoading ? 'Generating images...' : 'Generate references'}
+            {step2ImageReview.isLoading ? 'Generating images…' : 'Generate references'}
           </button>
           <button
             type="button"
@@ -155,12 +171,14 @@ export default function Step2Characters() {
             onClick={handleRetryCharacterReferences}
             disabled={step2ImageReview.locked}
             className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
-              step2ImageReview.locked ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-900 hover:scale-105'
+              step2ImageReview.locked
+                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                : 'bg-gray-100 text-gray-900 hover:scale-105'
             }`}
           >
             Reset review
           </button>
-          {step2ImageReview.error ? <span className="text-sm text-red-600">{step2ImageReview.error}</span> : null}
+          {step2ImageReview.error && <span className="text-sm text-red-600">{step2ImageReview.error}</span>}
         </div>
 
         {step2ImageReview.data?.characters?.length ? (
@@ -182,10 +200,10 @@ export default function Step2Characters() {
                         : 'bg-gray-100 text-gray-900 hover:scale-105'
                     }`}
                   >
-                    {character.status === 'loading' ? 'Regenerating...' : 'Regenerate'}
+                    {character.status === 'loading' ? 'Regenerating…' : 'Regenerate'}
                   </button>
                 </div>
-                {character.error ? <p className="mt-3 text-sm text-red-600">{character.error}</p> : null}
+                {character.error && <p className="mt-3 text-sm text-red-600">{character.error}</p>}
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {character.candidates.length ? (
                     character.candidates.map((candidate) => {
@@ -223,7 +241,9 @@ export default function Step2Characters() {
             ))}
           </div>
         ) : (
-          <p className="mt-6 text-sm text-gray-500">Generate Step 2 and click &quot;Generate references&quot; to review images.</p>
+          <p className="mt-6 text-sm text-gray-500">
+            Generate Step 2 and click &quot;Generate references&quot; to review images.
+          </p>
         )}
       </div>
     </section>

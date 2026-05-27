@@ -356,105 +356,93 @@ async def generate_character_prompt(
 async def generate_character_designs_structured(
     request: Step2DesignRequest, http_request: Request
 ):
-    """Generate Step 2 markdown + structured JSON using Step 1 JSON context."""
+    """
+    Generate Step 2 character design markdown + structured JSON.
+    Streams when request.stream=True (SSE events: token / done / error).
+    """
     if gemini_service is None:
         raise HTTPException(status_code=500, detail=gemini_error_message)
 
     limit_token = await _acquire_limit_token(http_request)
 
-    try:
-        if request.stream:
-            async def stream_generator():
-                try:
-                    design_chunks = []
-                    async for chunk in await gemini_service.generate_step2_character_design_markdown(
-                        step1_json=request.step1_json,
-                        desired_main_characters=request.desired_main_characters,
-                        genre_tone=request.genre_tone,
-                        art_style_reference=request.art_style_reference,
-                        special_requests=request.special_requests,
-                        stream=True,
-                    ):
-                        design_chunks.append(chunk)
-                        yield f"data: {chunk}\n\n"
+    if request.stream:
+        import json as _json
 
-                    design_markdown = "".join(design_chunks)
-                    last_updated = datetime.now(timezone.utc).isoformat()
-                    structured_json = await gemini_service.generate_step2_structured_snapshot(
-                        project_id=request.project_id,
-                        step1_json=request.step1_json,
-                        desired_main_characters=request.desired_main_characters,
-                        genre_tone=request.genre_tone,
-                        art_style_reference=request.art_style_reference,
-                        special_requests=request.special_requests,
-                        step_status="review_pending",
-                        last_updated=last_updated,
-                        design_markdown=design_markdown,
-                    )
+        async def sse_generator():
+            try:
+                last_updated = datetime.now(timezone.utc).isoformat()
+                async for event in gemini_service.generate_step2_stream(
+                    project_id=request.project_id,
+                    step1_json=request.step1_json,
+                    desired_main_characters=request.desired_main_characters,
+                    genre_tone=request.genre_tone,
+                    art_style_reference=request.art_style_reference,
+                    special_requests=request.special_requests,
+                    step_status="review_pending",
+                    last_updated=last_updated,
+                ):
+                    kind = event[0]
+                    if kind == "token":
+                        yield "data: " + _json.dumps({"type": "token", "content": event[1]}) + "\n\n"
+                    elif kind == "done":
+                        yield "data: " + _json.dumps({
+                            "type": "done",
+                            "design_markdown": event[1],
+                            "structured_json": event[2],
+                        }) + "\n\n"
+                    elif kind == "error":
+                        yield "data: " + _json.dumps({
+                            "type": "error",
+                            "message": event[1],
+                            "status_code": event[2] if len(event) > 2 else 500,
+                        }) + "\n\n"
+            except GeminiServiceError as exc:
+                detail = {"message": str(exc), "status_code": exc.status_code}
+                if exc.retry_after_seconds is not None:
+                    detail["retry_after_seconds"] = exc.retry_after_seconds
+                yield "data: " + _json.dumps({"type": "error", **detail}) + "\n\n"
+            except Exception as exc:
+                yield "data: " + _json.dumps({"type": "error", "message": str(exc), "status_code": 500}) + "\n\n"
+            finally:
+                limit_token.release()
 
-                    import json
-                    yield f"data: [STRUCTURED_JSON]{json.dumps(structured_json)}\n\n"
-                    yield "data: [DONE]\n\n"
-                except GeminiServiceError as e:
-                    error_data = {"error": str(e), "status_code": e.status_code}
-                    if e.retry_after_seconds is not None:
-                        error_data["retry_after_seconds"] = e.retry_after_seconds
-                    import json
-                    yield f"data: {json.dumps(error_data)}\n\n"
-                except Exception as e:
-                    import json
-                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
-                finally:
-                    limit_token.release()
-
-            return StreamingResponse(
-                stream_generator(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                }
-            )
-        else:
-            design_markdown = await gemini_service.generate_step2_character_design_markdown(
-                step1_json=request.step1_json,
-                desired_main_characters=request.desired_main_characters,
-                genre_tone=request.genre_tone,
-                art_style_reference=request.art_style_reference,
-                special_requests=request.special_requests,
-                stream=False,
-            )
-
-            last_updated = datetime.now(timezone.utc).isoformat()
-            structured_json = await gemini_service.generate_step2_structured_snapshot(
-                project_id=request.project_id,
-                step1_json=request.step1_json,
-                desired_main_characters=request.desired_main_characters,
-                genre_tone=request.genre_tone,
-                art_style_reference=request.art_style_reference,
-                special_requests=request.special_requests,
-                step_status="review_pending",
-                last_updated=last_updated,
-                design_markdown=design_markdown,
-            )
-
-            return {
-                "design_markdown": design_markdown,
-                "structured_json": structured_json,
-            }
-    except GeminiServiceError as e:
-        detail = (
-            {"message": str(e), "retry_after_seconds": e.retry_after_seconds}
-            if e.retry_after_seconds is not None
-            else str(e)
+        return StreamingResponse(
+            sse_generator(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
         )
-        raise HTTPException(status_code=e.status_code, detail=detail)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+    try:
+        last_updated = datetime.now(timezone.utc).isoformat()
+        design_markdown = await gemini_service.generate_step2_character_design_markdown(
+            step1_json=request.step1_json,
+            desired_main_characters=request.desired_main_characters,
+            genre_tone=request.genre_tone,
+            art_style_reference=request.art_style_reference,
+            special_requests=request.special_requests,
+        )
+        structured_json = await gemini_service.generate_step2_structured_snapshot(
+            project_id=request.project_id,
+            step1_json=request.step1_json,
+            desired_main_characters=request.desired_main_characters,
+            genre_tone=request.genre_tone,
+            art_style_reference=request.art_style_reference,
+            special_requests=request.special_requests,
+            step_status="review_pending",
+            last_updated=last_updated,
+            design_markdown=design_markdown,
+        )
+        return {"design_markdown": design_markdown, "structured_json": structured_json}
+    except GeminiServiceError as exc:
+        detail = (
+            {"message": str(exc), "retry_after_seconds": exc.retry_after_seconds}
+            if exc.retry_after_seconds is not None else str(exc)
+        )
+        raise HTTPException(status_code=exc.status_code, detail=detail)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
     finally:
-        if not request.stream:
-            limit_token.release()
+        limit_token.release()
 
 
 @router.post("/panel-script")
@@ -484,115 +472,101 @@ async def generate_panel_script(request: PanelScriptRequest, http_request: Reque
 async def generate_panel_script_structured(
     request: Step3ScriptRequest, http_request: Request
 ):
-    """Generate Step 3 markdown + structured JSON using Step 1/2 JSON context."""
+    """
+    Generate Step 3 panel script markdown + structured JSON.
+    Streams when request.stream=True (SSE events: token / done / error).
+    """
     if gemini_service is None:
         raise HTTPException(status_code=500, detail=gemini_error_message)
 
     limit_token = await _acquire_limit_token(http_request)
 
-    try:
-        if request.stream:
-            async def stream_generator():
-                try:
-                    script_chunks = []
-                    async for chunk in await gemini_service.generate_step3_panel_script_markdown(
-                        step1_json=request.step1_json,
-                        step2_json=request.step2_json,
-                        num_chapters=request.num_chapters,
-                        target_total_pages=request.target_total_pages,
-                        genre_tone=request.genre_tone,
-                        art_style_reference=request.art_style_reference,
-                        max_panels_per_page=request.max_panels_per_page,
-                        special_requests=request.special_requests,
-                        stream=True,
-                    ):
-                        script_chunks.append(chunk)
-                        yield f"data: {chunk}\n\n"
+    if request.stream:
+        import json as _json
 
-                    script_markdown = "".join(script_chunks)
-                    last_updated = datetime.now(timezone.utc).isoformat()
-                    structured_json = await gemini_service.generate_step3_structured_snapshot(
-                        project_id=request.project_id,
-                        step2_json=request.step2_json,
-                        num_chapters=request.num_chapters,
-                        target_total_pages=request.target_total_pages,
-                        genre_tone=request.genre_tone,
-                        art_style_reference=request.art_style_reference,
-                        max_panels_per_page=request.max_panels_per_page,
-                        special_requests=request.special_requests,
-                        step_status="review_pending",
-                        last_updated=last_updated,
-                        script_markdown=script_markdown,
-                    )
+        async def sse_generator():
+            try:
+                last_updated = datetime.now(timezone.utc).isoformat()
+                async for event in gemini_service.generate_step3_stream(
+                    project_id=request.project_id,
+                    step1_json=request.step1_json,
+                    step2_json=request.step2_json,
+                    num_chapters=request.num_chapters,
+                    target_total_pages=request.target_total_pages,
+                    genre_tone=request.genre_tone,
+                    art_style_reference=request.art_style_reference,
+                    max_panels_per_page=request.max_panels_per_page,
+                    special_requests=request.special_requests,
+                    step_status="review_pending",
+                    last_updated=last_updated,
+                ):
+                    kind = event[0]
+                    if kind == "token":
+                        yield "data: " + _json.dumps({"type": "token", "content": event[1]}) + "\n\n"
+                    elif kind == "done":
+                        yield "data: " + _json.dumps({
+                            "type": "done",
+                            "script_markdown": event[1],
+                            "structured_json": event[2],
+                        }) + "\n\n"
+                    elif kind == "error":
+                        yield "data: " + _json.dumps({
+                            "type": "error",
+                            "message": event[1],
+                            "status_code": event[2] if len(event) > 2 else 500,
+                        }) + "\n\n"
+            except GeminiServiceError as exc:
+                detail = {"message": str(exc), "status_code": exc.status_code}
+                if exc.retry_after_seconds is not None:
+                    detail["retry_after_seconds"] = exc.retry_after_seconds
+                yield "data: " + _json.dumps({"type": "error", **detail}) + "\n\n"
+            except Exception as exc:
+                yield "data: " + _json.dumps({"type": "error", "message": str(exc), "status_code": 500}) + "\n\n"
+            finally:
+                limit_token.release()
 
-                    import json
-                    yield f"data: [STRUCTURED_JSON]{json.dumps(structured_json)}\n\n"
-                    yield "data: [DONE]\n\n"
-                except GeminiServiceError as e:
-                    error_data = {"error": str(e), "status_code": e.status_code}
-                    if e.retry_after_seconds is not None:
-                        error_data["retry_after_seconds"] = e.retry_after_seconds
-                    import json
-                    yield f"data: {json.dumps(error_data)}\n\n"
-                except Exception as e:
-                    import json
-                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
-                finally:
-                    limit_token.release()
-
-            return StreamingResponse(
-                stream_generator(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                }
-            )
-        else:
-            script_markdown = await gemini_service.generate_step3_panel_script_markdown(
-                step1_json=request.step1_json,
-                step2_json=request.step2_json,
-                num_chapters=request.num_chapters,
-                target_total_pages=request.target_total_pages,
-                genre_tone=request.genre_tone,
-                art_style_reference=request.art_style_reference,
-                max_panels_per_page=request.max_panels_per_page,
-                special_requests=request.special_requests,
-                stream=False,
-            )
-
-            last_updated = datetime.now(timezone.utc).isoformat()
-            structured_json = await gemini_service.generate_step3_structured_snapshot(
-                project_id=request.project_id,
-                step2_json=request.step2_json,
-                num_chapters=request.num_chapters,
-                target_total_pages=request.target_total_pages,
-                genre_tone=request.genre_tone,
-                art_style_reference=request.art_style_reference,
-                max_panels_per_page=request.max_panels_per_page,
-                special_requests=request.special_requests,
-                step_status="review_pending",
-                last_updated=last_updated,
-                script_markdown=script_markdown,
-            )
-
-            return {
-                "script_markdown": script_markdown,
-                "structured_json": structured_json,
-            }
-    except GeminiServiceError as e:
-        detail = (
-            {"message": str(e), "retry_after_seconds": e.retry_after_seconds}
-            if e.retry_after_seconds is not None
-            else str(e)
+        return StreamingResponse(
+            sse_generator(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
         )
-        raise HTTPException(status_code=e.status_code, detail=detail)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+    try:
+        last_updated = datetime.now(timezone.utc).isoformat()
+        script_markdown = await gemini_service.generate_step3_panel_script_markdown(
+            step1_json=request.step1_json,
+            step2_json=request.step2_json,
+            num_chapters=request.num_chapters,
+            target_total_pages=request.target_total_pages,
+            genre_tone=request.genre_tone,
+            art_style_reference=request.art_style_reference,
+            max_panels_per_page=request.max_panels_per_page,
+            special_requests=request.special_requests,
+        )
+        structured_json = await gemini_service.generate_step3_structured_snapshot(
+            project_id=request.project_id,
+            step2_json=request.step2_json,
+            num_chapters=request.num_chapters,
+            target_total_pages=request.target_total_pages,
+            genre_tone=request.genre_tone,
+            art_style_reference=request.art_style_reference,
+            max_panels_per_page=request.max_panels_per_page,
+            special_requests=request.special_requests,
+            step_status="review_pending",
+            last_updated=last_updated,
+            script_markdown=script_markdown,
+        )
+        return {"script_markdown": script_markdown, "structured_json": structured_json}
+    except GeminiServiceError as exc:
+        detail = (
+            {"message": str(exc), "retry_after_seconds": exc.retry_after_seconds}
+            if exc.retry_after_seconds is not None else str(exc)
+        )
+        raise HTTPException(status_code=exc.status_code, detail=detail)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
     finally:
-        if not request.stream:
-            limit_token.release()
+        limit_token.release()
 
 
 @router.post("/generate-panel-image")
