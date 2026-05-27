@@ -391,6 +391,88 @@ def _build_step3_fallback_snapshot(
     }
 
 
+def _trim_json_for_prompt(obj, max_str: int = 600):
+    """
+    Recursively trim a JSON-serialisable object so it fits inside an LLM prompt.
+
+    Rules applied:
+    - Strings that start with 'data:' (base64 data URLs) → replaced with '[image_ref]'
+    - Any other string longer than *max_str* characters → truncated with '…'
+    - Lists and dicts are processed recursively.
+    """
+    if isinstance(obj, str):
+        if obj.startswith("data:"):
+            return "[image_ref]"
+        return obj if len(obj) <= max_str else obj[:max_str] + "…"
+    if isinstance(obj, list):
+        return [_trim_json_for_prompt(v, max_str) for v in obj]
+    if isinstance(obj, dict):
+        return {k: _trim_json_for_prompt(v, max_str) for k, v in obj.items()}
+    return obj
+
+
+def _extract_step3_context(step1_json: dict, step2_json: dict) -> tuple[str, str]:
+    """
+    Extract the minimal fields from Step 1 and Step 2 structured JSON that
+    Step 3 (panel script) actually needs, then serialise them compactly.
+
+    This avoids sending:
+    - full analysis/design markdown blobs (already processed into structured data)
+    - the raw story_content again (already summarised in step 1)
+    - base64 image data URLs (useless for text generation)
+    - step_1 data repeated inside step_2 (it's always nested there)
+    """
+    # ── Step 1: chapter/scene structure + key character list ─────────────────
+    s1_steps   = step1_json.get("steps", {})
+    s1_analysis = s1_steps.get("step_1_analysis", {}).get("data", {})
+    step1_ctx = {
+        "chapter_outline":      _trim_json_for_prompt(s1_analysis.get("chapter_outline") or []),
+        "narrative_structure":  _trim_json_for_prompt(s1_analysis.get("narrative_structure") or {}),
+        "character_breakdown":  _trim_json_for_prompt(s1_analysis.get("character_breakdown") or []),
+        "scene_breakdown":      _trim_json_for_prompt(s1_analysis.get("scene_breakdown") or []),
+    }
+
+    # ── Step 2: character names + image prompts only (no markdown, no base64) ─
+    s2_steps  = step2_json.get("steps", {})
+    s2_design = s2_steps.get("step_2_design", {}).get("data", {})
+    s2_review = s2_steps.get("step_2_image_review", {}).get("data", {})
+
+    main_designs = s2_design.get("main_characters_designs") or {}
+    chars: dict = {}
+    if isinstance(main_designs, dict):
+        for char_id, char_data in main_designs.items():
+            if not isinstance(char_data, dict):
+                continue
+            ref_url = char_data.get("selected_reference_image_url", "")
+            chars[char_id] = {
+                "name":                   char_data.get("name", char_id),
+                "ai_image_prompt_ready":  _trim_json_for_prompt(
+                    char_data.get("ai_image_prompt_ready") or "", max_str=400
+                ),
+                "selected_reference":     "[image provided]" if ref_url else "none",
+            }
+
+    selected_refs = [
+        {
+            "character_id": r.get("character_id"),
+            "name":         r.get("name"),
+            "prompt":       _trim_json_for_prompt(r.get("prompt") or "", max_str=300),
+        }
+        for r in (s2_review.get("selected_character_references") or [])
+        if isinstance(r, dict)
+    ]
+
+    step2_ctx = {
+        "main_characters":          chars,
+        "selected_character_refs":  selected_refs,
+    }
+
+    return (
+        json.dumps(step1_ctx, ensure_ascii=True, indent=2),
+        json.dumps(step2_ctx, ensure_ascii=True, indent=2),
+    )
+
+
 class GeminiService:
     """Service class for interacting with Google's Gemini API."""
 
@@ -861,17 +943,19 @@ Rules: each main character needs ai_image_prompt_ready. Return valid JSON only a
         Yields: ("token", str) | ("done", markdown_str, dict) | ("error", str, int)
         """
         sep = "===JSON==="
-        step1_json_text = json.dumps(step1_json, ensure_ascii=True, indent=2)
-        step2_json_text = json.dumps(step2_json, ensure_ascii=True, indent=2)
+
+        # Trim context to only what Step 3 needs — strips base64 images, long
+        # markdown blobs, and the duplicate step_1 data nested inside step_2.
+        step1_ctx, step2_ctx = _extract_step3_context(step1_json, step2_json)
 
         prompt = f"""You are a professional manga adaptation studio AI. Your only job right now is Step 3: Panel-by-Panel Script & Image Prompts.
 
 REFERENCE FROM PREVIOUS STEPS:
-[STEP 1 JSON]
-{step1_json_text}
+[STEP 1 – Chapter & Scene Structure]
+{step1_ctx}
 
-[STEP 2 JSON]
-{step2_json_text}
+[STEP 2 – Character Designs & Image Prompts]
+{step2_ctx}
 
 USER CUSTOMIZATION INPUTS:
 - Number of chapters: {num_chapters}
@@ -882,7 +966,7 @@ USER CUSTOMIZATION INPUTS:
 - Special requests: {special_requests}
 
 TASK – STEP 3 ONLY
-Using Step 1 scene breakdowns and Step 2 designs, create the full manga script.
+Using the chapter/scene structure from Step 1 and character designs from Step 2, write the full panel-by-panel manga script.
 Output EXACTLY in this order using clean markdown:
 
 1. Global Scripting Rules
@@ -894,13 +978,13 @@ For each chapter:
     Layout Summary:
     Panel 1: [description]
     Dialogue/SFX/Thoughts: [content]
-    AI Image Prompt: [detailed prompt]
-    (repeat for all panels)
+    AI Image Prompt: [detailed prompt — incorporate the character's ai_image_prompt_ready from Step 2 for visual consistency]
+    (repeat for all panels up to {max_panels_per_page} per page)
   Chapter End Notes:
 3. Special Pages Inventory (splash/spreads with prompts)
 4. Final Script Summary (boxed table): total pages / panels / image prompts / chapters / deviations
 
-IMPORTANT CHARACTER CONSISTENCY: If Step 2 JSON contains selected_reference_image_url for any character, reference those consistent traits in every AI Image Prompt for that character.
+IMPORTANT CHARACTER CONSISTENCY: For every character listed in Step 2, use their ai_image_prompt_ready text as the base of every AI Image Prompt that features them. If selected_reference is "[image provided]", note "consistent with approved reference" in that prompt.
 
 After you finish the script above, write this separator on its own line (nothing else on that line):
 {sep}
@@ -909,8 +993,6 @@ Then immediately write one valid JSON object (no markdown, no code fence):
   "project_id": "{project_id}",
   "project_status": "in_progress",
   "steps": {{
-    "step_1_analysis": <copy from step1_json or {{}}>,
-    "step_2_design": <copy from step2_json or {{}}>,
     "step_3_script": {{
       "status": "{step_status}",
       "last_updated": "{last_updated}",
@@ -945,7 +1027,7 @@ Then immediately write one valid JSON object (no markdown, no code fence):
     }}
   }}
 }}
-Rules: valid JSON only after the separator. Preserve step_1_analysis and step_2_design from inputs."""
+Rules: valid JSON only after the separator. Output only step_3_script — do NOT reproduce step_1 or step_2 data."""
 
         analysis_parts: list[str] = []
         raw_json = ""

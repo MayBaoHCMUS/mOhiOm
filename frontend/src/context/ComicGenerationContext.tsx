@@ -139,6 +139,23 @@ interface ApiSnapshot {
 const toRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 
+/**
+ * Recursively replace base64 data URLs (data:image/…) with a short placeholder
+ * so the project snapshot stays within the localStorage 5 MB quota.
+ */
+const stripBase64 = (obj: unknown): unknown => {
+  if (typeof obj === 'string') {
+    return obj.startsWith('data:') ? '[image_stripped_for_storage]' : obj;
+  }
+  if (Array.isArray(obj)) return obj.map(stripBase64);
+  if (obj && typeof obj === 'object') {
+    return Object.fromEntries(
+      Object.entries(obj as Record<string, unknown>).map(([k, v]) => [k, stripBase64(v)])
+    );
+  }
+  return obj;
+};
+
 const emptyStepState = <T,>(locked: boolean): StepState<T> => ({
   data: null,
   isLoading: false,
@@ -1030,10 +1047,18 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(
-      `mohiom-project-${projectSnapshot.project_id}`,
-      JSON.stringify(projectSnapshot, null, 2)
-    );
+    try {
+      // Strip base64 image data before saving — images can be 300 KB–1 MB each
+      // and will quickly exceed the 5 MB localStorage quota.
+      const stripped = stripBase64(projectSnapshot);
+      window.localStorage.setItem(
+        `mohiom-project-${projectSnapshot.project_id}`,
+        JSON.stringify(stripped, null, 2)
+      );
+    } catch (err) {
+      // QuotaExceededError or SecurityError — log and continue; don't crash the app.
+      console.warn('[localStorage] Could not save project snapshot:', err);
+    }
   }, [projectSnapshot]);
 
   const handleGenerate = async (step: StepKey) => {
