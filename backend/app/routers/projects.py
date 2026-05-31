@@ -97,6 +97,7 @@ def list_characters(
                 CharacterSummary(
                     character_id=char_id,
                     name=char.get("name", ""),
+                    prompt=char.get("prompt") or None,
                     selected_image_url=char.get("selectedImageUrl") or None,
                     project_id=doc.get("project_id", ""),
                 )

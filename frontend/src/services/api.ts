@@ -834,6 +834,7 @@ export interface CloudProjectListItem {
 export interface CharacterSummary {
   character_id: string;
   name: string;
+  prompt: string | null;
   selected_image_url: string | null;
   project_id: string;
 }

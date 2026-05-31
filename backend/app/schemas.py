@@ -127,6 +127,7 @@ class CharacterSummary(BaseModel):
 
     character_id: str
     name: str
+    prompt: Optional[str] = None
     selected_image_url: Optional[str] = None
     project_id: str
 
