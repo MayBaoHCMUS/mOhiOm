@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
+import CreateCharacterModal from '@/components/CreateCharacterModal';
 import { projectsApi } from '@/services/api';
 import type { CharacterSummary, CloudProjectListItem } from '@/services/api';
 
@@ -19,23 +20,6 @@ function tagFrom(id: string) {
   const parts = id.split(/[-_]/);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return id.slice(0, 2).toUpperCase();
-}
-
-async function generateImage(apiUrl: string, prompt: string): Promise<string> {
-  const res = await fetch('/api/image-proxy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: apiUrl, prompt, negative_prompt: 'lowres, bad anatomy' }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error ?? `Image API error (${res.status})`);
-  }
-  const data = await res.json() as { status?: string; image_base64?: string; message?: string };
-  if (!data.image_base64) throw new Error(data.message ?? 'No image returned');
-  return data.image_base64.startsWith('data:')
-    ? data.image_base64
-    : `data:image/png;base64,${data.image_base64}`;
 }
 
 // ─── Avatar ──────────────────────────────────────────────────────────────────
@@ -148,7 +132,15 @@ function DetailPanel({ character, onSaved, onDeleted, onBack }: DetailPanelProps
     setError(null);
     setGenerating(true);
     try {
-      const url = await generateImage(apiUrl.trim(), prompt.trim());
+      const res = await fetch('/api/image-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: apiUrl.trim(), prompt: prompt.trim(), negative_prompt: 'lowres, bad anatomy' }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})) as { error?: string }; throw new Error(e.error ?? `Error ${res.status}`); }
+      const data = await res.json() as { image_base64?: string; message?: string };
+      if (!data.image_base64) throw new Error(data.message ?? 'No image returned');
+      const url = data.image_base64.startsWith('data:') ? data.image_base64 : `data:image/png;base64,${data.image_base64}`;
       setPreviewUrl(url);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Generation failed.');
@@ -305,163 +297,6 @@ function DetailPanel({ character, onSaved, onDeleted, onBack }: DetailPanelProps
   );
 }
 
-// ─── Create panel ─────────────────────────────────────────────────────────────
-
-interface CreatePanelProps {
-  projects: CloudProjectListItem[];
-  onCreated: (char: CharacterSummary) => void;
-  onCancel: () => void;
-}
-
-function CreatePanel({ projects, onCreated, onCancel }: CreatePanelProps) {
-  const [name, setName] = useState('');
-  const [prompt, setPrompt] = useState('');
-  const [projectId, setProjectId] = useState(projects[0]?.project_id ?? '');
-  const [apiUrl, setApiUrl] = useState('');
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const stored = window.sessionStorage.getItem('mohiom-image-api-url');
-    if (stored) setApiUrl(stored);
-  }, []);
-
-  const handleGenerate = async () => {
-    if (!apiUrl.trim()) { setError('Enter an Image API URL first.'); return; }
-    if (!prompt.trim()) { setError('Enter a prompt first.'); return; }
-    setError(null);
-    setGenerating(true);
-    try {
-      setPreviewUrl(await generateImage(apiUrl.trim(), prompt.trim()));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Generation failed.');
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!name.trim()) { setError('Name is required.'); return; }
-    if (!projectId) { setError('Select a project.'); return; }
-    setSaving(true);
-    setError(null);
-    try {
-      const newId = `char_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      const res = await projectsApi.createCharacter(projectId, {
-        character_id: newId,
-        name: name.trim(),
-        prompt: prompt.trim() || undefined,
-        selected_image_url: previewUrl ?? undefined,
-      });
-      onCreated(res.data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save failed.');
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-bold text-on-surface">New Character</h3>
-        <button type="button" onClick={onCancel} className="text-on-surface-variant hover:text-on-surface transition-colors">
-          <span className="material-symbols-outlined">close</span>
-        </button>
-      </div>
-
-      {/* Avatar preview */}
-      <div className="flex justify-center mb-6">
-        <div className="w-24 h-24 rounded-full overflow-hidden bg-surface-container-high ring-4 ring-primary/10 flex items-center justify-center">
-          {previewUrl
-            ? <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
-            : <span className="material-symbols-outlined text-4xl text-outline-variant">person_add</span>}
-        </div>
-      </div>
-
-      {/* Project selector */}
-      <div className="mb-4">
-        <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase block mb-2">Save to Project</label>
-        {projects.length === 0 ? (
-          <p className="text-xs text-outline bg-surface-container-low rounded-xl px-4 py-3">
-            No saved projects. Save a project first.
-          </p>
-        ) : (
-          <select
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-            className="w-full bg-surface-container-low rounded-xl px-4 py-2.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
-          >
-            {projects.map((p) => (
-              <option key={p.project_id} value={p.project_id}>{p.project_id.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      {/* Name */}
-      <div className="mb-4">
-        <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase block mb-2">Name</label>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="w-full bg-surface-container-low rounded-xl px-4 py-2.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
-          placeholder="e.g. Captain Kael"
-        />
-      </div>
-
-      {/* Prompt */}
-      <div className="mb-4">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="material-symbols-outlined text-primary text-base">smart_toy</span>
-          <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">AI Prompt</label>
-        </div>
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          rows={3}
-          className="w-full bg-surface-container-low rounded-xl px-4 py-3 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-          placeholder="Describe appearance, style, traits…"
-        />
-      </div>
-
-      {/* Image generation */}
-      <div className="mb-4 space-y-2">
-        <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase block">Generate Image (optional)</label>
-        <input
-          value={apiUrl}
-          onChange={(e) => setApiUrl(e.target.value)}
-          className="w-full bg-surface-container-low rounded-xl px-4 py-2.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
-          placeholder="Image API URL"
-        />
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={generating}
-          className={`w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
-            generating ? 'bg-surface-container-high text-outline cursor-not-allowed' : 'bg-surface-container-high text-primary hover:bg-primary/10'
-          }`}
-        >
-          <span className="material-symbols-outlined text-base">casino</span>
-          {generating ? 'Generating…' : 'Generate Image'}
-        </button>
-      </div>
-
-      {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
-
-      <button
-        type="button"
-        onClick={handleSave}
-        disabled={saving || projects.length === 0}
-        className="w-full py-3 rounded-xl text-sm font-bold bg-primary text-on-primary hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all mt-auto"
-      >
-        {saving ? 'Saving…' : 'Save Character'}
-      </button>
-    </div>
-  );
-}
-
 // ─── Stats panel (default right side) ────────────────────────────────────────
 
 function StatsPanel({ characters, lockedIds, onLoadProject }: {
@@ -519,7 +354,7 @@ function StatsPanel({ characters, lockedIds, onLoadProject }: {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-type PanelMode = 'stats' | 'detail' | 'create';
+type PanelMode = 'stats' | 'detail';
 
 export default function CharacterManagerPage() {
   const router = useRouter();
@@ -530,6 +365,7 @@ export default function CharacterManagerPage() {
   const [lockedIds, setLockedIds] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<CharacterSummary | null>(null);
   const [mode, setMode] = useState<PanelMode>('stats');
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [search, setSearch] = useState('');
 
   const fetchAll = useCallback(async () => {
@@ -575,6 +411,7 @@ export default function CharacterManagerPage() {
     setCharacters((prev) => [char, ...prev]);
     setSelected(char);
     setMode('detail');
+    setIsModalOpen(false);
   };
 
   const filtered = characters.filter((c) =>
@@ -651,7 +488,7 @@ export default function CharacterManagerPage() {
                   <p className="text-on-surface-variant text-sm max-w-xs mb-6">
                     Save a project with Step 2 images to see characters here, or create one manually.
                   </p>
-                  <button onClick={() => setMode('create')} className="px-6 py-3 bg-primary text-on-primary font-bold rounded-full hover:opacity-90 transition-opacity">
+                  <button onClick={() => setIsModalOpen(true)} className="px-6 py-3 bg-primary text-on-primary font-bold rounded-full hover:opacity-90 transition-opacity">
                     Create character
                   </button>
                 </div>
@@ -671,7 +508,7 @@ export default function CharacterManagerPage() {
                   ))}
                   {characters.length < MAX_SLOTS && (
                     <button
-                      onClick={() => { setSelected(null); setMode('create'); }}
+                      onClick={() => { setSelected(null); setIsModalOpen(true); }}
                       className="w-full border-2 border-dashed border-outline-variant/40 p-5 rounded-xl flex items-center gap-4 group hover:border-primary/40 hover:bg-surface-container-low transition-all"
                     >
                       <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
@@ -696,12 +533,6 @@ export default function CharacterManagerPage() {
                   onDeleted={handleDeleted}
                   onBack={() => { setSelected(null); setMode('stats'); }}
                 />
-              ) : mode === 'create' ? (
-                <CreatePanel
-                  projects={projects}
-                  onCreated={handleCreated}
-                  onCancel={() => setMode('stats')}
-                />
               ) : (
                 <StatsPanel
                   characters={characters}
@@ -716,12 +547,19 @@ export default function CharacterManagerPage() {
 
       {/* FAB */}
       <button
-        onClick={() => { setSelected(null); setMode('create'); }}
+        onClick={() => setIsModalOpen(true)}
         className="fixed bottom-10 right-10 w-16 h-16 bg-gradient-to-br from-primary to-primary-container text-white rounded-full shadow-2xl flex items-center justify-center group active:scale-95 duration-150"
         title="New character"
       >
         <span className="material-symbols-outlined text-3xl group-hover:rotate-90 transition-transform">add</span>
       </button>
+
+      <CreateCharacterModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onCreated={handleCreated}
+        projects={projects}
+      />
     </div>
   );
 }

@@ -1,3 +1,7 @@
+## 📋 SESSION CONTINUITY
+Always read SESSION_LOG.md at the start of every conversation
+to understand the current project state before doing anything else.
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.

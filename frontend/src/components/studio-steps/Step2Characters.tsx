@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import type { ImageGenSettings } from '@/context/ComicGenerationContext';
 import CharacterModePanel, { DEFAULT_SETTINGS } from '@/components/studio-steps/CharacterModePanel';
+import CharacterLibraryModal from '@/components/CharacterLibraryModal';
 
 export default function Step2Characters() {
   const {
@@ -20,9 +21,15 @@ export default function Step2Characters() {
     handleRetryCharacterReferences,
     getStep2PromptList,
     getCooldownSeconds,
+    injectLibraryCharacters,
   } = useComicGeneration();
 
   const [charSettings, setCharSettings] = useState<Record<string, ImageGenSettings>>({});
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+
+  const existingCharacterIds = new Set(
+    step2ImageReview.data?.characters.map((c) => c.characterId) ?? []
+  );
 
   const getCharSettings = (characterId: string): ImageGenSettings =>
     charSettings[characterId] ?? DEFAULT_SETTINGS;
@@ -166,6 +173,19 @@ export default function Step2Characters() {
           </button>
           <button
             type="button"
+            onClick={() => setIsLibraryOpen(true)}
+            disabled={step2ImageReview.isLoading}
+            className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
+              step2ImageReview.isLoading
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-gray-100 text-gray-900 hover:scale-105'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">library_books</span>
+            From Library
+          </button>
+          <button
+            type="button"
             onClick={handleApproveCharacterReferences}
             disabled={step2ImageReview.locked || !step2ImageReview.data || step2ImageReview.isApproved}
             className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
@@ -190,6 +210,14 @@ export default function Step2Characters() {
           </button>
           {step2ImageReview.error && <span className="text-sm text-red-600">{step2ImageReview.error}</span>}
         </div>
+
+        {/* Library-sourced characters notice */}
+        {!step2ImageReview.locked && !step2.data && step2ImageReview.data?.characters?.length ? (
+          <p className="mt-4 text-sm text-blue-600 flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-base">info</span>
+            Showing characters imported from your library. Generate designs to add AI-extracted characters.
+          </p>
+        ) : null}
 
         {step2ImageReview.data?.characters?.length ? (
           <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -257,10 +285,17 @@ export default function Step2Characters() {
           </div>
         ) : (
           <p className="mt-6 text-sm text-gray-500">
-            Generate Step 2 and click &quot;Generate references&quot; to review images.
+            Generate Step 2 and click &quot;Generate references&quot; to review images, or click &quot;From Library&quot; to use saved characters.
           </p>
         )}
       </div>
+
+      <CharacterLibraryModal
+        isOpen={isLibraryOpen}
+        onClose={() => setIsLibraryOpen(false)}
+        existingIds={existingCharacterIds}
+        onConfirm={injectLibraryCharacters}
+      />
     </section>
   );
 }

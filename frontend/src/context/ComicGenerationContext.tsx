@@ -9,7 +9,7 @@ import {
   projectsApi,
   toApiError,
 } from '@/services/api';
-import type { FullProjectSave, CloudProjectListItem } from '@/services/api';
+import type { FullProjectSave, CloudProjectListItem, CharacterSummary } from '@/services/api';
 
 export type StepKey = 1 | 2 | 3 | 4;
 export type WizardStepKey = 0 | StepKey;
@@ -463,6 +463,7 @@ export interface ComicGenerationContextValue {
   saveToCloud: () => Promise<void>;
   loadFromCloud: (projectId: string) => Promise<{ success: boolean; error?: string }>;
   listCloudProjects: () => Promise<CloudProjectListItem[]>;
+  injectLibraryCharacters: (chars: CharacterSummary[]) => void;
 }
 
 const ComicGenerationContext = createContext<ComicGenerationContextValue | null>(null);
@@ -2304,6 +2305,39 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     return response.data;
   };
 
+  const injectLibraryCharacters = (chars: CharacterSummary[]) => {
+    const nowIso = new Date().toISOString();
+    setStep2ImageReview((prev) => {
+      const existingIds = new Set((prev.data?.characters ?? []).map((c) => c.characterId));
+      const incoming: CharacterImageItem[] = chars
+        .filter((c) => !existingIds.has(c.character_id))
+        .map((c) => {
+          const candidateId = `${c.character_id}-lib`;
+          return {
+            characterId: c.character_id,
+            name: c.name,
+            prompt: c.prompt ?? '',
+            status: (c.selected_image_url ? 'success' : 'idle') as CharacterImageStatus,
+            error: null,
+            candidates: c.selected_image_url
+              ? [{ id: candidateId, imageUrl: c.selected_image_url, createdAt: nowIso }]
+              : [],
+            selectedCandidateId: c.selected_image_url ? candidateId : null,
+          };
+        });
+      return {
+        ...prev,
+        data: {
+          characters: [...(prev.data?.characters ?? []), ...incoming],
+          isGenerating: false,
+        },
+        locked: false,
+        error: null,
+        lastUpdated: nowIso,
+      };
+    });
+  };
+
   const value: ComicGenerationContextValue = {
     projectId,
     storyFile,
@@ -2384,6 +2418,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     saveToCloud,
     loadFromCloud,
     listCloudProjects,
+    injectLibraryCharacters,
   };
 
   return <ComicGenerationContext.Provider value={value}>{children}</ComicGenerationContext.Provider>;
