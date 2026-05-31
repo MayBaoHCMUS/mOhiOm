@@ -12,6 +12,16 @@ import {
 export type StepKey = 1 | 2 | 3 | 4;
 export type WizardStepKey = 0 | StepKey;
 
+export type ImageGenMode = 1 | 2 | 3 | 4;
+
+export interface ImageGenSettings {
+  mode: ImageGenMode;
+  referenceImageBase64: string;
+  controlImageBase64: string;
+  ipAdapterScale: number;
+  controlnetScale: number;
+}
+
 export interface StepState<T> {
   data: T | null;
   isLoading: boolean;
@@ -83,6 +93,7 @@ export interface Step4PanelState {
 export interface Step4Result {
   panels: Step4Panel[];
   panelStates: Record<string, Step4PanelState>;
+  pageStates: Record<string, Step4PanelState>;
   isGenerating: boolean;
 }
 
@@ -168,20 +179,34 @@ const emptyStepState = <T,>(locked: boolean): StepState<T> => ({
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
-const fetchImageFromAI = async (imagePrompt: string, localImageApiUrl?: string): Promise<string> => {
+const fetchImageFromAI = async (
+  imagePrompt: string,
+  localImageApiUrl?: string,
+  settings?: ImageGenSettings
+): Promise<string> => {
   if (localImageApiUrl) {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 120000);
 
-    const requestBody = {
+    const mode = settings?.mode ?? 1;
+    const requestBody: Record<string, unknown> = {
       url: localImageApiUrl,
       prompt: imagePrompt,
       negative_prompt: 'lowres, bad anatomy',
     };
+    if ((mode === 2 || mode === 4) && settings?.referenceImageBase64) {
+      requestBody.reference_image_base64 = settings.referenceImageBase64;
+      requestBody.ip_adapter_scale = settings.ipAdapterScale ?? 0.7;
+    }
+    if ((mode === 3 || mode === 4) && settings?.controlImageBase64) {
+      requestBody.control_image_base64 = settings.controlImageBase64;
+      requestBody.controlnet_scale = settings.controlnetScale ?? 0.8;
+    }
 
     console.group('[fetchImageFromAI] Image generation request');
     console.log('Proxy URL   :', '/api/image-proxy');
     console.log('Target URL  :', localImageApiUrl);
+    console.log('Mode        :', mode);
     console.log('Request body:', requestBody);
 
     try {
@@ -195,10 +220,12 @@ const fetchImageFromAI = async (imagePrompt: string, localImageApiUrl?: string):
       console.log('HTTP status :', response.status, response.statusText);
 
       if (!response.ok) {
-        const errText = await response.text().catch(() => '(unreadable)');
-        console.error('Error body  :', errText);
+        const errData = await response.json().catch(() => null);
+        const serverDetail = errData?.details?.detail ?? errData?.details ?? errData?.error ?? null;
+        const detailMsg = typeof serverDetail === 'string' ? serverDetail : JSON.stringify(serverDetail);
+        console.error('Error body  :', errData);
         console.groupEnd();
-        throw new Error(`Local image API error (${response.status}).`);
+        throw new Error(serverDetail ? `Image API error: ${detailMsg}` : `Image API error (${response.status})`);
       }
 
       const result = (await response.json()) as { status?: string; image_base64?: string; message?: string };
@@ -330,6 +357,25 @@ const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {
   return parsed.sort((a, b) => a.pageNumber - b.pageNumber || a.panelNumber - b.panelNumber);
 };
 
+const buildComicPagePrompt = (
+  panels: Step4Panel[],
+  artStyle: string,
+  mangaGenre: string,
+  characterRefs: Array<{ name: string; prompt: string }>
+): string => {
+  const parts: string[] = [
+    `Comic book page with ${panels.length} panel layout. ${artStyle}. ${mangaGenre}.`,
+  ];
+  if (characterRefs.length > 0) {
+    parts.push(`Characters: ${characterRefs.map(c => `${c.name} — ${c.prompt}`).join('; ')}.`);
+  }
+  panels.forEach((panel, i) => {
+    parts.push(`Panel ${i + 1}: ${panel.aiImagePrompt}`);
+  });
+  parts.push('Professional comic book artwork, panel borders, clear sequential storytelling.');
+  return parts.join('\n');
+};
+
 export interface ComicGenerationContextValue {
   projectId: string;
   storyFile: File | null;
@@ -342,6 +388,11 @@ export interface ComicGenerationContextValue {
   maxPanelsPerPage: string;
   specialRequests: string;
   localImageApiUrl: string;
+  imageGenMode: ImageGenMode;
+  referenceImageBase64: string;
+  controlImageBase64: string;
+  ipAdapterScale: number;
+  controlnetScale: number;
   useStreaming: boolean;
   step1: StepState<Step1Result>;
   step2: StepState<Step2Result>;
@@ -371,6 +422,11 @@ export interface ComicGenerationContextValue {
   setMaxPanelsPerPage: (value: string) => void;
   setSpecialRequests: (value: string) => void;
   setLocalImageApiUrl: (value: string) => void;
+  setImageGenMode: (value: ImageGenMode) => void;
+  setReferenceImageBase64: (value: string) => void;
+  setControlImageBase64: (value: string) => void;
+  setIpAdapterScale: (value: number) => void;
+  setControlnetScale: (value: number) => void;
   setUseStreaming: (value: boolean) => void;
   setActiveStep: (value: WizardStepKey) => void;
   setSetupValidation: (value: SetupValidationState) => void;
@@ -379,13 +435,13 @@ export interface ComicGenerationContextValue {
   handleGenerate: (step: StepKey) => Promise<void>;
   handleApprove: (step: StepKey) => void;
   handleRetry: (step: StepKey) => void;
-  handleGenerateCharacterReferences: () => Promise<void>;
-  handleRegenerateCharacterImage: (characterId: string) => Promise<void>;
+  handleGenerateCharacterReferences: (settingsMap?: Record<string, ImageGenSettings>) => Promise<void>;
+  handleRegenerateCharacterImage: (characterId: string, settings?: ImageGenSettings) => Promise<void>;
   handleSelectCharacterCandidate: (characterId: string, candidateId: string) => void;
   handleApproveCharacterReferences: () => void;
   handleRetryCharacterReferences: () => void;
   handleStartFullGeneration: () => Promise<void>;
-  handleRegeneratePanel: (panelId: string) => Promise<void>;
+  handleRegeneratePage: (pageNumber: number) => Promise<void>;
   copyProjectJson: () => Promise<void>;
   downloadProjectJson: () => void;
   getStep2PromptList: () => string[];
@@ -415,6 +471,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   const [maxPanelsPerPage, setMaxPanelsPerPage] = useState('6');
   const [specialRequests, setSpecialRequests] = useState('None');
   const [localImageApiUrl, setLocalImageApiUrl] = useState('');
+  const [imageGenMode, setImageGenMode] = useState<ImageGenMode>(1);
+  const [referenceImageBase64, setReferenceImageBase64] = useState('');
+  const [controlImageBase64, setControlImageBase64] = useState('');
+  const [ipAdapterScale, setIpAdapterScale] = useState(0.7);
+  const [controlnetScale, setControlnetScale] = useState(0.8);
   const [useStreaming, setUseStreaming] = useState(true);
   const [setupValidation, setSetupValidation] = useState<SetupValidationState | null>(null);
   const [setupSubmitAttempted, setSetupSubmitAttempted] = useState(false);
@@ -853,16 +914,19 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
 
     const panelStates: Record<string, Step4PanelState> = {};
     panels.forEach((panel) => {
-      panelStates[panel.id] = {
-        status: 'idle',
-        imageUrl: null,
-        error: null,
-      };
+      panelStates[panel.id] = { status: 'idle', imageUrl: null, error: null };
+    });
+
+    const pageNumbers = [...new Set(panels.map((p) => p.pageNumber))];
+    const pageStates: Record<string, Step4PanelState> = {};
+    pageNumbers.forEach((pageNumber) => {
+      pageStates[`page-${pageNumber}`] = { status: 'idle', imageUrl: null, error: null };
     });
 
     return {
       panels,
       panelStates,
+      pageStates,
       isGenerating: false,
     } satisfies Step4Result;
   };
@@ -1310,7 +1374,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     handleGenerate(step);
   };
 
-  const handleGenerateCharacterReferences = async () => {
+  const handleGenerateCharacterReferences = async (settingsMap?: Record<string, ImageGenSettings>) => {
     if (step2ImageReview.locked || step2ImageReview.isLoading || !step2.data) return;
 
     const characters = extractStep2Characters();
@@ -1335,7 +1399,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     const generatedCharacters = await Promise.all(
       characters.map(async (character) => {
         try {
-          const imageUrl = await fetchImageFromAI(character.prompt, localImageApiUrl || undefined);
+          const charSettings = settingsMap?.[character.characterId] ?? { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale };
+          const imageUrl = await fetchImageFromAI(character.prompt, localImageApiUrl || undefined, charSettings);
           const candidateId = `${character.characterId}-${Date.now()}`;
           return {
             ...character,
@@ -1370,7 +1435,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }));
   };
 
-  const handleRegenerateCharacterImage = async (characterId: string) => {
+  const handleRegenerateCharacterImage = async (characterId: string, settings?: ImageGenSettings) => {
     if (!step2ImageReview.data || step2ImageReview.data.isGenerating) return;
     const target = step2ImageReview.data.characters.find((character) => character.characterId === characterId);
     if (!target) return;
@@ -1392,7 +1457,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     });
 
     try {
-      const imageUrl = await fetchImageFromAI(target.prompt, localImageApiUrl || undefined);
+      const effectiveSettings = settings ?? { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale };
+      const imageUrl = await fetchImageFromAI(target.prompt, localImageApiUrl || undefined, effectiveSettings);
       const candidateId = `${target.characterId}-${Date.now()}`;
 
       setStep2ImageReview((prev) => {
@@ -1529,7 +1595,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       const results = await Promise.all(
         batch.map(async (panel) => {
           try {
-            const imageUrl = await fetchImageFromAI(panel.aiImagePrompt, localImageApiUrl || undefined);
+            const imageUrl = await fetchImageFromAI(panel.aiImagePrompt, localImageApiUrl || undefined, { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale });
             return {
               id: panel.id,
               status: 'success' as const,
@@ -1575,73 +1641,129 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
   };
 
+  const generatePageImages = async (
+    pageEntries: Array<[number, Step4Panel[]]>,
+    options?: { batchSize?: number; delayMs?: number }
+  ) => {
+    const batchSize = Math.max(1, options?.batchSize ?? 1);
+    const delayMs = Math.max(0, options?.delayMs ?? 10000);
+    const characterRefs = getSelectedCharacterReferences();
+    const firstRefImageUrl = characterRefs.find((c) => c.image_url)?.image_url || '';
+    const refBase64 =
+      firstRefImageUrl.startsWith('data:image/') && firstRefImageUrl.includes(',')
+        ? firstRefImageUrl.split(',')[1] || ''
+        : '';
+
+    for (let i = 0; i < pageEntries.length; i += batchSize) {
+      const batch = pageEntries.slice(i, i + batchSize);
+
+      setStep4((prev) => {
+        if (!prev.data) return prev;
+        const nextPageStates = { ...prev.data.pageStates };
+        batch.forEach(([pageNumber]) => {
+          const pageId = `page-${pageNumber}`;
+          nextPageStates[pageId] = {
+            status: 'loading',
+            imageUrl: prev.data!.pageStates[pageId]?.imageUrl ?? null,
+            error: null,
+          };
+        });
+        return { ...prev, data: { ...prev.data, pageStates: nextPageStates } };
+      });
+
+      const results = await Promise.all(
+        batch.map(async ([pageNumber, panels]) => {
+          const pageId = `page-${pageNumber}`;
+          try {
+            const prompt = buildComicPagePrompt(
+              panels,
+              artStyle,
+              mangaGenre,
+              characterRefs.map((c) => ({ name: c.name, prompt: c.prompt }))
+            );
+            const effectiveSettings: ImageGenSettings = {
+              mode: refBase64 ? 2 : imageGenMode,
+              referenceImageBase64: refBase64 || referenceImageBase64,
+              controlImageBase64,
+              ipAdapterScale,
+              controlnetScale,
+            };
+            const imageUrl = await fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings);
+            return { pageId, status: 'success' as const, imageUrl, error: null };
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Image generation failed.';
+            return { pageId, status: 'error' as const, imageUrl: null, error: message };
+          }
+        })
+      );
+
+      setStep4((prev) => {
+        if (!prev.data) return prev;
+        const nextPageStates = { ...prev.data.pageStates };
+        results.forEach((r) => {
+          nextPageStates[r.pageId] = { status: r.status, imageUrl: r.imageUrl, error: r.error };
+        });
+        return {
+          ...prev,
+          data: { ...prev.data, pageStates: nextPageStates },
+          lastUpdated: new Date().toISOString(),
+        };
+      });
+
+      if (i + batchSize < pageEntries.length) await sleep(delayMs);
+    }
+  };
+
   const handleStartFullGeneration = async () => {
     if (!step4.data || step4.data.isGenerating) return;
 
-    const targets = step4.data.panels.filter((panel) => {
-      const state = step4.data?.panelStates[panel.id];
-      return state?.status === 'idle' || state?.status === 'error';
+    const pageMap = new Map<number, Step4Panel[]>();
+    step4.data.panels.forEach((panel) => {
+      const existing = pageMap.get(panel.pageNumber) || [];
+      existing.push(panel);
+      pageMap.set(panel.pageNumber, existing);
+    });
+
+    const targets = Array.from(pageMap.entries()).filter(([pageNumber]) => {
+      const state = step4.data?.pageStates?.[`page-${pageNumber}`];
+      return !state || state.status === 'idle' || state.status === 'error';
     });
 
     if (!targets.length) return;
 
     setStep4((prev) => {
       if (!prev.data) return prev;
-      return {
-        ...prev,
-        data: {
-          ...prev.data,
-          isGenerating: true,
-        },
-        error: null,
-      };
+      return { ...prev, data: { ...prev.data, isGenerating: true }, error: null };
     });
 
     try {
-      await generatePanelImages(targets, { batchSize: 2, delayMs: 10000 });
+      await generatePageImages(targets, { batchSize: 1, delayMs: 10000 });
     } finally {
       setStep4((prev) => {
         if (!prev.data) return prev;
-        return {
-          ...prev,
-          data: {
-            ...prev.data,
-            isGenerating: false,
-          },
-        };
+        return { ...prev, data: { ...prev.data, isGenerating: false } };
       });
     }
   };
 
-  const handleRegeneratePanel = async (panelId: string) => {
+  const handleRegeneratePage = async (pageNumber: number) => {
     if (!step4.data || step4.data.isGenerating) return;
-    const panel = step4.data.panels.find((entry) => entry.id === panelId);
-    if (!panel) return;
+    const panels = step4.data.panels
+      .filter((p) => p.pageNumber === pageNumber)
+      .sort((a, b) => a.panelNumber - b.panelNumber);
+    if (!panels.length) return;
 
     setStep4((prev) => {
       if (!prev.data) return prev;
-      return {
-        ...prev,
-        data: {
-          ...prev.data,
-          isGenerating: true,
-        },
-        error: null,
-      };
+      return { ...prev, data: { ...prev.data, isGenerating: true }, error: null };
     });
 
     try {
-      await generatePanelImages([panel], { batchSize: 1, delayMs: 0 });
+      await generatePageImages([[pageNumber, panels]], { batchSize: 1, delayMs: 0 });
     } finally {
       setStep4((prev) => {
         if (!prev.data) return prev;
-        return {
-          ...prev,
-          data: {
-            ...prev.data,
-            isGenerating: false,
-          },
-        };
+        return { ...prev, data: { ...prev.data, isGenerating: false } };
       });
     }
   };
@@ -1665,13 +1787,13 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   }, [step4.data]);
 
   const step4Stats = useMemo(() => {
-    const states = step4.data?.panelStates || {};
-    const list = Object.values(states);
+    const pageStates = step4.data?.pageStates || {};
+    const list = Object.values(pageStates);
     return {
-      total: step4.data?.panels.length || 0,
-      success: list.filter((entry) => entry.status === 'success').length,
-      loading: list.filter((entry) => entry.status === 'loading').length,
-      error: list.filter((entry) => entry.status === 'error').length,
+      total: list.length,
+      success: list.filter((e) => e.status === 'success').length,
+      loading: list.filter((e) => e.status === 'loading').length,
+      error: list.filter((e) => e.status === 'error').length,
     };
   }, [step4.data]);
 
@@ -1830,10 +1952,16 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       'p2-n1': { status: 'error', imageUrl: null, error: 'Mock: generation failed.' },
     };
 
+    const pageStates: Record<string, Step4PanelState> = {
+      'page-1': { status: 'success', imageUrl: mockImageUrl('Page 1'), error: null },
+      'page-2': { status: 'error', imageUrl: null, error: 'Mock: generation failed.' },
+    };
+
     setStep4({
       data: {
         panels,
         panelStates,
+        pageStates,
         isGenerating: false,
       },
       isLoading: false,
@@ -1902,6 +2030,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     maxPanelsPerPage,
     specialRequests,
     localImageApiUrl,
+    imageGenMode,
+    referenceImageBase64,
+    controlImageBase64,
+    ipAdapterScale,
+    controlnetScale,
     useStreaming,
     step1,
     step2,
@@ -1931,6 +2064,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     setMaxPanelsPerPage,
     setSpecialRequests,
     setLocalImageApiUrl,
+    setImageGenMode,
+    setReferenceImageBase64,
+    setControlImageBase64,
+    setIpAdapterScale,
+    setControlnetScale,
     setUseStreaming,
     setActiveStep,
     setSetupValidation,
@@ -1945,7 +2083,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     handleApproveCharacterReferences,
     handleRetryCharacterReferences,
     handleStartFullGeneration,
-    handleRegeneratePanel,
+    handleRegeneratePage,
     copyProjectJson,
     downloadProjectJson,
     getStep2PromptList,

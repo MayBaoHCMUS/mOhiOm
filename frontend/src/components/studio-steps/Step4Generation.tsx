@@ -3,6 +3,7 @@
 import React from 'react';
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
+import ImageGenModePanel from '@/components/studio-steps/ImageGenModePanel';
 
 export default function Step4Generation() {
   const {
@@ -18,7 +19,7 @@ export default function Step4Generation() {
     handleApprove,
     handleRetry,
     handleStartFullGeneration,
-    handleRegeneratePanel,
+    handleRegeneratePage,
     copyProjectJson,
     downloadProjectJson,
     getCooldownSeconds,
@@ -37,7 +38,11 @@ export default function Step4Generation() {
         <div className="text-sm text-gray-600">Status: {step4.isApproved ? 'Completed' : step4.data ? 'Ready' : 'Not generated'}</div>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center gap-4">
+      <div className="mt-6">
+        <ImageGenModePanel disabled={step4.isLoading || !!step4.data?.isGenerating} />
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-4">
         <button
           type="button"
           onClick={() => handleGenerate(4)}
@@ -96,7 +101,7 @@ export default function Step4Generation() {
         <div className="rounded-3xl bg-gray-100 p-6">
           <h3 className="text-lg font-semibold">Generation progress</h3>
           <div className="mt-4 flex flex-col gap-3 text-sm text-gray-700 max-w-[360px]">
-            <div className="rounded-2xl bg-white px-4 py-3">Total panels: {step4Stats.total}</div>
+            <div className="rounded-2xl bg-white px-4 py-3">Total pages: {step4Stats.total}</div>
             <div className="rounded-2xl bg-white px-4 py-3">Success: {step4Stats.success}</div>
             <div className="rounded-2xl bg-white px-4 py-3">Loading: {step4Stats.loading}</div>
             <div className="rounded-2xl bg-white px-4 py-3">Errors: {step4Stats.error}</div>
@@ -134,61 +139,71 @@ export default function Step4Generation() {
 
       <div className="mt-8">
         {step4PanelsByPage.length ? (
-          <div className="space-y-6">
-            {step4PanelsByPage.map(([pageNumber, panels]) => (
-              <section key={`page-${pageNumber}`} className="rounded-3xl bg-gray-100 p-6">
-                <h3 className="text-lg font-semibold">Page {pageNumber}</h3>
-                <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-6">
-                  {panels.map((panel) => {
-                    const panelState = step4.data?.panelStates[panel.id];
-                    const status = panelState?.status || 'idle';
-                    return (
-                      <div key={panel.id} className="rounded-3xl bg-white p-5">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <p className="text-xs uppercase tracking-[0.2em] text-gray-500">{panel.contextLabel}</p>
-                            <p className="mt-2 text-sm text-gray-600">{panel.dialogueSfx}</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleRegeneratePanel(panel.id)}
-                            disabled={!step4.data || step4.data.isGenerating}
-                            className={`px-4 py-2 rounded-2xl text-xs font-semibold transition-transform ${
-                              !step4.data || step4.data.isGenerating
-                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                : 'bg-gray-100 text-gray-900 hover:scale-105'
-                            }`}
-                          >
-                            {status === 'loading' ? 'Generating...' : status === 'error' ? 'Regenerate' : 'Generate'}
-                          </button>
-                        </div>
-                        <div className="mt-4 rounded-2xl bg-gray-100 p-4 text-sm text-gray-700">
-                          <p className="text-xs uppercase tracking-[0.2em] text-gray-500">AI image prompt</p>
-                          <p className="mt-2 whitespace-pre-wrap">{panel.aiImagePrompt}</p>
-                        </div>
-                        {panelState?.error ? <p className="mt-3 text-sm text-red-600">{panelState.error}</p> : null}
-                        {panelState?.imageUrl ? (
-                          <div className="mt-4 overflow-hidden rounded-2xl bg-gray-100">
-                            <Image
-                              src={panelState.imageUrl}
-                              alt={`${panel.contextLabel} render`}
-                              width={720}
-                              height={960}
-                              className="h-auto w-full object-cover"
-                              unoptimized
-                            />
-                          </div>
-                        ) : (
-                          <div className="mt-4 rounded-2xl bg-gray-100 px-4 py-6 text-sm text-gray-500">
-                            {status === 'loading' ? 'Generating image...' : 'No image yet.'}
-                          </div>
-                        )}
+          <div className="space-y-8">
+            {step4PanelsByPage.map(([pageNumber, panels]) => {
+              const pageState = step4.data?.pageStates?.[`page-${pageNumber}`];
+              const pageStatus = pageState?.status || 'idle';
+              return (
+                <section key={`page-${pageNumber}`} className="rounded-3xl bg-gray-100 p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold">Page {pageNumber}</h3>
+                    <button
+                      type="button"
+                      onClick={() => handleRegeneratePage(pageNumber)}
+                      disabled={!step4.data || step4.data.isGenerating}
+                      className={`px-4 py-2 rounded-2xl text-xs font-semibold transition-transform ${
+                        !step4.data || step4.data.isGenerating
+                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                          : 'bg-gray-900 text-white hover:scale-105'
+                      }`}
+                    >
+                      {pageStatus === 'loading'
+                        ? 'Generating page...'
+                        : pageStatus === 'error'
+                          ? 'Retry page'
+                          : pageStatus === 'success'
+                            ? 'Regenerate page'
+                            : 'Generate page'}
+                    </button>
+                  </div>
+
+                  {/* Full-page comic image */}
+                  <div className="mt-4">
+                    {pageState?.error ? <p className="mb-3 text-sm text-red-600">{pageState.error}</p> : null}
+                    {pageState?.imageUrl ? (
+                      <div className="overflow-hidden rounded-2xl bg-gray-200">
+                        <Image
+                          src={pageState.imageUrl}
+                          alt={`Page ${pageNumber} comic render`}
+                          width={720}
+                          height={960}
+                          className="h-auto w-full object-cover"
+                          unoptimized
+                        />
                       </div>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
+                    ) : (
+                      <div className="rounded-2xl bg-gray-200 px-4 py-10 text-center text-sm text-gray-500">
+                        {pageStatus === 'loading' ? 'Generating comic page image...' : 'No image yet — click "Generate page" above.'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Panel-by-panel script details */}
+                  <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    {panels.map((panel) => (
+                      <div key={panel.id} className="rounded-2xl bg-white p-4">
+                        <p className="text-xs uppercase tracking-[0.2em] text-gray-500">{panel.contextLabel}</p>
+                        <p className="mt-1 text-sm text-gray-600">{panel.dialogueSfx}</p>
+                        <div className="mt-3 rounded-xl bg-gray-100 p-3 text-xs text-gray-600">
+                          <p className="text-xs uppercase tracking-[0.2em] text-gray-400">Panel prompt</p>
+                          <p className="mt-1 whitespace-pre-wrap">{panel.aiImagePrompt}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         ) : (
           <p className="mt-6 text-sm text-gray-500">No panels yet. Build panels from Step 3 first.</p>

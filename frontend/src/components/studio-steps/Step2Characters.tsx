@@ -1,8 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
+import type { ImageGenSettings } from '@/context/ComicGenerationContext';
+import CharacterModePanel, { DEFAULT_SETTINGS } from '@/components/studio-steps/CharacterModePanel';
 
 export default function Step2Characters() {
   const {
@@ -19,6 +21,14 @@ export default function Step2Characters() {
     getStep2PromptList,
     getCooldownSeconds,
   } = useComicGeneration();
+
+  const [charSettings, setCharSettings] = useState<Record<string, ImageGenSettings>>({});
+
+  const getCharSettings = (characterId: string): ImageGenSettings =>
+    charSettings[characterId] ?? DEFAULT_SETTINGS;
+
+  const updateCharSettings = (characterId: string, settings: ImageGenSettings) =>
+    setCharSettings((prev) => ({ ...prev, [characterId]: settings }));
 
   const cooldownSeconds = getCooldownSeconds(2);
   const isGenerateDisabled = step2.isLoading || cooldownSeconds > 0;
@@ -144,7 +154,7 @@ export default function Step2Characters() {
         <div className="mt-5 flex flex-wrap items-center gap-4">
           <button
             type="button"
-            onClick={handleGenerateCharacterReferences}
+            onClick={() => handleGenerateCharacterReferences(charSettings)}
             disabled={step2ImageReview.locked || step2ImageReview.isLoading || !step2.data}
             className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
               step2ImageReview.locked || step2ImageReview.isLoading || !step2.data
@@ -185,16 +195,21 @@ export default function Step2Characters() {
           <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
             {step2ImageReview.data.characters.map((character) => (
               <div key={character.characterId} className="rounded-3xl bg-white p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
                     <p className="text-sm uppercase tracking-[0.2em] text-gray-500">{character.name}</p>
                     <p className="mt-2 text-sm text-gray-600">{character.prompt}</p>
+                    <CharacterModePanel
+                      disabled={!!step2ImageReview.data?.isGenerating}
+                      value={getCharSettings(character.characterId)}
+                      onChange={(s) => updateCharSettings(character.characterId, s)}
+                    />
                   </div>
                   <button
                     type="button"
-                    onClick={() => handleRegenerateCharacterImage(character.characterId)}
+                    onClick={() => handleRegenerateCharacterImage(character.characterId, getCharSettings(character.characterId))}
                     disabled={step2ImageReview.data?.isGenerating}
-                    className={`px-4 py-2 rounded-2xl text-xs font-semibold transition-transform ${
+                    className={`shrink-0 px-4 py-2 rounded-2xl text-xs font-semibold transition-transform ${
                       step2ImageReview.data?.isGenerating
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                         : 'bg-gray-100 text-gray-900 hover:scale-105'
