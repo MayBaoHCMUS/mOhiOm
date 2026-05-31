@@ -6,8 +6,10 @@ import {
   analyzeStoryStructuredStream,
   characterDesignsStructuredStream,
   panelScriptStructuredStream,
+  projectsApi,
   toApiError,
 } from '@/services/api';
+import type { FullProjectSave, CloudProjectListItem } from '@/services/api';
 
 export type StepKey = 1 | 2 | 3 | 4;
 export type WizardStepKey = 0 | StepKey;
@@ -455,6 +457,12 @@ export interface ComicGenerationContextValue {
   loadMockStepData: (step: StepKey) => void;
   loadMockCharacterReview: () => void;
   loadMockPipeline: () => void;
+  loadProjectJson: (json: Record<string, unknown>) => { success: boolean; error?: string };
+  cloudSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
+  cloudSaveError: string | null;
+  saveToCloud: () => Promise<void>;
+  loadFromCloud: (projectId: string) => Promise<{ success: boolean; error?: string }>;
+  listCloudProjects: () => Promise<CloudProjectListItem[]>;
 }
 
 const ComicGenerationContext = createContext<ComicGenerationContextValue | null>(null);
@@ -480,6 +488,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   const [setupValidation, setSetupValidation] = useState<SetupValidationState | null>(null);
   const [setupSubmitAttempted, setSetupSubmitAttempted] = useState(false);
   const [streamingText, setStreamingText] = useState('');
+  const [cloudSaveStatus, setCloudSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [cloudSaveError, setCloudSaveError] = useState<string | null>(null);
 
   const [step1, setStep1] = useState<StepState<Step1Result>>(emptyStepState(false));
   const [step2, setStep2] = useState<StepState<Step2Result>>(emptyStepState(true));
@@ -2018,6 +2028,270 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     setActiveStep(0);
   };
 
+  // Restore from full-save format (produced by buildFullSave / cloud save).
+  const restoreFromFullSave = (json: Record<string, unknown>): { success: boolean; error?: string } => {
+    try {
+      const nowIso = new Date().toISOString();
+      const userInputs = toRecord(json.user_inputs);
+      const imageGenSettings = toRecord(json.image_gen_settings);
+      const steps = toRecord(json.steps);
+      const s1 = toRecord(steps.step1);
+      const s2 = toRecord(steps.step2);
+      const s2ir = toRecord(steps.step2ImageReview);
+      const s3 = toRecord(steps.step3);
+      const s4 = toRecord(steps.step4);
+      const s3Data = toRecord(s3.data);
+      const scriptMarkdown = String(s3Data.scriptMarkdown || '');
+      if (!scriptMarkdown) {
+        return { success: false, error: 'No script data in saved project — cannot build panel list.' };
+      }
+
+      if (json.project_id) setProjectId(String(json.project_id));
+      if (userInputs.story_content) setStoryText(String(userInputs.story_content));
+      if (userInputs.genre) setMangaGenre(String(userInputs.genre));
+      if (userInputs.art_style_reference) setArtStyle(String(userInputs.art_style_reference));
+      if (userInputs.max_panels_per_page) setMaxPanelsPerPage(String(userInputs.max_panels_per_page));
+      if (userInputs.special_requests) setSpecialRequests(String(userInputs.special_requests));
+      if (userInputs.num_chapters) setNumChapters(String(userInputs.num_chapters));
+      if (userInputs.target_pages) setTargetPages(String(userInputs.target_pages));
+      if (userInputs.main_characters) setMainCharacters(String(userInputs.main_characters));
+      if (userInputs.local_image_api_url) setLocalImageApiUrl(String(userInputs.local_image_api_url));
+      if (imageGenSettings.mode) setImageGenMode(Number(imageGenSettings.mode) as ImageGenMode);
+      if (imageGenSettings.ip_adapter_scale != null) setIpAdapterScale(Number(imageGenSettings.ip_adapter_scale));
+      if (imageGenSettings.controlnet_scale != null) setControlnetScale(Number(imageGenSettings.controlnet_scale));
+
+      const s1Data = toRecord(s1.data);
+      setStep1({
+        data: s1.data ? {
+          analysisMarkdown: String(s1Data.analysisMarkdown || ''),
+          characterBreakdown: Array.isArray(s1Data.characterBreakdown) ? (s1Data.characterBreakdown as unknown[]).map(String) : [],
+          structuredJson: (s1Data.structuredJson as Record<string, unknown> | null) ?? null,
+        } : null,
+        isLoading: false,
+        isApproved: Boolean(s1.isApproved),
+        locked: false,
+        error: null,
+        lastUpdated: String(s1.lastUpdated || nowIso),
+      });
+
+      const s2Data = toRecord(s2.data);
+      setStep2({
+        data: s2.data ? {
+          designMarkdown: String(s2Data.designMarkdown || ''),
+          structuredJson: (s2Data.structuredJson as Record<string, unknown> | null) ?? null,
+          aiPrompts: Array.isArray(s2Data.aiPrompts) ? (s2Data.aiPrompts as unknown[]).map(String) : [],
+        } : null,
+        isLoading: false,
+        isApproved: Boolean(s2.isApproved),
+        locked: false,
+        error: null,
+        lastUpdated: String(s2.lastUpdated || nowIso),
+      });
+
+      const s2irData = toRecord(s2ir.data);
+      const savedChars = Array.isArray(s2irData.characters) ? s2irData.characters as Array<Record<string, unknown>> : [];
+      const restoredChars: CharacterImageItem[] = savedChars.map((char) => {
+        const selectedId = char.selectedCandidateId ? String(char.selectedCandidateId) : null;
+        const selectedUrl = char.selectedImageUrl ? String(char.selectedImageUrl) : null;
+        const resolvedId = selectedId ?? `${String(char.characterId)}-restored`;
+        return {
+          characterId: String(char.characterId || ''),
+          name: String(char.name || ''),
+          prompt: String(char.prompt || ''),
+          status: selectedUrl ? ('success' as const) : ('idle' as const),
+          error: null,
+          candidates: selectedUrl ? [{ id: resolvedId, imageUrl: selectedUrl, createdAt: nowIso }] : [],
+          selectedCandidateId: selectedUrl ? resolvedId : null,
+        };
+      });
+
+      setStep2ImageReview({
+        data: s2ir.data ? { characters: restoredChars, isGenerating: false } : null,
+        isLoading: false,
+        isApproved: Boolean(s2ir.isApproved),
+        locked: false,
+        error: null,
+        lastUpdated: String(s2ir.lastUpdated || nowIso),
+      });
+
+      setStep3({
+        data: {
+          scriptMarkdown,
+          structuredJson: (s3Data.structuredJson as Record<string, unknown> | null) ?? null,
+        },
+        isLoading: false,
+        isApproved: Boolean(s3.isApproved),
+        locked: false,
+        error: null,
+        lastUpdated: String(s3.lastUpdated || nowIso),
+      });
+
+      const s4Data = toRecord(s4.data);
+      const panels = Array.isArray(s4Data.panels) ? (s4Data.panels as Step4Panel[]) : [];
+      setStep4({
+        data: panels.length > 0 ? { panels, panelStates: {}, pageStates: {}, isGenerating: false } : null,
+        isLoading: false,
+        isApproved: Boolean(s4.isApproved),
+        locked: false,
+        error: null,
+        lastUpdated: String(s4.lastUpdated || nowIso),
+      });
+
+      setActiveStep(4);
+      setGlobalError(null);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Failed to restore project.' };
+    }
+  };
+
+  const loadProjectJson = (json: Record<string, unknown>): { success: boolean; error?: string } => {
+    // Full-save format uses camelCase step keys (step1, step2, step3 …)
+    const steps = toRecord(json.steps);
+    if (steps.step1 || steps.step2 || steps.step3) {
+      return restoreFromFullSave(json);
+    }
+
+    // Legacy export format (projectSnapshot — snake_case step keys)
+    try {
+      const nowIso = new Date().toISOString();
+      const userInputs = toRecord(json.user_inputs);
+      const userCustomizations = toRecord(userInputs.user_customizations);
+      const step1ApiData = toRecord(steps.step_1_analysis);
+      const step1ApiDataData = toRecord(step1ApiData.data);
+      const step2ApiData = toRecord(steps.step_2_design);
+      const step2ApiDataData = toRecord(step2ApiData.data);
+      const step3ApiData = toRecord(steps.step_3_script);
+      const step3ApiDataData = toRecord(step3ApiData.data);
+
+      const scriptMarkdown = String(step3ApiDataData.script_markdown || '');
+      if (!scriptMarkdown) {
+        return { success: false, error: 'JSON missing step_3_script.data.script_markdown — cannot build panel list.' };
+      }
+
+      if (json.project_id) setProjectId(String(json.project_id));
+      if (userInputs.story_content) setStoryText(String(userInputs.story_content));
+      if (userInputs.genre) setMangaGenre(String(userInputs.genre));
+      if (userInputs.art_style_reference) setArtStyle(String(userInputs.art_style_reference));
+      if (userInputs.max_panels_per_page) setMaxPanelsPerPage(String(userInputs.max_panels_per_page));
+      if (userCustomizations.special_requests) setSpecialRequests(String(userCustomizations.special_requests));
+
+      const analysisMarkdown = String(step1ApiDataData.analysis_markdown || '');
+      const characterBreakdown = Array.isArray(step1ApiDataData.character_breakdown)
+        ? (step1ApiDataData.character_breakdown as unknown[]).map(String)
+        : [];
+
+      setStep1({
+        data: { analysisMarkdown, characterBreakdown, structuredJson: json },
+        isLoading: false,
+        isApproved: step1ApiData.status === 'approved',
+        locked: false,
+        error: null,
+        lastUpdated: String(step1ApiData.last_updated || nowIso),
+      });
+      setStep2({
+        data: { designMarkdown: String(step2ApiDataData.design_markdown || ''), structuredJson: json, aiPrompts: [] },
+        isLoading: false,
+        isApproved: step2ApiData.status === 'approved',
+        locked: false,
+        error: null,
+        lastUpdated: String(step2ApiData.last_updated || nowIso),
+      });
+      setStep3({
+        data: { scriptMarkdown, structuredJson: json },
+        isLoading: false,
+        isApproved: step3ApiData.status === 'approved',
+        locked: false,
+        error: null,
+        lastUpdated: String(step3ApiData.last_updated || nowIso),
+      });
+      setStep4((prev) => ({ ...prev, data: null, locked: false, error: null }));
+      setActiveStep(4);
+      setGlobalError(null);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Failed to load project JSON.' };
+    }
+  };
+
+  const buildFullSave = (): FullProjectSave => {
+    const nowIso = new Date().toISOString();
+    const step2irData = step2ImageReview.data
+      ? {
+          characters: step2ImageReview.data.characters.map((char) => {
+            const selected = char.candidates.find((c) => c.id === char.selectedCandidateId);
+            return {
+              characterId: char.characterId,
+              name: char.name,
+              prompt: char.prompt,
+              selectedCandidateId: char.selectedCandidateId,
+              selectedImageUrl: selected?.imageUrl ?? null,
+            };
+          }),
+          isGenerating: false,
+        }
+      : null;
+
+    const step4SaveData = step4.data
+      ? { panels: step4.data.panels, panelStates: {}, pageStates: {}, isGenerating: false }
+      : null;
+
+    return {
+      project_id: projectId,
+      saved_at: nowIso,
+      user_inputs: {
+        story_content: storyText,
+        genre: mangaGenre,
+        art_style_reference: artStyle,
+        max_panels_per_page: Number(maxPanelsPerPage) || 6,
+        special_requests: specialRequests,
+        num_chapters: numChapters,
+        target_pages: targetPages,
+        main_characters: mainCharacters,
+        local_image_api_url: localImageApiUrl,
+      },
+      image_gen_settings: {
+        mode: imageGenMode,
+        ip_adapter_scale: ipAdapterScale,
+        controlnet_scale: controlnetScale,
+      },
+      steps: {
+        step1: { data: step1.data, isApproved: step1.isApproved, lastUpdated: step1.lastUpdated },
+        step2: { data: step2.data, isApproved: step2.isApproved, lastUpdated: step2.lastUpdated },
+        step2ImageReview: { data: step2irData, isApproved: step2ImageReview.isApproved, lastUpdated: step2ImageReview.lastUpdated },
+        step3: { data: step3.data, isApproved: step3.isApproved, lastUpdated: step3.lastUpdated },
+        step4: { data: step4SaveData, isApproved: step4.isApproved, lastUpdated: step4.lastUpdated },
+      },
+    };
+  };
+
+  const saveToCloud = async () => {
+    setCloudSaveStatus('saving');
+    setCloudSaveError(null);
+    try {
+      await projectsApi.save(buildFullSave());
+      setCloudSaveStatus('saved');
+      window.setTimeout(() => setCloudSaveStatus('idle'), 2000);
+    } catch (err) {
+      setCloudSaveStatus('error');
+      setCloudSaveError(toApiError(err).message);
+    }
+  };
+
+  const loadFromCloud = async (cloudProjectId: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await projectsApi.load(cloudProjectId);
+      return restoreFromFullSave(response.data as unknown as Record<string, unknown>);
+    } catch (err) {
+      return { success: false, error: toApiError(err).message };
+    }
+  };
+
+  const listCloudProjects = async (): Promise<CloudProjectListItem[]> => {
+    const response = await projectsApi.list();
+    return response.data;
+  };
+
   const value: ComicGenerationContextValue = {
     projectId,
     storyFile,
@@ -2092,6 +2366,12 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     loadMockStepData,
     loadMockCharacterReview,
     loadMockPipeline,
+    loadProjectJson,
+    cloudSaveStatus,
+    cloudSaveError,
+    saveToCloud,
+    loadFromCloud,
+    listCloudProjects,
   };
 
   return <ComicGenerationContext.Provider value={value}>{children}</ComicGenerationContext.Provider>;

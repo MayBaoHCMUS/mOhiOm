@@ -3,7 +3,7 @@ Models and schemas for API requests and responses.
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 
 
 class ItemBase(BaseModel):
@@ -93,4 +93,30 @@ class AuthMeResponse(BaseModel):
     """Schema for session lookups."""
 
     user: UserPublic
+
+
+class ProjectSaveRequest(BaseModel):
+    """Full project state sent from the frontend to persist in MongoDB."""
+
+    project_id: str
+    saved_at: str
+    user_inputs: Dict[str, Any]
+    image_gen_settings: Dict[str, Any]
+    steps: Dict[str, Any]
+
+
+class ProjectListItem(BaseModel):
+    """Metadata returned when listing a user's saved projects."""
+
+    project_id: str
+    saved_at: str
+    has_step1: bool
+    has_step2: bool
+    has_step2_images: bool
+    has_step3: bool
+    has_step4: bool
+    step1_approved: bool
+    step2_approved: bool
+    step2_images_approved: bool
+    step3_approved: bool
 

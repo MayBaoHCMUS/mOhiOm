@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import ErrorMessage from '@/components/story-setup/ErrorMessage';
 import FileUploadZone from '@/components/story-setup/FileUploadZone';
@@ -7,6 +7,7 @@ import EnhancedTextarea from '@/components/story-setup/EnhancedTextarea';
 import NumberInput from '@/components/story-setup/NumberInput';
 import PresetButtons from '@/components/story-setup/PresetButtons';
 import Tooltip from '@/components/story-setup/Tooltip';
+import ProjectsDrawer from '@/components/ProjectsDrawer';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import type { FieldConfig, FormData } from '@/components/story-setup/types';
 
@@ -63,9 +64,38 @@ export default function Step1() {
     setSetupValidation,
     setupSubmitAttempted,
     setSetupSubmitAttempted,
+    loadProjectJson,
   } = useComicGeneration();
 
   const [storyInputError, setStoryInputError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setImportError(null);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string);
+        const result = loadProjectJson(parsed);
+        if (result.success) {
+          setImportSuccess(true);
+          window.setTimeout(() => setImportSuccess(false), 2000);
+        } else {
+          setImportError(result.error ?? 'Import failed.');
+        }
+      } catch {
+        setImportError('Invalid JSON file.');
+      }
+    };
+    reader.readAsText(file);
+  };
 
   const cooldownSeconds = getCooldownSeconds(1);
   const isGenerating = step1.isLoading || cooldownSeconds > 0;
@@ -617,8 +647,35 @@ export default function Step1() {
                 ? 'Regenerate analysis'
                 : 'Generate analysis'}
         </button>
+        <button
+          type="button"
+          onClick={() => importInputRef.current?.click()}
+          disabled={isGenerating}
+          className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
+            isGenerating ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-900 hover:scale-105'
+          }`}
+        >
+          {importSuccess ? 'Imported!' : 'Import JSON'}
+        </button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={handleImportJson}
+        />
+        <button
+          type="button"
+          onClick={() => setIsDrawerOpen(true)}
+          className="px-6 py-3 rounded-2xl text-sm font-semibold bg-gray-100 text-gray-900 hover:scale-105 transition-transform"
+        >
+          My Projects
+        </button>
         {step1.error ? <span className="text-sm text-red-600">{step1.error}</span> : null}
+        {importError ? <span className="text-sm text-red-600">{importError}</span> : null}
       </div>
+
+      <ProjectsDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
     </section>
   );
 }

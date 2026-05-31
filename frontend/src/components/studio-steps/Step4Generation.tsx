@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import ImageGenModePanel from '@/components/studio-steps/ImageGenModePanel';
+import ProjectsDrawer from '@/components/ProjectsDrawer';
 
 export default function Step4Generation() {
   const {
@@ -22,8 +23,13 @@ export default function Step4Generation() {
     handleRegeneratePage,
     copyProjectJson,
     downloadProjectJson,
+    saveToCloud,
+    cloudSaveStatus,
+    cloudSaveError,
     getCooldownSeconds,
   } = useComicGeneration();
+
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const cooldownSeconds = getCooldownSeconds(4);
   const isGenerateDisabled = step4.isLoading || cooldownSeconds > 0;
@@ -115,8 +121,29 @@ export default function Step4Generation() {
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
               type="button"
+              onClick={saveToCloud}
+              disabled={cloudSaveStatus === 'saving'}
+              className={`px-5 py-2 rounded-2xl text-xs font-semibold transition-transform ${
+                cloudSaveStatus === 'saving'
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  : cloudSaveStatus === 'saved'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-gray-900 text-white hover:scale-105'
+              }`}
+            >
+              {cloudSaveStatus === 'saving' ? 'Saving…' : cloudSaveStatus === 'saved' ? 'Saved!' : 'Save to Cloud'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsDrawerOpen(true)}
+              className="px-5 py-2 rounded-2xl text-xs font-semibold bg-gray-100 text-gray-900 hover:scale-105 transition-transform"
+            >
+              My Projects
+            </button>
+            <button
+              type="button"
               onClick={copyProjectJson}
-              className="px-5 py-2 rounded-2xl text-xs font-semibold bg-gray-900 text-white hover:scale-105 transition-transform"
+              className="px-5 py-2 rounded-2xl text-xs font-semibold bg-gray-100 text-gray-900 hover:scale-105 transition-transform"
             >
               {jsonCopied ? 'Copied' : 'Copy JSON'}
             </button>
@@ -129,6 +156,9 @@ export default function Step4Generation() {
             </button>
             {lastDownloadedJsonFile ? (
               <span className="text-xs text-gray-500">Last file: {lastDownloadedJsonFile}</span>
+            ) : null}
+            {cloudSaveError && cloudSaveStatus === 'error' ? (
+              <span className="text-xs text-red-600">{cloudSaveError}</span>
             ) : null}
           </div>
           <pre className="mt-4 max-h-[240px] overflow-auto rounded-2xl bg-white p-4 text-xs text-gray-700">
@@ -209,6 +239,8 @@ export default function Step4Generation() {
           <p className="mt-6 text-sm text-gray-500">No panels yet. Build panels from Step 3 first.</p>
         )}
       </div>
+
+      <ProjectsDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
     </section>
   );
 }

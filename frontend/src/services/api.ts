@@ -806,6 +806,41 @@ export const comicApi = {
   listJobs: () => apiClient.get("/comics/jobs"),
 };
 
+// ─── Project save / load ────────────────────────────────────────────────────
+
+export interface FullProjectSave {
+  project_id: string;
+  saved_at: string;
+  user_inputs: Record<string, unknown>;
+  image_gen_settings: Record<string, unknown>;
+  steps: Record<string, unknown>;
+}
+
+export interface CloudProjectListItem {
+  project_id: string;
+  saved_at: string;
+  has_step1: boolean;
+  has_step2: boolean;
+  has_step2_images: boolean;
+  has_step3: boolean;
+  has_step4: boolean;
+  step1_approved: boolean;
+  step2_approved: boolean;
+  step2_images_approved: boolean;
+  step3_approved: boolean;
+}
+
+export const projectsApi = {
+  save: (data: FullProjectSave) =>
+    apiClient.post<{ message: string }>("/projects/save", data),
+  list: () =>
+    apiClient.get<CloudProjectListItem[]>("/projects/"),
+  load: (projectId: string) =>
+    apiClient.get<FullProjectSave>(`/projects/${encodeURIComponent(projectId)}`),
+  delete: (projectId: string) =>
+    apiClient.delete<{ message: string }>(`/projects/${encodeURIComponent(projectId)}`),
+};
+
 export const authApi = {
   register: (payload: { first_name: string; last_name: string; email: string; password: string }) =>
     apiClient.post("/auth/register", payload),
