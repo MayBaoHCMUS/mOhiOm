@@ -110,6 +110,7 @@ class ProjectListItem(BaseModel):
 
     project_id: str
     saved_at: str
+    genre: Optional[str] = None
     has_step1: bool
     has_step2: bool
     has_step2_images: bool
@@ -119,4 +120,13 @@ class ProjectListItem(BaseModel):
     step2_approved: bool
     step2_images_approved: bool
     step3_approved: bool
+
+
+class CharacterSummary(BaseModel):
+    """One character entry extracted from a saved project."""
+
+    character_id: str
+    name: str
+    selected_image_url: Optional[str] = None
+    project_id: str
 

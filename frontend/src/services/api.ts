@@ -819,6 +819,7 @@ export interface FullProjectSave {
 export interface CloudProjectListItem {
   project_id: string;
   saved_at: string;
+  genre: string | null;
   has_step1: boolean;
   has_step2: boolean;
   has_step2_images: boolean;
@@ -830,6 +831,13 @@ export interface CloudProjectListItem {
   step3_approved: boolean;
 }
 
+export interface CharacterSummary {
+  character_id: string;
+  name: string;
+  selected_image_url: string | null;
+  project_id: string;
+}
+
 export const projectsApi = {
   save: (data: FullProjectSave) =>
     apiClient.post<{ message: string }>("/projects/save", data),
@@ -839,6 +847,8 @@ export const projectsApi = {
     apiClient.get<FullProjectSave>(`/projects/${encodeURIComponent(projectId)}`),
   delete: (projectId: string) =>
     apiClient.delete<{ message: string }>(`/projects/${encodeURIComponent(projectId)}`),
+  characters: () =>
+    apiClient.get<CharacterSummary[]>("/projects/characters"),
 };
 
 export const authApi = {

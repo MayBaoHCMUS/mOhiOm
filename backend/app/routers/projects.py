@@ -4,7 +4,7 @@ API routes for project save / load.
 
 from fastapi import APIRouter, HTTPException, Header
 from typing import Any, Dict, List, Optional
-from app.schemas import ProjectSaveRequest, ProjectListItem
+from app.schemas import ProjectSaveRequest, ProjectListItem, CharacterSummary
 from app.database import mongo_db
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -50,10 +50,12 @@ def list_projects(
         s2ir = steps.get("step2ImageReview") or {}
         s3 = steps.get("step3") or {}
         s4 = steps.get("step4") or {}
+        user_inputs = doc.get("user_inputs") or {}
         result.append(
             ProjectListItem(
                 project_id=doc.get("project_id", ""),
                 saved_at=doc.get("saved_at", ""),
+                genre=user_inputs.get("genre") or None,
                 has_step1=bool(s1.get("data")),
                 has_step2=bool(s2.get("data")),
                 has_step2_images=bool(s2ir.get("data")),
@@ -66,6 +68,40 @@ def list_projects(
             )
         )
     return sorted(result, key=lambda x: x.saved_at, reverse=True)
+
+
+@router.get("/characters", response_model=List[CharacterSummary])
+def list_characters(
+    x_user_id: Optional[str] = Header(None),
+) -> List[Dict[str, Any]]:
+    """Return all characters with images across a user's saved projects, deduplicated by character_id."""
+    user_id = _require_user(x_user_id)
+    docs = list(
+        _col().find(
+            {"user_id": user_id},
+            {"_id": 0, "project_id": 1, "steps.step2ImageReview.data.characters": 1},
+        )
+    )
+    seen: set = set()
+    result = []
+    for doc in docs:
+        chars = (
+            ((doc.get("steps") or {}).get("step2ImageReview") or {}).get("data") or {}
+        ).get("characters") or []
+        for char in chars:
+            char_id = char.get("characterId", "")
+            if not char_id or char_id in seen:
+                continue
+            seen.add(char_id)
+            result.append(
+                CharacterSummary(
+                    character_id=char_id,
+                    name=char.get("name", ""),
+                    selected_image_url=char.get("selectedImageUrl") or None,
+                    project_id=doc.get("project_id", ""),
+                )
+            )
+    return result
 
 
 @router.get("/{project_id}")

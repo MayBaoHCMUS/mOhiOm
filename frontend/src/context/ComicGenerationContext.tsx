@@ -517,6 +517,18 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     return () => window.clearInterval(timer);
   }, []);
 
+  // Auto-load a project queued from the dashboard via localStorage.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const pending = window.localStorage.getItem('mohiom-pending-load');
+    if (!pending) return;
+    window.localStorage.removeItem('mohiom-pending-load');
+    projectsApi.load(pending).then((res) => {
+      restoreFromFullSave(res.data as unknown as Record<string, unknown>);
+    }).catch(() => { /* silently ignore if project was deleted */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const stored = window.sessionStorage.getItem('mohiom-image-api-url');
