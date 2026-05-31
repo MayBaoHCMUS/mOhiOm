@@ -839,6 +839,19 @@ export interface CharacterSummary {
   project_id: string;
 }
 
+export interface CharacterCreatePayload {
+  character_id: string;
+  name: string;
+  prompt?: string;
+  selected_image_url?: string;
+}
+
+export interface CharacterPatchPayload {
+  name?: string;
+  prompt?: string;
+  selected_image_url?: string;
+}
+
 export const projectsApi = {
   save: (data: FullProjectSave) =>
     apiClient.post<{ message: string }>("/projects/save", data),
@@ -850,6 +863,12 @@ export const projectsApi = {
     apiClient.delete<{ message: string }>(`/projects/${encodeURIComponent(projectId)}`),
   characters: () =>
     apiClient.get<CharacterSummary[]>("/projects/characters"),
+  createCharacter: (projectId: string, data: CharacterCreatePayload) =>
+    apiClient.post<CharacterSummary>(`/projects/${encodeURIComponent(projectId)}/characters`, data),
+  updateCharacter: (projectId: string, characterId: string, data: CharacterPatchPayload) =>
+    apiClient.patch<CharacterSummary>(`/projects/${encodeURIComponent(projectId)}/characters/${encodeURIComponent(characterId)}`, data),
+  deleteCharacter: (projectId: string, characterId: string) =>
+    apiClient.delete<{ message: string }>(`/projects/${encodeURIComponent(projectId)}/characters/${encodeURIComponent(characterId)}`),
 };
 
 export const authApi = {

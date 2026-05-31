@@ -1,156 +1,558 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
 import { projectsApi } from '@/services/api';
-import type { CharacterSummary } from '@/services/api';
+import type { CharacterSummary, CloudProjectListItem } from '@/services/api';
 
 const MAX_SLOTS = 12;
 
-// Derive a short seed-style ID from the character_id string.
 function seedFrom(id: string) {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
   return `#${(h % 90000 + 10000).toString().slice(0, 4)}`;
 }
 
-// Pick a short tag label (up to 2 chars) from the character_id.
 function tagFrom(id: string) {
   const parts = id.split(/[-_]/);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return id.slice(0, 2).toUpperCase();
 }
 
-function CardSkeleton() {
+async function generateImage(apiUrl: string, prompt: string): Promise<string> {
+  const res = await fetch('/api/image-proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: apiUrl, prompt, negative_prompt: 'lowres, bad anatomy' }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error ?? `Image API error (${res.status})`);
+  }
+  const data = await res.json() as { status?: string; image_base64?: string; message?: string };
+  if (!data.image_base64) throw new Error(data.message ?? 'No image returned');
+  return data.image_base64.startsWith('data:')
+    ? data.image_base64
+    : `data:image/png;base64,${data.image_base64}`;
+}
+
+// ─── Avatar ──────────────────────────────────────────────────────────────────
+
+function Avatar({ src, name, size = 'md' }: { src?: string | null; name: string; size?: 'sm' | 'md' | 'lg' }) {
+  const dim = size === 'lg' ? 'w-24 h-24' : size === 'md' ? 'w-16 h-16' : 'w-12 h-12';
   return (
-    <div className="bg-surface-container-lowest p-6 rounded-xl shadow-lg animate-pulse">
-      <div className="flex items-start gap-4 mb-4">
-        <div className="w-16 h-16 rounded-full bg-surface-container-high flex-shrink-0" />
-        <div className="flex-1 space-y-2 pt-1">
-          <div className="h-4 bg-surface-container-high rounded w-2/3" />
-          <div className="h-3 bg-surface-container-high rounded w-1/3" />
-        </div>
-      </div>
-      <div className="space-y-2 mb-6">
-        <div className="h-3 bg-surface-container-high rounded" />
-        <div className="h-3 bg-surface-container-high rounded w-4/5" />
-      </div>
-      <div className="h-px bg-surface-container-high" />
+    <div className={`${dim} rounded-full overflow-hidden bg-surface-container-high flex items-center justify-center ring-4 ring-primary/10 flex-shrink-0`}>
+      {src
+        ? <img alt={name} className="w-full h-full object-cover" src={src} />
+        : <span className="material-symbols-outlined text-on-surface-variant" style={{ fontSize: size === 'lg' ? 40 : 28 }}>person</span>}
     </div>
   );
 }
 
-function EmptyState({ onStart }: { onStart: () => void }) {
+// ─── Character card (list) ────────────────────────────────────────────────────
+
+interface CardProps {
+  character: CharacterSummary;
+  selected: boolean;
+  locked: boolean;
+  onSelect: () => void;
+  onToggleLock: (e: React.MouseEvent) => void;
+}
+
+function CharacterCard({ character, selected, locked, onSelect, onToggleLock }: CardProps) {
   return (
-    <div className="col-span-2 flex flex-col items-center justify-center py-16 rounded-xl border-2 border-dashed border-outline-variant/40 text-center">
-      <span className="material-symbols-outlined text-5xl text-outline-variant mb-4">group_off</span>
-      <p className="font-bold text-on-surface text-lg mb-1">No characters yet</p>
-      <p className="text-on-surface-variant text-sm max-w-xs mb-6">
-        Complete Step 2 (Character Design) in the pipeline and save your project to see characters here.
-      </p>
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full text-left p-5 rounded-xl shadow-sm flex items-start gap-4 transition-all duration-200 border-2 ${
+        selected
+          ? 'border-primary bg-primary/5 shadow-md'
+          : 'border-transparent bg-surface-container-lowest hover:bg-surface-container-low hover:border-outline-variant/30'
+      }`}
+    >
+      <div className="relative flex-shrink-0">
+        <Avatar src={character.selected_image_url} name={character.name} />
+        <span className="absolute -bottom-1 -right-1 bg-primary text-white w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold">
+          {tagFrom(character.character_id)}
+        </span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <h4 className="font-bold text-on-surface text-sm leading-snug truncate">{character.name}</h4>
+          <button
+            type="button"
+            onClick={onToggleLock}
+            title={locked ? 'Unlock face' : 'Lock face'}
+            className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
+              locked ? 'text-primary' : 'text-outline hover:text-on-surface'
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: locked ? "'FILL' 1" : "'FILL' 0" }}>
+              lock
+            </span>
+          </button>
+        </div>
+        <span className="text-[10px] font-mono text-outline">Seed {seedFrom(character.character_id)}</span>
+        {character.prompt && (
+          <p className="mt-1.5 text-xs text-on-surface-variant line-clamp-2 leading-relaxed">{character.prompt}</p>
+        )}
+        <p className="mt-1 text-[10px] text-outline/60 truncate">{character.project_id}</p>
+      </div>
+    </button>
+  );
+}
+
+// ─── Detail / Edit panel ─────────────────────────────────────────────────────
+
+interface DetailPanelProps {
+  character: CharacterSummary;
+  onSaved: (updated: CharacterSummary) => void;
+  onDeleted: () => void;
+  onBack: () => void;
+}
+
+function DetailPanel({ character, onSaved, onDeleted, onBack }: DetailPanelProps) {
+  const [name, setName] = useState(character.name);
+  const [prompt, setPrompt] = useState(character.prompt ?? '');
+  const [apiUrl, setApiUrl] = useState('');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    // Reset form when character changes
+    setName(character.name);
+    setPrompt(character.prompt ?? '');
+    setPreviewUrl(null);
+    setConfirmDelete(false);
+    setError(null);
+    setSuccess(false);
+  }, [character.character_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const stored = window.sessionStorage.getItem('mohiom-image-api-url');
+    if (stored) setApiUrl(stored);
+  }, []);
+
+  const displayImage = previewUrl ?? character.selected_image_url;
+
+  const handleGenerate = async () => {
+    if (!apiUrl.trim()) { setError('Enter an Image API URL first.'); return; }
+    if (!prompt.trim()) { setError('Enter a prompt first.'); return; }
+    setError(null);
+    setGenerating(true);
+    try {
+      const url = await generateImage(apiUrl.trim(), prompt.trim());
+      setPreviewUrl(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Generation failed.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const patch: { name?: string; prompt?: string; selected_image_url?: string } = {};
+      if (name.trim() !== character.name) patch.name = name.trim();
+      if (prompt.trim() !== (character.prompt ?? '')) patch.prompt = prompt.trim();
+      if (previewUrl) patch.selected_image_url = previewUrl;
+      const res = await projectsApi.updateCharacter(character.project_id, character.character_id, patch);
+      setPreviewUrl(null);
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 2000);
+      onSaved({ ...character, ...res.data });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirmDelete) { setConfirmDelete(true); return; }
+    setDeleting(true);
+    try {
+      await projectsApi.deleteCharacter(character.project_id, character.character_id);
+      onDeleted();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed.');
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Panel header */}
+      <div className="flex items-center justify-between mb-6">
+        <button type="button" onClick={onBack} className="flex items-center gap-1 text-sm text-on-surface-variant hover:text-primary transition-colors">
+          <span className="material-symbols-outlined text-base">arrow_back</span>
+          All characters
+        </button>
+        {confirmDelete ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-red-600 font-semibold">Sure?</span>
+            <button type="button" onClick={() => setConfirmDelete(false)} className="text-xs text-on-surface-variant hover:text-on-surface">Cancel</button>
+            <button type="button" onClick={handleDelete} disabled={deleting} className="text-xs font-bold text-red-600 hover:text-red-700 disabled:opacity-50">
+              {deleting ? 'Deleting…' : 'Yes, delete'}
+            </button>
+          </div>
+        ) : (
+          <button type="button" onClick={handleDelete} className="flex items-center gap-1 text-sm text-red-500 hover:text-red-600 transition-colors">
+            <span className="material-symbols-outlined text-base">delete</span>
+            Delete
+          </button>
+        )}
+      </div>
+
+      {/* Avatar + name */}
+      <div className="flex items-center gap-4 mb-6">
+        <div className="relative">
+          <Avatar src={displayImage} name={name} size="lg" />
+          {previewUrl && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center">
+              <span className="material-symbols-outlined text-white text-[12px]">check</span>
+            </span>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full text-xl font-bold bg-transparent border-b-2 border-outline-variant/30 focus:border-primary outline-none pb-1 text-on-surface transition-colors"
+            placeholder="Character name"
+          />
+          <p className="text-xs text-outline mt-1">
+            Seed {seedFrom(character.character_id)} · {character.project_id}
+          </p>
+        </div>
+      </div>
+
+      {/* Prompt editor */}
+      <div className="mb-5">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="material-symbols-outlined text-primary text-base">smart_toy</span>
+          <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">AI Prompt</label>
+        </div>
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={4}
+          className="w-full bg-surface-container-low rounded-xl px-4 py-3 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none leading-relaxed"
+          placeholder="Describe the character's appearance, style, and traits…"
+        />
+      </div>
+
+      {/* Image generation */}
+      <div className="mb-5 space-y-2">
+        <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase block">Generate New Image</label>
+        <input
+          value={apiUrl}
+          onChange={(e) => setApiUrl(e.target.value)}
+          className="w-full bg-surface-container-low rounded-xl px-4 py-2.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
+          placeholder="https://your-image-api.example.com/generate"
+        />
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={generating}
+          className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+            generating
+              ? 'bg-surface-container-high text-outline cursor-not-allowed'
+              : 'bg-surface-container-high text-primary hover:bg-primary/10'
+          }`}
+        >
+          <span className="material-symbols-outlined text-base">casino</span>
+          {generating ? 'Generating…' : previewUrl ? 'Regenerate' : 'Generate Image'}
+        </button>
+
+        {previewUrl && (
+          <div className="rounded-xl overflow-hidden aspect-[3/2] relative">
+            <img src={previewUrl} alt="Generated preview" className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent flex items-end p-3">
+              <span className="text-xs text-white font-semibold">New image — save to apply</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
+
+      {/* Save */}
       <button
-        onClick={onStart}
-        className="px-6 py-3 bg-primary text-on-primary font-bold rounded-full hover:opacity-90 transition-opacity"
+        type="button"
+        onClick={handleSave}
+        disabled={saving || success}
+        className={`w-full py-3 rounded-xl text-sm font-bold transition-all ${
+          success
+            ? 'bg-emerald-100 text-emerald-700'
+            : saving
+              ? 'bg-surface-container-high text-outline cursor-not-allowed'
+              : 'bg-primary text-on-primary hover:opacity-90'
+        }`}
       >
-        Go to Studio
+        {success ? 'Saved!' : saving ? 'Saving…' : 'Save Changes'}
       </button>
     </div>
   );
 }
 
-interface CharacterCardProps {
-  character: CharacterSummary;
-  locked: boolean;
-  onToggleLock: () => void;
-  onLoadProject: () => void;
+// ─── Create panel ─────────────────────────────────────────────────────────────
+
+interface CreatePanelProps {
+  projects: CloudProjectListItem[];
+  onCreated: (char: CharacterSummary) => void;
+  onCancel: () => void;
 }
 
-function CharacterCard({ character, locked, onToggleLock, onLoadProject }: CharacterCardProps) {
+function CreatePanel({ projects, onCreated, onCancel }: CreatePanelProps) {
+  const [name, setName] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [projectId, setProjectId] = useState(projects[0]?.project_id ?? '');
+  const [apiUrl, setApiUrl] = useState('');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stored = window.sessionStorage.getItem('mohiom-image-api-url');
+    if (stored) setApiUrl(stored);
+  }, []);
+
+  const handleGenerate = async () => {
+    if (!apiUrl.trim()) { setError('Enter an Image API URL first.'); return; }
+    if (!prompt.trim()) { setError('Enter a prompt first.'); return; }
+    setError(null);
+    setGenerating(true);
+    try {
+      setPreviewUrl(await generateImage(apiUrl.trim(), prompt.trim()));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Generation failed.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!name.trim()) { setError('Name is required.'); return; }
+    if (!projectId) { setError('Select a project.'); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const newId = `char_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const res = await projectsApi.createCharacter(projectId, {
+        character_id: newId,
+        name: name.trim(),
+        prompt: prompt.trim() || undefined,
+        selected_image_url: previewUrl ?? undefined,
+      });
+      onCreated(res.data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed.');
+      setSaving(false);
+    }
+  };
+
   return (
-    <div className="bg-surface-container-lowest p-6 rounded-xl shadow-lg flex flex-col h-full group hover:bg-surface-container-low transition-all duration-300">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-4">
-          <div className="relative flex-shrink-0">
-            <div className="w-16 h-16 rounded-full ring-4 ring-primary/10 overflow-hidden shadow-inner bg-surface-container">
-              {character.selected_image_url ? (
-                <img
-                  alt={character.name}
-                  className="w-full h-full object-cover"
-                  src={character.selected_image_url}
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <span className="material-symbols-outlined text-3xl text-on-surface-variant">person</span>
-                </div>
-              )}
-            </div>
-            <div className="absolute -bottom-1 -right-1 bg-primary text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold">
-              {tagFrom(character.character_id)}
-            </div>
-          </div>
-          <div>
-            <h4 className="font-bold text-on-surface leading-none">{character.name}</h4>
-            <span className="inline-block mt-2 px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface text-[10px] font-bold tracking-tight">
-              Seed: {seedFrom(character.character_id)}
-            </span>
-          </div>
-        </div>
-        <button
-          onClick={onLoadProject}
-          title={`Open project: ${character.project_id}`}
-          className="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-white transition-all flex-shrink-0"
-        >
-          <span className="material-symbols-outlined text-xl">open_in_new</span>
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-bold text-on-surface">New Character</h3>
+        <button type="button" onClick={onCancel} className="text-on-surface-variant hover:text-on-surface transition-colors">
+          <span className="material-symbols-outlined">close</span>
         </button>
       </div>
 
-      <p className="text-sm text-on-surface-variant leading-relaxed flex-1 mb-4 line-clamp-3">
-        {character.prompt ?? 'No prompt saved for this character.'}
-      </p>
+      {/* Avatar preview */}
+      <div className="flex justify-center mb-6">
+        <div className="w-24 h-24 rounded-full overflow-hidden bg-surface-container-high ring-4 ring-primary/10 flex items-center justify-center">
+          {previewUrl
+            ? <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+            : <span className="material-symbols-outlined text-4xl text-outline-variant">person_add</span>}
+        </div>
+      </div>
 
-      <p className="text-[10px] font-mono text-outline mb-4 truncate">
-        {character.project_id}
-      </p>
+      {/* Project selector */}
+      <div className="mb-4">
+        <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase block mb-2">Save to Project</label>
+        {projects.length === 0 ? (
+          <p className="text-xs text-outline bg-surface-container-low rounded-xl px-4 py-3">
+            No saved projects. Save a project first.
+          </p>
+        ) : (
+          <select
+            value={projectId}
+            onChange={(e) => setProjectId(e.target.value)}
+            className="w-full bg-surface-container-low rounded-xl px-4 py-2.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            {projects.map((p) => (
+              <option key={p.project_id} value={p.project_id}>{p.project_id.replace(/_/g, ' ')}</option>
+            ))}
+          </select>
+        )}
+      </div>
 
-      <div className="flex items-center justify-between pt-4 border-t border-outline-variant/20">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-outline">Lock Face</span>
-        <label className="relative inline-flex items-center cursor-pointer">
-          <input
-            className="sr-only peer"
-            type="checkbox"
-            checked={locked}
-            onChange={onToggleLock}
-          />
-          <div className="w-11 h-6 bg-surface-container-high peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary" />
-        </label>
+      {/* Name */}
+      <div className="mb-4">
+        <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase block mb-2">Name</label>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full bg-surface-container-low rounded-xl px-4 py-2.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
+          placeholder="e.g. Captain Kael"
+        />
+      </div>
+
+      {/* Prompt */}
+      <div className="mb-4">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="material-symbols-outlined text-primary text-base">smart_toy</span>
+          <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">AI Prompt</label>
+        </div>
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={3}
+          className="w-full bg-surface-container-low rounded-xl px-4 py-3 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+          placeholder="Describe appearance, style, traits…"
+        />
+      </div>
+
+      {/* Image generation */}
+      <div className="mb-4 space-y-2">
+        <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase block">Generate Image (optional)</label>
+        <input
+          value={apiUrl}
+          onChange={(e) => setApiUrl(e.target.value)}
+          className="w-full bg-surface-container-low rounded-xl px-4 py-2.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/30"
+          placeholder="Image API URL"
+        />
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={generating}
+          className={`w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
+            generating ? 'bg-surface-container-high text-outline cursor-not-allowed' : 'bg-surface-container-high text-primary hover:bg-primary/10'
+          }`}
+        >
+          <span className="material-symbols-outlined text-base">casino</span>
+          {generating ? 'Generating…' : 'Generate Image'}
+        </button>
+      </div>
+
+      {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
+
+      <button
+        type="button"
+        onClick={handleSave}
+        disabled={saving || projects.length === 0}
+        className="w-full py-3 rounded-xl text-sm font-bold bg-primary text-on-primary hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all mt-auto"
+      >
+        {saving ? 'Saving…' : 'Save Character'}
+      </button>
+    </div>
+  );
+}
+
+// ─── Stats panel (default right side) ────────────────────────────────────────
+
+function StatsPanel({ characters, lockedIds, onLoadProject }: {
+  characters: CharacterSummary[];
+  lockedIds: Set<string>;
+  onLoadProject: (id: string) => void;
+}) {
+  const byProject = Array.from(
+    characters.reduce((m, c) => { m.set(c.project_id, (m.get(c.project_id) ?? 0) + 1); return m; }, new Map<string, number>())
+  );
+
+  return (
+    <div className="space-y-8">
+      <div className="bg-surface-container-high p-8 rounded-xl relative overflow-hidden">
+        <div className="absolute -right-4 -top-4 w-24 h-24 bg-primary/10 rounded-full blur-3xl" />
+        <h3 className="text-xs font-bold text-primary tracking-widest uppercase mb-5">Overview</h3>
+        <div className="space-y-5">
+          {[
+            { label: 'Locked', value: lockedIds.size, total: characters.length },
+            { label: 'Slots filled', value: characters.length, total: MAX_SLOTS },
+          ].map(({ label, value, total }) => (
+            <div key={label}>
+              <div className="flex justify-between items-center mb-1.5">
+                <span className="text-xs font-bold text-on-surface-variant">{label}</span>
+                <span className="text-[10px] text-primary font-bold">{value} / {total}</span>
+              </div>
+              <div className="w-full bg-surface-container-lowest h-1.5 rounded-full">
+                <div className="bg-primary h-1.5 rounded-full transition-all" style={{ width: total ? `${(value / total) * 100}%` : '0%' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-surface-container-lowest p-8 rounded-xl shadow-lg">
+        <h3 className="text-xs font-bold text-on-surface-variant tracking-widest uppercase mb-5">By Project</h3>
+        {byProject.length === 0 ? (
+          <p className="text-xs text-outline text-center py-4">No data yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {byProject.map(([pid, count]) => (
+              <button key={pid} onClick={() => onLoadProject(pid)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-surface-container-low hover:bg-surface-container-high rounded-xl transition-colors text-left"
+              >
+                <span className="text-xs font-semibold text-on-surface truncate max-w-[140px]">{pid.replace(/_/g, ' ')}</span>
+                <span className="text-xs font-bold text-primary ml-2 flex-shrink-0">{count} char{count !== 1 ? 's' : ''}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
+// ─── Main page ────────────────────────────────────────────────────────────────
+
+type PanelMode = 'stats' | 'detail' | 'create';
+
 export default function CharacterManagerPage() {
   const router = useRouter();
   const [tab, setTab] = useState<'active' | 'archived'>('active');
   const [characters, setCharacters] = useState<CharacterSummary[]>([]);
+  const [projects, setProjects] = useState<CloudProjectListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [lockedIds, setLockedIds] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<CharacterSummary | null>(null);
+  const [mode, setMode] = useState<PanelMode>('stats');
+  const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    projectsApi.characters()
-      .then((r) => setCharacters(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [charsRes, projsRes] = await Promise.all([projectsApi.characters(), projectsApi.list()]);
+      setCharacters(charsRes.data);
+      setProjects(projsRes.data);
+    } catch { /* ignore */ } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const toggleLock = (id: string) => {
-    setLockedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  const toggleLock = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLockedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  };
+
+  const selectCharacter = (char: CharacterSummary) => {
+    setSelected(char);
+    setMode('detail');
   };
 
   const handleLoadProject = (projectId: string) => {
@@ -158,57 +560,76 @@ export default function CharacterManagerPage() {
     router.push('/studio');
   };
 
-  const lockedCount = lockedIds.size;
+  const handleSaved = (updated: CharacterSummary) => {
+    setCharacters((prev) => prev.map((c) => c.character_id === updated.character_id ? updated : c));
+    setSelected(updated);
+  };
+
+  const handleDeleted = () => {
+    if (selected) setCharacters((prev) => prev.filter((c) => c.character_id !== selected.character_id));
+    setSelected(null);
+    setMode('stats');
+  };
+
+  const handleCreated = (char: CharacterSummary) => {
+    setCharacters((prev) => [char, ...prev]);
+    setSelected(char);
+    setMode('detail');
+  };
+
+  const filtered = characters.filter((c) =>
+    !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.project_id.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-surface text-on-surface flex overflow-hidden">
       <StudioSidebar />
       <StudioTopBar />
-      <main className="flex-1 ml-[var(--studio-sidebar-width)] h-screen overflow-y-auto relative px-10 pt-24 pb-12">
-        <div className="max-w-7xl mx-auto space-y-12">
+      <main className="flex-1 ml-[var(--studio-sidebar-width)] h-screen overflow-y-auto px-10 pt-24 pb-12">
+        <div className="max-w-7xl mx-auto space-y-8">
 
           {/* Header */}
-          <header className="flex justify-between items-end">
+          <header className="flex flex-wrap justify-between items-end gap-4">
             <div>
               <h2 className="text-4xl font-extrabold tracking-tighter text-on-surface">Character Manager</h2>
               <p className="text-on-surface-variant mt-1">Maintain identity and consistency across all panels.</p>
             </div>
-            <div className="flex gap-4">
+            <div className="flex items-center gap-3">
+              {/* Search */}
+              <div className="flex items-center gap-2 bg-surface-container-low px-4 py-2 rounded-full text-sm">
+                <span className="material-symbols-outlined text-outline text-base">search</span>
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search characters…"
+                  className="bg-transparent outline-none text-on-surface placeholder-outline w-36"
+                />
+              </div>
+              {/* Tabs */}
               <div className="flex bg-surface-container-low p-1 rounded-full">
-                <button
-                  onClick={() => setTab('active')}
-                  className={`px-6 py-2 rounded-full font-bold text-sm transition-all ${
-                    tab === 'active'
-                      ? 'bg-surface-container-lowest shadow-sm text-primary'
-                      : 'text-on-surface-variant'
-                  }`}
-                >
-                  Active Engine
-                </button>
-                <button
-                  onClick={() => setTab('archived')}
-                  className={`px-6 py-2 rounded-full font-bold text-sm transition-all ${
-                    tab === 'archived'
-                      ? 'bg-surface-container-lowest shadow-sm text-primary'
-                      : 'text-on-surface-variant'
-                  }`}
-                >
-                  Archived
-                </button>
+                {(['active', 'archived'] as const).map((t) => (
+                  <button key={t} onClick={() => setTab(t)}
+                    className={`px-5 py-2 rounded-full font-bold text-sm transition-all capitalize ${
+                      tab === t ? 'bg-surface-container-lowest shadow-sm text-primary' : 'text-on-surface-variant'
+                    }`}
+                  >
+                    {t === 'active' ? 'Active' : 'Archived'}
+                  </button>
+                ))}
               </div>
             </div>
           </header>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
 
-            {/* Character grid */}
-            <section className="xl:col-span-2 space-y-6">
+            {/* Left — character list */}
+            <section className="xl:col-span-2 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-bold text-on-surface-variant tracking-widest uppercase">
-                  {tab === 'active' ? 'Active Characters' : 'Archived Characters'}
+                  {tab === 'active' ? 'Active Characters' : 'Archived'}
                 </h3>
                 <span className="text-xs text-outline bg-surface-container px-3 py-1 rounded-full">
-                  {loading ? '…' : characters.length} / {MAX_SLOTS} Slots used
+                  {loading ? '…' : filtered.length} / {MAX_SLOTS} slots
                 </span>
               </div>
 
@@ -217,119 +638,77 @@ export default function CharacterManagerPage() {
                   <span className="material-symbols-outlined text-4xl text-outline-variant mb-3">inventory_2</span>
                   <p className="text-on-surface-variant text-sm">No archived characters.</p>
                 </div>
+              ) : loading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-24 rounded-xl bg-surface-container-low animate-pulse" />
+                  ))}
+                </div>
+              ) : filtered.length === 0 && !search ? (
+                <div className="flex flex-col items-center justify-center py-16 rounded-xl border-2 border-dashed border-outline-variant/40 text-center">
+                  <span className="material-symbols-outlined text-5xl text-outline-variant mb-4">group_off</span>
+                  <p className="font-bold text-on-surface text-lg mb-1">No characters yet</p>
+                  <p className="text-on-surface-variant text-sm max-w-xs mb-6">
+                    Save a project with Step 2 images to see characters here, or create one manually.
+                  </p>
+                  <button onClick={() => setMode('create')} className="px-6 py-3 bg-primary text-on-primary font-bold rounded-full hover:opacity-90 transition-opacity">
+                    Create character
+                  </button>
+                </div>
+              ) : filtered.length === 0 ? (
+                <p className="text-center text-sm text-outline py-8">No characters match "{search}".</p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {loading ? (
-                    <>
-                      <CardSkeleton />
-                      <CardSkeleton />
-                      <CardSkeleton />
-                    </>
-                  ) : characters.length === 0 ? (
-                    <EmptyState onStart={() => router.push('/studio')} />
-                  ) : (
-                    <>
-                      {characters.map((char) => (
-                        <CharacterCard
-                          key={char.character_id}
-                          character={char}
-                          locked={lockedIds.has(char.character_id)}
-                          onToggleLock={() => toggleLock(char.character_id)}
-                          onLoadProject={() => handleLoadProject(char.project_id)}
-                        />
-                      ))}
-                      {/* Add slot */}
-                      {characters.length < MAX_SLOTS && (
-                        <button
-                          onClick={() => router.push('/studio')}
-                          className="border-2 border-dashed border-outline-variant/40 p-6 rounded-xl flex flex-col items-center justify-center text-center group hover:border-primary/40 hover:bg-surface-container-low transition-all cursor-pointer"
-                        >
-                          <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                            <span className="material-symbols-outlined text-outline">person_add</span>
-                          </div>
-                          <span className="font-bold text-on-surface-variant">Add Character</span>
-                          <p className="text-[10px] text-outline mt-1 px-4 uppercase tracking-tighter">New project generation</p>
-                        </button>
-                      )}
-                    </>
+                <div className="space-y-3">
+                  {filtered.map((char) => (
+                    <CharacterCard
+                      key={char.character_id}
+                      character={char}
+                      selected={selected?.character_id === char.character_id}
+                      locked={lockedIds.has(char.character_id)}
+                      onSelect={() => selectCharacter(char)}
+                      onToggleLock={(e) => toggleLock(char.character_id, e)}
+                    />
+                  ))}
+                  {characters.length < MAX_SLOTS && (
+                    <button
+                      onClick={() => { setSelected(null); setMode('create'); }}
+                      className="w-full border-2 border-dashed border-outline-variant/40 p-5 rounded-xl flex items-center gap-4 group hover:border-primary/40 hover:bg-surface-container-low transition-all"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                        <span className="material-symbols-outlined text-outline">person_add</span>
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-on-surface-variant text-sm">Add Character</p>
+                        <p className="text-[10px] text-outline uppercase tracking-tighter">New generation or manual entry</p>
+                      </div>
+                    </button>
                   )}
                 </div>
               )}
             </section>
 
-            {/* Sidebar */}
-            <aside className="space-y-8">
-              {/* Lock stats */}
-              <div className="bg-surface-container-high p-8 rounded-xl relative overflow-hidden">
-                <div className="absolute -right-4 -top-4 w-24 h-24 bg-primary/10 rounded-full blur-3xl" />
-                <h3 className="text-xs font-bold text-primary tracking-widest uppercase mb-4">Lock Status</h3>
-                <div className="space-y-6">
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <label className="text-xs font-bold text-on-surface-variant">Locked Characters</label>
-                      <span className="text-[10px] text-primary font-bold">
-                        {lockedCount} / {characters.length}
-                      </span>
-                    </div>
-                    <div className="w-full bg-surface-container-lowest h-2 rounded-full">
-                      <div
-                        className="bg-primary h-2 rounded-full transition-all"
-                        style={{ width: characters.length ? `${(lockedCount / characters.length) * 100}%` : '0%' }}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <label className="text-xs font-bold text-on-surface-variant">Slots Filled</label>
-                      <span className="text-[10px] text-primary font-bold">
-                        {characters.length} / {MAX_SLOTS}
-                      </span>
-                    </div>
-                    <div className="w-full bg-surface-container-lowest h-2 rounded-full">
-                      <div
-                        className="bg-primary h-2 rounded-full transition-all"
-                        style={{ width: `${(characters.length / MAX_SLOTS) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Projects breakdown */}
-              <div className="bg-surface-container-lowest p-8 rounded-xl shadow-lg">
-                <h3 className="text-xs font-bold text-on-surface-variant tracking-widest uppercase mb-6">By Project</h3>
-                {loading ? (
-                  <div className="space-y-3 animate-pulse">
-                    {[1, 2].map((i) => (
-                      <div key={i} className="h-10 bg-surface-container-high rounded-xl" />
-                    ))}
-                  </div>
-                ) : characters.length === 0 ? (
-                  <p className="text-xs text-outline text-center py-4">No data yet.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {Array.from(
-                      characters.reduce((map, c) => {
-                        map.set(c.project_id, (map.get(c.project_id) ?? 0) + 1);
-                        return map;
-                      }, new Map<string, number>())
-                    ).map(([projectId, count]) => (
-                      <button
-                        key={projectId}
-                        onClick={() => handleLoadProject(projectId)}
-                        className="w-full flex items-center justify-between px-4 py-3 bg-surface-container-low hover:bg-surface-container-high rounded-xl transition-colors text-left"
-                      >
-                        <span className="text-xs font-semibold text-on-surface truncate max-w-[140px]">
-                          {projectId.replace(/_/g, ' ')}
-                        </span>
-                        <span className="text-xs font-bold text-primary ml-2 flex-shrink-0">
-                          {count} char{count !== 1 ? 's' : ''}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+            {/* Right — dynamic panel */}
+            <aside className="bg-surface-container-lowest rounded-xl p-6 shadow-sm h-fit sticky top-8 max-h-[calc(100vh-8rem)] overflow-y-auto">
+              {mode === 'detail' && selected ? (
+                <DetailPanel
+                  character={selected}
+                  onSaved={handleSaved}
+                  onDeleted={handleDeleted}
+                  onBack={() => { setSelected(null); setMode('stats'); }}
+                />
+              ) : mode === 'create' ? (
+                <CreatePanel
+                  projects={projects}
+                  onCreated={handleCreated}
+                  onCancel={() => setMode('stats')}
+                />
+              ) : (
+                <StatsPanel
+                  characters={characters}
+                  lockedIds={lockedIds}
+                  onLoadProject={handleLoadProject}
+                />
+              )}
             </aside>
           </div>
         </div>
@@ -337,9 +716,9 @@ export default function CharacterManagerPage() {
 
       {/* FAB */}
       <button
-        onClick={() => router.push('/studio')}
+        onClick={() => { setSelected(null); setMode('create'); }}
         className="fixed bottom-10 right-10 w-16 h-16 bg-gradient-to-br from-primary to-primary-container text-white rounded-full shadow-2xl flex items-center justify-center group active:scale-95 duration-150"
-        title="New project"
+        title="New character"
       >
         <span className="material-symbols-outlined text-3xl group-hover:rotate-90 transition-transform">add</span>
       </button>

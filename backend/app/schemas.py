@@ -131,3 +131,20 @@ class CharacterSummary(BaseModel):
     selected_image_url: Optional[str] = None
     project_id: str
 
+
+class CharacterUpsertPayload(BaseModel):
+    """Payload for creating a new character inside a project."""
+
+    character_id: str
+    name: str
+    prompt: Optional[str] = None
+    selected_image_url: Optional[str] = None
+
+
+class CharacterPatchPayload(BaseModel):
+    """Payload for updating fields of an existing character."""
+
+    name: Optional[str] = None
+    prompt: Optional[str] = None
+    selected_image_url: Optional[str] = None
+

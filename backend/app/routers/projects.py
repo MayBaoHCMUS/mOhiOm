@@ -4,7 +4,7 @@ API routes for project save / load.
 
 from fastapi import APIRouter, HTTPException, Header
 from typing import Any, Dict, List, Optional
-from app.schemas import ProjectSaveRequest, ProjectListItem, CharacterSummary
+from app.schemas import ProjectSaveRequest, ProjectListItem, CharacterSummary, CharacterUpsertPayload, CharacterPatchPayload
 from app.database import mongo_db
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -103,6 +103,101 @@ def list_characters(
                 )
             )
     return result
+
+
+def _get_characters(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return (
+        ((doc.get("steps") or {}).get("step2ImageReview") or {})
+        .get("data") or {}
+    ).get("characters") or []
+
+
+def _set_characters(col, user_id: str, project_id: str, chars: List[Dict[str, Any]]) -> None:
+    col.update_one(
+        {"user_id": user_id, "project_id": project_id},
+        {"$set": {"steps.step2ImageReview.data.characters": chars}},
+    )
+
+
+@router.post("/{project_id}/characters", response_model=CharacterSummary)
+def create_character(
+    project_id: str,
+    payload: CharacterUpsertPayload,
+    x_user_id: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    user_id = _require_user(x_user_id)
+    doc = _col().find_one({"user_id": user_id, "project_id": project_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    chars = _get_characters(doc)
+    if any(c.get("characterId") == payload.character_id for c in chars):
+        raise HTTPException(status_code=409, detail="Character ID already exists in this project")
+    new_char = {
+        "characterId": payload.character_id,
+        "name": payload.name,
+        "prompt": payload.prompt,
+        "selectedCandidateId": f"{payload.character_id}-1" if payload.selected_image_url else None,
+        "selectedImageUrl": payload.selected_image_url,
+    }
+    chars.append(new_char)
+    _set_characters(_col(), user_id, project_id, chars)
+    return CharacterSummary(
+        character_id=payload.character_id,
+        name=payload.name,
+        prompt=payload.prompt,
+        selected_image_url=payload.selected_image_url,
+        project_id=project_id,
+    )
+
+
+@router.patch("/{project_id}/characters/{character_id}", response_model=CharacterSummary)
+def update_character(
+    project_id: str,
+    character_id: str,
+    payload: CharacterPatchPayload,
+    x_user_id: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    user_id = _require_user(x_user_id)
+    doc = _col().find_one({"user_id": user_id, "project_id": project_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    chars = _get_characters(doc)
+    for char in chars:
+        if char.get("characterId") == character_id:
+            if payload.name is not None:
+                char["name"] = payload.name
+            if payload.prompt is not None:
+                char["prompt"] = payload.prompt
+            if payload.selected_image_url is not None:
+                char["selectedImageUrl"] = payload.selected_image_url
+                char["selectedCandidateId"] = f"{character_id}-updated"
+            _set_characters(_col(), user_id, project_id, chars)
+            return CharacterSummary(
+                character_id=character_id,
+                name=char.get("name", ""),
+                prompt=char.get("prompt"),
+                selected_image_url=char.get("selectedImageUrl"),
+                project_id=project_id,
+            )
+    raise HTTPException(status_code=404, detail="Character not found in project")
+
+
+@router.delete("/{project_id}/characters/{character_id}")
+def delete_character(
+    project_id: str,
+    character_id: str,
+    x_user_id: Optional[str] = Header(None),
+) -> Dict[str, str]:
+    user_id = _require_user(x_user_id)
+    doc = _col().find_one({"user_id": user_id, "project_id": project_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+    chars = _get_characters(doc)
+    next_chars = [c for c in chars if c.get("characterId") != character_id]
+    if len(next_chars) == len(chars):
+        raise HTTPException(status_code=404, detail="Character not found in project")
+    _set_characters(_col(), user_id, project_id, next_chars)
+    return {"message": "deleted"}
 
 
 @router.get("/{project_id}")
