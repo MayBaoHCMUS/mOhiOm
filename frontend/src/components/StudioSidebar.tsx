@@ -7,7 +7,6 @@ import { useEffect, useState } from 'react';
 const navItems = [
   { href: '/studio/dashboard', label: 'Home', icon: 'home' },
   { href: '/studio/story-setup', label: 'Story Setup', icon: 'auto_stories' },
-  { href: '/studio/character-setup', label: 'Character Setup', icon: 'person' },
   { href: '/studio/character-manager', label: 'Character Manager', icon: 'face_6' },
   { href: '/studio/editor', label: 'Comic Editor', icon: 'edit_note' },
   { href: '/studio/export', label: 'Export & Publish', icon: 'ios_share' },

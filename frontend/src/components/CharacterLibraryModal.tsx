@@ -55,7 +55,7 @@ function CharacterCard({
       {/* Info */}
       <div className="p-3">
         <p className="font-bold text-sm text-on-surface truncate">{char.name}</p>
-        <p className="text-[10px] text-outline truncate mt-0.5">{char.project_id.replace(/_/g, ' ')}</p>
+        <p className="text-[10px] text-outline truncate mt-0.5">{char.project_id ? char.project_id.replace(/_/g, ' ') : 'My Library'}</p>
         {char.prompt && (
           <p className="text-[11px] text-on-surface-variant mt-1 line-clamp-2 leading-relaxed">{char.prompt}</p>
         )}
@@ -106,7 +106,7 @@ export default function CharacterLibraryModal({ isOpen, onClose, existingIds, on
     characters.filter((c) =>
       !search ||
       c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.project_id.toLowerCase().includes(search.toLowerCase())
+      (c.project_id ?? '').toLowerCase().includes(search.toLowerCase())
     ),
     [characters, search]
   );

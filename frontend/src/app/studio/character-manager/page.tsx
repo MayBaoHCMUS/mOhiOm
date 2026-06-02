@@ -82,7 +82,7 @@ function CharacterCard({ character, selected, locked, onSelect, onToggleLock }: 
         {character.prompt && (
           <p className="mt-1.5 text-xs text-on-surface-variant line-clamp-2 leading-relaxed">{character.prompt}</p>
         )}
-        <p className="mt-1 text-[10px] text-outline/60 truncate">{character.project_id}</p>
+        <p className="mt-1 text-[10px] text-outline/60 truncate">{character.project_id ?? 'My Library'}</p>
       </div>
     </button>
   );
@@ -157,7 +157,9 @@ function DetailPanel({ character, onSaved, onDeleted, onBack }: DetailPanelProps
       if (name.trim() !== character.name) patch.name = name.trim();
       if (prompt.trim() !== (character.prompt ?? '')) patch.prompt = prompt.trim();
       if (previewUrl) patch.selected_image_url = previewUrl;
-      const res = await projectsApi.updateCharacter(character.project_id, character.character_id, patch);
+      const res = character.project_id
+        ? await projectsApi.updateCharacter(character.project_id, character.character_id, patch)
+        : await projectsApi.updateStandaloneCharacter(character.character_id, patch);
       setPreviewUrl(null);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 2000);
@@ -173,7 +175,11 @@ function DetailPanel({ character, onSaved, onDeleted, onBack }: DetailPanelProps
     if (!confirmDelete) { setConfirmDelete(true); return; }
     setDeleting(true);
     try {
-      await projectsApi.deleteCharacter(character.project_id, character.character_id);
+      if (character.project_id) {
+        await projectsApi.deleteCharacter(character.project_id, character.character_id);
+      } else {
+        await projectsApi.deleteStandaloneCharacter(character.character_id);
+      }
       onDeleted();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Delete failed.');
@@ -223,7 +229,7 @@ function DetailPanel({ character, onSaved, onDeleted, onBack }: DetailPanelProps
             placeholder="Character name"
           />
           <p className="text-xs text-outline mt-1">
-            Seed {seedFrom(character.character_id)} · {character.project_id}
+            Seed {seedFrom(character.character_id)} · {character.project_id ?? 'My Library'}
           </p>
         </div>
       </div>
@@ -305,7 +311,7 @@ function StatsPanel({ characters, lockedIds, onLoadProject }: {
   onLoadProject: (id: string) => void;
 }) {
   const byProject = Array.from(
-    characters.reduce((m, c) => { m.set(c.project_id, (m.get(c.project_id) ?? 0) + 1); return m; }, new Map<string, number>())
+    characters.reduce((m, c) => { const key = c.project_id ?? 'My Library'; m.set(key, (m.get(key) ?? 0) + 1); return m; }, new Map<string, number>())
   );
 
   return (
@@ -415,7 +421,7 @@ export default function CharacterManagerPage() {
   };
 
   const filtered = characters.filter((c) =>
-    !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.project_id.toLowerCase().includes(search.toLowerCase())
+    !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.project_id ?? '').toLowerCase().includes(search.toLowerCase())
   );
 
   return (

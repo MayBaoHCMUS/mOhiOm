@@ -836,7 +836,7 @@ export interface CharacterSummary {
   name: string;
   prompt: string | null;
   selected_image_url: string | null;
-  project_id: string;
+  project_id: string | null;
 }
 
 export interface CharacterCreatePayload {
@@ -865,6 +865,12 @@ export const projectsApi = {
     apiClient.get<CharacterSummary[]>("/projects/characters"),
   createCharacter: (projectId: string, data: CharacterCreatePayload) =>
     apiClient.post<CharacterSummary>(`/projects/${encodeURIComponent(projectId)}/characters`, data),
+  createStandaloneCharacter: (data: CharacterCreatePayload) =>
+    apiClient.post<CharacterSummary>("/projects/characters", data),
+  updateStandaloneCharacter: (characterId: string, data: CharacterPatchPayload) =>
+    apiClient.patch<CharacterSummary>(`/projects/characters/${encodeURIComponent(characterId)}`, data),
+  deleteStandaloneCharacter: (characterId: string) =>
+    apiClient.delete<{ message: string }>(`/projects/characters/${encodeURIComponent(characterId)}`),
   updateCharacter: (projectId: string, characterId: string, data: CharacterPatchPayload) =>
     apiClient.patch<CharacterSummary>(`/projects/${encodeURIComponent(projectId)}/characters/${encodeURIComponent(characterId)}`, data),
   deleteCharacter: (projectId: string, characterId: string) =>

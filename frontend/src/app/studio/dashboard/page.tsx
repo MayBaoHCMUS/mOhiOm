@@ -242,8 +242,9 @@ export default function StudioDashboardPage() {
                 <div
                   key={char.character_id}
                   className="flex flex-col items-center group cursor-pointer"
-                  title={`From project: ${char.project_id}`}
-                  onClick={() => handleLoadProject(char.project_id)}
+                  title={char.project_id ? `From project: ${char.project_id}` : 'My Library'}
+                  onClick={() => char.project_id ? handleLoadProject(char.project_id) : undefined}
+                  style={{ cursor: char.project_id ? 'pointer' : 'default' }}
                 >
                   <div className="relative mb-3">
                     <div className="w-24 h-24 rounded-full p-1 bg-gradient-to-br from-primary to-primary-container transition-transform group-hover:rotate-6">
@@ -262,7 +263,7 @@ export default function StudioDashboardPage() {
                   </div>
                   <span className="font-bold text-on-surface text-sm">{char.name}</span>
                   <span className="text-[10px] font-mono text-on-surface-variant/70 mt-1 uppercase tracking-tighter truncate max-w-[96px]">
-                    {char.project_id}
+                    {char.project_id ?? 'My Library'}
                   </span>
                 </div>
               ))

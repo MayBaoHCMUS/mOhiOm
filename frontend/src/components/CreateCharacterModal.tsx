@@ -213,7 +213,7 @@ export interface CreateCharacterModalProps {
 export default function CreateCharacterModal({ isOpen, onClose, onCreated, projects = [], defaultProjectId }: CreateCharacterModalProps) {
   const [method, setMethod] = useState<Method>('describe');
   const [name, setName] = useState('');
-  const [projectId, setProjectId] = useState(defaultProjectId ?? projects[0]?.project_id ?? '');
+  const [projectId, setProjectId] = useState(defaultProjectId ?? '');
   const [apiUrl, setApiUrl] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -234,8 +234,8 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
 
   // Sync projectId when prop changes
   useEffect(() => {
-    setProjectId(defaultProjectId ?? projects[0]?.project_id ?? '');
-  }, [defaultProjectId, projects]);
+    setProjectId(defaultProjectId ?? '');
+  }, [defaultProjectId]);
 
   // Read API URL from sessionStorage
   useEffect(() => {
@@ -294,17 +294,19 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
 
   const handleSave = async () => {
     if (!name.trim()) { setError('Character name is required.'); return; }
-    if (!projectId) { setError('Select a project to save to.'); return; }
     if (!previewUrl && method !== 'image') { setError('Generate or upload an image first.'); return; }
     setSaving(true); setError(null);
     try {
       const newId = `char_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      const res = await projectsApi.createCharacter(projectId, {
+      const payload = {
         character_id: newId,
         name: name.trim(),
         prompt: effectivePrompt || description || undefined,
         selected_image_url: previewUrl ?? undefined,
-      });
+      };
+      const res = projectId
+        ? await projectsApi.createCharacter(projectId, payload)
+        : await projectsApi.createStandaloneCharacter(payload);
       onCreated(res.data);
       reset();
     } catch (e) {
@@ -405,21 +407,21 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
 
             {/* Project selector */}
             <div>
-              <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">Save to Project</label>
-              {projects.length === 0 ? (
-                <p className="mt-1.5 text-xs text-outline bg-surface-container-low rounded-xl px-3 py-2.5">
-                  No saved projects yet. Save a project first.
+              <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">Save to Project <span className="normal-case font-normal text-outline">(optional)</span></label>
+              <select
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                className="field mt-1.5"
+              >
+                <option value="">— Save to my library only —</option>
+                {projects.map((p) => (
+                  <option key={p.project_id} value={p.project_id}>{p.project_id.replace(/_/g, ' ')}</option>
+                ))}
+              </select>
+              {!projectId && (
+                <p className="mt-1.5 text-[11px] text-outline leading-relaxed">
+                  Character will be saved to your personal library and available across all projects.
                 </p>
-              ) : (
-                <select
-                  value={projectId}
-                  onChange={(e) => setProjectId(e.target.value)}
-                  className="field mt-1.5"
-                >
-                  {projects.map((p) => (
-                    <option key={p.project_id} value={p.project_id}>{p.project_id.replace(/_/g, ' ')}</option>
-                  ))}
-                </select>
               )}
             </div>
 
@@ -441,7 +443,7 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
               )}
               <button
                 type="button" onClick={handleSave}
-                disabled={saving || !name.trim() || (!previewUrl && method !== 'image') || projects.length === 0}
+                disabled={saving || !name.trim() || (!previewUrl && method !== 'image')}
                 className="w-full py-3 rounded-xl text-sm font-bold bg-primary text-on-primary hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
               >
                 {saving ? 'Saving…' : 'Save Character'}

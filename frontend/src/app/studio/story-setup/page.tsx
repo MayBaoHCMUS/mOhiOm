@@ -4,7 +4,7 @@ import StudioTopBar from '@/components/StudioTopBar';
 
 const bottomSteps = [
   { label: 'Story', icon: 'menu_book', active: true, href: '/studio/story-setup' },
-  { label: 'Analysis', icon: 'query_stats', active: false, href: '/studio/character-setup' },
+  { label: 'Characters', icon: 'face_6', active: false, href: '/studio/character-manager' },
   { label: 'Canvas', icon: 'auto_awesome', active: false, href: '/studio/editor' },
   { label: 'Export', icon: 'ios_share', active: false, href: '/studio/export' },
 ];

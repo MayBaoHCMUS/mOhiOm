@@ -2,6 +2,7 @@
 API routes for project save / load.
 """
 
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Header
 from typing import Any, Dict, List, Optional
 from app.schemas import ProjectSaveRequest, ProjectListItem, CharacterSummary, CharacterUpsertPayload, CharacterPatchPayload
@@ -12,6 +13,10 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 def _col():
     return mongo_db.get_database()["projects"]
+
+
+def _char_col():
+    return mongo_db.get_database()["user_characters"]
 
 
 def _require_user(x_user_id: Optional[str]) -> str:
@@ -74,16 +79,34 @@ def list_projects(
 def list_characters(
     x_user_id: Optional[str] = Header(None),
 ) -> List[Dict[str, Any]]:
-    """Return all characters with images across a user's saved projects, deduplicated by character_id."""
+    """Return all characters across a user's standalone library and saved projects, deduplicated by character_id."""
     user_id = _require_user(x_user_id)
+    seen: set = set()
+    result = []
+
+    # 1. Standalone characters (user_characters collection)
+    for char in _char_col().find({"user_id": user_id}, {"_id": 0}):
+        char_id = char.get("character_id", "")
+        if not char_id or char_id in seen:
+            continue
+        seen.add(char_id)
+        result.append(
+            CharacterSummary(
+                character_id=char_id,
+                name=char.get("name", ""),
+                prompt=char.get("prompt") or None,
+                selected_image_url=char.get("selected_image_url") or None,
+                project_id=char.get("project_id") or None,
+            )
+        )
+
+    # 2. Characters embedded in project documents
     docs = list(
         _col().find(
             {"user_id": user_id},
             {"_id": 0, "project_id": 1, "steps.step2ImageReview.data.characters": 1},
         )
     )
-    seen: set = set()
-    result = []
     for doc in docs:
         chars = (
             ((doc.get("steps") or {}).get("step2ImageReview") or {}).get("data") or {}
@@ -99,10 +122,82 @@ def list_characters(
                     name=char.get("name", ""),
                     prompt=char.get("prompt") or None,
                     selected_image_url=char.get("selectedImageUrl") or None,
-                    project_id=doc.get("project_id", ""),
+                    project_id=doc.get("project_id") or None,
                 )
             )
     return result
+
+
+@router.post("/characters", response_model=CharacterSummary)
+def create_standalone_character(
+    payload: CharacterUpsertPayload,
+    x_user_id: Optional[str] = Header(None),
+) -> CharacterSummary:
+    """Save a character to the user's standalone library (no project required)."""
+    user_id = _require_user(x_user_id)
+    existing = _char_col().find_one({"user_id": user_id, "character_id": payload.character_id})
+    if existing:
+        raise HTTPException(status_code=409, detail="Character ID already exists")
+    doc = {
+        "user_id": user_id,
+        "character_id": payload.character_id,
+        "name": payload.name,
+        "prompt": payload.prompt,
+        "selected_image_url": payload.selected_image_url,
+        "project_id": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _char_col().insert_one(doc)
+    return CharacterSummary(
+        character_id=payload.character_id,
+        name=payload.name,
+        prompt=payload.prompt,
+        selected_image_url=payload.selected_image_url,
+        project_id=None,
+    )
+
+
+@router.patch("/characters/{character_id}", response_model=CharacterSummary)
+def update_standalone_character(
+    character_id: str,
+    payload: CharacterPatchPayload,
+    x_user_id: Optional[str] = Header(None),
+) -> CharacterSummary:
+    """Update a standalone character in the user's library."""
+    user_id = _require_user(x_user_id)
+    char = _char_col().find_one({"user_id": user_id, "character_id": character_id})
+    if not char:
+        raise HTTPException(status_code=404, detail="Character not found")
+    updates: Dict[str, Any] = {}
+    if payload.name is not None:
+        updates["name"] = payload.name
+    if payload.prompt is not None:
+        updates["prompt"] = payload.prompt
+    if payload.selected_image_url is not None:
+        updates["selected_image_url"] = payload.selected_image_url
+    if updates:
+        _char_col().update_one({"user_id": user_id, "character_id": character_id}, {"$set": updates})
+    char.update(updates)
+    return CharacterSummary(
+        character_id=character_id,
+        name=char.get("name", ""),
+        prompt=char.get("prompt"),
+        selected_image_url=char.get("selected_image_url"),
+        project_id=None,
+    )
+
+
+@router.delete("/characters/{character_id}")
+def delete_standalone_character(
+    character_id: str,
+    x_user_id: Optional[str] = Header(None),
+) -> Dict[str, str]:
+    """Delete a standalone character from the user's library."""
+    user_id = _require_user(x_user_id)
+    result = _char_col().delete_one({"user_id": user_id, "character_id": character_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Character not found")
+    return {"message": "deleted"}
 
 
 def _get_characters(doc: Dict[str, Any]) -> List[Dict[str, Any]]:

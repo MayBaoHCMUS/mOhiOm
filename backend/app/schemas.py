@@ -123,13 +123,13 @@ class ProjectListItem(BaseModel):
 
 
 class CharacterSummary(BaseModel):
-    """One character entry extracted from a saved project."""
+    """One character entry extracted from a saved project or standalone library."""
 
     character_id: str
     name: str
     prompt: Optional[str] = None
     selected_image_url: Optional[str] = None
-    project_id: str
+    project_id: Optional[str] = None
 
 
 class CharacterUpsertPayload(BaseModel):
