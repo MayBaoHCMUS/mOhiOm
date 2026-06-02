@@ -1,10 +1,27 @@
 'use client';
 
 import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
 
 type StudioTopBarProps = {
   leftOffset?: boolean;
 };
+
+function UserAvatar({ size = 'sm' }: { size?: 'sm' | 'md' }) {
+  const { user } = useAuth();
+  const initials = [user?.first_name, user?.last_name]
+    .filter(Boolean)
+    .map((w) => w![0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || '?';
+  const dim = size === 'sm' ? 'w-9 h-9 text-xs' : 'w-10 h-10 text-sm';
+  return (
+    <div className={`${dim} rounded-full bg-gradient-to-br from-primary to-primary-container flex items-center justify-center font-black text-white flex-shrink-0`}>
+      {initials}
+    </div>
+  );
+}
 
 export default function StudioTopBar({ leftOffset = true }: StudioTopBarProps) {
   return (
@@ -32,11 +49,7 @@ export default function StudioTopBar({ leftOffset = true }: StudioTopBarProps) {
           <span className="material-symbols-outlined">notifications</span>
         </button>
         <Link className="hover:opacity-80 transition-opacity" href="/settings" aria-label="Open profile">
-          <img
-            alt="User avatar"
-            className="w-9 h-9 rounded-full object-cover"
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1K3JyojfDa09ZT0Jo9CtSiAFvzzeO0elWMvXORRnyXKaiFcpkE-vcHL31HRjVeeRjaVxf_xuui3wHmvTYPVw41Ldbgs-PLn3GDQP7tcj59xvMojLBSTwYtS4qFtt4lxRXnUh5NKbS1G-emVds5iXZoFSQxR0DBV0QsEDmZft4FmvVqWn9Ox6UwpO4Dz-JAZk445jdxSwkFtnr20GE_FfqaQv5dfPl0gs9dxi7TujN5HRuyzabr7Fg6VDLG0RAY6Btoe58s-Nhfcw"
-          />
+          <UserAvatar />
         </Link>
       </div>
     </header>

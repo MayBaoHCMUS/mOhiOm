@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
 
 const navItems = [
   { href: '/studio/dashboard', label: 'Home', icon: 'home' },
@@ -18,7 +19,11 @@ const navItems = [
 
 export default function StudioSidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'Creator';
+  const initials = fullName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2) || '?';
 
   useEffect(() => {
     const stored = window.localStorage.getItem('studio-sidebar-collapsed');
@@ -94,8 +99,8 @@ export default function StudioSidebar() {
       </nav>
       <div className="mt-auto pt-6 space-y-4">
         <Link
-          className={`w-full text-center bg-primary-container text-white rounded-xl font-semibold text-sm shadow-sm transition-transform active:scale-95 flex items-center gap-2 ${
-            isCollapsed ? 'justify-center py-3' : 'py-3'
+          className={`w-full bg-primary-container text-white rounded-xl font-semibold text-sm shadow-sm transition-transform active:scale-95 flex items-center justify-center gap-2 py-3 ${
+            isCollapsed ? '' : 'px-4'
           }`}
           href="/pricing"
           title={isCollapsed ? 'Upgrade to Pro' : undefined}
@@ -104,23 +109,23 @@ export default function StudioSidebar() {
           <span className="material-symbols-outlined text-base">workspace_premium</span>
           <span className={isCollapsed ? 'sr-only' : ''}>Upgrade to Pro</span>
         </Link>
-        <div
-          className={`flex items-center gap-3 border-t border-outline-variant/30 ${
+        <Link
+          href="/settings"
+          className={`flex items-center gap-3 border-t border-outline-variant/30 hover:bg-surface-container-high rounded-xl transition-colors ${
             isCollapsed ? 'px-0 py-4 justify-center' : 'px-2 py-4'
           }`}
+          title={isCollapsed ? fullName : undefined}
         >
-          <img
-            alt="User avatar"
-            className="w-10 h-10 rounded-full object-cover"
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1K3JyojfDa09ZT0Jo9CtSiAFvzzeO0elWMvXORRnyXKaiFcpkE-vcHL31HRjVeeRjaVxf_xuui3wHmvTYPVw41Ldbgs-PLn3GDQP7tcj59xvMojLBSTwYtS4qFtt4lxRXnUh5NKbS1G-emVds5iXZoFSQxR0DBV0QsEDmZft4FmvVqWn9Ox6UwpO4Dz-JAZk445jdxSwkFtnr20GE_FfqaQv5dfPl0gs9dxi7TujN5HRuyzabr7Fg6VDLG0RAY6Btoe58s-Nhfcw"
-          />
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary-container flex items-center justify-center font-black text-white text-sm flex-shrink-0">
+            {initials}
+          </div>
           {!isCollapsed && (
-            <div className="flex flex-col">
-              <span className="text-sm font-bold">Alex Rivera</span>
-              <span className="text-xs text-on-surface-variant">Free Tier</span>
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-bold truncate">{fullName}</span>
+              <span className="text-xs text-on-surface-variant truncate">{user?.email ?? 'Free Tier'}</span>
             </div>
           )}
-        </div>
+        </Link>
       </div>
     </aside>
   );
