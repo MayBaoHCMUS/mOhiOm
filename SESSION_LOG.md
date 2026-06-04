@@ -1,3 +1,78 @@
+## SESSION: 2026-06-04
+
+### ✅ COMPLETED
+
+#### 1. Settings page — real functionality
+- Removed "Change Email" row (not supported)
+- **Live stats**: `GET /api/projects/stats` endpoint added to `backend/app/routers/projects.py` (before `/{project_id}` to avoid route collision); returns `project_count`, `character_count` (standalone + project-embedded, deduped), `panel_count`. Frontend calls `projectsApi.stats()` on mount with loading skeleton.
+- **Change password**: `POST /api/auth/change-password` endpoint; verifies current password via bcrypt, enforces 8-char min, updates hash. Frontend inline form shown only for users with `providers.includes('manual')`.
+- **Connect OAuth accounts**: `oauth_start` extended with `mode=connect` — validates existing JWT cookie, embeds `user_id` in state token; `oauth_callback` calls `repo.link_oauth_provider()` on `mode=connect`. Frontend "Connect" button per provider redirects via `authApi.oauthStart(provider, 'connect')`.
+- **App Preferences persistence**: Comic Style + Export Format selects now initialize from `localStorage` (lazy initializer) and `savePrefs()` on every change with "Saved" flash indicator.
+- **Provider badge fix**: Badge map key corrected from `'password'` → `'manual'` (backend sends `"manual"`).
+- **Connect notice toast**: reads `?connected=provider` or `?error=connect_failed` query params on mount.
+
+#### 2. CORS error on registration — root cause fixed
+- **Root cause**: `ServerErrorMiddleware` sits above `CORSMiddleware` in Starlette's stack. When a 500 is thrown, `ServerErrorMiddleware` catches it before `CORSMiddleware` can add CORS headers, so the browser sees a CORS error masking the real 500.
+- **Actual 500 cause**: `passlib` + `bcrypt ≥ 4.0` incompatibility — `ValueError: password cannot be longer than 72 bytes` thrown during passlib's internal wrap-bug detection test on every password hash.
+- **Fix**: Replaced passlib with direct bcrypt API in `backend/app/security.py`:
+  - `hash_password` → `bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()`
+  - `verify_password` → `bcrypt.checkpw(pw.encode(), hashed.encode())` (returns False on any exception)
+  - Removed: `from passlib.context import CryptContext` and `pwd_context`
+
+#### 3. Password strength meter
+- New component `frontend/src/components/PasswordStrengthMeter.tsx`: 4 bar segments (red→orange→yellow→green), strength label ("Weak"/"Fair"/"Good"/"Strong"), 4 criteria checklist. Score stays 0 until ≥8 chars; returns null when password empty.
+- Added to **register page** (`frontend/src/app/(auth)/register/page.tsx`) after password field.
+- Added to **settings change-password form** inline.
+
+#### 4. `/studio/story-setup` — full page implementation from design file
+- Complete rewrite of `frontend/src/app/studio/story-setup/page.tsx` as `'use client'`
+- Local state for all 12+ form inputs (no ComicGenerationContext — not available on this route)
+- **5 form cards**:
+  - Story Foundation: title, projectId, genre input + quick-pick chips
+  - Your Narrative: file upload, textarea with word/char count, AI tool buttons
+  - Art Direction: 5 style cards with checkmark overlay, art-ref chips, palette select
+  - Structure & Pacing: 4 inline steppers + preset buttons (Short/Standard/Epic)
+  - Constraints: toggle chips + "special instructions" textarea
+- **Sticky AI Analysis panel**: idle → loading → done states; real SSE stream via `analyzeStoryStructuredStream`; parses `detected_characters`, `tone_tags`, `scene_beats` from structured JSON
+- Progress bar (5 essentials), auto-save indicator
+- "Next" saves to `localStorage['mohiom-story-setup']` and navigates to `/studio`
+- ESLint fix: changed `(_msg) =>` → `() =>` in onError callback to remove unused-var error
+
+#### 5. Title style consistency (story-setup ↔ character-manager)
+- Removed step badge ("Step 1 · Story Setup")
+- Changed `text-4xl md:text-5xl font-extrabold tracking-tight` → `text-4xl font-extrabold tracking-tighter text-on-surface`
+- Subtitle: plain `<p className="text-on-surface-variant mt-1">` — matches character-manager exactly
+
+---
+
+### 🔧 SCHEMAS & API CHANGES
+
+**Backend**
+- `backend/app/schemas.py`: Added `ChangePasswordRequest(current_password, new_password)`, `StatsResponse(project_count, character_count, panel_count)`
+- `backend/app/routers/auth.py`: Added `POST /auth/change-password`; modified `oauth_start` + `oauth_callback` for `mode=connect`
+- `backend/app/routers/projects.py`: Added `GET /projects/stats` (before `/{project_id}`)
+- `backend/app/crud.py`: Added `UserRepository.link_oauth_provider(user_id, provider, profile)`
+- `backend/app/security.py`: Replaced passlib with direct bcrypt
+
+**Frontend**
+- `frontend/src/services/api.ts`: Added `authApi.changePassword()`, updated `oauthStart` mode type, added `projectsApi.stats()`
+- `frontend/src/app/settings/page.tsx`: Full rewrite
+- `frontend/src/app/(auth)/register/page.tsx`: Added `PasswordStrengthMeter`
+- `frontend/src/app/studio/story-setup/page.tsx`: Full rewrite
+- `frontend/src/components/PasswordStrengthMeter.tsx`: New component
+
+---
+
+### 🎯 NEXT STEPS (from previous session, still relevant)
+
+1. **Delete or redirect `studio/character-setup/page.tsx`** — superseded by character-manager detail panel
+2. **MongoDB index for projects collection** — compound unique index `{user_id: 1, project_id: 1}`
+3. **Wire CreateCharacterModal into Step 2 pipeline** — "Create Character" button alongside "From Library" in Step 2
+4. **Character archive feature** — "Archived" tab in character-manager shows placeholder
+5. **Test full save/load round-trip** — verify character images survive MongoDB round-trip
+
+---
+
 ## SESSION: 2026-05-31
 
 ### ✅ COMPLETED
