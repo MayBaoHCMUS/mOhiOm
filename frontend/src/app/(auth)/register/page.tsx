@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AuthShell from '@/components/auth/AuthShell';
+import PasswordStrengthMeter from '@/components/PasswordStrengthMeter';
 import { authApi, toApiError } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 
@@ -289,6 +290,7 @@ export default function RegisterPage() {
               {fieldErrors.password}
             </p>
           )}
+          <PasswordStrengthMeter password={password} />
         </div>
         <div className="space-y-2">
           <label className="text-sm uppercase tracking-widest text-on-surface-variant ml-1" htmlFor="confirmPassword">

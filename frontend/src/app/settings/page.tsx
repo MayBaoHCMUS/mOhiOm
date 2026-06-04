@@ -6,6 +6,7 @@ import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
 import { useAuth } from '@/context/AuthContext';
 import { authApi, projectsApi, toApiError } from '@/services/api';
+import PasswordStrengthMeter from '@/components/PasswordStrengthMeter';
 
 // ─── Panel card ───────────────────────────────────────────────────────────────
 
@@ -343,7 +344,10 @@ export default function SettingsPage() {
                 {showChangePw && (
                   <div className="mt-4 p-4 bg-surface-container rounded-xl space-y-3">
                     <Field label="Current password" type="password" value={currentPw} onChange={setCurrentPw} placeholder="••••••••" />
-                    <Field label="New password"     type="password" value={newPw}     onChange={setNewPw}     placeholder="Min 8 characters" />
+                    <div>
+                      <Field label="New password" type="password" value={newPw} onChange={setNewPw} placeholder="Min 8 characters" />
+                      <div className="mt-2"><PasswordStrengthMeter password={newPw} /></div>
+                    </div>
                     <Field label="Confirm new password" type="password" value={confirmPw} onChange={setConfirmPw} placeholder="••••••••" />
                     {pwError && (
                       <p className="text-xs text-red-600 flex items-center gap-1">
