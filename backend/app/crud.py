@@ -165,3 +165,13 @@ class UserRepository:
             },
         )
 
+    async def link_oauth_provider(self, user_id: str, provider: str, profile: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        now = datetime.now(timezone.utc)
+        result = self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {f"oauth.{provider}": profile, "updated_at": now}},
+        )
+        if result.matched_count == 0:
+            return None
+        return self.collection.find_one({"_id": ObjectId(user_id)})
+

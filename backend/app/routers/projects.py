@@ -5,7 +5,7 @@ API routes for project save / load.
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Header
 from typing import Any, Dict, List, Optional
-from app.schemas import ProjectSaveRequest, ProjectListItem, CharacterSummary, CharacterUpsertPayload, CharacterPatchPayload
+from app.schemas import ProjectSaveRequest, ProjectListItem, CharacterSummary, CharacterUpsertPayload, CharacterPatchPayload, StatsResponse
 from app.database import mongo_db
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -293,6 +293,40 @@ def delete_character(
         raise HTTPException(status_code=404, detail="Character not found in project")
     _set_characters(_col(), user_id, project_id, next_chars)
     return {"message": "deleted"}
+
+
+@router.get("/stats", response_model=StatsResponse)
+def get_stats(
+    x_user_id: Optional[str] = Header(None),
+) -> StatsResponse:
+    user_id = _require_user(x_user_id)
+
+    project_count = _col().count_documents({"user_id": user_id})
+
+    standalone_ids = {
+        doc["character_id"]
+        for doc in _char_col().find({"user_id": user_id}, {"character_id": 1})
+        if doc.get("character_id")
+    }
+
+    project_char_ids: set = set()
+    panel_count = 0
+    for doc in _col().find(
+        {"user_id": user_id},
+        {"steps.step2ImageReview.data.characters.characterId": 1, "steps.step4.data.panels": 1},
+    ):
+        steps = doc.get("steps") or {}
+        for c in (((steps.get("step2ImageReview") or {}).get("data") or {}).get("characters") or []):
+            if c.get("characterId"):
+                project_char_ids.add(c["characterId"])
+        panels = ((steps.get("step4") or {}).get("data") or {}).get("panels") or []
+        panel_count += len(panels)
+
+    return StatsResponse(
+        project_count=project_count,
+        character_count=len(standalone_ids | project_char_ids),
+        panel_count=panel_count,
+    )
 
 
 @router.get("/{project_id}")

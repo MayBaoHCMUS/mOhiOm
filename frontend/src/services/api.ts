@@ -875,6 +875,8 @@ export const projectsApi = {
     apiClient.patch<CharacterSummary>(`/projects/${encodeURIComponent(projectId)}/characters/${encodeURIComponent(characterId)}`, data),
   deleteCharacter: (projectId: string, characterId: string) =>
     apiClient.delete<{ message: string }>(`/projects/${encodeURIComponent(projectId)}/characters/${encodeURIComponent(characterId)}`),
+  stats: () =>
+    apiClient.get<{ project_count: number; character_count: number; panel_count: number }>("/projects/stats"),
 };
 
 export const authApi = {
@@ -892,7 +894,10 @@ export const authApi = {
 
   logout: () => apiClient.post("/auth/logout"),
 
-  oauthStart: (provider: "google" | "github", mode: "login" | "register") =>
+  changePassword: (payload: { current_password: string; new_password: string }) =>
+    apiClient.post<{ message: string }>("/auth/change-password", payload),
+
+  oauthStart: (provider: "google" | "github", mode: "login" | "register" | "connect") =>
     apiClient.get<{ url: string }>(`/auth/oauth/${provider}/start`, { params: { mode } }),
 };
 

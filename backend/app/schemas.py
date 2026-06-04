@@ -148,3 +148,18 @@ class CharacterPatchPayload(BaseModel):
     prompt: Optional[str] = None
     selected_image_url: Optional[str] = None
 
+
+class ChangePasswordRequest(BaseModel):
+    """Payload for changing a user's password from the settings page."""
+
+    current_password: str
+    new_password: str
+
+
+class StatsResponse(BaseModel):
+    """Aggregate stats for a user's creative library."""
+
+    project_count: int
+    character_count: int
+    panel_count: int
+

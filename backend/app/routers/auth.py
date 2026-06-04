@@ -9,6 +9,7 @@ from app.schemas import (
     OAuthStartResponse,
     ForgotPasswordRequest,
     ResetPasswordRequest,
+    ChangePasswordRequest,
     MessageResponse,
     UserPublic,
     AuthMeResponse,
@@ -182,6 +183,35 @@ async def reset_password(payload: ResetPasswordRequest):
     return MessageResponse(message="Password updated. You can sign in now.")
 
 
+@router.post("/change-password", response_model=MessageResponse)
+async def change_password(payload: ChangePasswordRequest, request: Request):
+    token = token_from_request(request)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    try:
+        token_payload = decode_token(token)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+
+    user_id = token_payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    repo = get_user_repo()
+    user_doc = await repo.get_by_id(user_id)
+    if not user_doc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    if not user_doc.get("password_hash"):
+        raise HTTPException(status_code=400, detail="No password set for this account")
+    if not verify_password(payload.current_password, user_doc["password_hash"]):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    await repo.update_password(user_id, hash_password(payload.new_password))
+    return MessageResponse(message="Password updated successfully.")
+
+
 @router.get("/me", response_model=AuthMeResponse)
 async def me(request: Request):
     repo = get_user_repo()
@@ -213,7 +243,7 @@ async def logout():
 
 
 @router.get("/oauth/{provider}/start", response_model=OAuthStartResponse)
-async def oauth_start(provider: str, mode: str = Query("login", pattern="^(login|register)$")):
+async def oauth_start(request: Request, provider: str, mode: str = Query("login", pattern="^(login|register|connect)$")):
     provider = provider.lower()
     if provider not in ("google", "github"):
         raise HTTPException(status_code=400, detail="Unsupported provider")
@@ -223,7 +253,19 @@ async def oauth_start(provider: str, mode: str = Query("login", pattern="^(login
     if provider == "github" and not settings.OAUTH_GITHUB_CLIENT_ID:
         raise HTTPException(status_code=500, detail="GitHub OAuth not configured")
 
-    state = create_oauth_state({"provider": provider, "mode": mode, "nonce": secrets.token_urlsafe(16)})
+    state_data: Dict[str, Any] = {"provider": provider, "mode": mode, "nonce": secrets.token_urlsafe(16)}
+
+    if mode == "connect":
+        token = token_from_request(request)
+        if not token:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        try:
+            token_payload = decode_token(token)
+            state_data["user_id"] = token_payload.get("sub")
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+
+    state = create_oauth_state(state_data)
     redirect_uri = auth_redirect_url(provider)
 
     if provider == "google":
@@ -361,6 +403,13 @@ async def oauth_callback(provider: str, code: str | None = None, state: str | No
 
     if not profile.get("id"):
         raise HTTPException(status_code=400, detail="OAuth profile missing id")
+
+    if state_payload.get("mode") == "connect":
+        user_id = state_payload.get("user_id")
+        if not user_id:
+            return RedirectResponse(url=f"{settings.AUTH_FRONTEND_URL}/settings?error=connect_failed", status_code=302)
+        await repo.link_oauth_provider(user_id, provider, profile)
+        return RedirectResponse(url=f"{settings.AUTH_FRONTEND_URL}/settings?connected={provider}", status_code=302)
 
     user_doc = await repo.upsert_oauth_user(provider, profile)
     token = create_access_token({"sub": str(user_doc["_id"]), "email": user_doc.get("email")})
