@@ -13,6 +13,7 @@ const WORKFLOW = [
 ];
 
 const TOOLS = [
+  { href: '/studio/my-stories',    label: 'My Stories',   icon: 'library_books' },
   { href: '/studio/layout-engine', label: 'Layout Engine', icon: 'grid_view' },
   { href: '/settings',             label: 'Settings',      icon: 'settings' },
 ];
@@ -47,6 +48,7 @@ export default function StudioSidebar() {
 
   const isActive = (href: string) => {
     if (href === '/studio/dashboard') return pathname === href;
+    if (href === '/studio') return pathname === href;
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
@@ -99,6 +101,17 @@ export default function StudioSidebar() {
       >
         <span className="material-symbols-outlined">home</span>
         <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>Home</span>
+      </Link>
+
+      {/* Comic Pipeline — main generator */}
+      <Link
+        href="/studio"
+        className={`mt-1 ${navItemClass(isActive('/studio'))}`}
+        aria-current={isActive('/studio') ? 'page' : undefined}
+        title={isCollapsed ? 'Comic Pipeline' : undefined}
+      >
+        <span className="material-symbols-outlined">movie_creation</span>
+        <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>Comic Pipeline</span>
       </Link>
 
       <nav className="flex-1 overflow-y-auto mt-2 space-y-5">

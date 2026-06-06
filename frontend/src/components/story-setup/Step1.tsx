@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import ErrorMessage from '@/components/story-setup/ErrorMessage';
@@ -10,6 +10,7 @@ import PresetButtons from '@/components/story-setup/PresetButtons';
 import Tooltip from '@/components/story-setup/Tooltip';
 import ProjectsDrawer from '@/components/ProjectsDrawer';
 import { useFormValidation } from '@/hooks/useFormValidation';
+import { useDraftRecovery } from '@/hooks/useDraftRecovery';
 import type { FieldConfig, FormData } from '@/components/story-setup/types';
 
 const PROJECT_ID_HELP = 'Unique identifier for your comic project';
@@ -67,13 +68,21 @@ export default function Step1() {
     setSetupSubmitAttempted,
     loadProjectJson,
     fromStorySetup,
+    fieldsAutoFilledFromAnalysis,
+    storySetupAnalysisResult,
   } = useComicGeneration();
 
   const [storyInputError, setStoryInputError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [aiSuggestCard, setAiSuggestCard] = useState<{ chars: string[]; beats: number; tone: string[] } | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setIsMounted(true); }, []);
+
+  const { draft, restoreDraft, discardDraft } = useDraftRecovery('story-text-draft', storyText);
 
   // Metadata from Story Setup import (read from localStorage when fromStorySetup is true)
   const [importedTitle, setImportedTitle] = useState('');
@@ -301,6 +310,39 @@ export default function Step1() {
     ? Math.min(50, Math.max(Number(numChapters) || 1, Math.ceil(targetPagesValue / 50)))
     : null;
 
+  const totalRequired = 8;
+  const validRequiredCount = useMemo(() => {
+    let count = 0;
+    if (!validateProjectId(projectId)) count++;
+    if (!validateRange(Number(mainCharacters), 1, 10, 'x')) count++;
+    if (!validateRange(Number(numChapters), 1, 50, 'x')) count++;
+    if (!validateRange(Number(targetPages), 1, 1000, 'x')) count++;
+    if (!validateRange(Number(maxPanelsPerPage), 3, 12, 'x')) count++;
+    if (mangaGenre.trim().length >= 3) count++;
+    if (artStyle.trim().length >= 5) count++;
+    if (fromStorySetup ? storyText.trim().length > 0 : storyText.trim().length >= 100) count++;
+    return count;
+  }, [projectId, mainCharacters, numChapters, targetPages, maxPanelsPerPage, mangaGenre, artStyle, storyText, fromStorySetup]);
+
+  const handleAiSuggestAll = useCallback(() => {
+    if (!step1.data?.structuredJson) return;
+    try {
+      const json = typeof step1.data.structuredJson === 'string'
+        ? JSON.parse(step1.data.structuredJson as string)
+        : step1.data.structuredJson as Record<string, unknown>;
+      const stepsObj = json as { steps?: { step_1_analysis?: Record<string, unknown> } };
+      const analysis = stepsObj?.steps?.step_1_analysis;
+      if (!analysis) return;
+      const chars = Array.isArray(analysis.detected_characters) ? (analysis.detected_characters as string[]) : [];
+      const beats = typeof analysis.scene_beats === 'number' ? analysis.scene_beats : 0;
+      const tone = Array.isArray(analysis.tone_tags) ? (analysis.tone_tags as string[]) : [];
+      if (chars.length > 0) { setMainCharacters(String(chars.length)); handleChange('mainCharacters', chars.length); }
+      if (beats > 0) { const ch = Math.max(1, Math.min(50, Math.ceil(beats / 4))); setNumChapters(String(ch)); handleChange('chapters', ch); }
+      setMaxPanelsPerPage('5'); handleChange('maxPanelsPerPage', 5);
+      setAiSuggestCard({ chars, beats, tone });
+    } catch { /* ignore parse errors */ }
+  }, [step1.data, setMainCharacters, setNumChapters, setMaxPanelsPerPage, handleChange]);
+
   const textInputClass = (hasError?: boolean, hasSuccess?: boolean) => {
     if (hasError) return 'border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-200';
     if (hasSuccess) return 'border-emerald-500 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200';
@@ -346,13 +388,71 @@ export default function Step1() {
         </div>
       )}
 
+      {/* Discovery banner — shown when NOT imported from Story Setup */}
+      {!fromStorySetup && (
+        <div className="mt-5 rounded-2xl border border-outline-variant/20 bg-surface-container-low px-5 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <span className="material-symbols-outlined text-primary text-xl mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
+            <div>
+              <p className="text-sm font-semibold text-on-surface">Craft your story with AI first</p>
+              <p className="text-xs text-on-surface-variant mt-0.5">Story Setup helps you develop your narrative, get AI adaptation, and auto-fill these targets.</p>
+            </div>
+          </div>
+          <Link
+            href="/studio/story-setup"
+            className="shrink-0 px-4 py-2 rounded-xl text-xs font-bold bg-primary text-on-primary hover:opacity-90 whitespace-nowrap"
+          >
+            Open Story Setup →
+          </Link>
+        </div>
+      )}
+
       {globalError ? (
         <div className="mt-6 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{globalError}</div>
       ) : null}
 
-      <div className="mt-6 flex items-center justify-between rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-        <span>Complete {requiredComplete} of {requiredTotal} required fields</span>
-        <span className="text-xs text-gray-500">10 total inputs</span>
+      {/* Draft recovery banner — moved above the form */}
+      {isMounted && draft && !fromStorySetup ? (
+        <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+          <p className="text-sm font-semibold text-amber-800">Saved draft found from {new Date(draft.savedAt).toLocaleString()}</p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => { const r = restoreDraft(); if (r !== null) setStoryText(r); }}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 text-white hover:opacity-90"
+            >
+              Restore draft
+            </button>
+            <button
+              type="button"
+              onClick={discardDraft}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-white text-amber-700 border border-amber-200 hover:bg-amber-50"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Field counter with progress bar */}
+      <div className="mt-6 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm text-gray-600">
+            {validRequiredCount} of {totalRequired} required fields complete
+          </span>
+          {validRequiredCount === totalRequired && (
+            <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+              <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+              Ready
+            </span>
+          )}
+        </div>
+        <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${validRequiredCount === totalRequired ? 'bg-emerald-500' : 'bg-blue-500'}`}
+            style={{ width: `${Math.round((validRequiredCount / totalRequired) * 100)}%` }}
+          />
+        </div>
       </div>
 
       {setupSubmitAttempted && errorCount > 0 ? (
@@ -460,6 +560,7 @@ export default function Step1() {
                 saveKey="story-text-draft"
                 helperText="Paste or write the story here. Minimum 100 characters."
                 tooltip="Longer story inputs help the AI extract more detailed panels and character beats."
+                hideDraftBanner
               />
               {storyInputError ? <ErrorMessage id="story-text-error" message={storyInputError} /> : null}
             </>
@@ -467,10 +568,55 @@ export default function Step1() {
         </div>
 
         <div className="rounded-3xl bg-gray-100 p-6 space-y-6">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-blue-600">auto_awesome</span>
-            <h3 className="text-lg font-semibold">Creative targets</h3>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-blue-600">auto_awesome</span>
+              <h3 className="text-lg font-semibold">Creative targets</h3>
+            </div>
+            {step1.data && (
+              <button
+                type="button"
+                onClick={handleAiSuggestAll}
+                disabled={isFormDisabled}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-sm">psychology</span>
+                AI Suggest All
+              </button>
+            )}
           </div>
+
+          {fieldsAutoFilledFromAnalysis && storySetupAnalysisResult && (
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs text-emerald-700 flex items-start gap-2">
+              <span className="material-symbols-outlined text-sm mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>auto_fix_high</span>
+              <span>Targets auto-filled from Story Setup analysis · {storySetupAnalysisResult.chars.length} character{storySetupAnalysisResult.chars.length !== 1 ? 's' : ''} detected, {storySetupAnalysisResult.sceneBeats} scene beat{storySetupAnalysisResult.sceneBeats !== 1 ? 's' : ''}</span>
+            </div>
+          )}
+
+          {aiSuggestCard && (
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold text-blue-800 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm">psychology</span>
+                  AI reasoning
+                </p>
+                <button type="button" onClick={() => setAiSuggestCard(null)} className="text-blue-500 hover:text-blue-700">
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
+              </div>
+              <ul className="text-xs text-blue-700 space-y-1">
+                {aiSuggestCard.chars.length > 0 && (
+                  <li>· <strong>{aiSuggestCard.chars.length} character{aiSuggestCard.chars.length !== 1 ? 's' : ''}</strong> detected: {aiSuggestCard.chars.slice(0, 4).join(', ')}{aiSuggestCard.chars.length > 4 ? '…' : ''}</li>
+                )}
+                {aiSuggestCard.beats > 0 && (
+                  <li>· <strong>{aiSuggestCard.beats} scene beats</strong> → {Math.max(1, Math.min(50, Math.ceil(aiSuggestCard.beats / 4)))} chapters (÷4)</li>
+                )}
+                {aiSuggestCard.tone.length > 0 && (
+                  <li>· Tone: {aiSuggestCard.tone.join(', ')}</li>
+                )}
+              </ul>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <NumberInput
@@ -700,7 +846,56 @@ export default function Step1() {
         </div>
       </div>
 
-      <div className="mt-8 flex flex-wrap items-center gap-4">
+      {/* Live output summary */}
+      <div className="mt-6 rounded-2xl bg-gray-50 border border-gray-100 px-5 py-4">
+        <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Output estimate</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+          <div>
+            <p className="text-2xl font-bold text-gray-900">{targetPages || '—'}</p>
+            <p className="text-xs text-gray-500 mt-1">pages</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-gray-900">{numChapters || '—'}</p>
+            <p className="text-xs text-gray-500 mt-1">chapters</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-gray-900">
+              {targetPages && maxPanelsPerPage
+                ? Math.round(Number(targetPages) * Number(maxPanelsPerPage) * 0.7)
+                : '—'}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">est. panels</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-gray-900">{mainCharacters || '—'}</p>
+            <p className="text-xs text-gray-500 mt-1">characters</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom actions — secondary left, primary right */}
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => importInputRef.current?.click()}
+            disabled={isGenerating}
+            className={`px-5 py-2.5 rounded-2xl text-sm font-semibold transition-transform ${
+              isGenerating ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-900 hover:scale-105'
+            }`}
+          >
+            {importSuccess ? 'Imported!' : 'Import JSON'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsDrawerOpen(true)}
+            className="px-5 py-2.5 rounded-2xl text-sm font-semibold bg-gray-100 text-gray-900 hover:scale-105 transition-transform"
+          >
+            My Projects
+          </button>
+          {step1.error ? <span className="text-sm text-red-600">{step1.error}</span> : null}
+          {importError ? <span className="text-sm text-red-600">{importError}</span> : null}
+        </div>
         <button
           type="button"
           onClick={handleGenerateClick}
@@ -718,33 +913,14 @@ export default function Step1() {
                 ? 'Regenerate analysis'
                 : 'Generate analysis'}
         </button>
-        <button
-          type="button"
-          onClick={() => importInputRef.current?.click()}
-          disabled={isGenerating}
-          className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
-            isGenerating ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-900 hover:scale-105'
-          }`}
-        >
-          {importSuccess ? 'Imported!' : 'Import JSON'}
-        </button>
-        <input
-          ref={importInputRef}
-          type="file"
-          accept=".json,application/json"
-          className="hidden"
-          onChange={handleImportJson}
-        />
-        <button
-          type="button"
-          onClick={() => setIsDrawerOpen(true)}
-          className="px-6 py-3 rounded-2xl text-sm font-semibold bg-gray-100 text-gray-900 hover:scale-105 transition-transform"
-        >
-          My Projects
-        </button>
-        {step1.error ? <span className="text-sm text-red-600">{step1.error}</span> : null}
-        {importError ? <span className="text-sm text-red-600">{importError}</span> : null}
       </div>
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        onChange={handleImportJson}
+      />
 
       <ProjectsDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
     </section>

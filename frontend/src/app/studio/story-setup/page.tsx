@@ -2,10 +2,13 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
 import { analyzeStoryStructuredStream, adaptStoryStream } from '@/services/api';
 import type { AdaptStoryResult } from '@/services/api';
+import { useStoryLibrary } from '@/hooks/useStoryLibrary';
+import type { SavedStory } from '@/hooks/useStoryLibrary';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -97,6 +100,7 @@ function GenreChip({ label, tooltip, active, onClick }: {
 
 export default function StorySetupPage() {
   const router = useRouter();
+  const { save: saveStory, stories: savedStories, remove: removeStory, duplicate: duplicateStory } = useStoryLibrary();
 
   // Form inputs (story-only — art/structure fields moved to Pipeline Step 1)
   const [storyTitle, setStoryTitle] = useState('');
@@ -125,6 +129,18 @@ export default function StorySetupPage() {
   // Active section for contextual pro tip
   const [activeSection, setActiveSection] = useState<'foundation' | 'narrative' | 'creative'>('foundation');
 
+  // More menu (save / load / etc.)
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  // Toast notification
+  const [toast, setToast] = useState<{ message: string; action?: { label: string; href: string } } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load story modal
+  const [loadModalOpen, setLoadModalOpen] = useState(false);
+  const [loadConfirm, setLoadConfirm] = useState<SavedStory | null>(null);
+
   // Autosave
   const [saveState, setSaveState] = useState<'saved' | 'saving'>('saved');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -136,6 +152,42 @@ export default function StorySetupPage() {
   }, []);
 
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
+
+  // Load story when navigated from My Stories page
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const loadRaw = window.localStorage.getItem('mohiom-story-setup-load');
+      if (!loadRaw) return;
+      window.localStorage.removeItem('mohiom-story-setup-load');
+      const { storyId } = JSON.parse(loadRaw) as { storyId: string };
+      const libraryRaw = window.localStorage.getItem('mohiom-story-library');
+      if (!libraryRaw) return;
+      const library = JSON.parse(libraryRaw) as SavedStory[];
+      const story = library.find((s) => s.id === storyId);
+      if (story) handleLoadStory(story);
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Click-outside to close more menu
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Auto-dismiss toast after 4 seconds
+  useEffect(() => {
+    if (!toast) return;
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+    return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
+  }, [toast]);
 
   // 3 essentials: title, genre, narrative ≥ 80 chars
   const essentialChecks = [
@@ -252,6 +304,37 @@ export default function StorySetupPage() {
     adaptAbortRef.current = ctrl;
   }, [adaptedStory, showOriginal, storyText, creativeDirection, adaptState, genre, flashSave]);
 
+  const handleSaveStory = useCallback(() => {
+    const saved = saveStory({
+      title: storyTitle || 'Untitled Story',
+      projectId,
+      storyText,
+      adaptedStory,
+      genre,
+      creativeDirection,
+      analysisResult,
+    });
+    setMoreMenuOpen(false);
+    setToast({ message: `"${saved.title}" saved to My Stories`, action: { label: 'View →', href: '/studio/my-stories' } });
+  }, [saveStory, storyTitle, projectId, storyText, adaptedStory, genre, creativeDirection, analysisResult]);
+
+  const handleLoadStory = useCallback((story: SavedStory) => {
+    setStoryTitle(story.title);
+    setProjectId(story.projectId);
+    setGenre(story.genre);
+    setStoryText(story.storyText);
+    setAdaptedStory(story.adaptedStory);
+    setCreativeDirection(story.creativeDirection);
+    if (story.analysisResult) {
+      setAnalysisResult(story.analysisResult);
+      setAnalysisState('done');
+    }
+    setShowOriginal(false);
+    setLoadConfirm(null);
+    setLoadModalOpen(false);
+    flashSave();
+  }, [flashSave]);
+
   const handleNext = () => {
     const effectiveStory = (adaptedStory && !showOriginal) ? adaptedStory : storyText;
     if (typeof window !== 'undefined') {
@@ -263,6 +346,8 @@ export default function StorySetupPage() {
         projectId,
         adaptedFromOriginal: adapted,
         adaptedWordCount: adapted ? wordCount(adaptedStory ?? '') : null,
+        // Include analysis results so Pipeline Step 1 can auto-fill creative targets
+        analysisResult: analysisResult ?? null,
       }));
     }
     router.push('/studio');
@@ -308,11 +393,61 @@ export default function StorySetupPage() {
                 Design your story here. When ready, send it to the pipeline to generate your comic.
               </p>
             </div>
-            <div className="flex items-center gap-2 text-sm text-on-surface-variant bg-surface-container-lowest border border-outline-variant/40 rounded-full px-4 py-2">
-              <span className={`material-symbols-outlined text-base ${saveState === 'saved' ? 'text-emerald-500' : 'animate-spin text-on-surface-variant'}`}>
-                {saveState === 'saved' ? 'cloud_done' : 'cloud_sync'}
-              </span>
-              <span>{saveState === 'saved' ? 'Draft saved' : 'Saving…'}</span>
+            <div className="flex items-center gap-2">
+              {/* Auto-save indicator */}
+              <div className="flex items-center gap-2 text-sm text-on-surface-variant bg-surface-container-lowest border border-outline-variant/40 rounded-full px-4 py-2">
+                <span className={`material-symbols-outlined text-base ${saveState === 'saved' ? 'text-emerald-500' : 'animate-spin text-on-surface-variant'}`}>
+                  {saveState === 'saved' ? 'cloud_done' : 'cloud_sync'}
+                </span>
+                <span>{saveState === 'saved' ? 'Auto-saved' : 'Saving…'}</span>
+              </div>
+
+              {/* More menu */}
+              <div className="relative" ref={moreMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setMoreMenuOpen((v) => !v)}
+                  className="flex items-center gap-1 text-sm font-semibold text-on-surface-variant bg-surface-container-lowest border border-outline-variant/40 rounded-full px-4 py-2 hover:bg-surface-container-low transition-colors"
+                >
+                  <span className="material-symbols-outlined text-base">more_horiz</span>
+                  More
+                  <span className="material-symbols-outlined text-sm">expand_more</span>
+                </button>
+                {moreMenuOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-52 bg-surface-container-lowest border border-outline-variant/30 rounded-2xl shadow-lg z-50 overflow-hidden">
+                    <button type="button" onClick={handleSaveStory}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-on-surface hover:bg-surface-container-low transition-colors text-left">
+                      <span className="material-symbols-outlined text-base text-primary">bookmark</span>
+                      Save as new story
+                    </button>
+                    <button type="button" onClick={() => { setMoreMenuOpen(false); setLoadModalOpen(true); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-on-surface hover:bg-surface-container-low transition-colors text-left">
+                      <span className="material-symbols-outlined text-base text-on-surface-variant">folder_open</span>
+                      Load story…
+                    </button>
+                    <button type="button"
+                      onClick={() => {
+                        handleSaveStory();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-on-surface hover:bg-surface-container-low transition-colors text-left border-t border-outline-variant/20">
+                      <span className="material-symbols-outlined text-base text-on-surface-variant">content_copy</span>
+                      Duplicate story
+                    </button>
+                    <button type="button"
+                      onClick={() => {
+                        if (confirm('Reset the form? All unsaved changes will be lost.')) {
+                          setStoryTitle(''); setProjectId(''); setGenre(''); setStoryText('');
+                          setAdaptedStory(null); setCreativeDirection(''); setAnalysisState('idle');
+                          setAnalysisResult(null); setMoreMenuOpen(false);
+                        }
+                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors text-left border-t border-outline-variant/20">
+                      <span className="material-symbols-outlined text-base">delete</span>
+                      Delete draft
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -818,6 +953,74 @@ export default function StorySetupPage() {
           </aside>
         </div>
       </main>
+
+      {/* ── Toast notification ── */}
+      {toast && (
+        <div className="fixed bottom-24 right-6 z-[100] flex items-center gap-3 bg-surface-container-highest text-on-surface rounded-2xl shadow-xl px-4 py-3 border border-outline-variant/20 animate-in slide-in-from-bottom-4 duration-300">
+          <span className="material-symbols-outlined text-emerald-600 text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+          <span className="text-sm font-medium">{toast.message}</span>
+          {toast.action && (
+            <Link href={toast.action.href} className="text-xs font-bold text-primary hover:underline">
+              {toast.action.label}
+            </Link>
+          )}
+          <button type="button" onClick={() => setToast(null)} className="ml-1 text-on-surface-variant hover:text-on-surface">
+            <span className="material-symbols-outlined text-sm">close</span>
+          </button>
+        </div>
+      )}
+
+      {/* ── Load story modal ── */}
+      {loadModalOpen && (
+        <div className="fixed inset-0 z-[90] bg-black/40 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) { setLoadModalOpen(false); setLoadConfirm(null); } }}>
+          <div className="bg-surface-container-lowest rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-outline-variant/20">
+              <h2 className="text-lg font-bold">Load a saved story</h2>
+              <button type="button" onClick={() => { setLoadModalOpen(false); setLoadConfirm(null); }} className="text-on-surface-variant hover:text-on-surface">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            {loadConfirm ? (
+              <div className="p-6 flex flex-col gap-4">
+                <p className="text-sm text-on-surface-variant">Load <span className="font-bold text-on-surface">&ldquo;{loadConfirm.title}&rdquo;</span>? Any unsaved changes will be lost.</p>
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => handleLoadStory(loadConfirm)}
+                    className="px-5 py-2.5 rounded-xl font-bold text-sm bg-primary text-on-primary hover:opacity-90">
+                    Load story
+                  </button>
+                  <button type="button" onClick={() => setLoadConfirm(null)}
+                    className="px-5 py-2.5 rounded-xl font-bold text-sm bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : savedStories.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-4">
+                <span className="material-symbols-outlined text-5xl text-on-surface-variant/40">auto_stories</span>
+                <p className="text-on-surface-variant font-medium">No saved stories yet</p>
+                <p className="text-sm text-on-surface-variant/70">Save a story using the &ldquo;More&rdquo; menu above.</p>
+              </div>
+            ) : (
+              <div className="overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {savedStories.map((story) => (
+                  <div key={story.id} className="bg-surface-container-low rounded-2xl p-4 border border-outline-variant/10">
+                    <p className="font-bold text-on-surface text-sm truncate">{story.title || 'Untitled'}</p>
+                    {story.genre && <p className="text-xs text-on-surface-variant mt-0.5 truncate">{story.genre}</p>}
+                    <p className="text-xs text-on-surface-variant/70 mt-1">
+                      {new Date(story.savedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                    <button type="button" onClick={() => setLoadConfirm(story)}
+                      className="mt-3 w-full px-3 py-2 rounded-xl text-xs font-bold bg-primary text-on-primary hover:opacity-90">
+                      Load this story
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Sticky bottom bar ── */}
       <div

@@ -16,6 +16,8 @@ interface EnhancedTextareaProps extends TextareaProps {
   saveKey: string;
   helperText?: string;
   tooltip?: string;
+  /** When true, suppresses the internal draft recovery banner (parent handles it externally). */
+  hideDraftBanner?: boolean;
 }
 
 const MIN_HEIGHT = 100;
@@ -36,6 +38,7 @@ export default function EnhancedTextarea({
                                            helperText,
                                            tooltip,
                                            saveKey,
+                                           hideDraftBanner = false,
                                          }: EnhancedTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -240,7 +243,7 @@ export default function EnhancedTextarea({
         ) : null}
 
         {/* ✅ Guard with isMounted — draft comes from localStorage, null on server */}
-        {isMounted && draft ? (
+        {!hideDraftBanner && isMounted && draft ? (
             <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
               <p className="font-semibold">We found a saved draft from {new Date(draft.savedAt).toLocaleString()}.</p>
               <div className="mt-3 flex flex-wrap gap-3">

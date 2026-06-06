@@ -465,6 +465,13 @@ export interface ComicGenerationContextValue {
   listCloudProjects: () => Promise<CloudProjectListItem[]>;
   injectLibraryCharacters: (chars: CharacterSummary[]) => void;
   fromStorySetup: boolean;
+  fieldsAutoFilledFromAnalysis: boolean;
+  storySetupAnalysisResult: {
+    sceneBeats: number;
+    chars: string[];
+    tone: string[];
+    panels: number;
+  } | null;
 }
 
 const ComicGenerationContext = createContext<ComicGenerationContextValue | null>(null);
@@ -493,6 +500,13 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   const [cloudSaveStatus, setCloudSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [cloudSaveError, setCloudSaveError] = useState<string | null>(null);
   const [fromStorySetup, setFromStorySetup] = useState(false);
+  const [fieldsAutoFilledFromAnalysis, setFieldsAutoFilledFromAnalysis] = useState(false);
+  const [storySetupAnalysisResult, setStorySetupAnalysisResult] = useState<{
+    sceneBeats: number;
+    chars: string[];
+    tone: string[];
+    panels: number;
+  } | null>(null);
 
   const [step1, setStep1] = useState<StepState<Step1Result>>(emptyStepState(false));
   const [step2, setStep2] = useState<StepState<Step2Result>>(emptyStepState(true));
@@ -539,17 +553,27 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     if (!raw) return;
     try {
       const saved = JSON.parse(raw) as Record<string, unknown>;
-      if (saved.storyText)     setStoryText(String(saved.storyText));
-      if (saved.genre)         setMangaGenre(String(saved.genre));
-      if (saved.artRef)        setArtStyle(String(saved.artRef));
-      if (saved.mainChars)     setMainCharacters(String(saved.mainChars));
-      if (saved.chapters)      setNumChapters(String(saved.chapters));
-      if (saved.targetPages)   setTargetPages(String(saved.targetPages));
-      if (saved.maxPanels)     setMaxPanelsPerPage(String(saved.maxPanels));
-      if (saved.specialRequests) setSpecialRequests(String(saved.specialRequests));
-      if (saved.projectId)     setProjectId(String(saved.projectId));
+      if (saved.storyText) setStoryText(String(saved.storyText));
+      if (saved.genre)     setMangaGenre(String(saved.genre));
+      if (saved.projectId) setProjectId(String(saved.projectId));
       setFromStorySetup(true);
-      // Keep the key so the user can re-enter story-setup and re-import; clear on first generate.
+
+      // Auto-fill creative targets from Story Setup AI analysis (if analysis was run there).
+      if (saved.analysisResult && typeof saved.analysisResult === 'object') {
+        const ar = saved.analysisResult as Record<string, unknown>;
+        const chars    = Array.isArray(ar.chars)  ? (ar.chars  as string[]) : [];
+        const beats    = typeof ar.sceneBeats === 'number' ? ar.sceneBeats : 0;
+        const panels   = typeof ar.panels    === 'number' ? ar.panels    : 0;
+        const tone     = Array.isArray(ar.tone)   ? (ar.tone   as string[]) : [];
+
+        if (chars.length > 0)  setMainCharacters(String(chars.length));
+        if (beats > 0)         setNumChapters(String(Math.max(1, Math.min(50, Math.ceil(beats / 4)))));
+        if (panels > 0)        setTargetPages(String(Math.max(10, Math.min(500, Math.round(panels / 5)))));
+        setMaxPanelsPerPage('5');
+
+        setStorySetupAnalysisResult({ sceneBeats: beats, chars, tone, panels });
+        setFieldsAutoFilledFromAnalysis(true);
+      }
     } catch { /* malformed — silently ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -2444,6 +2468,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     listCloudProjects,
     injectLibraryCharacters,
     fromStorySetup,
+    fieldsAutoFilledFromAnalysis,
+    storySetupAnalysisResult,
   };
 
   return <ComicGenerationContext.Provider value={value}>{children}</ComicGenerationContext.Provider>;
