@@ -99,6 +99,16 @@ class PanelImageRequest(BaseModel):
     height: int = 960
 
 
+class AdaptStoryRequest(BaseModel):
+    """Request model for AI story adaptation."""
+
+    original_story: str
+    creative_direction: str
+    genre_tone: str = "Fantasy/Adventure"
+    art_style_reference: str = "manga"
+    special_requests: str = "None"
+
+
 def _resolve_user_key(request: Request) -> str:
     header_user_id = request.headers.get("x-user-id")
     if header_user_id:
@@ -323,6 +333,68 @@ async def analyze_story_structured(
         raise HTTPException(status_code=500, detail=str(exc))
     finally:
         limit_token.release()
+
+
+@router.post("/adapt-story")
+async def adapt_story(request: AdaptStoryRequest, http_request: Request):
+    """
+    Adapt a story based on user's creative direction using a Comic Scriptwriter persona.
+
+    SSE stream events:
+      data: {"type":"thinking","content":"..."}           — reasoning tokens
+      data: {"type":"done","adapted_story":"...","changes_summary":[...]}
+      data: {"type":"error","message":"...","status_code":N}
+    """
+    if gemini_service is None:
+        raise HTTPException(status_code=500, detail=gemini_error_message)
+
+    limit_token = await _acquire_limit_token(http_request)
+
+    import json as _json
+
+    async def sse_generator():
+        try:
+            async for event in gemini_service.generate_adapt_story_stream(
+                original_story=request.original_story,
+                creative_direction=request.creative_direction,
+                genre_tone=request.genre_tone,
+                art_style_reference=request.art_style_reference,
+                special_requests=request.special_requests,
+            ):
+                kind = event[0]
+                if kind == "thinking":
+                    yield "data: " + _json.dumps({"type": "thinking", "content": event[1]}) + "\n\n"
+                elif kind == "done":
+                    yield "data: " + _json.dumps({
+                        "type": "done",
+                        "adapted_story": event[1],
+                        "changes_summary": event[2],
+                    }) + "\n\n"
+                elif kind == "error":
+                    yield "data: " + _json.dumps({
+                        "type": "error",
+                        "message": event[1],
+                        "status_code": event[2] if len(event) > 2 else 500,
+                    }) + "\n\n"
+        except GeminiServiceError as exc:
+            detail: dict = {"message": str(exc), "status_code": exc.status_code}
+            if exc.retry_after_seconds is not None:
+                detail["retry_after_seconds"] = exc.retry_after_seconds
+            yield "data: " + _json.dumps({"type": "error", **detail}) + "\n\n"
+        except Exception as exc:
+            yield "data: " + _json.dumps({"type": "error", "message": str(exc), "status_code": 500}) + "\n\n"
+        finally:
+            limit_token.release()
+
+    return StreamingResponse(
+        sse_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/character-prompt")

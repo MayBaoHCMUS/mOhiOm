@@ -223,6 +223,102 @@ export const toApiError = (error: unknown): ApiErrorInfo => {
   };
 };
 
+// ─── Story adaptation ────────────────────────────────────────────────────────
+
+export interface AdaptStoryPayload {
+  original_story: string;
+  creative_direction: string;
+  genre_tone: string;
+  art_style_reference: string;
+  special_requests?: string;
+}
+
+export interface AdaptStoryResult {
+  adapted_story: string;
+  changes_summary: string[];
+}
+
+export function adaptStoryStream(
+  payload: AdaptStoryPayload,
+  callbacks: {
+    onThinking: (token: string) => void;
+    onDone: (result: AdaptStoryResult) => void;
+    onError: (message: string, statusCode?: number) => void;
+  },
+): AbortController {
+  const ctrl = new AbortController();
+
+  const userId =
+    typeof window !== "undefined"
+      ? (localStorage.getItem("mohiom-user-id") ?? "")
+      : "";
+
+  (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/gemini/adapt-story`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(userId ? { "X-User-Id": userId } : {}),
+        },
+        body: JSON.stringify(payload),
+        signal: ctrl.signal,
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        callbacks.onError(`HTTP ${response.status}: ${text}`, response.status);
+        return;
+      }
+      if (!response.body) {
+        callbacks.onError("No response body", 500);
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+        for (const chunk of chunks) {
+          if (!chunk.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(chunk.slice(6)) as Record<string, unknown>;
+            if (event.type === "thinking")
+              callbacks.onThinking(String(event.content ?? ""));
+            else if (event.type === "done")
+              callbacks.onDone({
+                adapted_story: String(event.adapted_story ?? ""),
+                changes_summary: Array.isArray(event.changes_summary)
+                  ? (event.changes_summary as string[])
+                  : [],
+              });
+            else if (event.type === "error")
+              callbacks.onError(
+                String(event.message ?? "Unknown error"),
+                typeof event.status_code === "number"
+                  ? event.status_code
+                  : undefined,
+              );
+          } catch {
+            /* skip malformed SSE frames */
+          }
+        }
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name !== "AbortError")
+        callbacks.onError(err.message);
+    }
+  })();
+
+  return ctrl;
+}
+
 // ─── Streaming helpers ───────────────────────────────────────────────────────
 
 export interface Step1StreamCallbacks {

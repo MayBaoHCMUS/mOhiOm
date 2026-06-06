@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import ErrorMessage from '@/components/story-setup/ErrorMessage';
 import FileUploadZone from '@/components/story-setup/FileUploadZone';
@@ -65,6 +66,7 @@ export default function Step1() {
     setupSubmitAttempted,
     setSetupSubmitAttempted,
     loadProjectJson,
+    fromStorySetup,
   } = useComicGeneration();
 
   const [storyInputError, setStoryInputError] = useState<string | null>(null);
@@ -72,6 +74,23 @@ export default function Step1() {
   const [importSuccess, setImportSuccess] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  // Metadata from Story Setup import (read from localStorage when fromStorySetup is true)
+  const [importedTitle, setImportedTitle] = useState('');
+  const [importedAdapted, setImportedAdapted] = useState(false);
+  const [importedWordCount, setImportedWordCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!fromStorySetup) return;
+    try {
+      const raw = window.localStorage.getItem('mohiom-story-setup');
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Record<string, unknown>;
+      if (saved.storyTitle) setImportedTitle(String(saved.storyTitle));
+      if (saved.adaptedFromOriginal) setImportedAdapted(Boolean(saved.adaptedFromOriginal));
+      if (typeof saved.adaptedWordCount === 'number') setImportedWordCount(saved.adaptedWordCount);
+    } catch { /* ignore */ }
+  }, [fromStorySetup]);
 
   const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -298,6 +317,35 @@ export default function Step1() {
         <div className="text-sm text-gray-600">Analysis status: {statusLabel}</div>
       </div>
 
+      {/* Import banner — shown when story was sent from Story Setup */}
+      {fromStorySetup && (
+        <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="material-symbols-outlined text-blue-600 text-xl mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>download_done</span>
+              <div>
+                <p className="font-semibold text-blue-900 text-sm">Story imported from Story Setup</p>
+                <p className="text-xs text-blue-700 mt-1">
+                  {importedTitle ? `"${importedTitle}"` : 'Untitled'}{mangaGenre ? ` · ${mangaGenre}` : ''}
+                  {importedAdapted && importedWordCount ? (
+                    <span className="ml-2 text-emerald-700 font-medium">
+                      · {importedWordCount.toLocaleString()} words (AI-adapted)
+                    </span>
+                  ) : null}
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/studio/story-setup"
+              className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 whitespace-nowrap"
+            >
+              Edit in Story Setup
+              <span className="material-symbols-outlined text-sm">open_in_new</span>
+            </Link>
+          </div>
+        </div>
+      )}
+
       {globalError ? (
         <div className="mt-6 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{globalError}</div>
       ) : null}
@@ -375,24 +423,47 @@ export default function Step1() {
             />
           </div>
 
-          <EnhancedTextarea
-            id="story-text"
-            label="Story Text"
-            value={storyText}
-            onChange={(value) => {
-              setStoryText(value);
-              if (storyInputError) setStoryInputError(null);
-            }}
-            minLength={100}
-            maxLength={10000}
-            placeholder={`Paste or write your story here...\n\nExample:\nIn a world where magic is forbidden, a young scholar named Elena\ndiscovers an ancient spellbook in her university's restricted section.\nAs she begins to unlock its secrets, she realizes that someone is\nhunting those with magical abilities...\n\nTip: Include character names, key plot points, and tone/atmosphere.`}
-            autosave
-            autoExpand
-            saveKey="story-text-draft"
-            helperText="Paste or write the story here. Minimum 100 characters."
-            tooltip="Longer story inputs help the AI extract more detailed panels and character beats."
-          />
-          {storyInputError ? <ErrorMessage id="story-text-error" message={storyInputError} /> : null}
+          {fromStorySetup ? (
+            <div className="mt-2 rounded-2xl border border-blue-100 overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border-b border-blue-100">
+                <span className="material-symbols-outlined text-sm text-blue-500">lock</span>
+                <span className="text-xs font-medium text-blue-700 flex-1">Read-only — imported from Story Setup</span>
+              </div>
+              <div className="px-4 py-3 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap min-h-[120px] max-h-[300px] overflow-y-auto bg-gray-50">
+                {storyText || <span className="text-gray-400 italic">No story text imported.</span>}
+              </div>
+              <div className="px-3 py-2 bg-blue-50/60 border-t border-blue-100">
+                <Link
+                  href="/studio/story-setup"
+                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 w-fit"
+                >
+                  <span className="material-symbols-outlined text-sm">edit</span>
+                  Edit this in Story Setup to keep projects in sync
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <>
+              <EnhancedTextarea
+                id="story-text"
+                label="Story Text"
+                value={storyText}
+                onChange={(value) => {
+                  setStoryText(value);
+                  if (storyInputError) setStoryInputError(null);
+                }}
+                minLength={100}
+                maxLength={10000}
+                placeholder={`Paste or write your story here...\n\nExample:\nIn a world where magic is forbidden, a young scholar named Elena\ndiscovers an ancient spellbook in her university's restricted section.\nAs she begins to unlock its secrets, she realizes that someone is\nhunting those with magical abilities...\n\nTip: Include character names, key plot points, and tone/atmosphere.`}
+                autosave
+                autoExpand
+                saveKey="story-text-draft"
+                helperText="Paste or write the story here. Minimum 100 characters."
+                tooltip="Longer story inputs help the AI extract more detailed panels and character beats."
+              />
+              {storyInputError ? <ErrorMessage id="story-text-error" message={storyInputError} /> : null}
+            </>
+          )}
         </div>
 
         <div className="rounded-3xl bg-gray-100 p-6 space-y-6">

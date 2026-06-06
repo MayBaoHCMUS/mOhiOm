@@ -4,7 +4,8 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
-import { analyzeStoryStructuredStream } from '@/services/api';
+import { analyzeStoryStructuredStream, adaptStoryStream } from '@/services/api';
+import type { AdaptStoryResult } from '@/services/api';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -15,36 +16,36 @@ Master Kael, her stern mentor, warns her that the Inquisition burns those who aw
 When the Inquisitor arrives at the university gates, Elena must choose: surrender the book, or run into the wilds and become the very thing the empire fears most.`;
 
 const GENRE_CHIPS = [
-  'Fantasy / Adventure · Epic',
-  'Sci-fi / Cyberpunk · Gritty',
-  'Slice of life · Warm',
-  'Mystery / Noir · Tense',
-  'Romance · Tender',
+  { label: 'Fantasy / Adventure · Epic',   tooltip: 'Broad world-building with high-stakes conflict and magical elements' },
+  { label: 'Sci-fi / Cyberpunk · Gritty',  tooltip: 'Near-future technology, dystopian themes and urban decay' },
+  { label: 'Slice of life · Warm',          tooltip: 'Everyday moments with emotional warmth and relatable characters' },
+  { label: 'Mystery / Noir · Tense',        tooltip: 'Dark atmosphere, unreliable narrators and investigative tension' },
+  { label: 'Romance · Tender',              tooltip: 'Emotional vulnerability, intimate moments and heartfelt connections' },
 ];
 
-const STYLES = [
-  { name: 'Manga',      desc: 'B&W, dynamic',    ref: 'Japanese manga style, detailed line work, black & white' },
-  { name: 'Western',    desc: 'Bold superhero',  ref: 'Classic Silver-Age inks, bold flat colors, dynamic action' },
-  { name: 'Noir',       desc: 'Ink & shadow',    ref: 'High-contrast chiaroscuro, rain-slick noir, pulp detective ink' },
-  { name: 'Indie',      desc: 'Hand-drawn',      ref: 'Loose sketch line, risograph zine print, watercolor & ink' },
-  { name: 'Watercolor', desc: 'Soft, painterly', ref: 'Ethereal watercolor wash, Studio Ghibli warmth, ink & wash storybook' },
+const DIRECTION_CHIPS = [
+  'Add a new character',
+  'Create a plot twist',
+  'Change the genre',
+  'Add a subplot',
+  'Change the ending',
+  'Make it darker',
+  'Add comic relief',
 ];
 
-const ART_SUGGESTIONS: Record<string, string[]> = {
-  Manga:      ['Detailed shonen line work', 'Soft shojo screentones', 'Gritty seinen ink'],
-  Western:    ['Classic Silver-Age inks', 'Modern cinematic comic', 'Bold flat colors'],
-  Noir:       ['High-contrast chiaroscuro', 'Rain-slick neon noir', 'Pulp detective ink'],
-  Indie:      ['Loose sketch line', 'Risograph zine print', 'Watercolor & ink'],
-  Watercolor: ['Ethereal watercolor wash', 'Studio Ghibli warmth', 'Ink & wash storybook'],
+const PRO_TIPS: Record<'foundation' | 'narrative' | 'creative', { tip: string }> = {
+  foundation: {
+    tip: 'A clear genre sets the visual tone early. "Fantasy / Dark" tells the AI to use shadowy palettes and dramatic angles.',
+  },
+  narrative: {
+    tip: 'Name and describe characters clearly — distinctive looks, age, and demeanor give the AI far better character sheets in the next step.',
+  },
+  creative: {
+    tip: 'Give the AI specific, actionable direction. "Add a rival named Kira who is cold and calculating" works better than just "add conflict".',
+  },
 };
 
-const CONSTRAINT_CHIPS = ['No gore', 'Soft lighting', 'All-ages', 'Dynamic angles', 'Minimal text'];
-
-const PAGE_PRESETS = [
-  { label: 'Quick comic · 20',  pages: 20 },
-  { label: 'Short story · 50',  pages: 50 },
-  { label: 'Full book · 200',   pages: 200 },
-];
+const WORD_LIMIT = 5000;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -53,27 +54,40 @@ function wordCount(text: string) {
   return t ? t.split(/\s+/).length : 0;
 }
 
-function Stepper({ label, value, min, max, onChange }: {
-  label: string; value: number; min: number; max: number; onChange: (n: number) => void;
+function detectCharacters(text: string): string[] {
+  const STOPWORDS = new Set([
+    'The','When','But','Each','Master','She','Her','His','They','There',
+    'This','That','These','Those','What','Who','How','Why','And','For',
+    'Not','Are','Was','Has','Had','Did','Does','Been','With','From','Into',
+    'Upon','Once','Then','Here','More','Only','Very','Just','After','Before',
+  ]);
+  const matches = text.match(/\b[A-Z][a-z]{2,}\b/g) ?? [];
+  return [...new Set(matches)].filter((w) => !STOPWORDS.has(w)).slice(0, 3);
+}
+
+// ─── Tooltip chip ─────────────────────────────────────────────────────────────
+
+function GenreChip({ label, tooltip, active, onClick }: {
+  label: string; tooltip: string; active: boolean; onClick: () => void;
 }) {
-  const clamp = (n: number) => Math.max(min, Math.min(max, n));
   return (
-    <div>
-      <label className="block text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1 mb-2">{label}</label>
-      <div className="flex items-center bg-surface-container-low rounded-xl p-1">
-        <button type="button" onClick={() => onChange(clamp(value - 1))}
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors">
-          <span className="material-symbols-outlined text-lg">remove</span>
-        </button>
-        <input
-          type="text" inputMode="numeric" value={value}
-          onChange={(e) => { const n = parseInt(e.target.value, 10); if (!isNaN(n)) onChange(clamp(n)); }}
-          className="flex-1 bg-transparent text-center font-bold text-on-surface outline-none w-full"
-        />
-        <button type="button" onClick={() => onChange(clamp(value + 1))}
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors">
-          <span className="material-symbols-outlined text-lg">add</span>
-        </button>
+    <div className="relative group">
+      <button
+        type="button"
+        onClick={onClick}
+        className={`text-xs font-semibold rounded-full px-3 py-1.5 transition-all ${
+          active
+            ? 'bg-primary text-on-primary shadow-sm shadow-primary/20'
+            : 'text-on-surface-variant bg-surface-container-low hover:bg-surface-container-high'
+        }`}
+      >
+        {label}
+      </button>
+      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 z-50 hidden group-hover:block pointer-events-none min-w-[180px]">
+        <div className="bg-surface-container-highest text-on-surface text-[11px] font-medium rounded-xl px-3 py-2 shadow-xl text-center leading-snug">
+          {tooltip}
+        </div>
+        <div className="w-2.5 h-2.5 bg-surface-container-highest rotate-45 mx-auto -mt-1.5" />
       </div>
     </div>
   );
@@ -84,21 +98,21 @@ function Stepper({ label, value, min, max, onChange }: {
 export default function StorySetupPage() {
   const router = useRouter();
 
-  // Form inputs
-  const [storyTitle, setStoryTitle]       = useState('');
-  const [projectId,  setProjectId]        = useState('');
-  const [genre,      setGenre]            = useState('');
-  const [storyText,  setStoryText]        = useState('');
-  const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
-  const [artRef,     setArtRef]           = useState('');
-  const [palette,    setPalette]          = useState('Full color — vivid');
-  const [mainChars,  setMainChars]        = useState(3);
-  const [chapters,   setChapters]         = useState(1);
-  const [targetPages, setTargetPages]     = useState(20);
-  const [maxPanels,  setMaxPanels]        = useState(6);
-  const [activeConstraints, setActiveConstraints] = useState<Set<string>>(new Set());
-  const [specialRequests, setSpecialRequests]     = useState('');
-  const [activePreset, setActivePreset]   = useState<number | null>(null);
+  // Form inputs (story-only — art/structure fields moved to Pipeline Step 1)
+  const [storyTitle, setStoryTitle] = useState('');
+  const [projectId,  setProjectId]  = useState('');
+  const [genre,      setGenre]      = useState('');
+  const [storyText,  setStoryText]  = useState('');
+
+  // Story adaptation
+  const [creativeDirection, setCreativeDirection] = useState('');
+  const [adaptState, setAdaptState] = useState<'idle' | 'thinking' | 'done' | 'error'>('idle');
+  const [thinkingText, setThinkingText] = useState('');
+  const [adaptedStory, setAdaptedStory] = useState<string | null>(null);
+  const [changesSummary, setChangesSummary] = useState<string[]>([]);
+  const [changesExpanded, setChangesExpanded] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const adaptAbortRef = useRef<AbortController | null>(null);
 
   // Analysis
   const [analysisState, setAnalysisState] = useState<'idle' | 'loading' | 'done'>('idle');
@@ -107,6 +121,9 @@ export default function StorySetupPage() {
   } | null>(null);
   const [streamingText, setStreamingText] = useState('');
   const abortRef = useRef<AbortController | null>(null);
+
+  // Active section for contextual pro tip
+  const [activeSection, setActiveSection] = useState<'foundation' | 'narrative' | 'creative'>('foundation');
 
   // Autosave
   const [saveState, setSaveState] = useState<'saved' | 'saving'>('saved');
@@ -120,15 +137,14 @@ export default function StorySetupPage() {
 
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
 
-  // Progress (5 essentials: title, genre, story ≥80 chars, style, pages > 0)
-  const essentials = [
+  // 3 essentials: title, genre, narrative ≥ 80 chars
+  const essentialChecks = [
     storyTitle.trim() !== '',
     genre.trim() !== '',
     storyText.trim().length >= 80,
-    selectedStyle !== null,
-    targetPages > 0,
-  ].filter(Boolean).length;
-  const canAnalyze = essentials >= 4 && storyText.trim().length >= 80;
+  ];
+  const essentials = essentialChecks.filter(Boolean).length;
+  const canProceed = essentials === 3;
 
   // File upload
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -145,29 +161,12 @@ export default function StorySetupPage() {
     setStoryTitle('The Last Ember');
     setProjectId('last_ember_001');
     setGenre('Fantasy / Adventure · Epic');
-    if (!selectedStyle) selectStyle('Manga');
     flashSave();
   };
 
-  // Style selection
-  const selectStyle = (name: string) => {
-    setSelectedStyle(name);
-    const s = STYLES.find((s) => s.name === name);
-    if (s) setArtRef(s.ref);
-  };
-
-  // Constraint toggle
-  const toggleConstraint = (label: string) => {
-    setActiveConstraints((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label); else next.add(label);
-      return next;
-    });
-  };
-
-  // Real AI analysis
+  // AI analysis (art/structure fields use sensible defaults — not configurable here)
   const runAnalysis = useCallback(() => {
-    if (!canAnalyze || analysisState === 'loading') return;
+    if (!canProceed || analysisState === 'loading') return;
     abortRef.current?.abort();
     setAnalysisState('loading');
     setStreamingText('');
@@ -175,20 +174,19 @@ export default function StorySetupPage() {
     const ctrl = analyzeStoryStructuredStream(
       {
         story_text: storyText,
-        num_chapters: chapters,
-        desired_main_characters: mainChars,
-        target_total_pages: String(targetPages),
+        num_chapters: 1,
+        desired_main_characters: 3,
+        target_total_pages: '20',
         genre_tone: genre || 'Adventure',
-        art_style_reference: artRef || 'manga',
-        max_panels_per_page: maxPanels,
-        special_requests: specialRequests || 'None',
+        art_style_reference: 'manga',
+        max_panels_per_page: 6,
+        special_requests: 'None',
         project_id: projectId || undefined,
         stream: true,
       },
       {
         onToken: (tok) => setStreamingText((p) => p + tok),
         onDone: (res) => {
-          // extract a few signals from structured JSON
           const sj = res.structured_json as Record<string, unknown> | null;
           const step1Data = (sj as { steps?: { step_1_analysis?: Record<string, unknown> } })?.steps?.step_1_analysis ?? {};
           const charList = Array.isArray((step1Data as { detected_characters?: unknown[] }).detected_characters)
@@ -203,45 +201,103 @@ export default function StorySetupPage() {
 
           setAnalysisResult({
             sceneBeats: beats,
-            chars: charList.length ? charList : ['Character 1', 'Character 2', 'Character 3'].slice(0, mainChars),
+            chars: charList.length ? charList : detectCharacters(storyText),
             tone: toneList.length ? toneList : ['Epic', 'Adventure'],
-            panels: targetPages * Math.max(3, maxPanels - 1),
+            panels: 100,
           });
           setAnalysisState('done');
         },
         onError: () => {
-          // On error, show a derived stub result so the user can still proceed
           setAnalysisResult({
             sceneBeats: Math.max(4, Math.round(wordCount(storyText) / 15)),
-            chars: ['Character 1', 'Character 2', 'Character 3'].slice(0, mainChars),
+            chars: detectCharacters(storyText),
             tone: ['Adventure'],
-            panels: targetPages * Math.max(3, maxPanels - 1),
+            panels: 100,
           });
           setAnalysisState('done');
         },
       },
     );
     abortRef.current = ctrl;
-  }, [canAnalyze, analysisState, storyText, chapters, mainChars, targetPages, genre, artRef, maxPanels, specialRequests, projectId]);
+  }, [canProceed, analysisState, storyText, genre, projectId]);
+
+  const runAdaptation = useCallback(() => {
+    const sourceStory = (adaptedStory && !showOriginal ? adaptedStory : storyText).trim();
+    if (!sourceStory || !creativeDirection.trim() || adaptState === 'thinking') return;
+    adaptAbortRef.current?.abort();
+    setAdaptState('thinking');
+    setThinkingText('');
+
+    const ctrl = adaptStoryStream(
+      {
+        original_story: sourceStory,
+        creative_direction: creativeDirection,
+        genre_tone: genre || 'Adventure',
+        art_style_reference: 'manga',
+        special_requests: 'None',
+      },
+      {
+        onThinking: (tok) => setThinkingText((p) => p + tok),
+        onDone: (result: AdaptStoryResult) => {
+          setAdaptedStory(result.adapted_story);
+          setChangesSummary(result.changes_summary);
+          setChangesExpanded(true);
+          setShowOriginal(false);
+          setAdaptState('done');
+          flashSave();
+        },
+        onError: () => setAdaptState('error'),
+      },
+    );
+    adaptAbortRef.current = ctrl;
+  }, [adaptedStory, showOriginal, storyText, creativeDirection, adaptState, genre, flashSave]);
 
   const handleNext = () => {
-    // Persist key inputs to localStorage for the studio wizard to pick up
+    const effectiveStory = (adaptedStory && !showOriginal) ? adaptedStory : storyText;
     if (typeof window !== 'undefined') {
+      const adapted = adaptedStory !== null && !showOriginal;
       localStorage.setItem('mohiom-story-setup', JSON.stringify({
-        storyText, genre, artRef, mainChars, chapters, targetPages, maxPanels, specialRequests, projectId,
+        storyText: effectiveStory,
+        storyTitle,
+        genre,
+        projectId,
+        adaptedFromOriginal: adapted,
+        adaptedWordCount: adapted ? wordCount(adaptedStory ?? '') : null,
       }));
     }
     router.push('/studio');
   };
 
-  const words = wordCount(storyText);
+  // Word count display
+  const originalWords = wordCount(storyText);
+  const adaptedWords  = adaptedStory ? wordCount(adaptedStory) : null;
+  const displayWords  = (adaptedStory !== null && !showOriginal && adaptedWords !== null) ? adaptedWords : originalWords;
+  const wordProgress  = Math.min((displayWords / WORD_LIMIT) * 100, 100);
+  const wordBarColor  = wordProgress >= 100 ? 'bg-red-500' : wordProgress >= 80 ? 'bg-amber-400' : 'bg-emerald-500';
+
+  // Live metadata for STATE 2
+  const detectedChars = storyText.trim().length > 30 ? detectCharacters(storyText) : [];
+
+  // 5-state AI panel
+  const panelState: 'empty' | 'filling' | 'ready' | 'running' | 'done' =
+    analysisState === 'loading' ? 'running' :
+    analysisState === 'done'    ? 'done'    :
+    canProceed                  ? 'ready'   :
+    (storyTitle.trim() || genre.trim() || storyText.trim().length > 0) ? 'filling' :
+    'empty';
+
+  const missingEssentials = [
+    !storyTitle.trim() && 'Title',
+    !genre.trim() && 'Genre',
+    storyText.trim().length < 80 && 'Narrative',
+  ].filter(Boolean).join(', ');
 
   return (
     <div className="min-h-screen bg-surface text-on-surface">
       <StudioSidebar />
       <StudioTopBar />
 
-      <main className="pt-24 pb-16 px-8 max-w-[1400px] mx-auto ml-[var(--studio-sidebar-width)]">
+      <main className="pt-24 pb-32 px-8 max-w-[1400px] mx-auto ml-[var(--studio-sidebar-width)]">
 
         {/* ── Page header ── */}
         <header className="mb-10">
@@ -249,7 +305,7 @@ export default function StorySetupPage() {
             <div>
               <h1 className="text-4xl font-extrabold tracking-tighter text-on-surface">Create Your Story</h1>
               <p className="text-on-surface-variant mt-1">
-                Feed in your narrative, set the creative targets, and let Gemini map out characters and visual beats.
+                Design your story here. When ready, send it to the pipeline to generate your comic.
               </p>
             </div>
             <div className="flex items-center gap-2 text-sm text-on-surface-variant bg-surface-container-lowest border border-outline-variant/40 rounded-full px-4 py-2">
@@ -260,20 +316,26 @@ export default function StorySetupPage() {
             </div>
           </div>
 
-          {/* Progress bar */}
+          {/* Progress bar — 3 essentials */}
           <div className="mt-6 bg-surface-container-lowest border border-outline-variant/30 rounded-2xl px-5 py-4 flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-3 flex-1 min-w-[220px]">
+            <div className="flex items-center gap-3 flex-1 min-w-[200px]">
               <div className="flex-1 h-2 rounded-full bg-surface-container-high overflow-hidden">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-primary to-primary-container transition-all duration-500"
-                  style={{ width: `${(essentials / 5) * 100}%` }}
+                  style={{ width: `${(essentials / 3) * 100}%` }}
                 />
               </div>
-              <span className="text-sm font-bold text-on-surface whitespace-nowrap">{essentials}/5 essentials</span>
+              <span className="text-sm font-bold text-on-surface whitespace-nowrap">{essentials}/3 essentials</span>
             </div>
-            <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-              <span className="material-symbols-outlined text-sm">bolt</span>
-              Fill the essentials to unlock AI analysis
+            <div className="flex items-center gap-4 text-xs text-on-surface-variant">
+              {(['Title', 'Genre', 'Narrative'] as const).map((label, i) => (
+                <span key={label} className={`flex items-center gap-1 transition-colors ${essentialChecks[i] ? 'text-emerald-600' : ''}`}>
+                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: essentialChecks[i] ? "'FILL' 1" : "'FILL' 0" }}>
+                    {essentialChecks[i] ? 'check_circle' : 'radio_button_unchecked'}
+                  </span>
+                  {label}
+                </span>
+              ))}
             </div>
           </div>
         </header>
@@ -284,7 +346,10 @@ export default function StorySetupPage() {
           <section className="lg:col-span-8 space-y-6">
 
             {/* 1. Story foundation */}
-            <div className="bg-surface-container-lowest rounded-3xl p-8 shadow-[0_20px_50px_rgba(0,88,190,0.05)] border border-outline-variant/10">
+            <div
+              className="bg-surface-container-lowest rounded-3xl p-8 shadow-[0_20px_50px_rgba(0,88,190,0.05)] border border-outline-variant/10"
+              onFocus={() => setActiveSection('foundation')}
+            >
               <div className="flex items-center gap-3 mb-6">
                 <span className="material-symbols-outlined text-primary text-2xl">title</span>
                 <h2 className="text-xl font-bold tracking-tight">Story foundation</h2>
@@ -318,11 +383,13 @@ export default function StorySetupPage() {
                   />
                   <div className="flex flex-wrap gap-2 pt-1">
                     {GENRE_CHIPS.map((chip) => (
-                      <button key={chip} type="button"
-                        onClick={() => { setGenre(chip); flashSave(); }}
-                        className="text-xs font-semibold text-on-surface-variant bg-surface-container-low hover:bg-surface-container-high rounded-full px-3 py-1.5 transition-colors">
-                        {chip}
-                      </button>
+                      <GenreChip
+                        key={chip.label}
+                        label={chip.label}
+                        tooltip={chip.tooltip}
+                        active={genre === chip.label}
+                        onClick={() => { setGenre(chip.label); flashSave(); }}
+                      />
                     ))}
                   </div>
                 </div>
@@ -330,7 +397,10 @@ export default function StorySetupPage() {
             </div>
 
             {/* 2. Your narrative */}
-            <div className="bg-surface-container-lowest rounded-3xl p-8 shadow-[0_20px_50px_rgba(0,88,190,0.05)] border border-outline-variant/10">
+            <div
+              className="bg-surface-container-lowest rounded-3xl p-8 shadow-[0_20px_50px_rgba(0,88,190,0.05)] border border-outline-variant/10"
+              onFocus={() => setActiveSection('narrative')}
+            >
               <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
                 <div className="flex items-center gap-3">
                   <span className="material-symbols-outlined text-primary text-2xl">edit_note</span>
@@ -357,210 +427,302 @@ export default function StorySetupPage() {
                 <input id="fileInput" type="file" accept=".txt,.md" className="hidden" onChange={handleFile} />
               </label>
 
+              {/* Adapted story badge + toggle */}
+              {adaptedStory !== null && (
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-base text-emerald-600" style={{ fontVariationSettings: "'FILL' 1" }}>auto_fix_high</span>
+                    <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
+                      AI-adapted story
+                    </span>
+                  </div>
+                  <button type="button"
+                    onClick={() => setShowOriginal((v) => !v)}
+                    className="text-xs font-semibold text-primary hover:bg-surface-container-low rounded-full px-3 py-1.5 flex items-center gap-1 transition-colors">
+                    <span className="material-symbols-outlined text-sm">{showOriginal ? 'visibility' : 'history'}</span>
+                    {showOriginal ? 'View adapted' : 'View original'}
+                  </button>
+                </div>
+              )}
+
               <textarea
-                value={storyText} onChange={(e) => { setStoryText(e.target.value); flashSave(); }}
+                value={adaptedStory !== null && !showOriginal ? adaptedStory : storyText}
+                onChange={(e) => {
+                  if (adaptedStory !== null && !showOriginal) {
+                    setAdaptedStory(e.target.value);
+                  } else {
+                    setStoryText(e.target.value);
+                  }
+                  flashSave();
+                }}
                 placeholder={`Paste or write your story here...\n\nExample:\nIn a world where magic is forbidden, a young scholar named Elena discovers an ancient spellbook...\n\nTip: include character names, key plot points, and the tone you're after.`}
                 className="field !rounded-2xl !p-5 leading-relaxed min-h-[260px] w-full"
               />
 
-              <div className="flex flex-wrap items-center justify-between gap-3 mt-3 px-1">
-                <div className="flex items-center gap-4 text-xs text-on-surface-variant">
-                  <span><span className="font-bold text-on-surface">{words.toLocaleString()}</span> words</span>
-                  <span className="w-px h-3 bg-outline-variant" />
-                  <span><span className="font-bold text-on-surface">{storyText.length.toLocaleString()}</span> / 5,000</span>
-                  <span className="w-px h-3 bg-outline-variant" />
-                  <span>~{Math.max(0, Math.round(words / 200))} min read</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button type="button" title="Expand a brief into a fuller draft"
-                    className="text-xs font-semibold text-on-surface-variant bg-surface-container-low hover:bg-surface-container-high rounded-full px-3 py-1.5 flex items-center gap-1 transition-colors">
-                    <span className="material-symbols-outlined text-sm text-primary">expand_content</span>
-                    Expand brief
-                  </button>
-                  <button type="button" title="Tighten and polish the narrative"
-                    className="text-xs font-semibold text-on-surface-variant bg-surface-container-low hover:bg-surface-container-high rounded-full px-3 py-1.5 flex items-center gap-1 transition-colors">
-                    <span className="material-symbols-outlined text-sm text-primary">compress</span>
-                    Polish
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* 3. Art direction */}
-            <div className="bg-surface-container-lowest rounded-3xl p-8 shadow-[0_20px_50px_rgba(0,88,190,0.05)] border border-outline-variant/10">
-              <div className="flex items-center gap-3 mb-2">
-                <span className="material-symbols-outlined text-primary text-2xl">palette</span>
-                <h2 className="text-xl font-bold tracking-tight">Art direction</h2>
-              </div>
-              <p className="text-sm text-on-surface-variant mb-6">Pick a base style — you can fine-tune the reference below.</p>
-
-              {/* Style grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                {STYLES.map((s) => {
-                  const active = selectedStyle === s.name;
-                  return (
-                    <button key={s.name} type="button" onClick={() => selectStyle(s.name)}
-                      className={`relative rounded-2xl border-2 overflow-hidden text-left transition-all ${
-                        active ? 'border-primary ring-2 ring-primary/20' : 'border-outline-variant/40 hover:border-primary/40'
-                      }`}>
-                      <div className="aspect-[4/3] bg-surface-container-low flex items-center justify-center"
-                        style={{ backgroundImage: 'repeating-linear-gradient(45deg,rgba(0,88,190,0.07) 0,rgba(0,88,190,0.07) 1px,transparent 1px,transparent 9px)' }}>
-                        <span className="text-[10px] font-mono uppercase tracking-wider text-on-surface-variant/60">{s.name.toLowerCase()}</span>
-                      </div>
-                      <div className="px-3 py-2.5">
-                        <p className="text-sm font-bold text-on-surface leading-tight">{s.name}</p>
-                        <p className="text-[11px] text-on-surface-variant">{s.desc}</p>
-                      </div>
-                      {active && (
-                        <span className="material-symbols-outlined absolute top-2 right-2 text-white bg-primary rounded-full text-lg p-0.5">check</span>
+              {/* Word count — dual label + progress bar */}
+              <div className="mt-3 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-on-surface-variant">
+                  {adaptedStory !== null ? (
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className={`flex items-center gap-1 ${!showOriginal ? 'font-semibold text-emerald-700' : ''}`}>
+                        <span className="material-symbols-outlined text-xs text-emerald-600" style={{ fontVariationSettings: "'FILL' 1" }}>auto_fix_high</span>
+                        AI-adapted: <span className="font-bold">{(adaptedWords ?? 0).toLocaleString()}</span> words · ~{Math.max(0, Math.round((adaptedWords ?? 0) / 200))} min read
+                      </span>
+                      <span className="w-px h-3 bg-outline-variant" />
+                      <span className={`flex items-center gap-1.5 ${showOriginal ? 'font-semibold' : ''}`}>
+                        Original: <span className="font-bold">{originalWords.toLocaleString()}</span> words
+                        {originalWords > WORD_LIMIT && (
+                          <span className="text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 text-[10px] font-bold">⚠ Over limit</span>
+                        )}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <span><span className="font-bold text-on-surface">{originalWords.toLocaleString()}</span> words</span>
+                      <span className="w-px h-3 bg-outline-variant" />
+                      <span>~{Math.max(0, Math.round(originalWords / 200))} min read</span>
+                      {originalWords > WORD_LIMIT && (
+                        <span className="text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 text-[10px] font-bold">⚠ Over limit</span>
                       )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1" htmlFor="artRef">Art style reference</label>
-                  <input id="artRef" value={artRef} className="field"
-                    placeholder="Japanese manga style, detailed line work, black & white"
-                    onChange={(e) => { setArtRef(e.target.value); flashSave(); }}
-                  />
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {(ART_SUGGESTIONS[selectedStyle ?? ''] ?? []).map((sug) => (
-                      <button key={sug} type="button" onClick={() => setArtRef(sug)}
-                        className="text-xs font-semibold text-primary bg-surface-container-low hover:bg-surface-container-high rounded-full px-3 py-1.5 transition-colors">
-                        {sug}
-                      </button>
-                    ))}
-                  </div>
+                    </div>
+                  )}
+                  <span className="text-on-surface-variant/60 tabular-nums">{displayWords.toLocaleString()} / {WORD_LIMIT.toLocaleString()}</span>
                 </div>
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1" htmlFor="palette">Color palette</label>
-                  <div className="relative">
-                    <select id="palette" value={palette} onChange={(e) => setPalette(e.target.value)}
-                      className="field appearance-none cursor-pointer pr-10">
-                      {['Full color — vivid', 'Full color — muted / cinematic', 'Black & white (ink)', 'Monochrome — duotone', 'Watercolor wash'].map((o) => (
-                        <option key={o}>{o}</option>
-                      ))}
-                    </select>
-                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant">expand_more</span>
-                  </div>
-                  <p className="text-xs text-on-surface-variant/70 px-1">Sets the default rendering across all panels.</p>
+                <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${wordBarColor}`}
+                    style={{ width: `${wordProgress}%` }}
+                  />
                 </div>
               </div>
             </div>
 
-            {/* 4. Structure & pacing */}
-            <div className="bg-surface-container-lowest rounded-3xl p-8 shadow-[0_20px_50px_rgba(0,88,190,0.05)] border border-outline-variant/10">
-              <div className="flex items-center gap-3 mb-6">
-                <span className="material-symbols-outlined text-primary text-2xl">tune</span>
-                <h2 className="text-xl font-bold tracking-tight">Structure &amp; pacing</h2>
+            {/* 3. Creative direction */}
+            <div
+              className="bg-surface-container-lowest rounded-3xl p-8 shadow-[0_20px_50px_rgba(0,88,190,0.05)] border border-outline-variant/10"
+              onFocus={() => setActiveSection('creative')}
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <span className="material-symbols-outlined text-primary text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>draw</span>
+                <h2 className="text-xl font-bold tracking-tight">Creative direction</h2>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high rounded-full px-2 py-1">Optional</span>
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <Stepper label="Main characters" value={mainChars}  min={1} max={10}   onChange={setMainChars} />
-                <Stepper label="Chapters"        value={chapters}   min={1} max={50}   onChange={setChapters} />
-                <Stepper label="Target pages"    value={targetPages} min={1} max={1000} onChange={(n) => { setTargetPages(n); setActivePreset(null); }} />
-                <Stepper label="Max panels / page" value={maxPanels} min={3} max={12}  onChange={setMaxPanels} />
-              </div>
-              <div className="mt-5">
-                <span className="block text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1 mb-2">Length presets</span>
+              <p className="text-sm text-on-surface-variant mb-5">
+                Describe how you want the AI to adapt your story — add a character, shift the genre, introduce a twist.
+                The AI acts as a Comic Scriptwriter and rewrites the narrative with visual-rich prose ready for panels.
+              </p>
+
+              <textarea
+                value={creativeDirection}
+                onChange={(e) => setCreativeDirection(e.target.value)}
+                placeholder={`e.g. "Add a mysterious rival named Kira who challenges Elena at every turn — cold, calculating, and secretly working for the Inquisition."\n\nor: "Change the tone to cyberpunk. The Inquisition is now a megacorp and the spellbook is forbidden AI code."`}
+                className="field !rounded-2xl !p-5 leading-relaxed min-h-[130px] w-full"
+              />
+
+              {/* Quick-pick chips */}
+              <div className="mt-3">
+                <p className="text-xs font-semibold text-on-surface-variant mb-2">Quick suggestions:</p>
                 <div className="flex flex-wrap gap-2">
-                  {PAGE_PRESETS.map((p) => (
-                    <button key={p.pages} type="button"
-                      onClick={() => { setTargetPages(p.pages); setActivePreset(p.pages); }}
-                      className={`text-xs font-semibold rounded-full px-4 py-2 transition-colors ${
-                        activePreset === p.pages
-                          ? 'bg-surface-container-lowest text-primary shadow-sm'
-                          : 'text-on-surface-variant bg-surface-container-low hover:bg-surface-container-high'
-                      }`}>
-                      {p.label}
+                  {DIRECTION_CHIPS.map((chip) => (
+                    <button key={chip} type="button"
+                      onClick={() => setCreativeDirection((prev) => prev ? `${prev}; ${chip.toLowerCase()}` : chip)}
+                      className="text-xs font-semibold text-on-surface-variant bg-surface-container-low hover:bg-surface-container-high rounded-full px-3 py-1.5 transition-colors">
+                      + {chip}
                     </button>
                   ))}
                 </div>
               </div>
-            </div>
 
-            {/* 5. Constraints & special requests */}
-            <div className="bg-surface-container-lowest rounded-3xl p-8 shadow-[0_20px_50px_rgba(0,88,190,0.05)] border border-outline-variant/10">
-              <div className="flex items-center gap-3 mb-2">
-                <span className="material-symbols-outlined text-primary text-2xl">rule</span>
-                <h2 className="text-xl font-bold tracking-tight">Constraints &amp; special requests</h2>
+              {/* Thinking state */}
+              {adaptState === 'thinking' && (
+                <div className="mt-5 rounded-2xl bg-surface-container-low border border-outline-variant/20 px-5 py-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="material-symbols-outlined text-base animate-spin text-primary">progress_activity</span>
+                    <span className="text-sm font-semibold text-on-surface-variant">Thinking…</span>
+                  </div>
+                  {thinkingText && (
+                    <p className="text-xs text-on-surface-variant/70 leading-relaxed line-clamp-4 max-h-24 overflow-hidden">
+                      {thinkingText}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Changes summary — collapsible */}
+              {adaptState === 'done' && changesSummary.length > 0 && (
+                <div className="mt-5 rounded-2xl bg-emerald-50 border border-emerald-100 px-5 py-4">
+                  <button
+                    type="button"
+                    onClick={() => setChangesExpanded((v) => !v)}
+                    className="w-full flex items-center justify-between"
+                  >
+                    <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">Changes applied</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold bg-emerald-200 text-emerald-800 rounded-full px-2 py-0.5">{changesSummary.length}</span>
+                      <span
+                        className="material-symbols-outlined text-emerald-700 text-sm transition-transform duration-200"
+                        style={{ transform: changesExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                      >
+                        expand_more
+                      </span>
+                    </div>
+                  </button>
+                  {changesExpanded && (
+                    <ul className="space-y-1.5 mt-3">
+                      {changesSummary.map((c, i) => (
+                        <li key={i} className="flex items-start gap-2 text-xs text-emerald-800">
+                          <span className="material-symbols-outlined text-sm text-emerald-600 mt-px" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                          {c}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {adaptState === 'error' && (
+                <div className="mt-5 rounded-2xl bg-red-50 border border-red-100 px-5 py-4 text-xs text-red-700">
+                  Adaptation failed. Check your connection and try again.
+                </div>
+              )}
+
+              <div className="flex justify-end mt-5">
+                <button type="button" onClick={runAdaptation}
+                  disabled={!storyText.trim() || !creativeDirection.trim() || adaptState === 'thinking'}
+                  className={`px-5 py-3 rounded-2xl font-bold text-sm flex items-center gap-2 transition-all ${
+                    storyText.trim() && creativeDirection.trim() && adaptState !== 'thinking'
+                      ? 'bg-primary text-on-primary hover:opacity-90 shadow-md shadow-primary/20'
+                      : 'bg-surface-container-high text-on-surface-variant cursor-not-allowed'
+                  }`}>
+                  <span className={`material-symbols-outlined text-lg ${adaptState === 'thinking' ? 'animate-spin' : ''}`} style={{ fontVariationSettings: "'FILL' 1" }}>
+                    {adaptState === 'thinking' ? 'progress_activity' : 'auto_fix_high'}
+                  </span>
+                  {adaptState === 'thinking' ? 'Adapting…' : adaptState === 'done' ? 'Re-adapt story' : 'Adapt story'}
+                </button>
               </div>
-              <p className="text-sm text-on-surface-variant mb-5">Optional guardrails the AI will respect during generation.</p>
-              <div className="flex flex-wrap gap-2 mb-5">
-                {CONSTRAINT_CHIPS.map((chip) => {
-                  const on = activeConstraints.has(chip);
-                  return (
-                    <button key={chip} type="button" onClick={() => toggleConstraint(chip)}
-                      className={`text-xs font-semibold rounded-full px-3 py-1.5 flex items-center gap-1 transition-colors ${
-                        on ? 'text-white bg-primary' : 'text-on-surface-variant bg-surface-container-low hover:bg-surface-container-high'
-                      }`}>
-                      <span className="material-symbols-outlined text-sm">{on ? 'check' : 'add'}</span>
-                      {chip}
-                    </button>
-                  );
-                })}
-              </div>
-              <textarea
-                value={specialRequests} onChange={(e) => { setSpecialRequests(e.target.value); flashSave(); }}
-                className="field !rounded-2xl !p-5 leading-relaxed min-h-[110px] w-full"
-                placeholder="e.g. Keep panels cinematic and wide. Avoid modern technology. Emphasize weather and atmosphere."
-              />
             </div>
 
           </section>
 
-          {/* ═══════════ ANALYSIS COLUMN ═══════════ */}
+          {/* ═══════════ ANALYSIS SIDEBAR ═══════════ */}
           <aside className="lg:col-span-4 lg:sticky lg:top-24 space-y-6">
 
             <div className="bg-surface-container-lowest rounded-3xl p-7 border border-outline-variant/10 shadow-[0_20px_50px_rgba(0,88,190,0.05)] min-h-[420px] flex flex-col">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-primary text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-                  <h2 className="text-lg font-bold tracking-tight">AI Story Analysis</h2>
-                </div>
-                <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider ${
-                  analysisState === 'loading' ? 'bg-primary/10 text-primary' :
-                  analysisState === 'done'    ? 'bg-emerald-100 text-emerald-700' :
-                                               'bg-surface-container-high text-on-surface-variant'
-                }`}>
-                  {analysisState === 'loading' ? 'Analyzing' : analysisState === 'done' ? 'Complete' : 'Idle'}
-                </span>
+              <div className="flex items-center gap-2.5 mb-6">
+                <span className="material-symbols-outlined text-primary text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                <h2 className="text-lg font-bold tracking-tight">AI Story Analysis</h2>
               </div>
 
-              {/* IDLE */}
-              {analysisState === 'idle' && (
-                <div className="flex-grow flex flex-col items-center justify-center text-center py-6">
-                  <div className="w-16 h-16 rounded-2xl bg-surface-container-low flex items-center justify-center mb-4">
-                    <span className="material-symbols-outlined text-3xl text-primary">neurology</span>
+              {/* STATE 1 — Empty */}
+              {panelState === 'empty' && (
+                <div className="flex-grow flex flex-col py-2">
+                  <p className="text-sm font-semibold text-on-surface mb-4">Complete the essentials to unlock AI Analysis</p>
+                  <div className="space-y-3 mb-6">
+                    {[
+                      { label: 'Story Title',    done: essentialChecks[0] },
+                      { label: 'Genre & Tone',   done: essentialChecks[1] },
+                      { label: 'Your Narrative', done: essentialChecks[2] },
+                    ].map(({ label, done }) => (
+                      <div key={label} className="flex items-center gap-2.5 text-sm">
+                        <span className={`material-symbols-outlined text-base ${done ? 'text-emerald-500' : 'text-outline'}`} style={{ fontVariationSettings: done ? "'FILL' 1" : "'FILL' 0" }}>
+                          {done ? 'check_circle' : 'radio_button_unchecked'}
+                        </span>
+                        <span className={done ? 'text-on-surface-variant line-through opacity-60' : 'text-on-surface-variant'}>{label}</span>
+                      </div>
+                    ))}
                   </div>
-                  <p className="font-semibold text-on-surface mb-1">Ready when you are</p>
-                  <p className="text-sm text-on-surface-variant leading-relaxed max-w-[240px]">
-                    Add your narrative and genre, then run analysis to preview detected characters, scene beats, and tone.
-                  </p>
+                  <button disabled className="mt-auto w-full px-5 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-surface-container-high text-on-surface-variant cursor-not-allowed">
+                    <span className="material-symbols-outlined text-lg">auto_awesome</span>
+                    Run AI Analysis
+                  </button>
                 </div>
               )}
 
-              {/* LOADING */}
-              {analysisState === 'loading' && (
+              {/* STATE 2 — Filling */}
+              {panelState === 'filling' && (
+                <div className="flex-grow flex flex-col py-2">
+                  <p className="text-sm font-semibold text-on-surface mb-4">Analyzing your story…</p>
+                  <div className="space-y-3 mb-5">
+                    {genre && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <span>📖</span>
+                        <span className="text-on-surface-variant">Genre detected: <span className="font-semibold text-on-surface">{genre}</span></span>
+                      </div>
+                    )}
+                    {detectedChars.length > 0 && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <span>👤</span>
+                        <span className="text-on-surface-variant">Characters found: <span className="font-semibold text-on-surface">{detectedChars.length}</span></span>
+                      </div>
+                    )}
+                    {genre && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <span>🎭</span>
+                        <span className="text-on-surface-variant">Tone: <span className="font-semibold text-on-surface">
+                          {genre.includes('·') ? genre.split('·').slice(1).join('·').trim() : genre.split('/').pop()?.trim() ?? genre}
+                        </span></span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2 mb-6">
+                    {[
+                      { label: 'Story Title',    done: essentialChecks[0] },
+                      { label: 'Genre & Tone',   done: essentialChecks[1] },
+                      { label: 'Your Narrative', done: essentialChecks[2] },
+                    ].map(({ label, done }) => (
+                      <div key={label} className="flex items-center gap-2 text-xs">
+                        <span className={`material-symbols-outlined text-sm ${done ? 'text-emerald-500' : 'text-outline'}`} style={{ fontVariationSettings: done ? "'FILL' 1" : "'FILL' 0" }}>
+                          {done ? 'check_circle' : 'radio_button_unchecked'}
+                        </span>
+                        <span className={done ? 'text-on-surface-variant line-through' : 'text-on-surface-variant'}>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <button disabled className="mt-auto w-full px-5 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-surface-container-high text-on-surface-variant cursor-not-allowed">
+                    <span className="material-symbols-outlined text-lg">auto_awesome</span>
+                    Run AI Analysis
+                  </button>
+                </div>
+              )}
+
+              {/* STATE 3 — Ready */}
+              {panelState === 'ready' && (
+                <div className="flex-grow flex flex-col items-center justify-center text-center py-6">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center mb-4">
+                    <span className="material-symbols-outlined text-3xl text-emerald-500" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                  </div>
+                  <p className="font-semibold text-on-surface mb-2">Ready to analyze</p>
+                  <p className="text-sm text-on-surface-variant mb-6 leading-relaxed">
+                    All essentials complete. Run AI analysis to preview characters, scene beats, and tone.
+                  </p>
+                  <button type="button" onClick={runAnalysis}
+                    className="w-full px-5 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-primary text-on-primary shadow-lg shadow-primary/20 animate-pulse hover:animate-none hover:opacity-90 transition-all">
+                    <span className="material-symbols-outlined text-lg">auto_awesome</span>
+                    ▶ Run AI Analysis
+                  </button>
+                </div>
+              )}
+
+              {/* STATE 4 — Running */}
+              {panelState === 'running' && (
                 <div className="flex-grow">
                   <p className="text-on-surface-variant font-medium flex items-center gap-2 mb-6 text-sm">
                     <span className="material-symbols-outlined text-base animate-spin">progress_activity</span>
-                    Gemini is reading your story…
+                    AI is reading your story…
                   </p>
                   {streamingText ? (
-                    <div className="text-xs text-on-surface-variant leading-relaxed max-h-52 overflow-hidden fade-bottom line-clamp-[12]">
+                    <div className="text-xs text-on-surface-variant leading-relaxed max-h-52 overflow-hidden line-clamp-[12]">
                       {streamingText}
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      <div className="h-4 rounded-full w-3/4 bg-gradient-to-r from-surface-container-high via-surface-container-highest to-surface-container-high animate-pulse" />
-                      <div className="h-4 rounded-full w-1/2 bg-gradient-to-r from-surface-container-high via-surface-container-highest to-surface-container-high animate-pulse" />
+                      <div className="h-2 rounded-full bg-gradient-to-r from-primary/20 via-primary/50 to-primary/20 animate-pulse" />
+                      <div className="h-4 rounded-full w-3/4 bg-surface-container-high animate-pulse" />
+                      <div className="h-4 rounded-full w-1/2 bg-surface-container-high animate-pulse" />
                       <div className="grid grid-cols-3 gap-3 pt-2">
                         {[1, 2, 3].map((i) => <div key={i} className="aspect-square rounded-2xl bg-surface-container-high animate-pulse" />)}
                       </div>
-                      <div className="space-y-3 pt-2">
+                      <div className="space-y-2">
                         {[1, 2, 3].map((i) => <div key={i} className={`h-3 rounded-full bg-surface-container-high animate-pulse ${i === 1 ? 'w-full' : i === 2 ? 'w-5/6' : 'w-4/6'}`} />)}
                       </div>
                     </div>
@@ -568,8 +730,8 @@ export default function StorySetupPage() {
                 </div>
               )}
 
-              {/* RESULT */}
-              {analysisState === 'done' && analysisResult && (
+              {/* STATE 5 — Done */}
+              {panelState === 'done' && analysisResult && (
                 <div className="flex-grow">
                   {/* Stats */}
                   <div className="grid grid-cols-3 gap-3 mb-6">
@@ -586,7 +748,7 @@ export default function StorySetupPage() {
                   </div>
 
                   {/* Characters */}
-                  <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">Detected characters</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">Characters</p>
                   <div className="grid grid-cols-3 gap-3 mb-6">
                     {analysisResult.chars.map((name) => (
                       <div key={name} className="flex flex-col items-center gap-2">
@@ -599,8 +761,26 @@ export default function StorySetupPage() {
                     ))}
                   </div>
 
+                  {/* Scene beats */}
+                  <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">Scene beats</p>
+                  <div className="space-y-2 mb-6">
+                    {(['Opening', 'Rising', 'Climax'] as const).map((act, i) => {
+                      const actPanels = [
+                        Math.max(1, Math.round(analysisResult.sceneBeats * 0.2)),
+                        Math.max(2, Math.round(analysisResult.sceneBeats * 0.5)),
+                        Math.max(1, analysisResult.sceneBeats - Math.round(analysisResult.sceneBeats * 0.2) - Math.round(analysisResult.sceneBeats * 0.5)),
+                      ];
+                      return (
+                        <div key={act} className="flex items-center justify-between text-xs bg-surface-container-low rounded-xl px-3 py-2">
+                          <span className="text-on-surface-variant">Act {i + 1} · {act}</span>
+                          <span className="font-bold text-on-surface">{actPanels[i]} beats</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
                   {/* Tone */}
-                  <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">Tone &amp; themes</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">Tone tags</p>
                   <div className="flex flex-wrap gap-2 mb-6">
                     {analysisResult.tone.map((t) => (
                       <span key={t} className="text-xs font-semibold text-primary bg-surface-container-high rounded-full px-3 py-1">{t}</span>
@@ -608,47 +788,29 @@ export default function StorySetupPage() {
                   </div>
 
                   <div className="rounded-2xl bg-emerald-50 border border-emerald-100 px-4 py-3 flex items-start gap-2">
-                    <span className="material-symbols-outlined text-emerald-600 text-lg">check_circle</span>
+                    <span className="material-symbols-outlined text-emerald-600 text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
                     <p className="text-xs text-emerald-800 leading-relaxed">
-                      Story looks well-structured for <span className="font-bold">{targetPages}</span> pages. Ready to generate character sheets.
+                      Analysis complete. Story looks well-structured for your comic.
                     </p>
                   </div>
+
+                  <button type="button" onClick={runAnalysis}
+                    className="mt-5 w-full px-5 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-all">
+                    <span className="material-symbols-outlined text-lg">refresh</span>
+                    Re-run analysis
+                  </button>
                 </div>
-              )}
-
-              {/* Analyze button */}
-              <button type="button" onClick={runAnalysis} disabled={!canAnalyze || analysisState === 'loading'}
-                className={`mt-6 w-full px-5 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                  canAnalyze && analysisState !== 'loading'
-                    ? 'bg-primary text-on-primary hover:opacity-90 shadow-lg shadow-primary/20'
-                    : 'bg-surface-container-high text-on-surface-variant cursor-not-allowed'
-                }`}>
-                <span className={`material-symbols-outlined text-lg ${analysisState === 'loading' ? 'animate-spin' : ''}`}>
-                  {analysisState === 'loading' ? 'progress_activity' : 'auto_awesome'}
-                </span>
-                {analysisState === 'loading' ? 'Analyzing…' : analysisState === 'done' ? 'Re-run analysis' : 'Run AI analysis'}
-              </button>
-
-              {/* Next button — only after analysis */}
-              {analysisState === 'done' && (
-                <button type="button" onClick={handleNext}
-                  className="mt-3 w-full px-5 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-primary text-on-primary hover:opacity-90 shadow-lg shadow-primary/20 transition-all">
-                  Next: Character Setup
-                  <span className="material-symbols-outlined text-lg">chevron_right</span>
-                </button>
               )}
             </div>
 
-            {/* Pro tip */}
+            {/* Contextual pro tip */}
             <div className="p-6 rounded-3xl bg-gradient-to-br from-primary to-primary-container text-on-primary shadow-lg shadow-primary/20 relative overflow-hidden">
               <div className="absolute right-[-20%] top-[-30%] w-40 h-40 bg-white/10 rounded-full blur-2xl" />
               <div className="flex items-start gap-4 relative">
                 <span className="material-symbols-outlined text-3xl">lightbulb</span>
                 <div>
                   <h4 className="font-bold mb-1">Pro tip</h4>
-                  <p className="text-sm opacity-90 leading-relaxed">
-                    Name and describe characters clearly in your text — distinctive looks, age, and demeanor give the AI far better character sheets in the next step.
-                  </p>
+                  <p className="text-sm opacity-90 leading-relaxed">{PRO_TIPS[activeSection].tip}</p>
                 </div>
               </div>
             </div>
@@ -656,6 +818,45 @@ export default function StorySetupPage() {
           </aside>
         </div>
       </main>
+
+      {/* ── Sticky bottom bar ── */}
+      <div
+        className="fixed bottom-0 right-0 z-50 bg-surface/95 backdrop-blur-md border-t border-outline-variant/30 px-8 py-4"
+        style={{ left: 'var(--studio-sidebar-width, 16rem)' }}
+      >
+        <div className="max-w-[1400px] mx-auto flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2 text-sm">
+            {canProceed ? (
+              <div className="flex items-center gap-2 text-emerald-700">
+                <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                <span className="font-semibold">Story ready to go!</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-on-surface-variant">
+                <span className="material-symbols-outlined text-base text-amber-500">warning</span>
+                <span>
+                  <span className="font-bold">{essentials}/3</span> essentials · Missing: {missingEssentials}
+                </span>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={canProceed ? handleNext : undefined}
+            disabled={!canProceed}
+            title={!canProceed ? `Complete to continue: ${missingEssentials}` : undefined}
+            className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-sm transition-all ${
+              canProceed
+                ? 'bg-primary text-on-primary hover:opacity-90 shadow-lg shadow-primary/20'
+                : 'bg-surface-container-high text-on-surface-variant cursor-not-allowed'
+            }`}
+          >
+            Continue to Pipeline
+            <span className="material-symbols-outlined text-lg">arrow_forward</span>
+          </button>
+        </div>
+      </div>
+
     </div>
   );
 }

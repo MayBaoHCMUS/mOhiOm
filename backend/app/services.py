@@ -1271,6 +1271,116 @@ Rules: chapters_structure must have exactly {num_chapters} entries. main_charact
 
         yield ("done", analysis_markdown, structured)
 
+    async def generate_adapt_story_stream(
+        self,
+        original_story: str,
+        creative_direction: str,
+        genre_tone: str,
+        art_style_reference: str,
+        special_requests: str = "None",
+    ):
+        """
+        Stream story adaptation by a Comic Scriptwriter persona.
+
+        Yields:
+          ("thinking", str)       — reasoning tokens before the JSON separator (show in Thinking… UI)
+          ("done", str, list)     — (adapted_story_text, changes_summary list)
+          ("error", str, int)     — on failure
+        """
+        sep = "===JSON==="
+        prompt = f"""You are a professional and highly creative Comic Scriptwriter. Your task is to take an original story and adapt it based on the user's creative direction (e.g., adding a new character, creating a plot twist, changing the genre, etc.).
+
+Core requirements:
+- The new story must remain logical but introduce surprising and engaging elements.
+- The writing style must be visual-rich so it can be easily adapted into comic panels.
+- Describe scenes with vivid visual details: settings, lighting, character expressions, body language, and action.
+- Include clear visual moments that would work well as individual comic panels.
+- Maintain narrative coherence while incorporating the requested changes.
+- Do not summarize — write the complete adapted story as a narrative, not bullet points.
+
+Original Story:
+{original_story}
+
+User's Creative Direction:
+{creative_direction}
+
+Genre & Tone: {genre_tone}
+Art Style Reference: {art_style_reference}
+Special Requests: {special_requests}
+
+Think carefully about how to adapt this story, then write the complete adapted version.
+After your thinking and the full adapted narrative, output exactly this separator on its own line:
+
+{sep}
+{{
+  "adapted_story": "<full adapted story here — every paragraph, complete narrative>",
+  "changes_summary": ["<change 1>", "<change 2>", "<change 3>"]
+}}
+
+The adapted_story field must contain the complete prose narrative, not a summary."""
+
+        thinking_parts: list[str] = []
+        json_parts: list[str] = []
+        phase = "thinking"
+        pending = ""
+
+        try:
+            async for token in self._raw_stream(prompt):
+                if phase == "thinking":
+                    pending += token
+                    idx = pending.find(sep)
+                    if idx >= 0:
+                        pre = pending[:idx]
+                        if pre:
+                            yield ("thinking", pre)
+                            thinking_parts.append(pre)
+                        phase = "json"
+                        after = pending[idx + len(sep):]
+                        if after.strip():
+                            json_parts.append(after)
+                        pending = ""
+                    else:
+                        safe_until = max(0, len(pending) - len(sep) + 1)
+                        if safe_until > 0:
+                            safe = pending[:safe_until]
+                            yield ("thinking", safe)
+                            thinking_parts.append(safe)
+                            pending = pending[safe_until:]
+                else:
+                    json_parts.append(token)
+        except GeminiServiceError as exc:
+            yield ("error", str(exc), exc.status_code)
+            return
+        except Exception as exc:
+            yield ("error", f"Streaming failed: {exc}", 500)
+            return
+
+        if pending:
+            if phase == "thinking":
+                yield ("thinking", pending)
+                thinking_parts.append(pending)
+            else:
+                json_parts.append(pending)
+
+        raw_json = "".join(json_parts).strip()
+        if raw_json:
+            try:
+                payload = _extract_json_payload(raw_json)
+                adapted_story = str(payload.get("adapted_story", "")).strip()
+                changes_summary = payload.get("changes_summary", [])
+                if not isinstance(changes_summary, list):
+                    changes_summary = []
+            except GeminiServiceError:
+                # Separator found but JSON malformed — use thinking as story fallback
+                adapted_story = "".join(thinking_parts).strip()
+                changes_summary = []
+        else:
+            # No separator — model wrote the whole thing as prose; use it directly
+            adapted_story = "".join(thinking_parts).strip()
+            changes_summary = []
+
+        yield ("done", adapted_story, changes_summary)
+
     async def generate_panel_image_url(
         self,
         image_prompt: str,

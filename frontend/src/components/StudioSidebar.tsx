@@ -5,17 +5,24 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
-const navItems = [
-  { href: '/studio/dashboard', label: 'Home', icon: 'home' },
-  { href: '/studio/story-setup', label: 'Story Setup', icon: 'auto_stories' },
-  { href: '/studio/character-manager', label: 'Character Manager', icon: 'face_6' },
-  { href: '/studio/editor', label: 'Comic Editor', icon: 'edit_note' },
-  { href: '/studio/export', label: 'Export & Publish', icon: 'ios_share' },
+const WORKFLOW = [
+  { href: '/studio/story-setup',       label: 'Story Setup',        icon: 'auto_stories', step: 1 },
+  { href: '/studio/character-manager', label: 'Character Manager',  icon: 'face_6',       step: 2 },
+  { href: '/studio/editor',            label: 'Comic Editor',       icon: 'edit_note',    step: 3 },
+  { href: '/studio/export',            label: 'Export & Publish',   icon: 'ios_share',    step: 4 },
+];
+
+const TOOLS = [
   { href: '/studio/layout-engine', label: 'Layout Engine', icon: 'grid_view' },
-  { href: '/settings', label: 'Settings', icon: 'settings' },
+  { href: '/settings',             label: 'Settings',      icon: 'settings' },
+];
+
+const ACCOUNT = [
   { href: '/pricing', label: 'Pricing', icon: 'payments' },
   { href: '/gallery', label: 'Gallery', icon: 'collections' },
 ];
+
+const STEP_NUMERALS = ['①', '②', '③', '④'];
 
 export default function StudioSidebar() {
   const pathname = usePathname();
@@ -39,11 +46,18 @@ export default function StudioSidebar() {
   const toggleLabel = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
 
   const isActive = (href: string) => {
-    if (href === '/studio/dashboard') {
-      return pathname === href;
-    }
+    if (href === '/studio/dashboard') return pathname === href;
     return pathname === href || pathname.startsWith(`${href}/`);
   };
+
+  const navItemClass = (active: boolean) =>
+    `flex items-center gap-3 rounded-lg transition-all duration-200 ${
+      isCollapsed ? 'justify-center px-2 py-3' : 'px-4 py-3'
+    } ${
+      active
+        ? 'text-primary bg-white shadow-sm'
+        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+    }`;
 
   return (
     <aside
@@ -51,7 +65,8 @@ export default function StudioSidebar() {
         isCollapsed ? 'px-2 py-4' : 'p-4'
       }`}
     >
-      <div className={`mb-8 ${isCollapsed ? 'px-1 pt-2' : 'px-2 pt-4'}`}>
+      {/* Brand + collapse toggle */}
+      <div className={`mb-6 ${isCollapsed ? 'px-1 pt-2' : 'px-2 pt-4'}`}>
         <div className="flex items-start justify-between">
           <div className={isCollapsed ? 'flex flex-col items-center gap-1' : ''}>
             <h1 className={`font-bold tracking-tight ${isCollapsed ? 'text-lg' : 'text-xl'}`}>
@@ -74,30 +89,103 @@ export default function StudioSidebar() {
           </button>
         </div>
       </div>
-      <nav className="flex-1 space-y-1">
-        {navItems.map((item) => {
-          const active = isActive(item.href);
-          return (
-            <Link
-              key={item.href}
-              className={`flex items-center gap-3 rounded-lg transition-all duration-200 ${
-                isCollapsed ? 'justify-center px-2 py-3' : 'px-4 py-3'
-              } ${
-                active
-                  ? 'text-primary bg-white shadow-sm'
-                  : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-              }`}
-              href={item.href}
-              aria-current={active ? 'page' : undefined}
-              title={isCollapsed ? item.label : undefined}
-            >
-              <span className="material-symbols-outlined">{item.icon}</span>
-              <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>{item.label}</span>
-            </Link>
-          );
-        })}
+
+      {/* Dashboard home */}
+      <Link
+        href="/studio/dashboard"
+        className={navItemClass(isActive('/studio/dashboard'))}
+        aria-current={isActive('/studio/dashboard') ? 'page' : undefined}
+        title={isCollapsed ? 'Home' : undefined}
+      >
+        <span className="material-symbols-outlined">home</span>
+        <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>Home</span>
+      </Link>
+
+      <nav className="flex-1 overflow-y-auto mt-2 space-y-5">
+
+        {/* WORKFLOW group */}
+        <div>
+          {!isCollapsed && (
+            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-on-surface-variant/50 px-4 mb-1.5">Workflow</p>
+          )}
+          <div className="space-y-0.5">
+            {WORKFLOW.map((item, idx) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={navItemClass(active)}
+                  aria-current={active ? 'page' : undefined}
+                  title={isCollapsed ? `${item.step}. ${item.label}` : undefined}
+                >
+                  <span className="material-symbols-outlined">{item.icon}</span>
+                  {!isCollapsed && (
+                    <span className="text-sm font-semibold flex-1">{item.label}</span>
+                  )}
+                  {!isCollapsed && (
+                    <span className="text-xs text-on-surface-variant/40 font-bold">
+                      {STEP_NUMERALS[idx]}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* TOOLS group */}
+        <div>
+          {!isCollapsed && (
+            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-on-surface-variant/50 px-4 mb-1.5">Tools</p>
+          )}
+          <div className="space-y-0.5">
+            {TOOLS.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={navItemClass(active)}
+                  aria-current={active ? 'page' : undefined}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <span className="material-symbols-outlined">{item.icon}</span>
+                  <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ACCOUNT group */}
+        <div>
+          {!isCollapsed && (
+            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-on-surface-variant/50 px-4 mb-1.5">Account</p>
+          )}
+          <div className="space-y-0.5">
+            {ACCOUNT.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={navItemClass(active)}
+                  aria-current={active ? 'page' : undefined}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <span className="material-symbols-outlined">{item.icon}</span>
+                  <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
       </nav>
-      <div className="mt-auto pt-6 space-y-4">
+
+      {/* Bottom: upgrade + user */}
+      <div className="mt-auto pt-4 space-y-3">
         <Link
           className={`w-full bg-primary-container text-white rounded-xl font-semibold text-sm shadow-sm transition-transform active:scale-95 flex items-center justify-center gap-2 py-3 ${
             isCollapsed ? '' : 'px-4'

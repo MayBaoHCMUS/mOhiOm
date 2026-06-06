@@ -464,6 +464,7 @@ export interface ComicGenerationContextValue {
   loadFromCloud: (projectId: string) => Promise<{ success: boolean; error?: string }>;
   listCloudProjects: () => Promise<CloudProjectListItem[]>;
   injectLibraryCharacters: (chars: CharacterSummary[]) => void;
+  fromStorySetup: boolean;
 }
 
 const ComicGenerationContext = createContext<ComicGenerationContextValue | null>(null);
@@ -491,6 +492,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   const [streamingText, setStreamingText] = useState('');
   const [cloudSaveStatus, setCloudSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [cloudSaveError, setCloudSaveError] = useState<string | null>(null);
+  const [fromStorySetup, setFromStorySetup] = useState(false);
 
   const [step1, setStep1] = useState<StepState<Step1Result>>(emptyStepState(false));
   const [step2, setStep2] = useState<StepState<Step2Result>>(emptyStepState(true));
@@ -527,6 +529,28 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     projectsApi.load(pending).then((res) => {
       restoreFromFullSave(res.data as unknown as Record<string, unknown>);
     }).catch(() => { /* silently ignore if project was deleted */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Pre-fill fields from story-setup page when user clicks "Next" there.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const raw = window.localStorage.getItem('mohiom-story-setup');
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw) as Record<string, unknown>;
+      if (saved.storyText)     setStoryText(String(saved.storyText));
+      if (saved.genre)         setMangaGenre(String(saved.genre));
+      if (saved.artRef)        setArtStyle(String(saved.artRef));
+      if (saved.mainChars)     setMainCharacters(String(saved.mainChars));
+      if (saved.chapters)      setNumChapters(String(saved.chapters));
+      if (saved.targetPages)   setTargetPages(String(saved.targetPages));
+      if (saved.maxPanels)     setMaxPanelsPerPage(String(saved.maxPanels));
+      if (saved.specialRequests) setSpecialRequests(String(saved.specialRequests));
+      if (saved.projectId)     setProjectId(String(saved.projectId));
+      setFromStorySetup(true);
+      // Keep the key so the user can re-enter story-setup and re-import; clear on first generate.
+    } catch { /* malformed — silently ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -2419,6 +2443,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     loadFromCloud,
     listCloudProjects,
     injectLibraryCharacters,
+    fromStorySetup,
   };
 
   return <ComicGenerationContext.Provider value={value}>{children}</ComicGenerationContext.Provider>;
