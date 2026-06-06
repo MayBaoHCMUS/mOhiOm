@@ -598,20 +598,43 @@ export default function Step1() {
           {step1.error && <span className="text-sm text-red-600">{step1.error}</span>}
           {importError && <span className="text-sm text-red-600">{importError}</span>}
         </div>
-        <button
-          type="button"
-          onClick={handleGenerateClick}
-          disabled={isGenerating}
-          className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
-            isGenerating ? 'bg-gray-100 text-gray-400 cursor-not-allowed' :
-            canGenerate  ? 'bg-gray-900 text-white hover:scale-105' :
-                          'bg-gray-200 text-gray-500 hover:scale-105'
-          }`}
-        >
-          {step1.isLoading ? 'Analyzing…' :
-           cooldownSeconds > 0 ? `Retry in ${cooldownSeconds}s` :
-           step1.data ? 'Regenerate analysis' : 'Generate analysis'}
-        </button>
+        {/* Generate button with checklist tooltip when incomplete */}
+        <div className="relative group">
+          <button
+            type="button"
+            onClick={handleGenerateClick}
+            disabled={isGenerating}
+            className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
+              isGenerating ? 'bg-gray-100 text-gray-400 cursor-not-allowed' :
+              canGenerate  ? 'bg-gray-900 text-white hover:scale-105' :
+                            'bg-gray-200 text-gray-500 hover:scale-105'
+            }`}
+          >
+            {step1.isLoading ? 'Analyzing…' :
+             cooldownSeconds > 0 ? `Retry in ${cooldownSeconds}s` :
+             step1.data ? 'Regenerate analysis' : 'Generate analysis'}
+          </button>
+          {!canGenerate && !isGenerating && (
+            <div className="absolute bottom-full right-0 mb-2.5 hidden group-hover:block z-50 pointer-events-none min-w-[200px]">
+              <div className="bg-gray-900 text-white rounded-2xl px-4 py-3 shadow-xl text-xs space-y-1.5">
+                <p className="font-bold mb-2 text-white/80 uppercase tracking-wider">Required to generate</p>
+                {[
+                  { label: 'Story imported', ok: storyValid },
+                  { label: 'Project ID (min 3 chars)', ok: projectIdValid },
+                  { label: 'Art style reference', ok: artStyleValid },
+                ].map(({ label, ok }) => (
+                  <div key={label} className={`flex items-center gap-2 ${ok ? 'text-emerald-400' : 'text-white/60'}`}>
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: ok ? "'FILL' 1" : "'FILL' 0" }}>
+                      {ok ? 'check_circle' : 'radio_button_unchecked'}
+                    </span>
+                    {label}
+                  </div>
+                ))}
+              </div>
+              <div className="w-3 h-3 bg-gray-900 rotate-45 ml-auto mr-5 -mt-1.5" />
+            </div>
+          )}
+        </div>
       </div>
 
       <input ref={importInputRef} type="file" accept=".json,application/json" className="hidden" onChange={handleImportJson} />

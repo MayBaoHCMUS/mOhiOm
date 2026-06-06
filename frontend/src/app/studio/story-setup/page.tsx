@@ -28,9 +28,8 @@ const GENRE_CHIPS = [
 
 const DIRECTION_CHIPS = [
   'Add a new character',
-  'Create a plot twist',
-  'Change the genre',
   'Add a subplot',
+  'Change the genre',
   'Change the ending',
   'Make it darker',
   'Add comic relief',
@@ -142,6 +141,10 @@ export default function StorySetupPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysisResult]);
 
+  // Mode: Quick Start (minimal) | Full Setup (all fields) | Load Story
+  const [mode, setMode] = useState<'quick' | 'full'>('quick');
+  const autoAnalysisTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Active section for contextual pro tip
   const [activeSection, setActiveSection] = useState<'foundation' | 'narrative' | 'creative'>('foundation');
 
@@ -205,14 +208,28 @@ export default function StorySetupPage() {
     return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
   }, [toast]);
 
-  // 3 essentials: title, genre, narrative ≥ 80 chars
-  const essentialChecks = [
-    storyTitle.trim() !== '',
-    genre.trim() !== '',
-    storyText.trim().length >= 80,
-  ];
+  // Quick Start: auto-trigger analysis after 1.5s of no typing when essentials met
+  useEffect(() => {
+    if (mode !== 'quick') return;
+    if (analysisState === 'loading' || analysisState === 'done') return;
+    if (!storyTitle.trim() || storyText.trim().length < 80) return;
+    if (autoAnalysisTimer.current) clearTimeout(autoAnalysisTimer.current);
+    autoAnalysisTimer.current = setTimeout(() => {
+      runAnalysis();
+    }, 1500);
+    return () => { if (autoAnalysisTimer.current) clearTimeout(autoAnalysisTimer.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, storyTitle, storyText, analysisState]);
+
+  // Quick Start essentials: title + narrative only (genre not required)
+  // Full Setup essentials: title + genre + narrative
+  const essentialChecks =
+    mode === 'quick'
+      ? [storyTitle.trim() !== '', storyText.trim().length >= 80]
+      : [storyTitle.trim() !== '', genre.trim() !== '', storyText.trim().length >= 80];
+  const essentialsTotal = mode === 'quick' ? 2 : 3;
   const essentials = essentialChecks.filter(Boolean).length;
-  const canProceed = essentials === 3;
+  const canProceed = essentials === essentialsTotal;
 
   // File upload
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -351,6 +368,30 @@ export default function StorySetupPage() {
     flashSave();
   }, [flashSave]);
 
+  const handleExportJson = useCallback(() => {
+    const effectiveStory = (adaptedStory && !showOriginal) ? adaptedStory : storyText;
+    const data = {
+      storyTitle, projectId, genre,
+      storyText: effectiveStory,
+      adaptedFromOriginal: adaptedStory !== null && !showOriginal,
+      creativeDirection,
+      analysisResult: analysisResult ?? null,
+      mainCharacters: advancedMainChars,
+      numChapters: advancedNumChapters,
+      targetPages: advancedTargetPages,
+      maxPanelsPerPage: advancedMaxPanels,
+      exportedAt: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${projectId || 'story'}_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setMoreMenuOpen(false);
+  }, [storyTitle, projectId, genre, storyText, adaptedStory, showOriginal, creativeDirection, analysisResult, advancedMainChars, advancedNumChapters, advancedTargetPages, advancedMaxPanels]);
+
   const handleNext = () => {
     const effectiveStory = (adaptedStory && !showOriginal) ? adaptedStory : storyText;
     if (typeof window !== 'undefined') {
@@ -393,7 +434,7 @@ export default function StorySetupPage() {
 
   const missingEssentials = [
     !storyTitle.trim() && 'Title',
-    !genre.trim() && 'Genre',
+    mode === 'full' && !genre.trim() && 'Genre',
     storyText.trim().length < 80 && 'Narrative',
   ].filter(Boolean).join(', ');
 
@@ -422,19 +463,19 @@ export default function StorySetupPage() {
                 <span>{saveState === 'saved' ? 'Auto-saved' : 'Saving…'}</span>
               </div>
 
-              {/* More menu */}
+              {/* Manage story menu */}
               <div className="relative" ref={moreMenuRef}>
                 <button
                   type="button"
                   onClick={() => setMoreMenuOpen((v) => !v)}
                   className="flex items-center gap-1 text-sm font-semibold text-on-surface-variant bg-surface-container-lowest border border-outline-variant/40 rounded-full px-4 py-2 hover:bg-surface-container-low transition-colors"
                 >
-                  <span className="material-symbols-outlined text-base">more_horiz</span>
-                  More
+                  <span className="material-symbols-outlined text-base">menu_book</span>
+                  Manage story
                   <span className="material-symbols-outlined text-sm">expand_more</span>
                 </button>
                 {moreMenuOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-52 bg-surface-container-lowest border border-outline-variant/30 rounded-2xl shadow-lg z-50 overflow-hidden">
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-surface-container-lowest border border-outline-variant/30 rounded-2xl shadow-lg z-50 overflow-hidden">
                     <button type="button" onClick={handleSaveStory}
                       className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-on-surface hover:bg-surface-container-low transition-colors text-left">
                       <span className="material-symbols-outlined text-base text-primary">bookmark</span>
@@ -445,11 +486,28 @@ export default function StorySetupPage() {
                       <span className="material-symbols-outlined text-base text-on-surface-variant">folder_open</span>
                       Load story…
                     </button>
+                    <button type="button" onClick={handleExportJson}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-on-surface hover:bg-surface-container-low transition-colors text-left">
+                      <span className="material-symbols-outlined text-base text-on-surface-variant">download</span>
+                      Export as JSON
+                    </button>
+                    <div className="border-t border-outline-variant/20" />
                     <button type="button"
                       onClick={() => {
-                        handleSaveStory();
+                        // Duplicate: save current state as a new story with "(copy)" suffix
+                        const saved = saveStory({
+                          title: (storyTitle || 'Untitled Story') + ' (copy)',
+                          projectId,
+                          storyText,
+                          adaptedStory,
+                          genre,
+                          creativeDirection,
+                          analysisResult,
+                        });
+                        setMoreMenuOpen(false);
+                        setToast({ message: `Duplicated as "${saved.title}"`, action: { label: 'View →', href: '/studio/my-stories' } });
                       }}
-                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-on-surface hover:bg-surface-container-low transition-colors text-left border-t border-outline-variant/20">
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-on-surface hover:bg-surface-container-low transition-colors text-left">
                       <span className="material-symbols-outlined text-base text-on-surface-variant">content_copy</span>
                       Duplicate story
                     </button>
@@ -471,19 +529,57 @@ export default function StorySetupPage() {
             </div>
           </div>
 
-          {/* Progress bar — 3 essentials */}
-          <div className="mt-6 bg-surface-container-lowest border border-outline-variant/30 rounded-2xl px-5 py-4 flex flex-wrap items-center gap-4">
+          {/* Mode tabs */}
+          <div className="mt-6 flex items-center gap-1 bg-surface-container-low rounded-2xl p-1 w-fit">
+            {([
+              { key: 'quick', label: 'Quick Start', icon: 'bolt',       desc: 'Title + narrative only' },
+              { key: 'full',  label: 'Full Setup',  icon: 'tune',       desc: 'All fields + creative direction' },
+            ] as const).map(({ key, label, icon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setMode(key);
+                  if (key === 'full' && analysisState === 'done') {
+                    // Keep analysis result, just expand mode
+                  }
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                  mode === key
+                    ? 'bg-surface-container-lowest shadow-sm text-on-surface'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                <span className="material-symbols-outlined text-base">{icon}</span>
+                {label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setLoadModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-lowest transition-all"
+            >
+              <span className="material-symbols-outlined text-base">folder_open</span>
+              Load Story
+            </button>
+          </div>
+
+          {/* Progress bar — essentials */}
+          <div className="mt-4 bg-surface-container-lowest border border-outline-variant/30 rounded-2xl px-5 py-4 flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-3 flex-1 min-w-[200px]">
               <div className="flex-1 h-2 rounded-full bg-surface-container-high overflow-hidden">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-primary to-primary-container transition-all duration-500"
-                  style={{ width: `${(essentials / 3) * 100}%` }}
+                  style={{ width: `${(essentials / essentialsTotal) * 100}%` }}
                 />
               </div>
-              <span className="text-sm font-bold text-on-surface whitespace-nowrap">{essentials}/3 essentials</span>
+              <span className="text-sm font-bold text-on-surface whitespace-nowrap">{essentials}/{essentialsTotal} essentials</span>
             </div>
             <div className="flex items-center gap-4 text-xs text-on-surface-variant">
-              {(['Title', 'Genre', 'Narrative'] as const).map((label, i) => (
+              {(mode === 'quick'
+                ? ['Title', 'Narrative'] as const
+                : ['Title', 'Genre', 'Narrative'] as const
+              ).map((label, i) => (
                 <span key={label} className={`flex items-center gap-1 transition-colors ${essentialChecks[i] ? 'text-emerald-600' : ''}`}>
                   <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: essentialChecks[i] ? "'FILL' 1" : "'FILL' 0" }}>
                     {essentialChecks[i] ? 'check_circle' : 'radio_button_unchecked'}
@@ -491,6 +587,9 @@ export default function StorySetupPage() {
                   {label}
                 </span>
               ))}
+              {mode === 'quick' && (
+                <span className="text-on-surface-variant/50 italic">Analysis auto-runs</span>
+              )}
             </div>
           </div>
         </header>
@@ -510,7 +609,7 @@ export default function StorySetupPage() {
                 <h2 className="text-xl font-bold tracking-tight">Story foundation</h2>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
+                <div className={`space-y-2 ${mode === 'quick' ? 'md:col-span-2' : ''}`}>
                   <label className="block text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1" htmlFor="storyTitle">Story title</label>
                   <input
                     id="storyTitle" value={storyTitle} placeholder="The Last Ember"
@@ -519,35 +618,39 @@ export default function StorySetupPage() {
                   />
                   <p className="text-xs text-on-surface-variant/70 px-1">Shown on your cover and project list.</p>
                 </div>
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1" htmlFor="projectId">Project ID</label>
-                  <div className="relative">
-                    <input
-                      id="projectId" value={projectId} placeholder="last_ember_001" className="field font-mono pr-10"
-                      onChange={(e) => { setProjectId(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '')); flashSave(); }}
-                    />
-                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline text-lg pointer-events-none">tag</span>
-                  </div>
-                  <p className="text-xs text-on-surface-variant/70 px-1">Letters, numbers, - and _ only.</p>
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <label className="block text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1" htmlFor="genre">Genre &amp; tone</label>
-                  <input
-                    id="genre" value={genre} placeholder="Fantasy / Adventure · Epic, hopeful" className="field"
-                    onChange={(e) => { setGenre(e.target.value); flashSave(); }}
-                  />
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {GENRE_CHIPS.map((chip) => (
-                      <GenreChip
-                        key={chip.label}
-                        label={chip.label}
-                        tooltip={chip.tooltip}
-                        active={genre === chip.label}
-                        onClick={() => { setGenre(chip.label); flashSave(); }}
+                {mode === 'full' && (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1" htmlFor="projectId">Project ID</label>
+                    <div className="relative">
+                      <input
+                        id="projectId" value={projectId} placeholder="last_ember_001" className="field font-mono pr-10"
+                        onChange={(e) => { setProjectId(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '')); flashSave(); }}
                       />
-                    ))}
+                      <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline text-lg pointer-events-none">tag</span>
+                    </div>
+                    <p className="text-xs text-on-surface-variant/70 px-1">Letters, numbers, - and _ only.</p>
                   </div>
-                </div>
+                )}
+                {mode === 'full' && (
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="block text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1" htmlFor="genre">Genre &amp; tone</label>
+                    <input
+                      id="genre" value={genre} placeholder="Fantasy / Adventure · Epic, hopeful" className="field"
+                      onChange={(e) => { setGenre(e.target.value); flashSave(); }}
+                    />
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {GENRE_CHIPS.map((chip) => (
+                        <GenreChip
+                          key={chip.label}
+                          label={chip.label}
+                          tooltip={chip.tooltip}
+                          active={genre === chip.label}
+                          onClick={() => { setGenre(chip.label); flashSave(); }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -652,8 +755,8 @@ export default function StorySetupPage() {
               </div>
             </div>
 
-            {/* 3. Creative direction */}
-            <div
+            {/* 3. Creative direction — hidden in Quick Start */}
+            {mode === 'full' && <div
               className="bg-surface-container-lowest rounded-3xl p-8 shadow-[0_20px_50px_rgba(0,88,190,0.05)] border border-outline-variant/10"
               onFocus={() => setActiveSection('creative')}
             >
@@ -755,9 +858,10 @@ export default function StorySetupPage() {
                   {adaptState === 'thinking' ? 'Adapting…' : adaptState === 'done' ? 'Re-adapt story' : 'Adapt story'}
                 </button>
               </div>
-            </div>
+            </div>}
 
-            {/* 4. Advanced Setup — collapsible production targets */}
+            {/* 4. Advanced Setup — collapsible production targets, hidden in Quick Start */}
+            {mode === 'full' &&
             <div className="bg-surface-container-lowest rounded-3xl border border-outline-variant/10 shadow-[0_20px_50px_rgba(0,88,190,0.05)] overflow-hidden">
               <button
                 type="button"
@@ -900,7 +1004,21 @@ export default function StorySetupPage() {
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
+
+            {/* Quick Start hint — switch to full for more options */}
+            {mode === 'quick' && (
+              <div className="flex items-center gap-3 rounded-2xl bg-surface-container-low px-5 py-3">
+                <span className="material-symbols-outlined text-on-surface-variant text-base">info</span>
+                <p className="text-sm text-on-surface-variant">
+                  Quick Start hides Creative Direction and Advanced Setup.{' '}
+                  <button type="button" onClick={() => setMode('full')} className="font-semibold text-primary hover:underline">
+                    Switch to Full Setup
+                  </button>{' '}
+                  to configure genre, chapters, and page targets.
+                </p>
+              </div>
+            )}
 
           </section>
 
@@ -916,13 +1034,14 @@ export default function StorySetupPage() {
               {/* STATE 1 — Empty */}
               {panelState === 'empty' && (
                 <div className="flex-grow flex flex-col py-2">
-                  <p className="text-sm font-semibold text-on-surface mb-4">Complete the essentials to unlock AI Analysis</p>
+                  <p className="text-sm font-semibold text-on-surface mb-4">
+                    {mode === 'quick' ? 'Add a title and narrative to auto-trigger analysis' : 'Complete the essentials to unlock AI Analysis'}
+                  </p>
                   <div className="space-y-3 mb-6">
-                    {[
-                      { label: 'Story Title',    done: essentialChecks[0] },
-                      { label: 'Genre & Tone',   done: essentialChecks[1] },
-                      { label: 'Your Narrative', done: essentialChecks[2] },
-                    ].map(({ label, done }) => (
+                    {(mode === 'quick'
+                      ? [{ label: 'Story Title', done: essentialChecks[0] }, { label: 'Your Narrative', done: essentialChecks[1] }]
+                      : [{ label: 'Story Title', done: essentialChecks[0] }, { label: 'Genre & Tone', done: essentialChecks[1] }, { label: 'Your Narrative', done: essentialChecks[2] }]
+                    ).map(({ label, done }) => (
                       <div key={label} className="flex items-center gap-2.5 text-sm">
                         <span className={`material-symbols-outlined text-base ${done ? 'text-emerald-500' : 'text-outline'}`} style={{ fontVariationSettings: done ? "'FILL' 1" : "'FILL' 0" }}>
                           {done ? 'check_circle' : 'radio_button_unchecked'}
@@ -931,10 +1050,17 @@ export default function StorySetupPage() {
                       </div>
                     ))}
                   </div>
-                  <button disabled className="mt-auto w-full px-5 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-surface-container-high text-on-surface-variant cursor-not-allowed">
-                    <span className="material-symbols-outlined text-lg">auto_awesome</span>
-                    Run AI Analysis
-                  </button>
+                  {mode === 'quick' ? (
+                    <div className="mt-auto flex items-center gap-2 text-xs text-on-surface-variant bg-surface-container-low rounded-2xl px-4 py-3">
+                      <span className="material-symbols-outlined text-sm">bolt</span>
+                      Analysis will auto-run when ready
+                    </div>
+                  ) : (
+                    <button disabled className="mt-auto w-full px-5 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-surface-container-high text-on-surface-variant cursor-not-allowed">
+                      <span className="material-symbols-outlined text-lg">auto_awesome</span>
+                      Run AI Analysis
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -992,14 +1118,23 @@ export default function StorySetupPage() {
                     <span className="material-symbols-outlined text-3xl text-emerald-500" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
                   </div>
                   <p className="font-semibold text-on-surface mb-2">Ready to analyze</p>
-                  <p className="text-sm text-on-surface-variant mb-6 leading-relaxed">
-                    All essentials complete. Run AI analysis to preview characters, scene beats, and tone.
-                  </p>
-                  <button type="button" onClick={runAnalysis}
-                    className="w-full px-5 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-primary text-on-primary shadow-lg shadow-primary/20 animate-pulse hover:animate-none hover:opacity-90 transition-all">
-                    <span className="material-symbols-outlined text-lg">auto_awesome</span>
-                    ▶ Run AI Analysis
-                  </button>
+                  {mode === 'quick' ? (
+                    <div className="flex items-center gap-2 text-sm text-on-surface-variant mb-6 bg-surface-container-low rounded-2xl px-4 py-3 w-full justify-center">
+                      <span className="material-symbols-outlined text-sm animate-pulse text-primary">bolt</span>
+                      Starting automatically…
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm text-on-surface-variant mb-6 leading-relaxed">
+                        All essentials complete. Run AI analysis to preview characters, scene beats, and tone.
+                      </p>
+                      <button type="button" onClick={runAnalysis}
+                        className="w-full px-5 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-primary text-on-primary shadow-lg shadow-primary/20 animate-pulse hover:animate-none hover:opacity-90 transition-all">
+                        <span className="material-symbols-outlined text-lg">auto_awesome</span>
+                        ▶ Run AI Analysis
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -1047,19 +1182,49 @@ export default function StorySetupPage() {
                     ))}
                   </div>
 
-                  {/* Characters */}
+                  {/* Characters — with confidence scores (Change 3.2) */}
                   <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">Characters</p>
-                  <div className="grid grid-cols-3 gap-3 mb-6">
-                    {analysisResult.chars.map((name) => (
-                      <div key={name} className="flex flex-col items-center gap-2">
-                        <div className="w-full aspect-square rounded-2xl bg-surface-container-low flex items-center justify-center"
-                          style={{ backgroundImage: 'repeating-linear-gradient(45deg,rgba(0,88,190,0.07) 0,rgba(0,88,190,0.07) 1px,transparent 1px,transparent 9px)' }}>
-                          <span className="material-symbols-outlined text-on-surface-variant/50 text-3xl">person</span>
+                  {(() => {
+                    const textLower = storyText.toLowerCase();
+                    const lowConfidenceChars = analysisResult.chars.filter((name) => {
+                      const count = (textLower.match(new RegExp(name.toLowerCase(), 'g')) ?? []).length;
+                      return count < 2;
+                    });
+                    return (
+                      <>
+                        {lowConfidenceChars.length > 0 && (
+                          <div className="flex items-start gap-2 rounded-2xl bg-amber-50 border border-amber-100 px-3 py-2.5 mb-3">
+                            <span className="material-symbols-outlined text-amber-500 text-sm mt-0.5">warning</span>
+                            <p className="text-xs text-amber-800">
+                              <strong>{lowConfidenceChars.join(', ')}</strong>{' '}
+                              {lowConfidenceChars.length === 1 ? 'appears' : 'appear'} rarely — add more detail for accurate character sheets.
+                            </p>
+                          </div>
+                        )}
+                        <div className="grid grid-cols-3 gap-3 mb-6">
+                          {analysisResult.chars.map((name) => {
+                            const count = (textLower.match(new RegExp(name.toLowerCase(), 'g')) ?? []).length;
+                            const confidence = count >= 5 ? 'high' : count >= 2 ? 'medium' : 'low';
+                            const confColor = confidence === 'high' ? 'text-emerald-600' : confidence === 'medium' ? 'text-amber-500' : 'text-red-500';
+                            const confLabel = confidence === 'high' ? 'High' : confidence === 'medium' ? 'Med' : 'Low';
+                            return (
+                              <div key={name} className="flex flex-col items-center gap-1.5">
+                                <div className={`w-full aspect-square rounded-2xl flex items-center justify-center border ${
+                                  confidence === 'high' ? 'bg-emerald-50 border-emerald-100' :
+                                  confidence === 'medium' ? 'bg-amber-50 border-amber-100' :
+                                  'bg-red-50 border-red-100'
+                                }`}>
+                                  <span className="material-symbols-outlined text-on-surface-variant/50 text-3xl">person</span>
+                                </div>
+                                <span className="text-xs font-semibold text-on-surface truncate w-full text-center">{name}</span>
+                                <span className={`text-[10px] font-bold ${confColor}`}>{confLabel} confidence</span>
+                              </div>
+                            );
+                          })}
                         </div>
-                        <span className="text-xs font-semibold text-on-surface truncate w-full text-center">{name}</span>
-                      </div>
-                    ))}
-                  </div>
+                      </>
+                    );
+                  })()}
 
                   {/* Scene beats */}
                   <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">Scene beats</p>

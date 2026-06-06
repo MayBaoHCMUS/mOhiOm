@@ -6,10 +6,11 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
 const WORKFLOW = [
-  { href: '/studio/story-setup',       label: 'Story Setup',        icon: 'auto_stories', step: 1 },
-  { href: '/studio/character-manager', label: 'Character Manager',  icon: 'face_6',       step: 2 },
-  { href: '/studio/editor',            label: 'Comic Editor',       icon: 'edit_note',    step: 3 },
-  { href: '/studio/export',            label: 'Export & Publish',   icon: 'ios_share',    step: 4 },
+  { href: '/studio/story-setup',       label: 'Story Setup',        icon: 'auto_stories',  step: 1 },
+  { href: '/studio',                   label: 'Comic Pipeline',      icon: 'movie_creation', step: 2 },
+  { href: '/studio/character-manager', label: 'Character Manager',  icon: 'face_6',        step: 3 },
+  { href: '/studio/editor',            label: 'Comic Editor',       icon: 'edit_note',     step: 4 },
+  { href: '/studio/export',            label: 'Export & Publish',   icon: 'ios_share',     step: 5 },
 ];
 
 const TOOLS = [
@@ -23,7 +24,7 @@ const ACCOUNT = [
   { href: '/gallery', label: 'Gallery', icon: 'collections' },
 ];
 
-const STEP_NUMERALS = ['①', '②', '③', '④'];
+const STEP_NUMERALS = ['①', '②', '③', '④', '⑤'];
 
 export default function StudioSidebar() {
   const pathname = usePathname();
@@ -101,17 +102,6 @@ export default function StudioSidebar() {
       >
         <span className="material-symbols-outlined">home</span>
         <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>Home</span>
-      </Link>
-
-      {/* Comic Pipeline — main generator */}
-      <Link
-        href="/studio"
-        className={`mt-1 ${navItemClass(isActive('/studio'))}`}
-        aria-current={isActive('/studio') ? 'page' : undefined}
-        title={isCollapsed ? 'Comic Pipeline' : undefined}
-      >
-        <span className="material-symbols-outlined">movie_creation</span>
-        <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>Comic Pipeline</span>
       </Link>
 
       <nav className="flex-1 overflow-y-auto mt-2 space-y-5">
