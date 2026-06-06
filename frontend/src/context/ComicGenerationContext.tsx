@@ -465,6 +465,7 @@ export interface ComicGenerationContextValue {
   listCloudProjects: () => Promise<CloudProjectListItem[]>;
   injectLibraryCharacters: (chars: CharacterSummary[]) => void;
   fromStorySetup: boolean;
+  setFromStorySetup: (v: boolean) => void;
   fieldsAutoFilledFromAnalysis: boolean;
   storySetupAnalysisResult: {
     sceneBeats: number;
@@ -558,7 +559,17 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       if (saved.projectId) setProjectId(String(saved.projectId));
       setFromStorySetup(true);
 
-      // Auto-fill creative targets from Story Setup AI analysis (if analysis was run there).
+      // Explicit production targets from Advanced Setup take priority over analysis-derived values.
+      const hasExplicitTargets = saved.mainCharacters || saved.numChapters || saved.targetPages || saved.maxPanelsPerPage;
+      if (hasExplicitTargets) {
+        if (saved.mainCharacters)  setMainCharacters(String(saved.mainCharacters));
+        if (saved.numChapters)     setNumChapters(String(saved.numChapters));
+        if (saved.targetPages)     setTargetPages(String(saved.targetPages));
+        if (saved.maxPanelsPerPage) setMaxPanelsPerPage(String(saved.maxPanelsPerPage));
+      }
+
+      // Auto-fill creative targets from Story Setup AI analysis (if analysis was run there
+      // and user did not set explicit targets in Advanced Setup).
       if (saved.analysisResult && typeof saved.analysisResult === 'object') {
         const ar = saved.analysisResult as Record<string, unknown>;
         const chars    = Array.isArray(ar.chars)  ? (ar.chars  as string[]) : [];
@@ -566,10 +577,12 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         const panels   = typeof ar.panels    === 'number' ? ar.panels    : 0;
         const tone     = Array.isArray(ar.tone)   ? (ar.tone   as string[]) : [];
 
-        if (chars.length > 0)  setMainCharacters(String(chars.length));
-        if (beats > 0)         setNumChapters(String(Math.max(1, Math.min(50, Math.ceil(beats / 4)))));
-        if (panels > 0)        setTargetPages(String(Math.max(10, Math.min(500, Math.round(panels / 5)))));
-        setMaxPanelsPerPage('5');
+        if (!hasExplicitTargets) {
+          if (chars.length > 0)  setMainCharacters(String(chars.length));
+          if (beats > 0)         setNumChapters(String(Math.max(1, Math.min(50, Math.ceil(beats / 4)))));
+          if (panels > 0)        setTargetPages(String(Math.max(10, Math.min(500, Math.round(panels / 5)))));
+          setMaxPanelsPerPage('5');
+        }
 
         setStorySetupAnalysisResult({ sceneBeats: beats, chars, tone, panels });
         setFieldsAutoFilledFromAnalysis(true);
@@ -2468,6 +2481,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     listCloudProjects,
     injectLibraryCharacters,
     fromStorySetup,
+    setFromStorySetup,
     fieldsAutoFilledFromAnalysis,
     storySetupAnalysisResult,
   };

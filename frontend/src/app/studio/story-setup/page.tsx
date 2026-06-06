@@ -100,7 +100,7 @@ function GenreChip({ label, tooltip, active, onClick }: {
 
 export default function StorySetupPage() {
   const router = useRouter();
-  const { save: saveStory, stories: savedStories, remove: removeStory, duplicate: duplicateStory } = useStoryLibrary();
+  const { save: saveStory, stories: savedStories } = useStoryLibrary();
 
   // Form inputs (story-only — art/structure fields moved to Pipeline Step 1)
   const [storyTitle, setStoryTitle] = useState('');
@@ -125,6 +125,22 @@ export default function StorySetupPage() {
   } | null>(null);
   const [streamingText, setStreamingText] = useState('');
   const abortRef = useRef<AbortController | null>(null);
+
+  // Advanced Setup (production targets)
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedMainChars,  setAdvancedMainChars]  = useState('3');
+  const [advancedNumChapters, setAdvancedNumChapters] = useState('4');
+  const [advancedTargetPages, setAdvancedTargetPages] = useState('20');
+  const [advancedMaxPanels,  setAdvancedMaxPanels]  = useState('5');
+
+  // Auto-expand Advanced Setup on capacity mismatch after analysis
+  useEffect(() => {
+    if (!analysisResult) return;
+    const charMismatch = analysisResult.chars.length > parseInt(advancedMainChars, 10);
+    const pagesMismatch = analysisResult.panels > parseInt(advancedTargetPages, 10) * parseInt(advancedMaxPanels, 10) * 0.7;
+    if (charMismatch || pagesMismatch) setAdvancedOpen(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisResult]);
 
   // Active section for contextual pro tip
   const [activeSection, setActiveSection] = useState<'foundation' | 'narrative' | 'creative'>('foundation');
@@ -346,8 +362,12 @@ export default function StorySetupPage() {
         projectId,
         adaptedFromOriginal: adapted,
         adaptedWordCount: adapted ? wordCount(adaptedStory ?? '') : null,
-        // Include analysis results so Pipeline Step 1 can auto-fill creative targets
         analysisResult: analysisResult ?? null,
+        // Explicit production targets from Advanced Setup (take priority over analysis-derived values)
+        mainCharacters: advancedMainChars,
+        numChapters: advancedNumChapters,
+        targetPages: advancedTargetPages,
+        maxPanelsPerPage: advancedMaxPanels,
       }));
     }
     router.push('/studio');
@@ -735,6 +755,151 @@ export default function StorySetupPage() {
                   {adaptState === 'thinking' ? 'Adapting…' : adaptState === 'done' ? 'Re-adapt story' : 'Adapt story'}
                 </button>
               </div>
+            </div>
+
+            {/* 4. Advanced Setup — collapsible production targets */}
+            <div className="bg-surface-container-lowest rounded-3xl border border-outline-variant/10 shadow-[0_20px_50px_rgba(0,88,190,0.05)] overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen((v) => !v)}
+                className="w-full flex items-center justify-between px-8 py-5 hover:bg-surface-container-low transition-colors text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="material-symbols-outlined text-on-surface-variant text-2xl">tune</span>
+                  <div>
+                    <h2 className="text-base font-bold tracking-tight">Advanced Setup</h2>
+                    <p className="text-xs text-on-surface-variant mt-0.5">
+                      Production targets · {advancedTargetPages} pages · {advancedNumChapters} chapters · {advancedMainChars} chars
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {analysisResult && (() => {
+                    const charMismatch = analysisResult.chars.length > parseInt(advancedMainChars, 10);
+                    const pagesMismatch = analysisResult.panels > parseInt(advancedTargetPages, 10) * parseInt(advancedMaxPanels, 10) * 0.7;
+                    return (charMismatch || pagesMismatch) ? (
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">Mismatch</span>
+                    ) : null;
+                  })()}
+                  <span
+                    className="material-symbols-outlined text-on-surface-variant text-xl transition-transform duration-200"
+                    style={{ transform: advancedOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                  >
+                    expand_more
+                  </span>
+                </div>
+              </button>
+
+              {advancedOpen && (
+                <div className="px-8 pb-8 pt-2 space-y-6 border-t border-outline-variant/10">
+
+                  {/* Capacity check warnings */}
+                  {analysisResult && (() => {
+                    const suggestedChars = analysisResult.chars.length;
+                    const charMismatch = suggestedChars > parseInt(advancedMainChars, 10);
+                    const estPages = Math.ceil(analysisResult.panels / (parseInt(advancedMaxPanels, 10) * 0.7));
+                    const pagesMismatch = estPages > parseInt(advancedTargetPages, 10);
+                    if (!charMismatch && !pagesMismatch) return null;
+                    return (
+                      <div className="space-y-2 mt-2">
+                        {charMismatch && (
+                          <div className="flex items-center justify-between gap-3 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3">
+                            <div className="flex items-start gap-2 text-sm">
+                              <span className="material-symbols-outlined text-amber-500 text-base mt-0.5">warning</span>
+                              <span className="text-amber-800">
+                                Story has <strong>{suggestedChars}</strong> characters but you configured <strong>{advancedMainChars}</strong>.
+                              </span>
+                            </div>
+                            <button type="button"
+                              onClick={() => setAdvancedMainChars(String(suggestedChars))}
+                              className="flex-shrink-0 text-xs font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-xl px-3 py-1.5 whitespace-nowrap">
+                              Adjust to {suggestedChars} ↓
+                            </button>
+                          </div>
+                        )}
+                        {pagesMismatch && (
+                          <div className="flex items-center justify-between gap-3 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3">
+                            <div className="flex items-start gap-2 text-sm">
+                              <span className="material-symbols-outlined text-amber-500 text-base mt-0.5">warning</span>
+                              <span className="text-amber-800">
+                                Story may need ~<strong>{estPages}</strong> pages. You configured <strong>{advancedTargetPages}</strong>.
+                              </span>
+                            </div>
+                            <button type="button"
+                              onClick={() => setAdvancedTargetPages(String(Math.min(200, estPages)))}
+                              className="flex-shrink-0 text-xs font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-xl px-3 py-1.5 whitespace-nowrap">
+                              Adjust to {Math.min(200, estPages)} ↓
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Presets */}
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2">Quick presets</p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { label: 'Quick read', pages: '20', chapters: '2', chars: '3', panels: '5' },
+                        { label: 'Short comic', pages: '50', chapters: '4', chars: '4', panels: '5' },
+                        { label: 'Full book', pages: '200', chapters: '12', chars: '6', panels: '6' },
+                      ].map((p) => (
+                        <button key={p.label} type="button"
+                          onClick={() => {
+                            setAdvancedTargetPages(p.pages);
+                            setAdvancedNumChapters(p.chapters);
+                            setAdvancedMainChars(p.chars);
+                            setAdvancedMaxPanels(p.panels);
+                          }}
+                          className={`text-xs font-semibold rounded-full px-3 py-1.5 transition-all ${
+                            advancedTargetPages === p.pages
+                              ? 'bg-primary text-on-primary'
+                              : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+                          }`}>
+                          {p.label} ({p.pages}p)
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Numeric fields */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {([
+                      { id: 'adv-chars',   label: 'Main Characters', min: 1, max: 10,  val: advancedMainChars,   set: setAdvancedMainChars },
+                      { id: 'adv-chaps',   label: 'Chapters',        min: 1, max: 20,  val: advancedNumChapters, set: setAdvancedNumChapters },
+                      { id: 'adv-pages',   label: 'Target Pages',    min: 5, max: 200, val: advancedTargetPages, set: setAdvancedTargetPages },
+                      { id: 'adv-panels',  label: 'Max Panels/Page', min: 2, max: 8,   val: advancedMaxPanels,   set: setAdvancedMaxPanels },
+                    ] as const).map((f) => (
+                      <div key={f.id} className="space-y-1.5">
+                        <label className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant" htmlFor={f.id}>
+                          {f.label}
+                        </label>
+                        <input
+                          id={f.id}
+                          type="number"
+                          min={f.min}
+                          max={f.max}
+                          value={f.val}
+                          onChange={(e) => {
+                            const n = parseInt(e.target.value, 10);
+                            if (!isNaN(n) && n >= f.min && n <= f.max) f.set(String(n));
+                          }}
+                          className="w-full rounded-2xl border border-outline-variant/30 bg-surface-container-low px-4 py-2.5 text-sm text-center font-bold focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        />
+                        <p className="text-[10px] text-on-surface-variant/60 text-center">{f.min}–{f.max}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Estimate */}
+                  <div className="rounded-2xl bg-surface-container-low px-4 py-3 text-xs text-on-surface-variant">
+                    Est. panels: <strong className="text-on-surface">
+                      ~{Math.round(parseInt(advancedTargetPages, 10) * parseInt(advancedMaxPanels, 10) * 0.7)}
+                    </strong> · {advancedTargetPages} pages × {advancedMaxPanels} panels × 70% fill rate
+                  </div>
+                </div>
+              )}
             </div>
 
           </section>
