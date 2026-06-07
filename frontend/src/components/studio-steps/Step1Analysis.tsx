@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import Markdown from '@/components/Markdown';
 
@@ -51,23 +51,7 @@ function parseStreamSections(text: string): ParsedSection[] {
   });
 }
 
-// Fallback: parse by any ## headings when AI doesn't use expected markers.
-function parseFallbackSections(md: string): { heading: string; body: string }[] {
-  const sections: { heading: string; body: string }[] = [];
-  let current: { heading: string; body: string } | null = null;
-  for (const line of md.split('\n')) {
-    if (/^#{1,3}\s/.test(line) && !/^####/.test(line)) {
-      if (current && current.body.trim()) sections.push(current);
-      current = { heading: line.replace(/^#+\s*/, '').trim(), body: '' };
-    } else if (current) {
-      current.body += line + '\n';
-    }
-  }
-  if (current && current.body.trim()) sections.push(current);
-  return sections;
-}
-
-// ── Skeleton shimmer ──────────────────────────────────────────────────────────
+//── Skeleton shimmer ──────────────────────────────────────────────────────────
 
 function SkeletonLines({ count = 4 }: { count?: number }) {
   const widths = [88, 72, 84, 60, 78];
@@ -88,18 +72,51 @@ function SkeletonLines({ count = 4 }: { count?: number }) {
 
 interface SectionAccordionProps {
   section: ParsedSection;
+  displayContent: string;
   isOpen: boolean;
   onToggle: () => void;
+  isEdited: boolean;
+  isEditing: boolean;
+  editBuffer: string;
+  onEditStart: () => void;
+  onEditChange: (v: string) => void;
+  onEditSave: () => void;
+  onEditCancel: () => void;
+  isStreaming: boolean;
 }
 
 const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>(
-  ({ section, isOpen, onToggle }, ref) => {
-    const { status, title, content } = section;
+  (
+    {
+      section, displayContent, isOpen, onToggle,
+      isEdited, isEditing, editBuffer,
+      onEditStart, onEditChange, onEditSave, onEditCancel,
+      isStreaming,
+    },
+    ref,
+  ) => {
+    const { status, title } = section;
     const isSkeleton = status === 'skeleton';
     const isActive   = status === 'active';
+    const taRef = useRef<HTMLTextAreaElement>(null);
+
+    const insertMarkdown = (before: string, after: string) => {
+      const ta = taRef.current;
+      if (!ta) return;
+      const start = ta.selectionStart;
+      const end   = ta.selectionEnd;
+      const sel   = editBuffer.slice(start, end);
+      const newVal = editBuffer.slice(0, start) + before + sel + after + editBuffer.slice(end);
+      onEditChange(newVal);
+      requestAnimationFrame(() => {
+        ta.focus();
+        ta.setSelectionRange(start + before.length, start + before.length + sel.length);
+      });
+    };
 
     return (
       <div ref={ref} className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden">
+        {/* Header */}
         <button
           type="button"
           onClick={onToggle}
@@ -123,22 +140,105 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
             <span className={`font-semibold text-sm truncate ${isSkeleton ? 'text-on-surface-variant/50' : 'text-on-surface'}`}>
               {title}
             </span>
+            {isEdited && (
+              <span
+                className="material-symbols-outlined text-sm text-amber-400 flex-shrink-0"
+                title="Manually edited"
+              >
+                edit
+              </span>
+            )}
           </div>
-          <span
-            className="material-symbols-outlined text-lg text-on-surface-variant transition-transform flex-shrink-0"
-            style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
-          >
-            expand_more
-          </span>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Edit button — shown when open, not streaming, not skeleton, not already editing */}
+            {isOpen && !isStreaming && !isSkeleton && !isEditing && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onEditStart(); }}
+                className="flex items-center gap-1 text-xs text-on-surface-variant hover:text-on-surface px-2 py-1 rounded-lg hover:bg-surface-container transition-colors"
+              >
+                <span className="material-symbols-outlined text-sm">edit</span>
+                Edit
+              </button>
+            )}
+            <span
+              className="material-symbols-outlined text-lg text-on-surface-variant transition-transform"
+              style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+            >
+              expand_more
+            </span>
+          </div>
         </button>
 
+        {/* Body */}
         {isOpen && (
           <div className="px-5 pb-5">
-            {isSkeleton ? (
+            {isEditing ? (
+              <div className="space-y-2">
+                {/* Edit toolbar */}
+                <div className="flex items-center gap-1 pb-2 border-b border-outline-variant/10">
+                  <button
+                    type="button"
+                    onClick={() => insertMarkdown('**', '**')}
+                    className="px-2 py-1 text-xs font-bold rounded hover:bg-surface-container transition-colors"
+                    title="Bold"
+                  >
+                    B
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => insertMarkdown('*', '*')}
+                    className="px-2 py-1 text-xs italic rounded hover:bg-surface-container transition-colors"
+                    title="Italic"
+                  >
+                    I
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => insertMarkdown('\n- ', '')}
+                    className="px-2 py-1 text-xs rounded hover:bg-surface-container transition-colors"
+                    title="Bullet list"
+                  >
+                    • List
+                  </button>
+                  <div className="flex-1" />
+                  <button
+                    type="button"
+                    onClick={onEditCancel}
+                    className="px-3 py-1.5 text-xs rounded-xl bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onEditSave}
+                    className="px-3 py-1.5 text-xs rounded-xl bg-gray-900 text-white hover:opacity-90 font-semibold transition-opacity"
+                  >
+                    Save changes
+                  </button>
+                </div>
+
+                {/* Lock note for section 6 */}
+                {section.id === 6 && (
+                  <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-700">
+                    <span className="material-symbols-outlined text-sm">lock</span>
+                    Numerical statistics in this section feed into later pipeline steps. Adjust targets in Story Setup instead.
+                  </div>
+                )}
+
+                <textarea
+                  ref={taRef}
+                  value={editBuffer}
+                  onChange={(e) => onEditChange(e.target.value)}
+                  className="w-full min-h-[220px] rounded-xl bg-surface-container px-4 py-3 text-sm font-mono focus:outline-none border border-outline-variant/20 focus:border-primary/40 resize-y leading-relaxed"
+                />
+              </div>
+            ) : isSkeleton ? (
               <SkeletonLines />
-            ) : content ? (
+            ) : displayContent ? (
               <>
-                <Markdown className="[&>*:last-child]:mb-0">{content}</Markdown>
+                <Markdown className="[&>*:last-child]:mb-0">{displayContent}</Markdown>
                 {isActive && (
                   <div className="flex items-center gap-1 mt-3">
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-400 motion-safe:animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -154,7 +254,7 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
         )}
       </div>
     );
-  }
+  },
 );
 SectionAccordion.displayName = 'SectionAccordion';
 
@@ -248,7 +348,6 @@ function RightNavPanel({
     );
   }
 
-  // Post-stream: rich data panel
   return (
     <div className="space-y-5">
       {chars.length > 0 && (
@@ -404,22 +503,38 @@ export default function Step1Analysis() {
     handleRevokeApproval,
     handleRetry,
     getCooldownSeconds,
+    setActiveStep,
   } = useComicGeneration();
 
-  const cooldown    = getCooldownSeconds(1);
+  const cooldown     = getCooldownSeconds(1);
   const isGenerating = step1.isLoading;
-  const canGenerate = !isGenerating && cooldown === 0;
+  const canGenerate  = !isGenerating && cooldown === 0;
 
   let state: State = 1;
-  if (isGenerating)                                          state = 2;
-  else if (step1.isApproved && !step1.regeneratedAfterApproval) state = 4;
-  else if (step1.data && step1.regeneratedAfterApproval)     state = 5;
-  else if (step1.data)                                       state = 3;
+  if (isGenerating)                                               state = 2;
+  else if (step1.isApproved && !step1.regeneratedAfterApproval)  state = 4;
+  else if (step1.data && step1.regeneratedAfterApproval)         state = 5;
+  else if (step1.data)                                           state = 3;
 
-  // ── Open/closed accordion state (user-controlled + auto-open on active section) ──
-  const [openSections, setOpenSections] = useState<Set<number>>(new Set([1]));
+  // ── Accordion open state ──────────────────────────────────────────────────
+  const [openSections, setOpenSections]       = useState<Set<number>>(new Set([1]));
   const prevActiveRef  = useRef<number | null>(null);
   const wasLoadingRef  = useRef(false);
+  const prevStateRef   = useRef<State>(1);
+
+  // ── Review tracking ───────────────────────────────────────────────────────
+  const [reviewedSections, setReviewedSections] = useState<Set<number>>(new Set());
+
+  // ── Edit state ────────────────────────────────────────────────────────────
+  const [editedContent, setEditedContent]     = useState<Map<number, string>>(new Map());
+  const [editingSection, setEditingSection]   = useState<number | null>(null);
+  const [editBuffer, setEditBuffer]           = useState('');
+  const [showEditedWarning, setShowEditedWarning] = useState(false);
+  const editedCount = editedContent.size;
+
+  // ── Dialog / warning state ────────────────────────────────────────────────
+  const [showRegenConfirm, setShowRegenConfirm]   = useState(false);
+  const [showReviewWarning, setShowReviewWarning] = useState(false);
 
   // Reset when a new generation starts
   useEffect(() => {
@@ -430,20 +545,24 @@ export default function Step1Analysis() {
     wasLoadingRef.current = isGenerating;
   }, [isGenerating]);
 
-  // ── Section parsing (derived from live streamingText or final markdown) ──
+  // When stream completes (state 2→3): mark all currently open sections as reviewed
+  useEffect(() => {
+    if (state >= 3 && prevStateRef.current === 2) {
+      setReviewedSections(prev => new Set([...prev, ...openSections]));
+    }
+    prevStateRef.current = state;
+  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Section parsing ───────────────────────────────────────────────────────
   const streamText = isGenerating
     ? (step1.streamingText ?? '')
     : (step1.data?.analysisMarkdown ?? '');
 
   const parsedSections = useMemo<ParsedSection[]>(() => {
-    // State 1 (idle): all skeleton
     if (state === 1) {
       return SECTION_DEFS.map(def => ({ id: def.id, title: def.title, content: '', status: 'skeleton' as const }));
     }
-
     const result = parseStreamSections(streamText);
-
-    // Fallback: AI didn't use expected markers — put all content in section 1
     if (!isGenerating && step1.data && !result.some(s => s.content !== '')) {
       return result.map((s, i) => ({
         ...s,
@@ -451,9 +570,20 @@ export default function Step1Analysis() {
         status: 'complete' as const,
       }));
     }
-
     return result;
-  }, [streamText, state, isGenerating, step1.data]);
+  }, [streamText, state, isGenerating, step1.data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sections the user hasn't opened yet (used for review warning)
+  const unreviewedSections = useMemo(
+    () => parsedSections.filter(s => s.status === 'complete' && !reviewedSections.has(s.id)),
+    [parsedSections, reviewedSections],
+  );
+
+  useEffect(() => {
+    if (showReviewWarning && unreviewedSections.length === 0) {
+      setShowReviewWarning(false);
+    }
+  }, [showReviewWarning, unreviewedSections.length]);
 
   // Auto-open the section the stream is currently writing into
   useEffect(() => {
@@ -461,31 +591,112 @@ export default function Step1Analysis() {
     if (active && active.id !== prevActiveRef.current) {
       prevActiveRef.current = active.id;
       setOpenSections(prev => new Set([...prev, active.id]));
+      setReviewedSections(prev => new Set([...prev, active.id]));
     }
   }, [parsedSections]);
 
-  // ── Section DOM refs for scroll-to ──
+  // ── Section DOM refs ──────────────────────────────────────────────────────
   const sectionRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const scrollTo = (id: SectionId) => {
     sectionRefs.current.get(id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
 
-  const toggleSection = (id: number) =>
+  const toggleSection = (id: number) => {
     setOpenSections(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+        // Opening a section counts as reviewing it
+        setReviewedSections(r => new Set([...r, id]));
+      }
       return next;
     });
+  };
 
-  // ── Progress counters ──
-  const completedCount    = parsedSections.filter(s => s.status === 'complete').length;
-  const activeSectionObj  = parsedSections.find(s => s.status === 'active');
-  const progressCount     = completedCount + (activeSectionObj ? 1 : 0);
+  // ── Progress counters ─────────────────────────────────────────────────────
+  const completedCount   = parsedSections.filter(s => s.status === 'complete').length;
+  const activeSectionObj = parsedSections.find(s => s.status === 'active');
+  const progressCount    = completedCount + (activeSectionObj ? 1 : 0);
 
-  // ── Right panel data ──
+  // ── Right panel data ──────────────────────────────────────────────────────
   const chars = step1.data?.characterBreakdown ?? [];
   const stats = extractStats(step1.data?.structuredJson ?? null);
 
+  // ── Edit handlers ─────────────────────────────────────────────────────────
+  const handleEditStart = useCallback((id: number) => {
+    const current = editedContent.get(id) ?? parsedSections.find(s => s.id === id)?.content ?? '';
+    setEditingSection(id);
+    setEditBuffer(current);
+  }, [editedContent, parsedSections]);
+
+  const handleEditSave = useCallback(() => {
+    if (editingSection === null) return;
+    setEditedContent(prev => {
+      const next = new Map(prev);
+      next.set(editingSection, editBuffer);
+      return next;
+    });
+    // Show the one-time edits warning on first save
+    if (editedCount === 0) setShowEditedWarning(true);
+    setEditingSection(null);
+    setEditBuffer('');
+  }, [editingSection, editBuffer, editedCount]);
+
+  const handleEditCancel = useCallback(() => {
+    setEditingSection(null);
+    setEditBuffer('');
+  }, []);
+
+  // ── Regenerate handlers ───────────────────────────────────────────────────
+  const handleRegenClick = useCallback(() => {
+    setEditingSection(null);
+    setEditBuffer('');
+    setShowRegenConfirm(true);
+  }, []);
+
+  const handleConfirmRegen = useCallback(() => {
+    setShowRegenConfirm(false);
+    setEditedContent(new Map());
+    setReviewedSections(new Set());
+    setShowReviewWarning(false);
+    setShowEditedWarning(false);
+    handleGenerate(1);
+  }, [handleGenerate]);
+
+  // ── Approve & Continue handlers ───────────────────────────────────────────
+  const handleApproveAndContinue = useCallback(() => {
+    if (state === 4) {
+      setActiveStep(2);
+      return;
+    }
+    if (unreviewedSections.length > 0) {
+      setShowReviewWarning(true);
+      return;
+    }
+    handleApprove(1); // also calls setActiveStep(2) internally
+  }, [state, unreviewedSections, handleApprove, setActiveStep]);
+
+  const handleForceApprove = useCallback(() => {
+    setShowReviewWarning(false);
+    handleApprove(1);
+  }, [handleApprove]);
+
+  const scrollToFirstUnreviewed = useCallback(() => {
+    const first = unreviewedSections[0];
+    if (!first) return;
+    scrollTo(first.id);
+    setOpenSections(prev => new Set([...prev, first.id]));
+    setReviewedSections(prev => new Set([...prev, first.id]));
+    setShowReviewWarning(false);
+  }, [unreviewedSections]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Display content helper ────────────────────────────────────────────────
+  const getDisplayContent = (sec: ParsedSection): string =>
+    editedContent.get(sec.id) ?? sec.content;
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <section className="text-on-surface space-y-6">
 
@@ -503,66 +714,51 @@ export default function Step1Analysis() {
         />
       </div>
 
-      {/* ── Action bar ── */}
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => handleGenerate(1)}
-          disabled={!canGenerate}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all ${
-            !canGenerate
-              ? 'bg-surface-container text-on-surface-variant cursor-not-allowed opacity-50'
-              : state >= 3
-                ? 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'
-                : 'bg-primary text-on-primary hover:opacity-90'
-          }`}
-        >
-          <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
-            {isGenerating ? 'hourglass_empty' : state >= 3 ? 'refresh' : 'auto_awesome'}
-          </span>
-          {isGenerating
-            ? 'Generating…'
-            : cooldown > 0
-              ? `Retry in ${cooldown}s`
-              : state >= 3
-                ? 'Regenerate'
-                : 'Generate Analysis'}
-        </button>
+      {/* ── Minimal top action bar (Revoke Approval + error/retry only) ── */}
+      {(state === 4 || step1.error) && (
+        <div className="flex flex-wrap items-center gap-3">
+          {state === 4 && (
+            <button
+              type="button"
+              onClick={() => handleRevokeApproval(1)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-surface-container-high text-on-surface-variant hover:text-on-surface transition-colors"
+            >
+              <span className="material-symbols-outlined text-base">undo</span>
+              Revoke Approval
+            </button>
+          )}
+          {step1.error && (
+            <button
+              type="button"
+              onClick={() => handleRetry(1)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 transition-colors"
+            >
+              <span className="material-symbols-outlined text-base">replay</span>
+              Retry
+            </button>
+          )}
+          {step1.error && <span className="text-sm text-red-500">{step1.error}</span>}
+        </div>
+      )}
 
-        {(state === 3 || state === 5) && (
+      {/* ── One-time edit warning banner ── */}
+      {showEditedWarning && (
+        <div className="flex items-start justify-between gap-3 px-4 py-3 rounded-2xl bg-amber-50 border border-amber-100">
+          <div className="flex items-start gap-2">
+            <span className="material-symbols-outlined text-amber-500 text-base mt-0.5">warning</span>
+            <p className="text-sm text-amber-800">
+              Manual edits may affect AI generation in later steps. Regenerating will overwrite your edits.
+            </p>
+          </div>
           <button
             type="button"
-            onClick={() => handleApprove(1)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-primary text-on-primary hover:opacity-90 transition-opacity"
+            onClick={() => setShowEditedWarning(false)}
+            className="text-amber-500 hover:text-amber-700 flex-shrink-0"
           >
-            <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-            Approve
+            <span className="material-symbols-outlined text-base">close</span>
           </button>
-        )}
-
-        {state === 4 && (
-          <button
-            type="button"
-            onClick={() => handleRevokeApproval(1)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-surface-container-high text-on-surface-variant hover:text-on-surface transition-colors"
-          >
-            <span className="material-symbols-outlined text-base">undo</span>
-            Revoke Approval
-          </button>
-        )}
-
-        {step1.error && (
-          <button
-            type="button"
-            onClick={() => handleRetry(1)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 transition-colors"
-          >
-            <span className="material-symbols-outlined text-base">replay</span>
-            Retry
-          </button>
-        )}
-        {step1.error && <span className="text-sm text-red-500">{step1.error}</span>}
-      </div>
+        </div>
+      )}
 
       {/* ── Empty state (state 1) ── */}
       {state === 1 && (
@@ -573,17 +769,17 @@ export default function Step1Analysis() {
           <div className="text-center">
             <p className="font-semibold text-on-surface">No analysis yet</p>
             <p className="text-sm text-on-surface-variant mt-1">
-              Click &ldquo;Generate Analysis&rdquo; to extract narrative structure and characters.
+              Use the button below to generate story analysis.
             </p>
           </div>
         </div>
       )}
 
-      {/* ── Main content grid (states 2, 3, 4, 5) ── */}
+      {/* ── Main content grid (states 2–5) ── */}
       {state !== 1 && (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
 
-          {/* Left — 6 accordion sections (stable DOM, content-only updates) */}
+          {/* Left — 6 accordion sections */}
           <div className="space-y-3">
             {parsedSections.map(sec => (
               <SectionAccordion
@@ -593,8 +789,17 @@ export default function Step1Analysis() {
                   else sectionRefs.current.delete(sec.id);
                 }}
                 section={sec}
+                displayContent={getDisplayContent(sec)}
                 isOpen={openSections.has(sec.id)}
                 onToggle={() => toggleSection(sec.id)}
+                isEdited={editedContent.has(sec.id)}
+                isEditing={editingSection === sec.id}
+                editBuffer={editingSection === sec.id ? editBuffer : ''}
+                onEditStart={() => handleEditStart(sec.id)}
+                onEditChange={setEditBuffer}
+                onEditSave={handleEditSave}
+                onEditCancel={handleEditCancel}
+                isStreaming={isGenerating}
               />
             ))}
           </div>
@@ -613,6 +818,160 @@ export default function Step1Analysis() {
           />
         </div>
       )}
+
+      {/* Back to Setup link (replaces pipeline nav bar hidden for this step) */}
+      <div className="flex justify-start pt-2">
+        <button
+          type="button"
+          onClick={() => setActiveStep(0)}
+          className="flex items-center gap-1 text-xs text-on-surface-variant hover:text-on-surface transition-colors"
+        >
+          <span className="material-symbols-outlined text-sm">arrow_back</span>
+          Back to Project Setup
+        </button>
+      </div>
+
+      {/* ── Sticky bottom action bar ── */}
+      <div
+        className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
+        style={{ left: 'var(--studio-sidebar-width)' }}
+      >
+        {/* Review warning — inline, above button row */}
+        {showReviewWarning && unreviewedSections.length > 0 && (
+          <div className="px-10 py-3 max-w-6xl mx-auto border-b border-gray-100">
+            <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
+              <span className="material-symbols-outlined text-amber-500 text-sm mt-0.5">warning</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-amber-900">You haven&apos;t reviewed these sections:</p>
+                <p className="text-xs text-amber-700 mt-0.5 truncate">
+                  {unreviewedSections.map(s => s.title).join(', ')}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={scrollToFirstUnreviewed}
+                  className="text-xs font-semibold text-amber-800 hover:text-amber-900 underline underline-offset-2 whitespace-nowrap"
+                >
+                  Review missing
+                </button>
+                <button
+                  type="button"
+                  onClick={handleForceApprove}
+                  className="text-xs font-semibold text-white bg-gray-900 rounded-lg px-3 py-1.5 hover:opacity-90 whitespace-nowrap"
+                >
+                  Continue anyway →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Button row */}
+        <div className="px-10 py-4 max-w-6xl mx-auto">
+          {isGenerating ? (
+            // Streaming state — show progress message, no actions
+            <div className="flex items-center justify-center gap-2 text-sm text-on-surface-variant">
+              <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 animate-pulse" />
+              Generating analysis… please wait
+            </div>
+          ) : state === 1 ? (
+            // Idle state — primary Generate action
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setActiveStep(0)}
+                className="flex items-center gap-2 text-sm font-semibold text-on-surface-variant hover:text-on-surface transition-colors"
+              >
+                <span className="material-symbols-outlined text-base">arrow_back</span>
+                Previous Step
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenerate(1)}
+                disabled={!canGenerate}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold bg-gray-900 text-white hover:opacity-90 disabled:opacity-40 transition-all"
+              >
+                <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  auto_awesome
+                </span>
+                {cooldown > 0 ? `Retry in ${cooldown}s` : 'Generate Analysis'}
+              </button>
+            </div>
+          ) : (
+            // Post-stream state — Regenerate (left) + Approve & Continue (right)
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={handleRegenClick}
+                disabled={!canGenerate}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40"
+              >
+                <span className="material-symbols-outlined text-base">refresh</span>
+                {cooldown > 0 ? `Retry in ${cooldown}s` : 'Regenerate'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleApproveAndContinue}
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all ${
+                  state === 4
+                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    : 'bg-gray-900 text-white hover:opacity-90'
+                }`}
+              >
+                <span
+                  className="material-symbols-outlined text-base"
+                  style={{ fontVariationSettings: "'FILL' 1" }}
+                >
+                  check_circle
+                </span>
+                {state === 4 ? 'Approved · Continue →' : 'Approve & Continue →'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Regenerate confirmation modal ── */}
+      {showRegenConfirm && (
+        <div className="fixed inset-0 z-[90] bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 flex flex-col gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-amber-600" style={{ fontVariationSettings: "'FILL' 1" }}>refresh</span>
+              </div>
+              <div>
+                <p className="font-bold text-gray-900">Regenerate analysis?</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  This will replace all current analysis
+                  {editedCount > 0
+                    ? ` and remove your ${editedCount} manual edit${editedCount > 1 ? 's' : ''}`
+                    : ''
+                  }. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowRegenConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRegen}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity"
+              >
+                Regenerate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
+
