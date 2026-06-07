@@ -1014,7 +1014,7 @@ export default function Step1Analysis() {
           </div>
 
           {/* Right — sticky navigation + character cards + section nav */}
-          <div className="lg:sticky lg:top-28 overflow-y-auto max-h-[calc(100vh-10rem)]">
+          <div className="lg:sticky lg:top-28 overflow-y-auto max-h-[calc(100vh-10rem)] thin-scrollbar">
             <RightNavPanel
               sections={parsedSections}
               isStreaming={isGenerating}
