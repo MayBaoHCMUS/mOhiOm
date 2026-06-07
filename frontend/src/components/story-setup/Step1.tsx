@@ -102,6 +102,7 @@ export default function Step1() {
     loadProjectJson,
     fromStorySetup,
     setFromStorySetup,
+    setSetupValidation,
   } = useComicGeneration();
 
   // ── Banner metadata ──────────────────────────────────────────────────────────
@@ -136,6 +137,23 @@ export default function Step1() {
   // Remove confirm
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
 
+  // Art style tag selection
+  const [selectedArtTags, setSelectedArtTags] = useState<string[]>([]);
+
+  // Reset selected tags when genre changes (suggestions change)
+  useEffect(() => {
+    setSelectedArtTags([]);
+  }, [mangaGenre]);
+
+  const handleAddArtTag = (tag: string) => {
+    setSelectedArtTags((prev) => [...prev, tag]);
+    setArtStyle(artStyle.trim() ? `${artStyle.trim()}, ${tag}` : tag);
+  };
+  const handleRemoveArtTag = (tag: string) => {
+    setSelectedArtTags((prev) => prev.filter((t) => t !== tag));
+    setArtStyle(artStyle.split(', ').filter((t) => t.trim() !== tag).join(', '));
+  };
+
   // Validation
   const [projectIdTouched, setProjectIdTouched] = useState(false);
   const [artStyleTouched,  setArtStyleTouched]  = useState(false);
@@ -147,6 +165,11 @@ export default function Step1() {
   // 3 required: story + project ID + art style
   const validCount = [storyValid, projectIdValid, artStyleValid].filter(Boolean).length;
   const canGenerate = validCount === 3;
+
+  // Sync required-field completion to shared wizard validation (drives the sticky Next Step button)
+  useEffect(() => {
+    setSetupValidation({ isValid: canGenerate, errorCount: 3 - validCount, requiredComplete: validCount, requiredTotal: 3 });
+  }, [canGenerate, validCount, setSetupValidation]);
 
   // Art-style suggestions from genre
   const genreLower = mangaGenre.toLowerCase();
@@ -311,7 +334,19 @@ export default function Step1() {
           <h2 className="text-2xl font-semibold">Project configuration</h2>
           <p className="mt-2 text-gray-600">Set up your project identity and visual execution.</p>
         </div>
-        <div className="text-sm text-gray-500">Step 1 of 5</div>
+        <div className="flex items-center gap-4">
+          <button type="button" onClick={() => setIsDrawerOpen(true)}
+            className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors">
+            <span className="material-symbols-outlined text-sm">folder_open</span>
+            My Projects
+          </button>
+          <button type="button" onClick={() => importInputRef.current?.click()}
+            className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors">
+            <span className="material-symbols-outlined text-sm">upload</span>
+            Import JSON
+          </button>
+          <span className="text-sm text-gray-500">Step 1 of 5</span>
+        </div>
       </div>
 
       {globalError && (
@@ -394,10 +429,10 @@ export default function Step1() {
       </div>
 
       {/* Form grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="flex flex-col lg:flex-row gap-6 items-stretch">
 
         {/* Left — Project Identity */}
-        <div className="rounded-3xl bg-gray-100 p-6 space-y-5">
+        <div className="flex-1 rounded-3xl bg-gray-100 p-6 flex flex-col gap-5">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-blue-600">badge</span>
             <h3 className="text-lg font-semibold">Project identity</h3>
@@ -434,7 +469,7 @@ export default function Step1() {
             {projectIdTouched && !projectIdValid && (
               <p className="text-xs text-red-600">Min 3 characters · letters, numbers, - and _ only</p>
             )}
-            <p className="text-xs text-gray-500">Used in file names and URLs.</p>
+            <p className="text-xs text-gray-600">Used in file names and URLs.</p>
           </div>
 
           {/* Tags (optional) */}
@@ -449,27 +484,27 @@ export default function Step1() {
               placeholder="fantasy, dark, manga"
               disabled={isGenerating}
             />
-            <p className="text-xs text-gray-500">Comma-separated tags for organizing projects.</p>
+            <p className="text-xs text-gray-600">Comma-separated tags for organizing projects.</p>
           </div>
 
           {/* Summary (optional) */}
-          <div className="space-y-1.5">
+          <div className="flex flex-col gap-1.5 flex-grow">
             <div className="flex items-center justify-between">
               <label className="block text-xs font-bold uppercase tracking-widest text-gray-500" htmlFor="pipeline-summary">Summary / Overview</label>
               <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-200 text-gray-500 rounded-full px-2 py-0.5">Optional</span>
             </div>
             <textarea
               id="pipeline-summary"
-              rows={3}
-              className="w-full rounded-2xl bg-white px-4 py-3 text-sm focus:outline-none border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none"
+              className="flex-grow w-full rounded-2xl bg-white px-4 py-3 text-sm focus:outline-none border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none min-h-[72px]"
               placeholder="A brief description for your project list…"
               disabled={isGenerating}
             />
+            <p className="text-xs text-gray-600">A brief description for your project list.</p>
           </div>
         </div>
 
         {/* Right — Visual Execution + Content Guardrails */}
-        <div className="rounded-3xl bg-gray-100 p-6 space-y-5">
+        <div className="flex-1 rounded-3xl bg-gray-100 p-6 flex flex-col gap-5">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-blue-600">palette</span>
             <h3 className="text-lg font-semibold">Visual execution</h3>
@@ -506,17 +541,33 @@ export default function Step1() {
             {artStyleTouched && !artStyleValid && (
               <p className="text-xs text-red-600">Please describe the art style (at least 5 characters)</p>
             )}
-            {artSuggestions.length > 0 && (
+            {(artSuggestions.length > 0 || selectedArtTags.length > 0) && (
               <div className="flex flex-wrap gap-2 pt-1">
-                {artSuggestions.map((s) => (
-                  <button key={s} type="button" onClick={() => setArtStyle(s)}
-                    className="rounded-full bg-white border border-blue-200 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50">
+                {selectedArtTags.map((tag) => (
+                  <button
+                    key={`sel-${tag}`}
+                    type="button"
+                    onClick={() => handleRemoveArtTag(tag)}
+                    className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-900 flex items-center gap-1 hover:bg-blue-200"
+                  >
+                    {tag}
+                    <span className="text-blue-500 text-sm leading-none">×</span>
+                  </button>
+                ))}
+                {artSuggestions.filter((s) => !selectedArtTags.includes(s)).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => handleAddArtTag(s)}
+                    className="rounded-full bg-white border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-500 flex items-center gap-1 hover:bg-gray-50"
+                  >
+                    <span className="text-gray-400 text-sm leading-none">+</span>
                     {s}
                   </button>
                 ))}
               </div>
             )}
-            <p className="text-xs text-gray-500">Include medium, style, and color preference.</p>
+            <p className="text-xs text-gray-600">Include medium, style, and color preference.</p>
           </div>
 
           {/* Image API URL */}
@@ -533,16 +584,16 @@ export default function Step1() {
               placeholder="https://your-tunnel.loca.lt/generate"
               disabled={isGenerating}
             />
-            <p className="text-xs text-gray-500">Local image generation endpoint. Required for image generation.</p>
+            <p className="text-xs text-gray-600">Local image generation endpoint. Required for image generation.</p>
           </div>
 
           {/* Content Guardrails */}
-          <div className="pt-2 border-t border-gray-200">
-            <div className="flex items-center gap-2 mb-4">
+          <div className="pt-2 border-t border-gray-200 flex flex-col gap-4 flex-grow">
+            <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-gray-500 text-base">security</span>
               <h4 className="text-sm font-semibold text-gray-700">Content guardrails</h4>
             </div>
-            <div className="space-y-1.5">
+            <div className="flex flex-col gap-1.5 flex-grow">
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-bold uppercase tracking-widest text-gray-500" htmlFor="pipeline-special">Special Requests</label>
                 <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-200 text-gray-500 rounded-full px-2 py-0.5">Optional</span>
@@ -551,35 +602,38 @@ export default function Step1() {
                 id="pipeline-special"
                 value={specialRequests}
                 onChange={(e) => setSpecialRequests(e.target.value)}
-                rows={3}
-                className="w-full rounded-2xl bg-white px-4 py-3 text-sm focus:outline-none border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none"
+                className="flex-grow w-full rounded-2xl bg-white px-4 py-3 text-sm focus:outline-none border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none min-h-[72px]"
                 placeholder="e.g. No gore, soft lighting, keep scenes family-friendly"
                 disabled={isGenerating}
               />
+              <p className="text-xs text-gray-600">Optional requests for style, pacing, or content restrictions.</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* Output Estimate — read-only from Story Setup */}
-      <div className="mt-6 rounded-2xl bg-gray-50 border border-gray-100 px-5 py-4">
-        <div className="flex items-center justify-between mb-3">
+      <div className="mt-6 px-1">
+        <div className="flex items-center justify-between mb-4">
           <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Output estimate · from Story Setup</p>
           <Link href="/studio/story-setup" className="text-xs font-bold text-primary hover:underline flex items-center gap-1">
             Edit targets ↗
           </Link>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+        <div className="flex items-center">
           {[
             { val: targetPages || '—', label: 'Pages' },
             { val: numChapters || '—', label: 'Chapters' },
             { val: estPanels > 0 ? `~${Math.round(estPanels)}` : '—', label: 'Est. panels' },
             { val: mainCharacters || '—', label: 'Characters' },
-          ].map(({ val, label }) => (
-            <div key={label}>
-              <p className="text-2xl font-bold text-gray-900">{val}</p>
-              <p className="text-xs text-gray-500 mt-1">{label}</p>
-            </div>
+          ].map(({ val, label }, i) => (
+            <React.Fragment key={label}>
+              {i > 0 && <div className="w-px h-10 bg-gray-200 flex-shrink-0 mx-4" />}
+              <div className="flex-1 text-center select-none">
+                <p className="text-[30px] font-semibold text-gray-900 leading-tight">{val}</p>
+                <p className="text-[11px] text-gray-500 uppercase tracking-wider mt-0.5">{label}</p>
+              </div>
+            </React.Fragment>
           ))}
         </div>
         <p className="mt-3 text-[10px] text-gray-400 leading-snug">
@@ -587,38 +641,40 @@ export default function Step1() {
         </p>
       </div>
 
-      {/* Bottom actions */}
-      <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
+      {/* In-content generate / regenerate action */}
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" onClick={() => importInputRef.current?.click()} disabled={isGenerating}
-            className="px-5 py-2.5 rounded-2xl text-sm font-semibold bg-gray-100 text-gray-900 hover:bg-gray-200 disabled:opacity-50">
-            {importSuccess ? 'Imported!' : 'Import JSON'}
-          </button>
-          <button type="button" onClick={() => setIsDrawerOpen(true)}
-            className="px-5 py-2.5 rounded-2xl text-sm font-semibold bg-gray-100 text-gray-900 hover:bg-gray-200">
-            My Projects
-          </button>
           {step1.error && <span className="text-sm text-red-600">{step1.error}</span>}
           {importError && <span className="text-sm text-red-600">{importError}</span>}
         </div>
-        {/* Generate button with checklist tooltip when incomplete */}
         <div className="relative group">
           <button
             type="button"
             onClick={handleGenerateClick}
             disabled={isGenerating}
-            className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
-              isGenerating ? 'bg-gray-100 text-gray-400 cursor-not-allowed' :
-              canGenerate  ? 'bg-gray-900 text-white hover:scale-105' :
-                            'bg-gray-200 text-gray-500 hover:scale-105'
+            className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
+              isGenerating
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : step1.data
+                  ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 hover:scale-105'
+                  : canGenerate
+                    ? 'bg-blue-600 text-white hover:scale-105'
+                    : 'bg-gray-200 text-gray-500 hover:scale-105'
             }`}
           >
-            {step1.isLoading ? 'Analyzing…' :
-             cooldownSeconds > 0 ? `Retry in ${cooldownSeconds}s` :
-             step1.data ? 'Regenerate analysis' : 'Generate analysis'}
+            <span className="material-symbols-outlined text-base">
+              {step1.isLoading ? 'hourglass_empty' : step1.data ? 'refresh' : 'auto_awesome'}
+            </span>
+            {step1.isLoading
+              ? 'Analyzing…'
+              : cooldownSeconds > 0
+                ? `Retry in ${cooldownSeconds}s`
+                : step1.data
+                  ? 'Regenerate analysis'
+                  : 'Generate analysis'}
           </button>
           {!canGenerate && !isGenerating && (
-            <div className="absolute bottom-full right-0 mb-2.5 hidden group-hover:block z-50 pointer-events-none min-w-[200px]">
+            <div className="absolute bottom-full right-0 mb-2.5 hidden group-hover:block z-50 pointer-events-none min-w-[210px]">
               <div className="bg-gray-900 text-white rounded-2xl px-4 py-3 shadow-xl text-xs space-y-1.5">
                 <p className="font-bold mb-2 text-white/80 uppercase tracking-wider">Required to generate</p>
                 {[

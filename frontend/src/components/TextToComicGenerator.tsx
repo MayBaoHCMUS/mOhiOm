@@ -19,14 +19,25 @@ const wizardSteps = [
 ] as const;
 
 function WizardContent() {
-  const { activeStep, setActiveStep, stepMap, setupValidation, setSetupSubmitAttempted, useStreaming, setUseStreaming } = useComicGeneration();
+  const { activeStep, setActiveStep, stepMap, setupValidation } = useComicGeneration();
 
   const current = wizardSteps.find((step) => step.key === activeStep) ?? wizardSteps[0];
   const CurrentComponent = current.Component;
 
-  const isSetupInvalid = activeStep === 0 && setupValidation && !setupValidation.isValid;
+  const isLastStep = activeStep === wizardSteps.length - 1;
+
+  // Step 0: enabled when all required fields are complete
+  // Steps 1–3: enabled when the current step is approved
   const isNextDisabled =
-    activeStep === 4 || (activeStep >= 1 && stepMap[activeStep as StepKey]?.locked) || Boolean(isSetupInvalid);
+    activeStep === 0
+      ? !setupValidation?.isValid
+      : !stepMap[activeStep as StepKey]?.isApproved;
+
+  const nextTooltip = isNextDisabled
+    ? activeStep === 0
+      ? 'Complete all required fields to continue'
+      : 'Approve this step to continue'
+    : undefined;
 
   const handlePrevious = () => {
     if (activeStep === 0) return;
@@ -34,11 +45,7 @@ function WizardContent() {
   };
 
   const handleNext = () => {
-    if (isSetupInvalid) {
-      setSetupSubmitAttempted(true);
-      return;
-    }
-    if (isNextDisabled) return;
+    if (isNextDisabled || isLastStep) return;
     setActiveStep((activeStep + 1) as WizardStepKey);
   };
 
@@ -47,7 +54,7 @@ function WizardContent() {
       <StudioSidebar />
       <StudioTopBar />
 
-      <main className="ml-[var(--studio-sidebar-width)] pt-24 min-h-screen pb-16">
+      <main className="ml-[var(--studio-sidebar-width)] pt-24 min-h-screen pb-28">
         <div className="px-10 py-10 max-w-6xl mx-auto">
           <section className="bg-white text-gray-900 rounded-3xl p-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -112,36 +119,55 @@ function WizardContent() {
           <section className="mt-8">
             <CurrentComponent />
           </section>
+        </div>
+      </main>
 
-          <section className="mt-10 flex flex-wrap items-center justify-between gap-4">
+      {/* Sticky bottom navigation bar */}
+      <div className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
+        style={{ left: 'var(--studio-sidebar-width)' }}>
+        <div className="px-10 py-4 max-w-6xl mx-auto flex items-center justify-between">
+          {/* Previous Step — hidden on Step 1, ghost on Steps 2–5 */}
+          {activeStep > 0 ? (
             <button
               type="button"
               onClick={handlePrevious}
-              disabled={activeStep === 0}
-              className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
-                activeStep === 0
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-gray-100 text-gray-900 hover:scale-105'
-              }`}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
             >
+              <span className="material-symbols-outlined text-base">arrow_back</span>
               Previous Step
             </button>
-            <button
-              type="button"
-              onClick={handleNext}
-              disabled={isNextDisabled}
-              title={isSetupInvalid ? 'Please fix errors before continuing' : undefined}
-              className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
-                isNextDisabled
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-gray-900 text-white hover:scale-105'
-              }`}
-            >
-              Next Step
-            </button>
-          </section>
+          ) : (
+            <div />
+          )}
+
+          {/* Next Step — primary black, with tooltip when disabled */}
+          {!isLastStep && (
+            <div className="relative group">
+              <button
+                type="button"
+                onClick={handleNext}
+                disabled={isNextDisabled}
+                className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
+                  isNextDisabled
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-900 text-white hover:scale-105'
+                }`}
+              >
+                Next Step
+                <span className="material-symbols-outlined text-base">arrow_forward</span>
+              </button>
+              {nextTooltip && (
+                <div className="absolute bottom-full right-0 mb-2.5 hidden group-hover:block z-50 pointer-events-none">
+                  <div className="bg-gray-900 text-white rounded-xl px-3 py-2 text-xs whitespace-nowrap shadow-xl">
+                    {nextTooltip}
+                  </div>
+                  <div className="w-2.5 h-2.5 bg-gray-900 rotate-45 ml-auto mr-4 -mt-1.5" />
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      </main>
+      </div>
     </div>
   );
 }
