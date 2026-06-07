@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
 import { projectsApi } from '@/services/api';
@@ -73,7 +74,7 @@ function EmptyProjects() {
     <div className="col-span-3 flex flex-col items-center justify-center py-20 rounded-3xl border-2 border-dashed border-outline-variant/30">
       <span className="material-symbols-outlined text-5xl text-outline-variant mb-4">auto_stories</span>
       <p className="text-on-surface font-semibold text-lg">No saved projects yet</p>
-      <p className="text-on-surface-variant text-sm mt-1 mb-6">Complete the pipeline and click "Save to Cloud" to see them here.</p>
+      <p className="text-on-surface-variant text-sm mt-1 mb-6">Complete the pipeline and click &ldquo;Save to Cloud&rdquo; to see them here.</p>
       <button
         onClick={() => router.push('/studio')}
         className="px-6 py-3 bg-primary text-on-primary font-bold rounded-full hover:opacity-90 transition-opacity"
@@ -99,6 +100,8 @@ export default function StudioDashboardPage() {
   const [characters, setCharacters] = useState<CharacterSummary[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingChars, setLoadingChars] = useState(true);
+  const [importError, setImportError] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     projectsApi.list()
@@ -115,6 +118,25 @@ export default function StudioDashboardPage() {
   const handleLoadProject = (projectId: string) => {
     window.localStorage.setItem('mohiom-pending-load', projectId);
     router.push('/studio');
+  };
+
+  const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setImportError(null);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        JSON.parse(ev.target?.result as string); // validate JSON
+        // Store file for studio to pick up, then navigate
+        window.localStorage.setItem('mohiom-import-json', ev.target?.result as string);
+        router.push('/studio');
+      } catch {
+        setImportError('Invalid JSON file.');
+      }
+    };
+    reader.readAsText(file);
   };
 
   const mostRecent = projects[0] ?? null;
@@ -147,6 +169,67 @@ export default function StudioDashboardPage() {
             <div className="absolute right-[-10%] top-[-10%] w-[500px] h-[500px] bg-primary/5 rounded-full blur-3xl" />
             <div className="absolute right-[10%] bottom-[-20%] w-[300px] h-[300px] bg-primary/10 rounded-full blur-2xl" />
           </div>
+        </section>
+
+        {/* Entry points — 3 clear paths */}
+        <section className="mb-12">
+          <h3 className="text-lg font-bold text-on-surface mb-4">Start something new</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Link
+              href="/studio/story-setup"
+              className="group flex flex-col gap-4 rounded-3xl bg-surface-container-lowest border border-outline-variant/20 p-6 hover:border-primary/30 hover:bg-surface-container-low transition-all ambient-lift"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                <span className="material-symbols-outlined text-primary text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>edit_note</span>
+              </div>
+              <div>
+                <p className="font-bold text-on-surface mb-1">Start with my story</p>
+                <p className="text-sm text-on-surface-variant leading-snug">Write or paste your narrative and let AI build your comic.</p>
+              </div>
+              <div className="flex items-center gap-1 text-xs font-bold text-primary mt-auto">
+                Go to Story Setup
+                <span className="material-symbols-outlined text-sm group-hover:translate-x-0.5 transition-transform">chevron_right</span>
+              </div>
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => router.push('/studio')}
+              className="group flex flex-col gap-4 rounded-3xl bg-surface-container-lowest border border-outline-variant/20 p-6 hover:border-primary/30 hover:bg-surface-container-low transition-all ambient-lift text-left"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-surface-container-high flex items-center justify-center group-hover:bg-surface-container-highest transition-colors">
+                <span className="material-symbols-outlined text-on-surface-variant text-2xl">folder_open</span>
+              </div>
+              <div>
+                <p className="font-bold text-on-surface mb-1">Open existing project</p>
+                <p className="text-sm text-on-surface-variant leading-snug">Pick up where you left off from your saved cloud projects.</p>
+              </div>
+              <div className="flex items-center gap-1 text-xs font-bold text-on-surface-variant mt-auto group-hover:text-primary transition-colors">
+                Browse projects
+                <span className="material-symbols-outlined text-sm group-hover:translate-x-0.5 transition-transform">chevron_right</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => importInputRef.current?.click()}
+              className="group flex flex-col gap-4 rounded-3xl bg-surface-container-lowest border border-outline-variant/20 p-6 hover:border-primary/30 hover:bg-surface-container-low transition-all ambient-lift text-left"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-surface-container-high flex items-center justify-center group-hover:bg-surface-container-highest transition-colors">
+                <span className="material-symbols-outlined text-on-surface-variant text-2xl">upload_file</span>
+              </div>
+              <div>
+                <p className="font-bold text-on-surface mb-1">Import JSON</p>
+                <p className="text-sm text-on-surface-variant leading-snug">Restore a previously exported project from a JSON file.</p>
+              </div>
+              <div className="flex items-center gap-1 text-xs font-bold text-on-surface-variant mt-auto group-hover:text-primary transition-colors">
+                Choose file
+                <span className="material-symbols-outlined text-sm group-hover:translate-x-0.5 transition-transform">chevron_right</span>
+              </div>
+            </button>
+          </div>
+          <input ref={importInputRef} type="file" accept=".json,application/json" className="hidden" onChange={handleImportJson} />
+          {importError && <p className="mt-3 text-sm text-red-600">{importError}</p>}
         </section>
 
         {/* Recent Projects */}

@@ -1271,6 +1271,120 @@ Rules: chapters_structure must have exactly {num_chapters} entries. main_charact
 
         yield ("done", analysis_markdown, structured)
 
+    async def analyze_story_lightweight_stream(
+        self,
+        story_text: str,
+        genre_tone: str = "Adventure",
+    ):
+        """
+        Lightweight story analysis — characters, beats, tone only.
+        Much faster than generate_step1_stream; used by Story Setup preview.
+
+        Yields:
+          ("token", str)        — streaming summary token
+          ("done", dict)        — {"detected_characters":[...], "tone_tags":[...], "scene_beats":N, "estimated_panels":N}
+          ("error", str, int)   — (message, status_code)
+        """
+        sep = "===JSON==="
+        prompt = f"""You are a story analyst helping adapt a story into a comic.
+
+Read the story and write a 2-sentence summary, then output the separator below, then a JSON object.
+
+Separator (output exactly, on its own line):
+{sep}
+
+JSON format (no markdown, no code fence):
+{{
+  "detected_characters": ["Name1", "Name2"],
+  "tone_tags": ["Epic", "Hopeful"],
+  "scene_beats": 12,
+  "estimated_panels": 80
+}}
+
+Rules:
+- detected_characters: 2–5 main character names as they appear in the story
+- tone_tags: 2–4 single-word descriptors (e.g. "Epic", "Gritty", "Tender", "Dark")
+- scene_beats: integer count of distinct narrative beats/scenes in the story
+- estimated_panels: rough total comic panels (typically 5–8 per scene beat)
+- Genre context: {genre_tone}
+
+Story:
+\"\"\"{story_text}\"\"\"
+"""
+        summary_parts: list[str] = []
+        json_parts: list[str] = []
+        phase = "summary"
+        pending = ""
+
+        try:
+            async for token in self._raw_stream(prompt):
+                if phase == "summary":
+                    pending += token
+                    idx = pending.find(sep)
+                    if idx >= 0:
+                        pre = pending[:idx]
+                        if pre:
+                            yield ("token", pre)
+                            summary_parts.append(pre)
+                        phase = "json"
+                        after = pending[idx + len(sep):]
+                        if after.strip():
+                            json_parts.append(after)
+                        pending = ""
+                    else:
+                        safe_until = max(0, len(pending) - len(sep) + 1)
+                        if safe_until > 0:
+                            safe = pending[:safe_until]
+                            yield ("token", safe)
+                            summary_parts.append(safe)
+                            pending = pending[safe_until:]
+                else:
+                    json_parts.append(token)
+        except GeminiServiceError as exc:
+            yield ("error", str(exc), exc.status_code)
+            return
+        except Exception as exc:
+            yield ("error", f"Streaming failed: {exc}", 500)
+            return
+
+        if pending:
+            if phase == "summary":
+                yield ("token", pending)
+            else:
+                json_parts.append(pending)
+
+        raw_json = "".join(json_parts).strip()
+        result: dict = {}
+        if raw_json:
+            try:
+                parsed = _extract_json_payload(raw_json)
+                result = parsed if isinstance(parsed, dict) else {}
+            except GeminiServiceError:
+                result = {}
+
+        # Fallback: derive from story text if model didn't return valid JSON
+        if not result.get("detected_characters"):
+            import re as _re
+            stopwords = {
+                "The","When","But","Each","Master","She","Her","His","They","There",
+                "This","That","What","Who","How","And","For","Not","Are","Was","Has",
+            }
+            names = list(dict.fromkeys(
+                w for w in (_re.findall(r'\b[A-Z][a-z]{2,}\b', story_text) or [])
+                if w not in stopwords
+            ))[:3]
+            result["detected_characters"] = names or ["Character"]
+
+        if not result.get("tone_tags"):
+            result["tone_tags"] = ["Adventure"]
+        if not isinstance(result.get("scene_beats"), int):
+            words = len(story_text.split())
+            result["scene_beats"] = max(4, round(words / 15))
+        if not isinstance(result.get("estimated_panels"), int):
+            result["estimated_panels"] = result["scene_beats"] * 6
+
+        yield ("done", result)
+
     async def generate_adapt_story_stream(
         self,
         original_story: str,

@@ -434,6 +434,103 @@ export function analyzeStoryStructuredStream(
   return controller;
 }
 
+export interface LightweightAnalysisResult {
+  detected_characters: string[];
+  tone_tags: string[];
+  scene_beats: number;
+  estimated_panels: number;
+}
+
+export function analyzeStoryLightweightStream(
+  payload: { story_text: string; genre_tone?: string },
+  callbacks: {
+    onToken: (tok: string) => void;
+    onDone: (result: LightweightAnalysisResult) => void;
+    onError: (msg: string, statusCode?: number) => void;
+  },
+): AbortController {
+  const controller = new AbortController();
+
+  const getUserId = (): string => {
+    const key = "mohiom-user-id";
+    if (typeof window === "undefined") return "server";
+    const existing = window.localStorage.getItem(key);
+    if (existing) return existing;
+    const next =
+      "randomUUID" in window.crypto
+        ? window.crypto.randomUUID()
+        : `user-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    window.localStorage.setItem(key, next);
+    return next;
+  };
+
+  (async () => {
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE_URL}/gemini/analyze-story-lightweight`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-User-Id": getUserId() },
+        credentials: "include",
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if ((err as { name?: string })?.name !== "AbortError") {
+        callbacks.onError(err instanceof Error ? err.message : "Network error");
+      }
+      return;
+    }
+
+    if (!response.ok) {
+      let msg = `Request failed (${response.status})`;
+      try {
+        const body = await response.json() as { detail?: string | { message?: string } };
+        const detail = body?.detail;
+        msg = typeof detail === "string" ? detail : detail?.message ?? msg;
+      } catch { /* ignore */ }
+      callbacks.onError(msg, response.status);
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) { callbacks.onError("No response body"); return; }
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim().startsWith("data:")) continue;
+          const raw = line.trim().slice(5).trim();
+          if (!raw || raw === "[DONE]") continue;
+          let event: { type?: string; content?: string; result?: LightweightAnalysisResult; message?: string; status_code?: number };
+          try { event = JSON.parse(raw) as typeof event; } catch { continue; }
+          if (event.type === "token" && event.content) {
+            callbacks.onToken(event.content);
+          } else if (event.type === "done" && event.result) {
+            callbacks.onDone(event.result);
+          } else if (event.type === "error") {
+            callbacks.onError(event.message ?? "Unknown error", event.status_code);
+          }
+        }
+      }
+    } catch (err) {
+      if ((err as { name?: string })?.name !== "AbortError") {
+        callbacks.onError(err instanceof Error ? err.message : "Stream read error");
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  })();
+
+  return controller;
+}
+
 /** Reusable SSE reader — shared by all step stream helpers. */
 function _readSseStream<TDone>(
   url: string,

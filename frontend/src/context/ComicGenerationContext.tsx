@@ -28,9 +28,13 @@ export interface StepState<T> {
   data: T | null;
   isLoading: boolean;
   isApproved: boolean;
+  /** True when content was re-generated after an earlier approval (STATE 5). */
+  regeneratedAfterApproval: boolean;
   locked: boolean;
   error: string | null;
   lastUpdated: string | null;
+  /** ISO timestamp set when the step was approved. */
+  approvedAt: string | null;
   /** Live markdown text streamed token-by-token while isLoading=true (step 1 only). */
   streamingText?: string | null;
 }
@@ -173,9 +177,11 @@ const emptyStepState = <T,>(locked: boolean): StepState<T> => ({
   data: null,
   isLoading: false,
   isApproved: false,
+  regeneratedAfterApproval: false,
   locked,
   error: null,
   lastUpdated: null,
+  approvedAt: null,
   streamingText: null,
 });
 
@@ -436,6 +442,7 @@ export interface ComicGenerationContextValue {
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleGenerate: (step: StepKey) => Promise<void>;
   handleApprove: (step: StepKey) => void;
+  handleRevokeApproval: (step: StepKey) => void;
   handleRetry: (step: StepKey) => void;
   handleGenerateCharacterReferences: (settingsMap?: Record<string, ImageGenSettings>) => Promise<void>;
   handleRegenerateCharacterImage: (characterId: string, settings?: ImageGenSettings) => Promise<void>;
@@ -544,6 +551,19 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     projectsApi.load(pending).then((res) => {
       restoreFromFullSave(res.data as unknown as Record<string, unknown>);
     }).catch(() => { /* silently ignore if project was deleted */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Import JSON queued from dashboard via localStorage.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const raw = window.localStorage.getItem('mohiom-import-json');
+    if (!raw) return;
+    window.localStorage.removeItem('mohiom-import-json');
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      loadProjectJson(parsed);
+    } catch { /* ignore malformed JSON */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1234,6 +1254,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       setStep4((prev) => ({ ...prev, locked: true, isApproved: false }));
     }
 
+    const wasApproved = stepMap[step].isApproved;
     setGlobalError(null);
     setStepState(step, (prev) => ({ ...prev, isLoading: true, error: null, streamingText: null }));
 
@@ -1274,9 +1295,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
                 },
                 isLoading: false,
                 isApproved: false,
+                regeneratedAfterApproval: wasApproved,
                 locked: false,
                 error: null,
                 lastUpdated: new Date().toISOString(),
+                approvedAt: null,
                 streamingText: null,
               });
               setActiveStep(1);
@@ -1332,8 +1355,9 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
                 .filter((p): p is string => typeof p === 'string' && p.trim().length > 0);
               setStep2({
                 data: { designMarkdown, structuredJson, aiPrompts },
-                isLoading: false, isApproved: false, locked: false,
-                error: null, lastUpdated: new Date().toISOString(), streamingText: null,
+                isLoading: false, isApproved: false, regeneratedAfterApproval: wasApproved,
+                locked: false, error: null, lastUpdated: new Date().toISOString(),
+                approvedAt: null, streamingText: null,
               });
               setStep2ImageReview((prev) => ({ ...prev, locked: false }));
               setActiveStep(2);
@@ -1378,8 +1402,9 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
                   scriptMarkdown: result.script_markdown || '',
                   structuredJson: (result.structured_json as Record<string, unknown>) || null,
                 },
-                isLoading: false, isApproved: false, locked: false,
-                error: null, lastUpdated: new Date().toISOString(), streamingText: null,
+                isLoading: false, isApproved: false, regeneratedAfterApproval: wasApproved,
+                locked: false, error: null, lastUpdated: new Date().toISOString(),
+                approvedAt: null, streamingText: null,
               });
               setStep4((prev) => ({ ...prev, locked: false }));
               setActiveStep(3);
@@ -1428,11 +1453,14 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       approvedCacheRef.current[step] = { key: cacheKey, data: data as StepData };
     }
 
+    const now = new Date().toISOString();
     setStepState(step, (prev) => ({
       ...prev,
       isApproved: true,
+      regeneratedAfterApproval: false,
       locked: true,
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: now,
+      approvedAt: now,
     }));
 
     if (step === 2) {
@@ -1445,6 +1473,15 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       setStepState(nextStep, (prev) => ({ ...prev, locked: false }));
       setActiveStep(nextStep);
     }
+  };
+
+  const handleRevokeApproval = (step: StepKey) => {
+    setStepState(step, (prev) => ({
+      ...prev,
+      isApproved: false,
+      regeneratedAfterApproval: false,
+      approvedAt: null,
+    }));
   };
 
   const handleRetry = (step: StepKey) => {
@@ -1956,6 +1993,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         },
         isLoading: false,
         isApproved: false,
+        regeneratedAfterApproval: false,
+        approvedAt: null,
         locked: false,
         error: null,
         lastUpdated: nowIso,
@@ -1975,6 +2014,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         },
         isLoading: false,
         isApproved: false,
+        regeneratedAfterApproval: false,
+        approvedAt: null,
         locked: false,
         error: null,
         lastUpdated: nowIso,
@@ -1994,6 +2035,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         },
         isLoading: false,
         isApproved: false,
+        regeneratedAfterApproval: false,
+        approvedAt: null,
         locked: false,
         error: null,
         lastUpdated: nowIso,
@@ -2050,6 +2093,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       },
       isLoading: false,
       isApproved: false,
+      regeneratedAfterApproval: false,
+      approvedAt: null,
       locked: false,
       error: null,
       lastUpdated: nowIso,
@@ -2087,6 +2132,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       data: { characters, isGenerating: false },
       isLoading: false,
       isApproved: false,
+      regeneratedAfterApproval: false,
+      approvedAt: null,
       locked: false,
       error: null,
       lastUpdated: nowIso,
@@ -2143,9 +2190,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         } : null,
         isLoading: false,
         isApproved: Boolean(s1.isApproved),
+        regeneratedAfterApproval: false,
         locked: false,
         error: null,
         lastUpdated: String(s1.lastUpdated || nowIso),
+        approvedAt: s1.isApproved ? String(s1.lastUpdated || nowIso) : null,
       });
 
       const s2Data = toRecord(s2.data);
@@ -2157,9 +2206,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         } : null,
         isLoading: false,
         isApproved: Boolean(s2.isApproved),
+        regeneratedAfterApproval: false,
         locked: false,
         error: null,
         lastUpdated: String(s2.lastUpdated || nowIso),
+        approvedAt: s2.isApproved ? String(s2.lastUpdated || nowIso) : null,
       });
 
       const s2irData = toRecord(s2ir.data);
@@ -2183,9 +2234,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         data: s2ir.data ? { characters: restoredChars, isGenerating: false } : null,
         isLoading: false,
         isApproved: Boolean(s2ir.isApproved),
+        regeneratedAfterApproval: false,
         locked: false,
         error: null,
         lastUpdated: String(s2ir.lastUpdated || nowIso),
+        approvedAt: s2ir.isApproved ? String(s2ir.lastUpdated || nowIso) : null,
       });
 
       setStep3({
@@ -2195,9 +2248,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         },
         isLoading: false,
         isApproved: Boolean(s3.isApproved),
+        regeneratedAfterApproval: false,
         locked: false,
         error: null,
         lastUpdated: String(s3.lastUpdated || nowIso),
+        approvedAt: s3.isApproved ? String(s3.lastUpdated || nowIso) : null,
       });
 
       const s4Data = toRecord(s4.data);
@@ -2206,9 +2261,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         data: panels.length > 0 ? { panels, panelStates: {}, pageStates: {}, isGenerating: false } : null,
         isLoading: false,
         isApproved: Boolean(s4.isApproved),
+        regeneratedAfterApproval: false,
         locked: false,
         error: null,
         lastUpdated: String(s4.lastUpdated || nowIso),
+        approvedAt: s4.isApproved ? String(s4.lastUpdated || nowIso) : null,
       });
 
       setActiveStep(4);
@@ -2259,6 +2316,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         data: { analysisMarkdown, characterBreakdown, structuredJson: json },
         isLoading: false,
         isApproved: step1ApiData.status === 'approved',
+        regeneratedAfterApproval: false,
+        approvedAt: null,
         locked: false,
         error: null,
         lastUpdated: String(step1ApiData.last_updated || nowIso),
@@ -2267,6 +2326,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         data: { designMarkdown: String(step2ApiDataData.design_markdown || ''), structuredJson: json, aiPrompts: [] },
         isLoading: false,
         isApproved: step2ApiData.status === 'approved',
+        regeneratedAfterApproval: false,
+        approvedAt: null,
         locked: false,
         error: null,
         lastUpdated: String(step2ApiData.last_updated || nowIso),
@@ -2275,6 +2336,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         data: { scriptMarkdown, structuredJson: json },
         isLoading: false,
         isApproved: step3ApiData.status === 'approved',
+        regeneratedAfterApproval: false,
+        approvedAt: null,
         locked: false,
         error: null,
         lastUpdated: String(step3ApiData.last_updated || nowIso),
@@ -2457,6 +2520,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     handleFileUpload,
     handleGenerate,
     handleApprove,
+    handleRevokeApproval,
     handleRetry,
     handleGenerateCharacterReferences,
     handleRegenerateCharacterImage,

@@ -1,102 +1,339 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
+import Markdown from '@/components/Markdown';
 
+type State = 1 | 2 | 3 | 4 | 5;
+
+// ── Parse script markdown into pages + panels ────────────────────────────────
+interface ScriptPanel {
+  label: string;
+  dialogue: string;
+  prompt: string;
+  description: string;
+}
+
+interface ScriptPage {
+  pageNumber: number;
+  panels: ScriptPanel[];
+}
+
+function parseScript(md: string): ScriptPage[] {
+  const pages: ScriptPage[] = [];
+  let currentPage: ScriptPage | null = null;
+  let currentPanel: ScriptPanel | null = null;
+
+  const flush = () => {
+    if (currentPanel && currentPage) currentPage.panels.push(currentPanel);
+    currentPanel = null;
+  };
+
+  for (const raw of md.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    const pageMatch = line.match(/^Page\s+(\d+)/i);
+    if (pageMatch) {
+      flush();
+      if (currentPage) pages.push(currentPage);
+      currentPage = { pageNumber: Number(pageMatch[1]), panels: [] };
+      continue;
+    }
+
+    const panelMatch = line.match(/^Panel\s+(\d+)[:\s]/i);
+    if (panelMatch && currentPage) {
+      flush();
+      currentPanel = {
+        label: `Panel ${panelMatch[1]}`,
+        description: line.replace(/^Panel\s+\d+[:\s]*/i, '').trim(),
+        dialogue: '',
+        prompt: '',
+      };
+      continue;
+    }
+
+    if (currentPanel) {
+      if (/^Dialogue\/SFX[:\s]/i.test(line)) {
+        currentPanel.dialogue = line.replace(/^Dialogue\/SFX[:\s]*/i, '').trim();
+      } else if (/^AI Image Prompt[:\s]/i.test(line)) {
+        currentPanel.prompt = line.replace(/^AI Image Prompt[:\s]*/i, '').trim();
+      } else if (currentPanel.description) {
+        // extra description lines
+        currentPanel.description += ' ' + line;
+      }
+    } else if (currentPage && !currentPanel) {
+      // Page-level description lines
+    }
+  }
+
+  flush();
+  if (currentPage) pages.push(currentPage);
+  return pages;
+}
+
+// ── State badge ───────────────────────────────────────────────────────────────
+function StateBadge({ state }: { state: State }) {
+  if (state === 1) return null;
+  if (state === 2) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-on-surface-variant">
+        <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+        Generating…
+      </div>
+    );
+  }
+  if (state === 4) {
+    return (
+      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-bold">
+        <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+        Approved
+      </div>
+    );
+  }
+  if (state === 5) {
+    return (
+      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-600 text-xs font-bold">
+        <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>refresh</span>
+        Regenerated — re-approval needed
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-600 text-xs font-bold">
+      <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>pending</span>
+      Pending review
+    </div>
+  );
+}
+
+// ── Page card ─────────────────────────────────────────────────────────────────
+function PageCard({ page, defaultOpen }: { page: ScriptPage; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-5 py-4 text-left"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Page</span>
+          <span className="font-bold text-on-surface">{page.pageNumber}</span>
+          <span className="text-xs text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">
+            {page.panels.length} panel{page.panels.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+        <span
+          className="material-symbols-outlined text-lg text-on-surface-variant transition-transform"
+          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+        >
+          expand_more
+        </span>
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 space-y-3">
+          {page.panels.map((panel, i) => (
+            <div key={i} className="rounded-xl bg-surface-container-low p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-on-surface bg-surface-container px-2 py-0.5 rounded-full">
+                  {panel.label}
+                </span>
+                {panel.description && (
+                  <p className="text-sm text-on-surface leading-snug">{panel.description}</p>
+                )}
+              </div>
+              {panel.dialogue && (
+                <p className="text-sm text-on-surface-variant italic leading-relaxed">
+                  &ldquo;{panel.dialogue}&rdquo;
+                </p>
+              )}
+              {panel.prompt && (
+                <div className="rounded-lg bg-surface-container p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">
+                    Image prompt
+                  </p>
+                  <p className="text-xs text-on-surface-variant leading-relaxed">{panel.prompt}</p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export default function Step3Script() {
   const {
     step3,
     handleGenerate,
     handleApprove,
+    handleRevokeApproval,
     handleRetry,
     getCooldownSeconds,
   } = useComicGeneration();
 
-  const cooldownSeconds = getCooldownSeconds(3);
-  const isGenerateDisabled = step3.isLoading || cooldownSeconds > 0;
+  const cooldown = getCooldownSeconds(3);
+  const isGenerating = step3.isLoading;
+  const canGenerate = !isGenerating && cooldown === 0;
 
-  const statusLabel = step3.isApproved
-    ? 'Approved'
-    : step3.isLoading
-      ? step3.streamingText ? 'Streaming…' : 'Processing…'
-      : step3.data
-        ? 'Ready for review'
-        : 'Not generated';
+  let state: State = 1;
+  if (isGenerating) {
+    state = 2;
+  } else if (step3.isApproved && !step3.regeneratedAfterApproval) {
+    state = 4;
+  } else if (step3.data && step3.regeneratedAfterApproval) {
+    state = 5;
+  } else if (step3.data) {
+    state = 3;
+  }
 
-  const displayText = step3.streamingText ?? step3.data?.scriptMarkdown ?? null;
+  const pages = step3.data ? parseScript(step3.data.scriptMarkdown) : [];
+  const totalPanels = pages.reduce((sum, p) => sum + p.panels.length, 0);
 
   return (
-    <section className="bg-white text-gray-900 rounded-3xl p-8">
+    <section className="text-on-surface space-y-6">
+
+      {/* ── Header ── */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold">Panel script</h2>
-          <p className="mt-2 text-gray-600">Review the full page-by-page, panel-by-panel script.</p>
+          <h2 className="text-2xl font-bold text-on-surface">Panel Script</h2>
+          <p className="text-sm text-on-surface-variant mt-1">
+            Full page-by-page, panel-by-panel script for image generation
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          {step3.isLoading && step3.streamingText && (
-            <span className="flex items-center gap-1.5 text-sm text-blue-600">
-              <span className="animate-pulse">●</span>
-              Streaming
-            </span>
-          )}
-          <div className="text-sm text-gray-600">Status: {statusLabel}</div>
-        </div>
+        <StateBadge state={state} />
       </div>
 
-      <div className="mt-6 rounded-3xl bg-gray-100 p-6">
-        <h3 className="text-lg font-semibold">Script output</h3>
-        {displayText ? (
-          <pre className="mt-4 whitespace-pre-wrap text-sm text-gray-700">
-            {displayText}
-            {step3.isLoading && step3.streamingText && (
-              <span className="inline-block w-[2px] h-[1em] ml-px bg-gray-500 animate-pulse align-text-bottom" />
-            )}
-          </pre>
-        ) : (
-          <p className="mt-4 text-sm text-gray-500">Generate Step 3 to see the full script.</p>
-        )}
-      </div>
-
-      <div className="mt-6 flex flex-wrap items-center gap-4">
+      {/* ── Action bar ── */}
+      <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={() => handleGenerate(3)}
-          disabled={isGenerateDisabled}
-          className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
-            isGenerateDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-900 text-white hover:scale-105'
+          disabled={!canGenerate}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all ${
+            !canGenerate
+              ? 'bg-surface-container text-on-surface-variant cursor-not-allowed opacity-50'
+              : state >= 3
+                ? 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'
+                : 'bg-primary text-on-primary hover:opacity-90'
           }`}
         >
-          {step3.isLoading
+          <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
+            {isGenerating ? 'hourglass_empty' : state >= 3 ? 'refresh' : 'edit_document'}
+          </span>
+          {isGenerating
             ? 'Generating…'
-            : cooldownSeconds > 0
-              ? `Retry in ${cooldownSeconds}s`
-              : step3.data
+            : cooldown > 0
+              ? `Retry in ${cooldown}s`
+              : state >= 3
                 ? 'Regenerate script'
                 : 'Generate script'}
         </button>
-        <button
-          type="button"
-          onClick={() => handleApprove(3)}
-          disabled={!step3.data || step3.isApproved}
-          className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
-            !step3.data || step3.isApproved
-              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              : 'bg-gray-100 text-gray-900 hover:scale-105'
-          }`}
-        >
-          {step3.isApproved ? 'Approved' : 'Approve script'}
-        </button>
+
+        {(state === 3 || state === 5) && (
+          <button
+            type="button"
+            onClick={() => handleApprove(3)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-primary text-on-primary hover:opacity-90 transition-opacity"
+          >
+            <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+            Approve script
+          </button>
+        )}
+
+        {state === 4 && (
+          <button
+            type="button"
+            onClick={() => handleRevokeApproval(3)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-surface-container-high text-on-surface-variant hover:text-on-surface transition-colors"
+          >
+            <span className="material-symbols-outlined text-base">undo</span>
+            Revoke approval
+          </button>
+        )}
+
         {step3.error && (
           <button
             type="button"
             onClick={() => handleRetry(3)}
-            className="px-6 py-3 rounded-2xl text-sm font-semibold bg-gray-100 text-gray-900 hover:scale-105 transition-transform"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 transition-colors"
           >
+            <span className="material-symbols-outlined text-base">replay</span>
             Retry
           </button>
         )}
-        {step3.error && <span className="text-sm text-red-600">{step3.error}</span>}
+        {step3.error && <span className="text-sm text-red-500">{step3.error}</span>}
       </div>
+
+      {/* ── Streaming ── */}
+      {state === 2 && step3.streamingText && (
+        <div className="rounded-3xl bg-surface-container-low border border-outline-variant/10 p-6">
+          <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-4 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+            Live script stream
+          </p>
+          <Markdown className="[&>*:last-child]:mb-0">{step3.streamingText}</Markdown>
+        </div>
+      )}
+
+      {/* ── Empty ── */}
+      {state === 1 && (
+        <div className="rounded-3xl border-2 border-dashed border-outline-variant/20 py-16 flex flex-col items-center gap-4">
+          <span className="material-symbols-outlined text-5xl text-outline-variant" style={{ fontVariationSettings: "'FILL' 1" }}>
+            edit_document
+          </span>
+          <div className="text-center">
+            <p className="font-semibold text-on-surface">No script yet</p>
+            <p className="text-sm text-on-surface-variant mt-1">
+              Complete Steps 1 &amp; 2 first, then generate the panel script.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Content ── */}
+      {(state === 3 || state === 4 || state === 5) && step3.data && (
+        <div>
+          {/* Stats row */}
+          {pages.length > 0 && (
+            <div className="flex items-center gap-4 mb-4">
+              <span className="text-sm font-semibold text-on-surface">
+                {pages.length} page{pages.length !== 1 ? 's' : ''}
+              </span>
+              <span className="text-on-surface-variant">·</span>
+              <span className="text-sm text-on-surface-variant">
+                {totalPanels} panel{totalPanels !== 1 ? 's' : ''}
+              </span>
+              {state === 4 && step3.approvedAt && (
+                <>
+                  <span className="text-on-surface-variant">·</span>
+                  <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                    Approved {new Date(step3.approvedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Structured pages */}
+          {pages.length > 0 ? (
+            <div className="space-y-3">
+              {pages.map((page, i) => (
+                <PageCard key={page.pageNumber} page={page} defaultOpen={i === 0} />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 p-5">
+              <Markdown className="[&>*:last-child]:mb-0">{step3.data.scriptMarkdown}</Markdown>
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }

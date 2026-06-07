@@ -8,7 +8,7 @@ const MODES: { id: ImageGenMode; label: string; desc: string }[] = [
   { id: 1, label: 'Text only', desc: 'Prompt → image' },
   { id: 2, label: 'Text + Reference', desc: 'Keep appearance' },
   { id: 3, label: 'Text + Pose', desc: 'Keep structure' },
-  { id: 4, label: 'Full', desc: 'Reference + Pose' },
+  { id: 4, label: 'All inputs', desc: 'Reference + Pose' },
 ];
 
 function readFileAsBase64(file: File): Promise<string> {

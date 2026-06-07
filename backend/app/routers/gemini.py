@@ -335,6 +335,71 @@ async def analyze_story_structured(
         limit_token.release()
 
 
+class LightweightAnalysisRequest(BaseModel):
+    """Minimal request for Story Setup preview analysis."""
+    story_text: str
+    genre_tone: str = "Adventure"
+
+
+@router.post("/analyze-story-lightweight")
+async def analyze_story_lightweight(request: LightweightAnalysisRequest, http_request: Request):
+    """
+    Lightweight analysis for Story Setup preview (characters, beats, tone).
+    Much faster than analyze-story-structured — no chapter breakdown.
+
+    SSE stream events:
+      data: {"type":"token","content":"..."}
+      data: {"type":"done","result":{...}}
+      data: {"type":"error","message":"...","status_code":N}
+    """
+    if gemini_service is None:
+        raise HTTPException(
+            status_code=500,
+            detail=gemini_error_message or "Gemini service is not available.",
+        )
+
+    limit_token = await _acquire_limit_token(http_request)
+
+    import json as _json
+
+    async def sse_generator():
+        try:
+            async for event in gemini_service.analyze_story_lightweight_stream(
+                story_text=request.story_text,
+                genre_tone=request.genre_tone,
+            ):
+                kind = event[0]
+                if kind == "token":
+                    yield "data: " + _json.dumps({"type": "token", "content": event[1]}) + "\n\n"
+                elif kind == "done":
+                    yield "data: " + _json.dumps({"type": "done", "result": event[1]}) + "\n\n"
+                elif kind == "error":
+                    yield "data: " + _json.dumps({
+                        "type": "error",
+                        "message": event[1],
+                        "status_code": event[2] if len(event) > 2 else 500,
+                    }) + "\n\n"
+        except GeminiServiceError as exc:
+            detail = {"message": str(exc), "status_code": exc.status_code}
+            if exc.retry_after_seconds is not None:
+                detail["retry_after_seconds"] = exc.retry_after_seconds
+            yield "data: " + _json.dumps({"type": "error", **detail}) + "\n\n"
+        except Exception as exc:
+            yield "data: " + _json.dumps({"type": "error", "message": str(exc), "status_code": 500}) + "\n\n"
+        finally:
+            limit_token.release()
+
+    return StreamingResponse(
+        sse_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.post("/adapt-story")
 async def adapt_story(request: AdaptStoryRequest, http_request: Request):
     """

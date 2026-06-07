@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
-import { analyzeStoryStructuredStream, adaptStoryStream } from '@/services/api';
+import { analyzeStoryLightweightStream, adaptStoryStream } from '@/services/api';
 import type { AdaptStoryResult } from '@/services/api';
 import { useStoryLibrary } from '@/hooks/useStoryLibrary';
 import type { SavedStory } from '@/hooks/useStoryLibrary';
@@ -123,6 +123,7 @@ export default function StorySetupPage() {
     sceneBeats: number; chars: string[]; tone: string[]; panels: number;
   } | null>(null);
   const [streamingText, setStreamingText] = useState('');
+  const [beatsExpanded, setBeatsExpanded] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   // Advanced Setup (production targets)
@@ -249,46 +250,27 @@ export default function StorySetupPage() {
     flashSave();
   };
 
-  // AI analysis (art/structure fields use sensible defaults — not configurable here)
+  // AI analysis — lightweight endpoint focused on characters/beats/tone
   const runAnalysis = useCallback(() => {
     if (!canProceed || analysisState === 'loading') return;
     abortRef.current?.abort();
     setAnalysisState('loading');
     setStreamingText('');
+    setBeatsExpanded(false);
 
-    const ctrl = analyzeStoryStructuredStream(
+    const ctrl = analyzeStoryLightweightStream(
       {
         story_text: storyText,
-        num_chapters: 1,
-        desired_main_characters: 3,
-        target_total_pages: '20',
         genre_tone: genre || 'Adventure',
-        art_style_reference: 'manga',
-        max_panels_per_page: 6,
-        special_requests: 'None',
-        project_id: projectId || undefined,
-        stream: true,
       },
       {
         onToken: (tok) => setStreamingText((p) => p + tok),
         onDone: (res) => {
-          const sj = res.structured_json as Record<string, unknown> | null;
-          const step1Data = (sj as { steps?: { step_1_analysis?: Record<string, unknown> } })?.steps?.step_1_analysis ?? {};
-          const charList = Array.isArray((step1Data as { detected_characters?: unknown[] }).detected_characters)
-            ? ((step1Data as { detected_characters: string[] }).detected_characters).slice(0, 3)
-            : [];
-          const toneList = Array.isArray((step1Data as { tone_tags?: unknown[] }).tone_tags)
-            ? ((step1Data as { tone_tags: string[] }).tone_tags).slice(0, 4)
-            : [];
-          const beats = typeof (step1Data as { scene_beats?: number }).scene_beats === 'number'
-            ? (step1Data as { scene_beats: number }).scene_beats
-            : Math.max(4, Math.round(wordCount(storyText) / 15));
-
           setAnalysisResult({
-            sceneBeats: beats,
-            chars: charList.length ? charList : detectCharacters(storyText),
-            tone: toneList.length ? toneList : ['Epic', 'Adventure'],
-            panels: 100,
+            sceneBeats: res.scene_beats,
+            chars: res.detected_characters.slice(0, 5),
+            tone: res.tone_tags.slice(0, 4),
+            panels: res.estimated_panels,
           });
           setAnalysisState('done');
         },
@@ -304,7 +286,7 @@ export default function StorySetupPage() {
       },
     );
     abortRef.current = ctrl;
-  }, [canProceed, analysisState, storyText, genre, projectId]);
+  }, [canProceed, analysisState, storyText, genre]);
 
   const runAdaptation = useCallback(() => {
     const sourceStory = (adaptedStory && !showOriginal ? adaptedStory : storyText).trim();
@@ -1227,18 +1209,61 @@ export default function StorySetupPage() {
                   })()}
 
                   {/* Scene beats */}
-                  <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">Scene beats</p>
+                  <button
+                    type="button"
+                    className="flex items-center justify-between w-full text-left mb-3"
+                    onClick={() => setBeatsExpanded((v) => !v)}
+                  >
+                    <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Scene beats</p>
+                    <span
+                      className="material-symbols-outlined text-sm text-on-surface-variant transition-transform duration-200"
+                      style={{ transform: beatsExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                    >
+                      expand_more
+                    </span>
+                  </button>
                   <div className="space-y-2 mb-6">
                     {(['Opening', 'Rising', 'Climax'] as const).map((act, i) => {
-                      const actPanels = [
-                        Math.max(1, Math.round(analysisResult.sceneBeats * 0.2)),
-                        Math.max(2, Math.round(analysisResult.sceneBeats * 0.5)),
-                        Math.max(1, analysisResult.sceneBeats - Math.round(analysisResult.sceneBeats * 0.2) - Math.round(analysisResult.sceneBeats * 0.5)),
-                      ];
+                      const act1 = Math.max(1, Math.round(analysisResult.sceneBeats * 0.2));
+                      const act2 = Math.max(2, Math.round(analysisResult.sceneBeats * 0.5));
+                      const act3 = Math.max(1, analysisResult.sceneBeats - act1 - act2);
+                      const actCounts = [act1, act2, act3];
+                      const beatCount = actCounts[i];
+
+                      const paragraphs = storyText.split(/\n+/).map((p) => p.trim()).filter((p) => p.length > 20);
+                      const totalParas = Math.max(1, paragraphs.length);
+                      const actRanges = [[0, 0.25], [0.25, 0.75], [0.75, 1.0]] as [[number,number],[number,number],[number,number]];
+                      const [startFrac, endFrac] = actRanges[i];
+                      const actParas = paragraphs.slice(
+                        Math.floor(startFrac * totalParas),
+                        Math.ceil(endFrac * totalParas),
+                      );
+
+                      const beatDescs: string[] = [];
+                      for (let b = 0; b < beatCount; b++) {
+                        if (actParas.length === 0) { beatDescs.push(`Beat ${b + 1}`); continue; }
+                        const idx = beatCount === 1 ? 0 : Math.round(b * (actParas.length - 1) / Math.max(1, beatCount - 1));
+                        const para = actParas[Math.min(idx, actParas.length - 1)];
+                        const first = para.split(/[.!?]/)[0].trim();
+                        beatDescs.push(first.length > 72 ? first.slice(0, 72) + '…' : first);
+                      }
+
                       return (
-                        <div key={act} className="flex items-center justify-between text-xs bg-surface-container-low rounded-xl px-3 py-2">
-                          <span className="text-on-surface-variant">Act {i + 1} · {act}</span>
-                          <span className="font-bold text-on-surface">{actPanels[i]} beats</span>
+                        <div key={act}>
+                          <div className="flex items-center justify-between text-xs bg-surface-container-low rounded-xl px-3 py-2">
+                            <span className="text-on-surface-variant">Act {i + 1} · {act}</span>
+                            <span className="font-bold text-on-surface">{beatCount} beats</span>
+                          </div>
+                          {beatsExpanded && (
+                            <ul className="mt-1 ml-1 space-y-0.5 pl-2 border-l-2 border-outline-variant/20">
+                              {beatDescs.map((desc, j) => (
+                                <li key={j} className="flex items-start gap-2 py-1 text-[11px] text-on-surface-variant">
+                                  <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-surface-container-high flex items-center justify-center text-[9px] font-bold">{j + 1}</span>
+                                  {desc || 'Scene beat'}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                         </div>
                       );
                     })}

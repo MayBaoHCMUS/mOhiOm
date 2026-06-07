@@ -582,6 +582,9 @@ export default function Step1() {
             </div>
           ))}
         </div>
+        <p className="mt-3 text-[10px] text-gray-400 leading-snug">
+          * Estimates are based on your Advanced Setup targets. Actual output depends on story length and AI generation results.
+        </p>
       </div>
 
       {/* Bottom actions */}

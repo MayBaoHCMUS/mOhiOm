@@ -1,3 +1,127 @@
+## SESSION: 2026-06-06
+
+### 🎯 CONTEXT — Major Architecture Refactor
+**Core decision**: Users can ONLY enter the Pipeline (Step 1) via Story Setup. Direct manual entry is forbidden.  
+**Entry points allowed**: Story Setup (primary) · My Projects (returning users) · Import JSON (escape hatch)
+
+---
+
+### ✅ COMPLETED
+
+#### P0 — Architecture
+
+**Change 6.1 + 6.5 + 7.1 — Pipeline Step 1 complete rewrite**
+- File: `frontend/src/components/story-setup/Step1.tsx` — full rewrite
+- **No-story state** (`!fromStorySetup`): shows "No story found" card with "Go to Story Setup" (primary), "Open existing project" + "Import JSON" (secondary escape hatches). No story input fields whatsoever.
+- **Story-imported state**: blue import banner with title, word count, genre, AI-adapted badge, and 3 action buttons:
+  - "Edit in Story Setup ↗" → Link to `/studio/story-setup`
+  - "Switch story" → opens `StoryPickerModal` (library picker) → confirm dialog
+  - "Remove & start over" → confirm dialog → clears localStorage + sets `fromStorySetup(false)`
+- **Form**: Project Identity (project ID, tags, summary) + Visual Execution (art style with genre-aware suggestions, image API URL, special requests / content guardrails)
+- **Read-only Output Estimate**: pages, chapters, est. panels, characters from context values — with "Edit targets ↗" link back to Story Setup
+- **Progress indicator**: 3/3 required (story imported · project ID · art style) with live check/circle icons
+- Removed ALL: story text, file upload, main characters, chapters, target pages, max panels, genre, presets, AI Suggest All, output estimate inputs
+
+**Change 2.1 + 2.2 — Advanced Setup section in Story Setup**
+- File: `frontend/src/app/studio/story-setup/page.tsx`
+- Collapsible card after Creative Direction (collapsed by default)
+- Header shows live summary: `{pages} pages · {chapters} chapters · {chars} chars`
+- Quick presets: "Quick read (20p)", "Short comic (50p)", "Full book (200p)"
+- 4 numeric fields: Main Characters (1–10), Chapters (1–20), Target Pages (5–200), Max Panels/Page (2–8)
+- **Story capacity check**: after analysis runs, shows amber warnings:
+  - `Story has N characters but you configured M. Adjust to N ↓`
+  - `Story may need ~N pages. You configured M. Adjust to N ↓`
+- "Adjust to X ↓" buttons update the field immediately
+- Auto-expands on mismatch after analysis completes
+- Estimate footer: `~{pages × panels × 0.7} panels`
+
+**Advanced Setup → Pipeline context integration**
+- `handleNext()` in Story Setup now saves explicit production targets to `mohiom-story-setup` localStorage: `mainCharacters`, `numChapters`, `targetPages`, `maxPanelsPerPage`
+- `ComicGenerationContext.tsx` mount effect updated: reads explicit values first (takes priority over analysis-derived auto-fill), falls back to analysis-derived values only if no explicit targets were set
+
+**`ComicGenerationContext.tsx` — `setFromStorySetup` exposed**
+- Added `setFromStorySetup: (v: boolean) => void` to context interface and value object
+- Required by Step 1's "Remove & start over" action
+
+#### P1 — Core UX
+
+**Change 1.1 — Quick Start mode**
+- Mode tabs added to Story Setup header: **Quick Start** · **Full Setup** · **Load Story**
+- Quick Start hides: Project ID field, Genre field + chips, Creative Direction section, Advanced Setup section
+- Title field spans full width in Quick Start
+- Essentials tracker adapts: 2/2 (Title + Narrative) instead of 3/3
+- **Auto-analysis**: fires 1.5 s after user stops typing when Title + Narrative (≥80 chars) are set
+- Analysis panel adapts: "Analysis will auto-run" placeholder, "Starting automatically…" in ready state
+- "Switch to Full Setup" hint shown at bottom of form
+
+**Change 4 — "Manage story" dropdown**
+- Renamed "More" button → "Manage story" with `menu_book` icon
+- Added **Export as JSON** option: downloads current story state (all fields, analysis result, production targets) as `.json` file named `{projectId}_{date}.json`
+- Fixed **Duplicate story**: now saves a proper copy with "(copy)" suffix + toast notification with "View →" link
+- Dropdown divider separates non-destructive from destructive actions
+
+**Change 3.2 + 3.3 — Character confidence cards + warning banner**
+- In AI analysis panel (STATE 5 — Done), each character card shows confidence score based on mention frequency in story text:
+  - High (≥5 mentions) → green card border
+  - Medium (2–4 mentions) → amber card border
+  - Low (<2 mentions) → red card border
+- Confidence label shown below character name
+- Warning banner appears above the grid listing low-confidence characters: "Elena appears rarely — add more detail for accurate character sheets."
+
+**Change 6.4 — Required fields checklist tooltip on Generate button**
+- Generate button in Pipeline Step 1 wrapped in `group` div
+- On hover when `!canGenerate`: dark tooltip above button showing 3 required fields with check/circle icons:
+  - Story imported · Project ID (min 3 chars) · Art style reference
+
+#### P2 — Polish
+
+**Change 5 — Creative Direction placeholder fix**
+- Removed "Create a plot twist" from `DIRECTION_CHIPS` quick suggestions array
+
+**Change 8 — 5-step WORKFLOW sidebar**
+- `StudioSidebar.tsx`: `WORKFLOW` array expanded from 4 → 5 steps:
+  - ① Story Setup · ② Comic Pipeline · ③ Character Manager · ④ Comic Editor · ⑤ Export & Publish
+- `STEP_NUMERALS` extended: `['①','②','③','④','⑤']`
+- Removed the standalone "Comic Pipeline" link that was added in the previous session (now lives in WORKFLOW at step ②)
+
+---
+
+### ✅ COMPLETED THIS SESSION (2026-06-07)
+
+| # | Change | Implementation |
+|---|--------|----------------|
+| 3.1 | **Lightweight analysis backend prompt** | New `POST /api/gemini/analyze-story-lightweight` endpoint. `analyze_story_lightweight_stream()` in `services.py` — single prompt returning `detected_characters`, `tone_tags`, `scene_beats`, `estimated_panels`. Story Setup page now uses `analyzeStoryLightweightStream()` (new `api.ts` function) instead of the heavy `analyzeStoryStructuredStream`. |
+| 3.4 | **Expandable scene beats** | Scene beats header in STATE 5 Done panel is now a toggle button. When expanded, shows numbered beat descriptions derived from story text paragraphs (frontend-only, no AI changes needed). |
+| 3.5 | **Estimate disclaimer** | `*` footnote added below Output Estimate grid in `Step1.tsx`. |
+| 9 | **Home page entry point redesign** | "Start something new" section added to `/studio/dashboard` with 3 cards: "Start with my story" → `/studio/story-setup`, "Open existing project" → `/studio`, "Import JSON" → file picker → saves to `mohiom-import-json` localStorage → studio context auto-loads on mount. |
+| P0 | **Global 5-state machine + StepState fields** | Added `regeneratedAfterApproval: boolean` and `approvedAt: string or null` to `StepState<T>` in `ComicGenerationContext.tsx`. Added `handleRevokeApproval(step)`. `handleGenerate` captures `wasApproved` before gen starts; `regeneratedAfterApproval` set to `wasApproved` on completion. Fixed all 8 TypeScript errors in `loadMockStepData`, `loadMockCharacterReview`, and second `restoreFromFullSave` path. |
+| P0 | **Step1Analysis.tsx — full rewrite** | 5-state machine + structured sections. Parses `analysisMarkdown` by `##` headings into collapsible `AnalysisSection` cards (first 2 expanded by default). Character cards from `characterBreakdown`. Stats bar from `structuredJson`. Approve/Revoke/Regenerate buttons per state. Streaming live preview. Approval timestamp badge in STATE 4. |
+| P0 | **Step3Script.tsx — full rewrite** | 5-state machine + structured page/panel view. Parser extracts `Page N` / `Panel N` / `Dialogue/SFX:` / `AI Image Prompt:` lines into collapsible `PageCard` components (first page open by default). Falls back to raw `<pre>` if no page markers. Stats row showing page + panel counts + approval timestamp. |
+| P0 | **Step4Generation.tsx — full rewrite** | 5-state machine. 3-mode panel view toggle: **Page** (default, full-page image + panel cards), **Grid** (thumbnail grid, 2–5 cols), **List** (accordion list). Progress stats bar with emerald progress bar. Collapsible JSON export section (collapsed by default) with Save to Cloud, Download, Copy, My Projects buttons. Remove all raw debug info. Approve/Revoke per state. |
+| P1 | **Step2Characters.tsx — full rewrite** | Design sheet section: parse by `###` character headings into collapsible `DesignSheetCard` components. Prompt queue sidebar with per-character status dots (idle/loading/success/error). Character review section: per-character `CharacterReviewCard` with selected-candidate ring highlight, generation status badge, locked section overlay when `step2.locked`. Approve references gated on ALL characters having a `selectedCandidateId`. State machine on both design sheet and image review. |
+| P2 | **ImageGenModePanel — rename "Full" → "All inputs"** | Mode 4 label updated in `MODES` array in `ImageGenModePanel.tsx`. |
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/components/story-setup/Step1.tsx` — **full rewrite** (new architecture: no-story state + imported state)
+- `frontend/src/app/studio/story-setup/page.tsx` — Major additions: Quick Start mode, mode tabs, Advanced Setup section, capacity check, Manage story dropdown, Export JSON, character confidence, auto-analysis
+- `frontend/src/context/ComicGenerationContext.tsx` — Added `setFromStorySetup` to interface + value; updated mount effect to read explicit production targets from localStorage with priority over analysis-derived values
+- `frontend/src/components/StudioSidebar.tsx` — 5-step WORKFLOW, removed standalone Comic Pipeline link
+
+### 🔧 DESIGN CONSTRAINTS (carry forward — must be preserved)
+- Keep existing color system, typography, and visual identity
+- Keep auto-save draft behavior as-is
+- All confirmation dialogs: **[Cancel] always on left** as secondary action
+- AI suggestions must always be overridable by user
+- Import JSON path must always remain available as escape hatch
+- My Projects path must always remain available for returning users
+- The lightweight analysis (Change 3.1) must NOT replace or interfere with the full Pipeline Step 2 analysis prompt
+- Quick Start mode must feel as lightweight as possible — do not show Advanced Setup or Creative Direction by default
+
+---
+
 ## SESSION: 2026-06-04
 
 ### ✅ COMPLETED
