@@ -19,15 +19,15 @@ const wizardSteps = [
 ] as const;
 
 function WizardContent() {
-  const { activeStep, setActiveStep, stepMap, setupValidation } = useComicGeneration();
+  const { activeStep, setActiveStep, stepMap, setupValidation, handleGenerate, step1 } = useComicGeneration();
 
   const current = wizardSteps.find((step) => step.key === activeStep) ?? wizardSteps[0];
   const CurrentComponent = current.Component;
 
   const isLastStep = activeStep === wizardSteps.length - 1;
 
-  // Step 0: enabled when all required fields are complete
-  // Steps 1–3: enabled when the current step is approved
+  // Step 0: enabled when all required fields are complete (loading is OK — clicking navigates to watch the stream)
+  // Steps 1–4: enabled when the current step is approved
   const isNextDisabled =
     activeStep === 0
       ? !setupValidation?.isValid
@@ -36,8 +36,20 @@ function WizardContent() {
   const nextTooltip = isNextDisabled
     ? activeStep === 0
       ? 'Complete all required fields to continue'
-      : 'Approve this step to continue'
+      : activeStep === 1 && step1.isLoading
+        ? 'Wait for analysis to complete'
+        : 'Approve this step to continue'
     : undefined;
+
+  // Step 0 label is context-aware: reflects whether generation will happen
+  const nextLabel =
+    activeStep === 0
+      ? step1.isLoading
+        ? 'Analyzing…'
+        : step1.data
+          ? 'Next Step'
+          : 'Generate analysis'
+      : 'Next Step';
 
   const handlePrevious = () => {
     if (activeStep === 0) return;
@@ -46,6 +58,14 @@ function WizardContent() {
 
   const handleNext = () => {
     if (isNextDisabled || isLastStep) return;
+    if (activeStep === 0) {
+      // Fire generation only if not already running and no analysis exists
+      if (!step1.isLoading && !step1.data) {
+        handleGenerate(1);
+      }
+      setActiveStep(1); // advance immediately so user watches the stream on Step 1
+      return;
+    }
     setActiveStep((activeStep + 1) as WizardStepKey);
   };
 
@@ -153,7 +173,7 @@ function WizardContent() {
                     : 'bg-gray-900 text-white hover:scale-105'
                 }`}
               >
-                Next Step
+                {nextLabel}
                 <span className="material-symbols-outlined text-base">arrow_forward</span>
               </button>
               {nextTooltip && (

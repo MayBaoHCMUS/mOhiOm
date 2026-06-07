@@ -97,7 +97,6 @@ export default function Step1() {
     setArtStyle,
     setSpecialRequests,
     setLocalImageApiUrl,
-    handleGenerate,
     getCooldownSeconds,
     loadProjectJson,
     fromStorySetup,
@@ -261,13 +260,6 @@ export default function Step1() {
   const cooldownSeconds = getCooldownSeconds(1);
   const isGenerating = step1.isLoading || cooldownSeconds > 0;
 
-  const handleGenerateClick = async () => {
-    setProjectIdTouched(true);
-    setArtStyleTouched(true);
-    if (!canGenerate) return;
-    await handleGenerate(1);
-  };
-
   // ── Estimate values ──────────────────────────────────────────────────────────
   const estPanels = (Number(targetPages) || 0) * (Number(maxPanelsPerPage) || 0) * 0.7;
 
@@ -351,6 +343,9 @@ export default function Step1() {
 
       {globalError && (
         <div className="mb-6 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{globalError}</div>
+      )}
+      {importError && (
+        <div className="mb-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{importError}</div>
       )}
 
       {/* Import banner */}
@@ -639,61 +634,6 @@ export default function Step1() {
         <p className="mt-3 text-[10px] text-gray-400 leading-snug">
           * Estimates are based on your Advanced Setup targets. Actual output depends on story length and AI generation results.
         </p>
-      </div>
-
-      {/* In-content generate / regenerate action */}
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          {step1.error && <span className="text-sm text-red-600">{step1.error}</span>}
-          {importError && <span className="text-sm text-red-600">{importError}</span>}
-        </div>
-        <div className="relative group">
-          <button
-            type="button"
-            onClick={handleGenerateClick}
-            disabled={isGenerating}
-            className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
-              isGenerating
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : step1.data
-                  ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 hover:scale-105'
-                  : canGenerate
-                    ? 'bg-blue-600 text-white hover:scale-105'
-                    : 'bg-gray-200 text-gray-500 hover:scale-105'
-            }`}
-          >
-            <span className="material-symbols-outlined text-base">
-              {step1.isLoading ? 'hourglass_empty' : step1.data ? 'refresh' : 'auto_awesome'}
-            </span>
-            {step1.isLoading
-              ? 'Analyzing…'
-              : cooldownSeconds > 0
-                ? `Retry in ${cooldownSeconds}s`
-                : step1.data
-                  ? 'Regenerate analysis'
-                  : 'Generate analysis'}
-          </button>
-          {!canGenerate && !isGenerating && (
-            <div className="absolute bottom-full right-0 mb-2.5 hidden group-hover:block z-50 pointer-events-none min-w-[210px]">
-              <div className="bg-gray-900 text-white rounded-2xl px-4 py-3 shadow-xl text-xs space-y-1.5">
-                <p className="font-bold mb-2 text-white/80 uppercase tracking-wider">Required to generate</p>
-                {[
-                  { label: 'Story imported', ok: storyValid },
-                  { label: 'Project ID (min 3 chars)', ok: projectIdValid },
-                  { label: 'Art style reference', ok: artStyleValid },
-                ].map(({ label, ok }) => (
-                  <div key={label} className={`flex items-center gap-2 ${ok ? 'text-emerald-400' : 'text-white/60'}`}>
-                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: ok ? "'FILL' 1" : "'FILL' 0" }}>
-                      {ok ? 'check_circle' : 'radio_button_unchecked'}
-                    </span>
-                    {label}
-                  </div>
-                ))}
-              </div>
-              <div className="w-3 h-3 bg-gray-900 rotate-45 ml-auto mr-5 -mt-1.5" />
-            </div>
-          )}
-        </div>
       </div>
 
       <input ref={importInputRef} type="file" accept=".json,application/json" className="hidden" onChange={handleImportJson} />
