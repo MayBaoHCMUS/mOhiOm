@@ -67,6 +67,21 @@ function detectCharacters(text: string): string[] {
   return [...new Set(matches)].filter((w) => !STOPWORDS.has(w)).slice(0, 3);
 }
 
+const ACTION_VERBS_RE = /\b(is|are|was|were|has|have|had|goes|went|comes|came|sees|saw|finds|found|tells|told|says|said|walks|runs|stands|looks|turns|falls|rises|meets|leaves|enters|arrives|discovers|tries|begins|starts|fights|saves|escapes|follows|hears|feels|knows|thinks|wants|takes|gives|makes|gets|shows|speaks|calls|asks|reveals|confronts|faces|overcomes|decides|returns|grows|changes|learns|loses|wins)\b/i;
+
+function isValidBeat(desc: string): boolean {
+  if (!desc.trim() || /^beat\s+\d+$/i.test(desc.trim())) return false;
+  if (/a\s+\w+(\s+\w+)?\s+story\s+by\b/i.test(desc)) return false;
+  const words = desc.trim().split(/\s+/);
+  if (words.length <= 3 && words.every((w) => /^[A-Z][a-z]*\.?$/.test(w))) return false;
+  if (words.length < 5 && !ACTION_VERBS_RE.test(desc)) return false;
+  return true;
+}
+
+function truncateBeat(desc: string, max = 60): string {
+  return desc.length > max ? desc.slice(0, max) + '…' : desc;
+}
+
 // ─── Tooltip chip ─────────────────────────────────────────────────────────────
 
 function GenreChip({ label, tooltip, active, onClick }: {
@@ -164,6 +179,13 @@ export default function StorySetupPage() {
   // Autosave
   const [saveState, setSaveState] = useState<'saved' | 'saving'>('saved');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Character overrides for low-confidence cards (Fix 4, 7)
+  const [charOverrides, setCharOverrides] = useState<Record<string, 'keep' | 'removed'>>({});
+  // Session-only Quick Start notice dismiss (Fix 5)
+  const [quickNoticeDismissed, setQuickNoticeDismissed] = useState(false);
+  // Expanded beat rows (Fix 8)
+  const [expandedBeats, setExpandedBeats] = useState<Set<string>>(new Set());
 
   const flashSave = useCallback(() => {
     setSaveState('saving');
@@ -546,6 +568,22 @@ export default function StorySetupPage() {
             </button>
           </div>
 
+          {/* Quick Start notice — directly below mode tabs (Fix 5) */}
+          {mode === 'quick' && !quickNoticeDismissed && (
+            <div className="mt-4 flex items-center gap-3 rounded-2xl bg-blue-50 border-l-4 border-blue-400 px-4 py-3">
+              <span className="material-symbols-outlined text-blue-500 text-base flex-shrink-0">info</span>
+              <p className="text-sm text-blue-800 flex-1">
+                Quick Start hides Creative Direction and Advanced Setup.{' '}
+                <button type="button" onClick={() => setMode('full')} className="font-semibold text-blue-600 hover:underline">
+                  Switch to Full Setup →
+                </button>
+              </p>
+              <button type="button" onClick={() => setQuickNoticeDismissed(true)} className="text-blue-400 hover:text-blue-600 flex-shrink-0">
+                <span className="material-symbols-outlined text-base">close</span>
+              </button>
+            </div>
+          )}
+
           {/* Progress bar — essentials */}
           <div className="mt-4 bg-surface-container-lowest border border-outline-variant/30 rounded-2xl px-5 py-4 flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-3 flex-1 min-w-[200px]">
@@ -591,7 +629,7 @@ export default function StorySetupPage() {
                 <h2 className="text-xl font-bold tracking-tight">Story foundation</h2>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className={`space-y-2 ${mode === 'quick' ? 'md:col-span-2' : ''}`}>
+                <div className={`space-y-2 ${mode === 'full' ? '' : 'md:col-span-2'}`}>
                   <label className="block text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1" htmlFor="storyTitle">Story title</label>
                   <input
                     id="storyTitle" value={storyTitle} placeholder="The Last Ember"
@@ -600,6 +638,29 @@ export default function StorySetupPage() {
                   />
                   <p className="text-xs text-on-surface-variant/70 px-1">Shown on your cover and project list.</p>
                 </div>
+
+                {/* Genre chips — optional in Quick Start (Fix 3.1) */}
+                {mode === 'quick' && (
+                  <div className="space-y-2 md:col-span-2">
+                    <div className="flex items-center gap-2">
+                      <label className="block text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1">Genre &amp; tone</label>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high rounded-full px-2 py-0.5">Optional</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {GENRE_CHIPS.map((chip) => (
+                        <GenreChip
+                          key={chip.label}
+                          label={chip.label}
+                          tooltip={chip.tooltip}
+                          active={genre === chip.label}
+                          onClick={() => { setGenre(genre === chip.label ? '' : chip.label); flashSave(); }}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-xs text-on-surface-variant/70 px-1">Helps AI understand your story&apos;s visual tone.</p>
+                  </div>
+                )}
+
                 {mode === 'full' && (
                   <div className="space-y-2">
                     <label className="block text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1" htmlFor="projectId">Project ID</label>
@@ -988,19 +1049,6 @@ export default function StorySetupPage() {
               )}
             </div>}
 
-            {/* Quick Start hint — switch to full for more options */}
-            {mode === 'quick' && (
-              <div className="flex items-center gap-3 rounded-2xl bg-surface-container-low px-5 py-3">
-                <span className="material-symbols-outlined text-on-surface-variant text-base">info</span>
-                <p className="text-sm text-on-surface-variant">
-                  Quick Start hides Creative Direction and Advanced Setup.{' '}
-                  <button type="button" onClick={() => setMode('full')} className="font-semibold text-primary hover:underline">
-                    Switch to Full Setup
-                  </button>{' '}
-                  to configure genre, chapters, and page targets.
-                </p>
-              </div>
-            )}
 
           </section>
 
@@ -1073,11 +1121,10 @@ export default function StorySetupPage() {
                     )}
                   </div>
                   <div className="space-y-2 mb-6">
-                    {[
-                      { label: 'Story Title',    done: essentialChecks[0] },
-                      { label: 'Genre & Tone',   done: essentialChecks[1] },
-                      { label: 'Your Narrative', done: essentialChecks[2] },
-                    ].map(({ label, done }) => (
+                    {(mode === 'quick'
+                      ? [{ label: 'Story Title', done: essentialChecks[0] }, { label: 'Your Narrative', done: essentialChecks[1] }]
+                      : [{ label: 'Story Title', done: essentialChecks[0] }, { label: 'Genre & Tone', done: essentialChecks[1] }, { label: 'Your Narrative', done: essentialChecks[2] }]
+                    ).map(({ label, done }) => (
                       <div key={label} className="flex items-center gap-2 text-xs">
                         <span className={`material-symbols-outlined text-sm ${done ? 'text-emerald-500' : 'text-outline'}`} style={{ fontVariationSettings: done ? "'FILL' 1" : "'FILL' 0" }}>
                           {done ? 'check_circle' : 'radio_button_unchecked'}
@@ -1164,47 +1211,83 @@ export default function StorySetupPage() {
                     ))}
                   </div>
 
-                  {/* Characters — with confidence scores (Change 3.2) */}
+                  {/* Characters — split confirmed/uncertain (Fixes 4, 7) */}
                   <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">Characters</p>
                   {(() => {
                     const textLower = storyText.toLowerCase();
-                    const lowConfidenceChars = analysisResult.chars.filter((name) => {
-                      const count = (textLower.match(new RegExp(name.toLowerCase(), 'g')) ?? []).length;
-                      return count < 2;
-                    });
+                    const charsWithConf = analysisResult.chars
+                      .filter((name) => charOverrides[name] !== 'removed')
+                      .map((name) => {
+                        const count = (textLower.match(new RegExp(name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) ?? []).length;
+                        const override = charOverrides[name];
+                        const rawConf = count >= 5 ? 'high' : count >= 2 ? 'medium' : 'low';
+                        const confidence = override === 'keep' ? 'medium' : rawConf;
+                        return { name, confidence, isKept: override === 'keep' };
+                      });
+                    const confirmed = charsWithConf.filter((c) => c.confidence !== 'low');
+                    const uncertain = charsWithConf.filter((c) => c.confidence === 'low');
                     return (
-                      <>
-                        {lowConfidenceChars.length > 0 && (
-                          <div className="flex items-start gap-2 rounded-2xl bg-amber-50 border border-amber-100 px-3 py-2.5 mb-3">
-                            <span className="material-symbols-outlined text-amber-500 text-sm mt-0.5">warning</span>
-                            <p className="text-xs text-amber-800">
-                              <strong>{lowConfidenceChars.join(', ')}</strong>{' '}
-                              {lowConfidenceChars.length === 1 ? 'appears' : 'appear'} rarely — add more detail for accurate character sheets.
-                            </p>
-                          </div>
-                        )}
-                        <div className="grid grid-cols-3 gap-3 mb-6">
-                          {analysisResult.chars.map((name) => {
-                            const count = (textLower.match(new RegExp(name.toLowerCase(), 'g')) ?? []).length;
-                            const confidence = count >= 5 ? 'high' : count >= 2 ? 'medium' : 'low';
-                            const confColor = confidence === 'high' ? 'text-emerald-600' : confidence === 'medium' ? 'text-amber-500' : 'text-red-500';
-                            const confLabel = confidence === 'high' ? 'High' : confidence === 'medium' ? 'Med' : 'Low';
-                            return (
+                      <div className="mb-6 space-y-4">
+                        {/* Confirmed characters — auto-fit grid */}
+                        {confirmed.length > 0 && (
+                          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))' }}>
+                            {confirmed.map(({ name, confidence, isKept }) => (
                               <div key={name} className="flex flex-col items-center gap-1.5">
                                 <div className={`w-full aspect-square rounded-2xl flex items-center justify-center border ${
-                                  confidence === 'high' ? 'bg-emerald-50 border-emerald-100' :
-                                  confidence === 'medium' ? 'bg-amber-50 border-amber-100' :
-                                  'bg-red-50 border-red-100'
+                                  confidence === 'high' ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'
                                 }`}>
                                   <span className="material-symbols-outlined text-on-surface-variant/50 text-3xl">person</span>
                                 </div>
                                 <span className="text-xs font-semibold text-on-surface truncate w-full text-center">{name}</span>
-                                <span className={`text-[10px] font-bold ${confColor}`}>{confLabel} confidence</span>
+                                <span className={`text-[10px] font-bold flex items-center gap-0.5 ${confidence === 'high' ? 'text-emerald-600' : 'text-amber-500'}`}>
+                                  {isKept && <span title="Manually kept">⚠️</span>}
+                                  {confidence === 'high' ? 'High' : 'Med'} confidence
+                                </span>
                               </div>
-                            );
-                          })}
-                        </div>
-                      </>
+                            ))}
+                          </div>
+                        )}
+                        {/* Uncertain characters — full-width cards with Keep/Remove */}
+                        {uncertain.length > 0 && (
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="flex-1 h-px bg-outline-variant/20" />
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Please review</span>
+                              <div className="flex-1 h-px bg-outline-variant/20" />
+                            </div>
+                            <div className="space-y-2">
+                              {uncertain.map(({ name }) => (
+                                <div key={name} className="flex items-center gap-3 rounded-2xl bg-red-50 border border-red-100 px-3 py-2.5">
+                                  <span className="material-symbols-outlined text-red-400 text-lg flex-shrink-0">person</span>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-semibold text-on-surface truncate">{name}</p>
+                                    <p className="text-[10px] text-red-600">Appears rarely — may be a false positive</p>
+                                  </div>
+                                  <div className="flex gap-1.5 flex-shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCharOverrides((p) => ({ ...p, [name]: 'keep' }));
+                                        setToast({ message: `${name} kept — add more story detail for better accuracy.` });
+                                      }}
+                                      className="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+                                    >
+                                      Keep
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setCharOverrides((p) => ({ ...p, [name]: 'removed' }))}
+                                      className="text-[10px] font-bold px-2 py-1 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition-colors"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     );
                   })()}
 
@@ -1245,7 +1328,7 @@ export default function StorySetupPage() {
                         const idx = beatCount === 1 ? 0 : Math.round(b * (actParas.length - 1) / Math.max(1, beatCount - 1));
                         const para = actParas[Math.min(idx, actParas.length - 1)];
                         const first = para.split(/[.!?]/)[0].trim();
-                        beatDescs.push(first.length > 72 ? first.slice(0, 72) + '…' : first);
+                        beatDescs.push(first);
                       }
 
                       return (
@@ -1256,12 +1339,44 @@ export default function StorySetupPage() {
                           </div>
                           {beatsExpanded && (
                             <ul className="mt-1 ml-1 space-y-0.5 pl-2 border-l-2 border-outline-variant/20">
-                              {beatDescs.map((desc, j) => (
-                                <li key={j} className="flex items-start gap-2 py-1 text-[11px] text-on-surface-variant">
-                                  <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-surface-container-high flex items-center justify-center text-[9px] font-bold">{j + 1}</span>
-                                  {desc || 'Scene beat'}
-                                </li>
-                              ))}
+                              {beatDescs.map((desc, j) => {
+                                const beatKey = `${act}-${j}`;
+                                const isExpanded = expandedBeats.has(beatKey);
+                                if (!isValidBeat(desc)) {
+                                  return (
+                                    <li key={j} className="flex items-start gap-2 py-1 text-[11px]">
+                                      <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-surface-container-high flex items-center justify-center text-[9px] font-bold">{j + 1}</span>
+                                      <span className="italic text-on-surface-variant/50">[Beat could not be extracted · Add more story content]</span>
+                                    </li>
+                                  );
+                                }
+                                const displayText = isExpanded ? desc : truncateBeat(desc);
+                                const isTruncated = desc.length > 60;
+                                return (
+                                  <li key={j}>
+                                    <button
+                                      type="button"
+                                      className="flex items-start gap-2 py-1 text-[11px] text-on-surface-variant w-full text-left hover:text-on-surface transition-colors"
+                                      onClick={() => setExpandedBeats((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(beatKey)) next.delete(beatKey); else next.add(beatKey);
+                                        return next;
+                                      })}
+                                      title={isTruncated && !isExpanded ? desc : undefined}
+                                    >
+                                      <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-surface-container-high flex items-center justify-center text-[9px] font-bold">{j + 1}</span>
+                                      <span>
+                                        {displayText}
+                                        {isTruncated && (
+                                          <span className="ml-1 text-primary font-semibold text-[9px]">
+                                            {isExpanded ? '▲' : '▼'}
+                                          </span>
+                                        )}
+                                      </span>
+                                    </button>
+                                  </li>
+                                );
+                              })}
                             </ul>
                           )}
                         </div>
@@ -1271,11 +1386,18 @@ export default function StorySetupPage() {
 
                   {/* Tone */}
                   <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">Tone tags</p>
-                  <div className="flex flex-wrap gap-2 mb-6">
+                  <div className="flex flex-wrap gap-2 mb-2">
                     {analysisResult.tone.map((t) => (
                       <span key={t} className="text-xs font-semibold text-primary bg-surface-container-high rounded-full px-3 py-1">{t}</span>
                     ))}
                   </div>
+                  {!genre && (
+                    <p className="text-[10px] text-on-surface-variant/60 mb-4 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-xs">info</span>
+                      Auto-detected from story content · Set a genre for more accurate visual direction
+                    </p>
+                  )}
+                  {genre && <div className="mb-4" />}
 
                   <div className="rounded-2xl bg-emerald-50 border border-emerald-100 px-4 py-3 flex items-start gap-2">
                     <span className="material-symbols-outlined text-emerald-600 text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
@@ -1300,7 +1422,11 @@ export default function StorySetupPage() {
                 <span className="material-symbols-outlined text-3xl">lightbulb</span>
                 <div>
                   <h4 className="font-bold mb-1">Pro tip</h4>
-                  <p className="text-sm opacity-90 leading-relaxed">{PRO_TIPS[activeSection].tip}</p>
+                  <p className="text-sm opacity-90 leading-relaxed">
+                    {activeSection === 'foundation' && !genre
+                      ? 'Setting a genre helps the AI choose the right visual palette and art style for your comic.'
+                      : PRO_TIPS[activeSection].tip}
+                  </p>
                 </div>
               </div>
             </div>
@@ -1393,7 +1519,7 @@ export default function StorySetupPage() {
               <div className="flex items-center gap-2 text-on-surface-variant">
                 <span className="material-symbols-outlined text-base text-amber-500">warning</span>
                 <span>
-                  <span className="font-bold">{essentials}/3</span> essentials · Missing: {missingEssentials}
+                  <span className="font-bold">{essentials}/{essentialsTotal}</span> essentials · Missing: {missingEssentials}
                 </span>
               </div>
             )}

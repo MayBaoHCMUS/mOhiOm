@@ -86,7 +86,7 @@
 
 ---
 
-### ✅ COMPLETED THIS SESSION (2026-06-07)
+### ✅ COMPLETED THIS SESSION (2026-06-07 — continued)
 
 | # | Change | Implementation |
 |---|--------|----------------|
@@ -100,6 +100,17 @@
 | P0 | **Step4Generation.tsx — full rewrite** | 5-state machine. 3-mode panel view toggle: **Page** (default, full-page image + panel cards), **Grid** (thumbnail grid, 2–5 cols), **List** (accordion list). Progress stats bar with emerald progress bar. Collapsible JSON export section (collapsed by default) with Save to Cloud, Download, Copy, My Projects buttons. Remove all raw debug info. Approve/Revoke per state. |
 | P1 | **Step2Characters.tsx — full rewrite** | Design sheet section: parse by `###` character headings into collapsible `DesignSheetCard` components. Prompt queue sidebar with per-character status dots (idle/loading/success/error). Character review section: per-character `CharacterReviewCard` with selected-candidate ring highlight, generation status badge, locked section overlay when `step2.locked`. Approve references gated on ALL characters having a `selectedCandidateId`. State machine on both design sheet and image review. |
 | P2 | **ImageGenModePanel — rename "Full" → "All inputs"** | Mode 4 label updated in `MODES` array in `ImageGenModePanel.tsx`. |
+| P0 | **react-markdown integration** | Installed `react-markdown`, `remark-gfm`, `rehype-raw`. New `frontend/src/components/Markdown.tsx` shared renderer with full Tailwind token styling. All step components now use `<Markdown>` instead of raw text for streaming and structured output. |
+| P0 | **Fix 2.1 — Backend byline preprocessing** | Added `GeminiService._preprocess_story_text()` static method in `backend/app/services.py`. Strips author credits ("A [X] story by Author"), standalone bylines, copyright lines, and lone proper-noun sequences before sending story to LLM. Updated `analyze_story_lightweight_stream` to use it and added beat rules to prompt (beats must describe ACTION/EVENT/STATE CHANGE, not metadata). |
+| P0 | **Fix 2.2 — Frontend beat validation** | Added `isValidBeat(desc)` + `ACTION_VERBS_RE` helpers to `story-setup/page.tsx`. Invalid beats (bylines, name-only strings, ≤4-word phrases without action verbs) show `[Beat could not be extracted · Add more story content]` in italic muted style. |
+| P0 | **Fix 4 — Low confidence Keep/Remove** | Low-confidence character cards in STATE 5 Done always show [Keep] and [Remove] buttons. Keep promotes to medium confidence (removes buttons, shows ⚠️, fires toast). Remove fades the card from the list. Uses new `charOverrides` state map. |
+| P1 | **Fix 5 — Quick Start notice placement** | Moved from bottom of form (after Advanced Setup) to directly below mode tabs. Restyled as blue left-border alert with [×] dismiss button (session-only, `quickNoticeDismissed` state). "Switch to Full Setup →" text link. |
+| P1 | **Fix 7 — Character split layout** | Confirmed chars (high/medium confidence) rendered in auto-fill grid (`minmax(100px, 1fr)`). Uncertain chars (low confidence) rendered as full-width cards below a "Please review" divider. Removed characters disappear cleanly. |
+| P1 | **Fix 3.1 — Genre chips in Quick Start** | Optional genre chip selector added below Story Title in Quick Start mode. Same chip style as Full Setup. Clicking active chip deselects (toggle). Helper text "Helps AI understand your story's visual tone." |
+| P1 | **Fix 3.2 — Tone tags source label** | When genre is not set, an ℹ️ note appears below tone tags: "Auto-detected from story content · Set a genre for more accurate visual direction". Hidden when genre is set. |
+| P1 | **Fix 6 — Essentials count dynamic** | STATE 2 (filling) checklist updated to be mode-aware: Quick Start shows 2 items (Title + Narrative), Full Setup shows 3 (Title + Genre + Narrative). Bottom bar `{essentials}/3` updated to `{essentials}/{essentialsTotal}`. |
+| P2 | **Fix 3.3 — Pro Tip contextual** | Foundation tip dynamically switches: when `activeSection === 'foundation'` and `!genre`, shows generic tip "Setting a genre helps the AI choose the right visual palette and art style for your comic." rather than the hardcoded genre example tip. |
+| P2 | **Fix 8 — Beat truncation + expand** | Beat descriptions max 60 chars with `…` suffix. Each beat row is a click button that toggles `expandedBeats` set, showing full text inline with ▼/▲ indicator. `title` attribute shows full text on hover when truncated. |
 
 ---
 

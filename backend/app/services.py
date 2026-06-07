@@ -1271,6 +1271,33 @@ Rules: chapters_structure must have exactly {num_chapters} entries. main_charact
 
         yield ("done", analysis_markdown, structured)
 
+    @staticmethod
+    def _preprocess_story_text(story_text: str) -> str:
+        """Strip author credits, bylines, and metadata before LLM analysis."""
+        import re
+        lines = story_text.split('\n')
+        cleaned = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                cleaned.append(line)
+                continue
+            # "A [genre] story by Author Name"
+            if re.match(r'^a\s+\w+(\s+\w+)?\s+story\s+by\b', stripped, re.IGNORECASE):
+                continue
+            # "by Author Name" — standalone byline
+            if re.match(r'^by\s+[A-Z][a-z]+(\s+[A-Z][a-z]+){0,2}\s*$', stripped):
+                continue
+            # Copyright/© lines
+            if re.match(r'^(©|copyright)\s*\d{4}', stripped, re.IGNORECASE):
+                continue
+            # Pure proper-noun sequence (1–3 capitalized words only)
+            words = stripped.split()
+            if 1 <= len(words) <= 3 and all(re.match(r'^[A-Z][a-z]*\.?$', w) for w in words):
+                continue
+            cleaned.append(line)
+        return '\n'.join(cleaned).strip()
+
     async def analyze_story_lightweight_stream(
         self,
         story_text: str,
@@ -1286,6 +1313,7 @@ Rules: chapters_structure must have exactly {num_chapters} entries. main_charact
           ("error", str, int)   — (message, status_code)
         """
         sep = "===JSON==="
+        story_clean = self._preprocess_story_text(story_text)
         prompt = f"""You are a story analyst helping adapt a story into a comic.
 
 Read the story and write a 2-sentence summary, then output the separator below, then a JSON object.
@@ -1304,12 +1332,13 @@ JSON format (no markdown, no code fence):
 Rules:
 - detected_characters: 2–5 main character names as they appear in the story
 - tone_tags: 2–4 single-word descriptors (e.g. "Epic", "Gritty", "Tender", "Dark")
-- scene_beats: integer count of distinct narrative beats/scenes in the story
+- scene_beats: integer count of distinct narrative beats/scenes (each beat = an ACTION, EVENT, or STATE CHANGE)
+- Do NOT count author bylines, story titles, chapter headings, or metadata as beats
 - estimated_panels: rough total comic panels (typically 5–8 per scene beat)
 - Genre context: {genre_tone}
 
 Story:
-\"\"\"{story_text}\"\"\"
+\"\"\"{story_clean}\"\"\"
 """
         summary_parts: list[str] = []
         json_parts: list[str] = []
