@@ -6,13 +6,15 @@ import Markdown from '@/components/Markdown';
 
 // ── Section definitions ────────────────────────────────────────────────────────
 
+// coreMarker = the number + name without any heading prefix.
+// The AI may prepend ##, #, ###, ** or nothing — findMarker handles all variants.
 const SECTION_DEFS = [
-  { id: 1 as const, marker: '## 1. Character Breakdown',       title: '1. Character Breakdown' },
-  { id: 2 as const, marker: '## 2. Plot & Arc Analysis',       title: '2. Plot & Arc Analysis' },
-  { id: 3 as const, marker: '## 3. Chapter Division',           title: '3. Chapter Division' },
-  { id: 4 as const, marker: '## 4. Scene-by-Scene Breakdown',   title: '4. Scene-by-Scene Breakdown' },
-  { id: 5 as const, marker: '## 5. Global Manga Layout Rules',  title: '5. Global Manga Layout Rules' },
-  { id: 6 as const, marker: '## 6. Final Statistics Summary',   title: '6. Final Statistics Summary' },
+  { id: 1 as const, coreMarker: '1. Character Breakdown',       title: '1. Character Breakdown' },
+  { id: 2 as const, coreMarker: '2. Plot & Arc Analysis',       title: '2. Plot & Arc Analysis' },
+  { id: 3 as const, coreMarker: '3. Chapter Division',           title: '3. Chapter Division' },
+  { id: 4 as const, coreMarker: '4. Scene-by-Scene Breakdown',   title: '4. Scene-by-Scene Breakdown' },
+  { id: 5 as const, coreMarker: '5. Global Manga Layout Rules',  title: '5. Global Manga Layout Rules' },
+  { id: 6 as const, coreMarker: '6. Final Statistics Summary',   title: '6. Final Statistics Summary' },
 ];
 
 type SectionId = 1 | 2 | 3 | 4 | 5 | 6;
@@ -25,27 +27,52 @@ interface ParsedSection {
   status: SectionStatus;
 }
 
+// Locate a section header regardless of heading prefix (##, #, **, or bare).
+// Returns { start: index of heading line, contentStart: index of first char after the line }.
+function findMarker(text: string, coreMarker: string): { start: number; contentStart: number } {
+  for (const prefix of ['## ', '### ', '# ', '#### ', '**', '']) {
+    const full = prefix + coreMarker;
+    let lineStart = -1;
+
+    const nlIdx = text.indexOf('\n' + full);
+    if (nlIdx !== -1) {
+      lineStart = nlIdx + 1;
+    } else if (text.startsWith(full)) {
+      lineStart = 0;
+    }
+
+    if (lineStart !== -1) {
+      const nlAfter = text.indexOf('\n', lineStart);
+      return {
+        start: lineStart,
+        contentStart: nlAfter === -1 ? text.length : nlAfter,
+      };
+    }
+  }
+  return { start: -1, contentStart: -1 };
+}
+
 // Parse stream text into 6 known sections in real time.
 function parseStreamSections(text: string): ParsedSection[] {
   return SECTION_DEFS.map((def, i) => {
-    const startIdx = text.indexOf(def.marker);
-    if (startIdx === -1) {
+    const { start, contentStart } = findMarker(text, def.coreMarker);
+    if (start === -1) {
       return { id: def.id, title: def.title, content: '', status: 'skeleton' };
     }
     const nextDef = SECTION_DEFS[i + 1];
-    const nextIdx = nextDef ? text.indexOf(nextDef.marker) : -1;
-    if (nextIdx !== -1) {
+    const { start: nextStart } = nextDef ? findMarker(text, nextDef.coreMarker) : { start: -1 };
+    if (nextStart !== -1) {
       return {
         id: def.id,
         title: def.title,
-        content: text.slice(startIdx + def.marker.length, nextIdx).trim(),
+        content: text.slice(contentStart, nextStart).trim(),
         status: 'complete',
       };
     }
     return {
       id: def.id,
       title: def.title,
-      content: text.slice(startIdx + def.marker.length).trim(),
+      content: text.slice(contentStart).trim(),
       status: 'active',
     };
   });
@@ -452,7 +479,7 @@ function RightNavPanel({
         </p>
         {!isStreaming && (
           <span className="text-[11px] text-on-surface-variant tabular-nums">
-            {reviewedCount} / 6 reviewed
+            {reviewedCount} / 6 reviewed{reviewedCount === 6 ? ' ✅' : ''}
           </span>
         )}
       </div>
@@ -731,11 +758,11 @@ export default function Step1Analysis() {
     wasLoadingRef.current = isGenerating;
   }, [isGenerating]);
 
-  // When stream completes (state 2→3): mark auto-opened sections reviewed, then
-  // collapse back to only section 1 open (Fix 4 — only section 1 open after stream)
+  // When stream completes (state 2→3): reset review tracking (stream auto-opens
+  // don't count), then collapse to only section 1 open.
   useEffect(() => {
     if (state >= 3 && prevStateRef.current === 2) {
-      setReviewedSections(prev => new Set([...prev, ...openSections]));
+      setReviewedSections(new Set());
       setOpenSections(new Set([1]));
     }
     prevStateRef.current = state;
@@ -773,13 +800,13 @@ export default function Step1Analysis() {
     }
   }, [showReviewWarning, unreviewedSections.length]);
 
-  // Auto-open the section the stream is currently writing into
+  // Auto-open the section the stream is currently writing into.
+  // Do NOT mark as reviewed — only user-triggered expands count.
   useEffect(() => {
     const active = parsedSections.find(s => s.status === 'active');
     if (active && active.id !== prevActiveRef.current) {
       prevActiveRef.current = active.id;
       setOpenSections(prev => new Set([...prev, active.id]));
-      setReviewedSections(prev => new Set([...prev, active.id]));
     }
   }, [parsedSections]);
 
@@ -1044,9 +1071,11 @@ export default function Step1Analysis() {
             <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
               <span className="material-symbols-outlined text-amber-500 text-sm mt-0.5">warning</span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-amber-900">You haven&apos;t reviewed these sections:</p>
+                <p className="text-sm font-semibold text-amber-900">
+                  You&apos;ve reviewed {reviewedSections.size} / 6 sections
+                </p>
                 <p className="text-xs text-amber-700 mt-0.5 truncate">
-                  {unreviewedSections.map(s => s.title).join(', ')}
+                  Unreviewed: {unreviewedSections.map(s => s.title).join(', ')}
                 </p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
@@ -1055,14 +1084,14 @@ export default function Step1Analysis() {
                   onClick={scrollToFirstUnreviewed}
                   className="text-xs font-semibold text-amber-800 hover:text-amber-900 underline underline-offset-2 whitespace-nowrap"
                 >
-                  Review missing
+                  Review sections ↑
                 </button>
                 <button
                   type="button"
                   onClick={handleForceApprove}
                   className="text-xs font-semibold text-white bg-gray-900 rounded-lg px-3 py-1.5 hover:opacity-90 whitespace-nowrap"
                 >
-                  Continue anyway →
+                  Approve anyway →
                 </button>
               </div>
             </div>
@@ -1101,7 +1130,7 @@ export default function Step1Analysis() {
               </button>
             </div>
           ) : (
-            // Post-stream — Previous Step (left) | Regenerate (center) | Approve & Continue (right)
+            // Post-stream — Previous Step (left) | Regenerate + Approve grouped (right)
             <div className="flex items-center justify-between gap-3">
               <button
                 type="button"
@@ -1112,33 +1141,35 @@ export default function Step1Analysis() {
                 Previous Step
               </button>
 
-              <button
-                type="button"
-                onClick={handleRegenClick}
-                disabled={!canGenerate}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40"
-              >
-                <span className="material-symbols-outlined text-base">refresh</span>
-                {cooldown > 0 ? `Retry in ${cooldown}s` : 'Regenerate'}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleApproveAndContinue}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
-                  state === 4
-                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                    : 'bg-gray-900 text-white hover:opacity-90'
-                }`}
-              >
-                <span
-                  className="material-symbols-outlined text-base"
-                  style={{ fontVariationSettings: "'FILL' 1" }}
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleRegenClick}
+                  disabled={!canGenerate}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40"
                 >
-                  check_circle
-                </span>
-                {state === 4 ? 'Approved · Continue →' : 'Approve & Continue →'}
-              </button>
+                  <span className="material-symbols-outlined text-base">refresh</span>
+                  {cooldown > 0 ? `Retry in ${cooldown}s` : 'Regenerate'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleApproveAndContinue}
+                  className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
+                    state === 4
+                      ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      : 'bg-gray-900 text-white hover:opacity-90'
+                  }`}
+                >
+                  <span
+                    className="material-symbols-outlined text-base"
+                    style={{ fontVariationSettings: "'FILL' 1" }}
+                  >
+                    check_circle
+                  </span>
+                  {state === 4 ? 'Approved · Continue →' : 'Approve & Continue →'}
+                </button>
+              </div>
             </div>
           )}
         </div>
