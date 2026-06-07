@@ -51,7 +51,14 @@ function parseStreamSections(text: string): ParsedSection[] {
   });
 }
 
-//── Skeleton shimmer ──────────────────────────────────────────────────────────
+// Strip trailing loading artifacts that AI responses sometimes append.
+function cleanContent(raw: string): string {
+  return raw
+    .replace(/[\s\n]*[•·•·]{2,}[\s\n]*$/, '')
+    .trimEnd();
+}
+
+// ── Skeleton shimmer ──────────────────────────────────────────────────────────
 
 function SkeletonLines({ count = 4 }: { count?: number }) {
   const widths = [88, 72, 84, 60, 78];
@@ -114,13 +121,17 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
       });
     };
 
+    const showEditBtn = isOpen && !isStreaming && !isSkeleton;
+
     return (
       <div ref={ref} className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden">
-        {/* Header */}
-        <button
-          type="button"
+        {/* Header — use div+role to avoid nested <button> elements */}
+        <div
+          role="button"
+          tabIndex={0}
           onClick={onToggle}
-          className="w-full flex items-center justify-between px-5 py-4 text-left gap-3"
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onToggle()}
+          className="w-full flex items-center justify-between px-5 py-4 text-left gap-3 cursor-pointer select-none group/header"
         >
           <div className="flex items-center gap-2.5 min-w-0">
             {isSkeleton && (
@@ -151,12 +162,17 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Edit button — shown when open, not streaming, not skeleton, not already editing */}
-            {isOpen && !isStreaming && !isSkeleton && !isEditing && (
+            {/* Edit button: invisible by default, visible on header hover (or while editing) */}
+            {showEditBtn && (
               <button
                 type="button"
-                onClick={(e) => { e.stopPropagation(); onEditStart(); }}
-                className="flex items-center gap-1 text-xs text-on-surface-variant hover:text-on-surface px-2 py-1 rounded-lg hover:bg-surface-container transition-colors"
+                onClick={(e) => { e.stopPropagation(); if (!isEditing) onEditStart(); }}
+                title="Edit this section"
+                className={`flex items-center gap-1 text-xs text-on-surface-variant hover:text-on-surface px-2 py-1 rounded-lg hover:bg-surface-container transition-all ${
+                  isEditing
+                    ? 'opacity-100'
+                    : 'opacity-0 group-hover/header:opacity-100'
+                }`}
               >
                 <span className="material-symbols-outlined text-sm">edit</span>
                 Edit
@@ -169,7 +185,7 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
               expand_more
             </span>
           </div>
-        </button>
+        </div>
 
         {/* Body */}
         {isOpen && (
@@ -219,7 +235,6 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
                   </button>
                 </div>
 
-                {/* Lock note for section 6 */}
                 {section.id === 6 && (
                   <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-700">
                     <span className="material-symbols-outlined text-sm">lock</span>
@@ -237,16 +252,7 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
             ) : isSkeleton ? (
               <SkeletonLines />
             ) : displayContent ? (
-              <>
-                <Markdown className="[&>*:last-child]:mb-0">{displayContent}</Markdown>
-                {isActive && (
-                  <div className="flex items-center gap-1 mt-3">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 motion-safe:animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 motion-safe:animate-bounce" style={{ animationDelay: '120ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 motion-safe:animate-bounce" style={{ animationDelay: '240ms' }} />
-                  </div>
-                )}
-              </>
+              <Markdown className="[&>*:last-child]:mb-0">{displayContent}</Markdown>
             ) : isActive ? (
               <SkeletonLines count={3} />
             ) : null}
@@ -258,6 +264,114 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
 );
 SectionAccordion.displayName = 'SectionAccordion';
 
+// ── Character card helpers ────────────────────────────────────────────────────
+
+interface CharCard {
+  name: string;
+  role: string;
+  visualHook?: string;
+  isMain: boolean;
+}
+
+// Primary source: extract from structuredJson (has full name/role/visual_hook).
+// Path: structuredJson.steps.step_1_analysis.data.analysis.{main_characters,supporting_characters}
+function extractCharactersFromJson(json: Record<string, unknown> | null): CharCard[] {
+  if (!json) return [];
+  try {
+    const steps = json.steps as Record<string, unknown> | undefined;
+    const s1    = steps?.step_1_analysis as Record<string, unknown> | undefined;
+    const data  = s1?.data as Record<string, unknown> | undefined;
+    const analysis = data?.analysis as Record<string, unknown> | undefined;
+    if (!analysis) return [];
+
+    const cards: CharCard[] = [];
+
+    const mainChars = analysis.main_characters as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(mainChars)) {
+      for (const c of mainChars) {
+        const name = String(c.name ?? '').trim();
+        const role = String(c.role ?? '').trim();
+        const hook = String(c.visual_hook ?? '').trim();
+        if (name) cards.push({ name, role, visualHook: hook || undefined, isMain: true });
+      }
+    }
+
+    const suppChars = analysis.supporting_characters as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(suppChars)) {
+      for (const c of suppChars) {
+        const name = String(c.name ?? '').trim();
+        const role = String(c.role ?? '').trim();
+        if (name) cards.push({ name, role, isMain: false });
+      }
+    }
+
+    return cards;
+  } catch {
+    return [];
+  }
+}
+
+// Fallback: parse from the old characterBreakdown string array.
+function parseCharCardsFromStrings(chars: string[]): CharCard[] {
+  return chars
+    .filter(c => c && c !== 'Character arcs pending parsing.')
+    .map(c => {
+      const name = c.split(/[-–:]/)[0].trim();
+      const role = c.split(/[-–:]/).slice(1).join(' ').trim();
+      const isMain = /protagonist|antagonist|main character|co-protagonist/i.test(role);
+      return { name, role, isMain };
+    })
+    .filter(c => c.name.length > 1);
+}
+
+function CharCardSkeleton() {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl bg-surface-container-lowest border border-outline-variant/10 px-4 py-3 motion-safe:animate-pulse">
+      <div className="w-7 h-7 rounded-full bg-on-surface/10 flex-shrink-0" />
+      <div className="flex-1 space-y-1.5">
+        <div className="h-3 rounded-full bg-on-surface/10 w-3/4" />
+        <div className="h-2.5 rounded-full bg-on-surface/[0.06] w-1/2" />
+        <div className="h-2 rounded-full bg-on-surface/[0.04] w-5/6" />
+      </div>
+    </div>
+  );
+}
+
+function CharCardItem({ card }: { card: CharCard }) {
+  return (
+    <div className="flex items-start gap-3 rounded-2xl bg-surface-container-lowest border border-outline-variant/10 px-4 py-3">
+      <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+        card.isMain ? 'bg-primary/10' : 'bg-on-surface/5'
+      }`}>
+        <span
+          className={`material-symbols-outlined text-sm ${card.isMain ? 'text-primary' : 'text-on-surface-variant'}`}
+          style={{ fontVariationSettings: "'FILL' 1" }}
+        >
+          person
+        </span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p className="text-sm font-semibold text-on-surface leading-snug">{card.name}</p>
+          {card.isMain && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary flex-shrink-0 leading-none">
+              Main
+            </span>
+          )}
+        </div>
+        {card.role && (
+          <p className="text-xs text-on-surface-variant mt-0.5 leading-snug">{card.role}</p>
+        )}
+        {card.visualHook && (
+          <p className="text-[11px] text-on-surface-variant/60 mt-1 leading-snug line-clamp-2 italic">
+            {card.visualHook}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Right navigation panel ────────────────────────────────────────────────────
 
 function RightNavPanel({
@@ -265,27 +379,83 @@ function RightNavPanel({
   isStreaming,
   progressCount,
   activeSectionTitle,
-  chars,
+  charCards,
+  section1Status,
+  totalDetected,
   stats,
   approvedAt,
   onScrollTo,
   state,
+  reviewedSections,
 }: {
   sections: ParsedSection[];
   isStreaming: boolean;
   progressCount: number;
   activeSectionTitle?: string;
-  chars: string[];
+  charCards: CharCard[];
+  section1Status: SectionStatus;
+  totalDetected: number;
   stats: { label: string; value: string }[];
   approvedAt: string | null;
   onScrollTo: (id: SectionId) => void;
   state: State;
+  reviewedSections: Set<number>;
 }) {
+  const [showAllChars, setShowAllChars] = useState(false);
+  const VISIBLE_CHARS = 3;
+
+  const mainCount    = charCards.filter(c => c.isMain).length;
+  const visibleCards = charCards.slice(0, VISIBLE_CHARS);
+  const hiddenCards  = charCards.slice(VISIBLE_CHARS);
+  const displayTotal = totalDetected > 0 ? totalDetected : charCards.length;
+  const reviewedCount = sections.filter(s => reviewedSections.has(s.id)).length;
+
+  // Section dot: during stream → blue/gray by stream status; after → reviewed/unreviewed
+  const SectionDot = ({ sec }: { sec: ParsedSection }) => {
+    if (isStreaming) {
+      if (sec.status === 'active') {
+        return <span className="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0 motion-safe:animate-pulse" />;
+      }
+      if (sec.status === 'complete') {
+        return (
+          <span
+            className="material-symbols-outlined text-sm text-emerald-500 flex-shrink-0"
+            style={{ fontVariationSettings: "'FILL' 1" }}
+          >
+            check_circle
+          </span>
+        );
+      }
+      return <span className="w-2.5 h-2.5 rounded-full bg-on-surface/15 flex-shrink-0 motion-safe:animate-pulse" />;
+    }
+    // After stream
+    if (reviewedSections.has(sec.id)) {
+      return (
+        <span
+          className="material-symbols-outlined text-sm text-emerald-500 flex-shrink-0"
+          style={{ fontVariationSettings: "'FILL' 1" }}
+        >
+          check_circle
+        </span>
+      );
+    }
+    return (
+      <span className="w-2.5 h-2.5 rounded-full border-2 border-emerald-400 flex-shrink-0" />
+    );
+  };
+
   const SectionList = (
     <div>
-      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2">
-        Sections
-      </p>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">
+          Sections
+        </p>
+        {!isStreaming && (
+          <span className="text-[11px] text-on-surface-variant tabular-nums">
+            {reviewedCount} / 6 reviewed
+          </span>
+        )}
+      </div>
       <div className="space-y-0.5">
         {sections.map((sec) => (
           <button
@@ -294,24 +464,11 @@ function RightNavPanel({
             onClick={() => onScrollTo(sec.id)}
             className="w-full flex items-center gap-2.5 text-left py-1.5 px-2 rounded-xl hover:bg-surface-container transition-colors"
           >
-            {sec.status === 'skeleton' && (
-              <span className="w-2.5 h-2.5 rounded-full bg-on-surface/15 flex-shrink-0 motion-safe:animate-pulse" />
-            )}
-            {sec.status === 'active' && (
-              <span className="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0 motion-safe:animate-pulse" />
-            )}
-            {sec.status === 'complete' && (
-              <span
-                className="material-symbols-outlined text-sm text-emerald-500 flex-shrink-0"
-                style={{ fontVariationSettings: "'FILL' 1" }}
-              >
-                check_circle
-              </span>
-            )}
+            <SectionDot sec={sec} />
             <span className={`text-xs truncate ${
-              sec.status === 'skeleton' ? 'text-on-surface-variant/40' :
-              sec.status === 'active'   ? 'text-blue-600 font-semibold' :
-                                          'text-on-surface-variant'
+              isStreaming && sec.status === 'active' ? 'text-blue-600 font-semibold' :
+              sec.status === 'skeleton'              ? 'text-on-surface-variant/40' :
+                                                       'text-on-surface-variant'
             }`}>
               {sec.title}
             </span>
@@ -321,62 +478,90 @@ function RightNavPanel({
     </div>
   );
 
-  if (isStreaming) {
-    return (
-      <div className="space-y-5">
-        {progressCount > 0 && (
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Progress</p>
-              <span className="text-xs text-on-surface-variant">{progressCount} / 6</span>
-            </div>
-            <div className="h-1.5 rounded-full bg-on-surface/10 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-blue-500 transition-all duration-500"
-                style={{ width: `${Math.round((progressCount / 6) * 100)}%` }}
-              />
-            </div>
-            {activeSectionTitle && (
-              <p className="text-[11px] text-on-surface-variant mt-1.5 truncate">
-                Analyzing: {activeSectionTitle}
-              </p>
-            )}
-          </div>
-        )}
-        {SectionList}
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-5">
-      {chars.length > 0 && (
+      {/* ── Progress bar during streaming ── */}
+      {isStreaming && progressCount > 0 && (
         <div>
-          <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3">
-            Characters
-          </p>
-          <div className="space-y-2">
-            {chars.map((c, i) => (
-              <div key={`${c}-${i}`} className="flex items-start gap-3 rounded-2xl bg-surface-container-lowest border border-outline-variant/10 px-4 py-3">
-                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>person</span>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-on-surface leading-snug truncate">
-                    {c.split(/[-–:]/)[0].trim()}
-                  </p>
-                  {c.split(/[-–:]/).slice(1).join(' ').trim() && (
-                    <p className="text-xs text-on-surface-variant mt-0.5 leading-snug line-clamp-2">
-                      {c.split(/[-–:]/).slice(1).join(' ').trim()}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Progress</p>
+            <span className="text-xs text-on-surface-variant">{progressCount} / 6</span>
           </div>
+          <div className="h-1.5 rounded-full bg-on-surface/10 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-blue-500 transition-all duration-500"
+              style={{ width: `${Math.round((progressCount / 6) * 100)}%` }}
+            />
+          </div>
+          {activeSectionTitle && (
+            <p className="text-[11px] text-on-surface-variant mt-1.5 truncate">
+              Analyzing: {activeSectionTitle}
+            </p>
+          )}
         </div>
       )}
 
+      {/* ── Character cards ── */}
+      <div>
+        <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2">
+          Characters
+        </p>
+
+        {/* Skeleton while section 1 is still loading */}
+        {(section1Status === 'skeleton' || (isStreaming && section1Status !== 'complete')) && charCards.length === 0 ? (
+          <div className="space-y-2">
+            <CharCardSkeleton />
+            <CharCardSkeleton />
+            <CharCardSkeleton />
+          </div>
+        ) : charCards.length > 0 ? (
+          <>
+            {/* Summary line */}
+            <p className="text-[11px] text-on-surface-variant mb-2 tabular-nums">
+              {displayTotal} detected
+              {mainCount > 0 && <> · <span className="text-emerald-600 font-semibold">{mainCount} main</span></>}
+              {hiddenCards.length > 0 && !showAllChars && <> · {hiddenCards.length} supporting</>}
+            </p>
+
+            <div className="space-y-2">
+              {visibleCards.map((card, i) => (
+                <CharCardItem key={`${card.name}-${i}`} card={card} />
+              ))}
+            </div>
+
+            {hiddenCards.length > 0 && (
+              <>
+                {showAllChars && (
+                  <div className="space-y-2 mt-2">
+                    {hiddenCards.map((card, i) => (
+                      <CharCardItem key={`${card.name}-${VISIBLE_CHARS + i}`} card={card} />
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowAllChars(v => !v)}
+                  className="flex items-center gap-1 text-xs text-on-surface-variant hover:text-on-surface mt-2 transition-colors"
+                >
+                  {showAllChars ? (
+                    <>
+                      <span className="material-symbols-outlined text-sm">expand_less</span>
+                      Show less
+                    </>
+                  ) : (
+                    <>
+                      + {hiddenCards.length} supporting
+                      <span className="material-symbols-outlined text-sm">expand_more</span>
+                    </>
+                  )}
+                </button>
+              </>
+            )}
+          </>
+        ) : null}
+      </div>
+
+      {/* ── Quick stats ── */}
       {stats.length > 0 && (
         <div className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 p-4">
           <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3">
@@ -393,6 +578,7 @@ function RightNavPanel({
         </div>
       )}
 
+      {/* ── Approved badge ── */}
       {state === 4 && approvedAt && (
         <div className="rounded-2xl bg-emerald-500/5 border border-emerald-500/15 p-4 text-center">
           <span className="material-symbols-outlined text-2xl text-emerald-500 mb-1 block" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -517,18 +703,18 @@ export default function Step1Analysis() {
   else if (step1.data)                                           state = 3;
 
   // ── Accordion open state ──────────────────────────────────────────────────
-  const [openSections, setOpenSections]       = useState<Set<number>>(new Set([1]));
-  const prevActiveRef  = useRef<number | null>(null);
-  const wasLoadingRef  = useRef(false);
-  const prevStateRef   = useRef<State>(1);
+  const [openSections, setOpenSections] = useState<Set<number>>(new Set([1]));
+  const prevActiveRef = useRef<number | null>(null);
+  const wasLoadingRef = useRef(false);
+  const prevStateRef  = useRef<State>(1);
 
   // ── Review tracking ───────────────────────────────────────────────────────
   const [reviewedSections, setReviewedSections] = useState<Set<number>>(new Set());
 
   // ── Edit state ────────────────────────────────────────────────────────────
-  const [editedContent, setEditedContent]     = useState<Map<number, string>>(new Map());
-  const [editingSection, setEditingSection]   = useState<number | null>(null);
-  const [editBuffer, setEditBuffer]           = useState('');
+  const [editedContent, setEditedContent]         = useState<Map<number, string>>(new Map());
+  const [editingSection, setEditingSection]       = useState<number | null>(null);
+  const [editBuffer, setEditBuffer]               = useState('');
   const [showEditedWarning, setShowEditedWarning] = useState(false);
   const editedCount = editedContent.size;
 
@@ -545,10 +731,12 @@ export default function Step1Analysis() {
     wasLoadingRef.current = isGenerating;
   }, [isGenerating]);
 
-  // When stream completes (state 2→3): mark all currently open sections as reviewed
+  // When stream completes (state 2→3): mark auto-opened sections reviewed, then
+  // collapse back to only section 1 open (Fix 4 — only section 1 open after stream)
   useEffect(() => {
     if (state >= 3 && prevStateRef.current === 2) {
       setReviewedSections(prev => new Set([...prev, ...openSections]));
+      setOpenSections(new Set([1]));
     }
     prevStateRef.current = state;
   }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -573,7 +761,7 @@ export default function Step1Analysis() {
     return result;
   }, [streamText, state, isGenerating, step1.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sections the user hasn't opened yet (used for review warning)
+  // Sections the user hasn't opened yet (for review warning)
   const unreviewedSections = useMemo(
     () => parsedSections.filter(s => s.status === 'complete' && !reviewedSections.has(s.id)),
     [parsedSections, reviewedSections],
@@ -608,7 +796,6 @@ export default function Step1Analysis() {
         next.delete(id);
       } else {
         next.add(id);
-        // Opening a section counts as reviewing it
         setReviewedSections(r => new Set([...r, id]));
       }
       return next;
@@ -621,8 +808,29 @@ export default function Step1Analysis() {
   const progressCount    = completedCount + (activeSectionObj ? 1 : 0);
 
   // ── Right panel data ──────────────────────────────────────────────────────
-  const chars = step1.data?.characterBreakdown ?? [];
-  const stats = extractStats(step1.data?.structuredJson ?? null);
+  const charCards = useMemo(() => {
+    // Prefer structured JSON — contains full name/role/visual_hook from the AI
+    if (step1.data?.structuredJson) {
+      const fromJson = extractCharactersFromJson(step1.data.structuredJson);
+      if (fromJson.length > 0) return fromJson;
+    }
+    // Fallback to the characterBreakdown string array
+    return parseCharCardsFromStrings(step1.data?.characterBreakdown ?? []);
+  }, [step1.data?.structuredJson, step1.data?.characterBreakdown]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Total character count from structured JSON (may be higher than charCards.length if JSON was truncated)
+  const totalDetected = useMemo(() => {
+    try {
+      const steps = step1.data?.structuredJson?.steps as Record<string, unknown> | undefined;
+      const s1    = steps?.step_1_analysis as Record<string, unknown> | undefined;
+      const data  = s1?.data as Record<string, unknown> | undefined;
+      const n     = (data?.analysis as Record<string, unknown> | undefined)?.total_characters_detected;
+      if (typeof n === 'number' && n > 0) return n;
+    } catch { /* ignore */ }
+    return charCards.length;
+  }, [step1.data?.structuredJson, charCards.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stats        = extractStats(step1.data?.structuredJson ?? null);
+  const section1Status = parsedSections[0]?.status ?? 'skeleton';
 
   // ── Edit handlers ─────────────────────────────────────────────────────────
   const handleEditStart = useCallback((id: number) => {
@@ -638,7 +846,6 @@ export default function Step1Analysis() {
       next.set(editingSection, editBuffer);
       return next;
     });
-    // Show the one-time edits warning on first save
     if (editedCount === 0) setShowEditedWarning(true);
     setEditingSection(null);
     setEditBuffer('');
@@ -692,9 +899,11 @@ export default function Step1Analysis() {
     setShowReviewWarning(false);
   }, [unreviewedSections]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Display content helper ────────────────────────────────────────────────
-  const getDisplayContent = (sec: ParsedSection): string =>
-    editedContent.get(sec.id) ?? sec.content;
+  // ── Display content helper (strips trailing AI artifacts) ────────────────
+  const getDisplayContent = (sec: ParsedSection): string => {
+    const raw = editedContent.get(sec.id) ?? sec.content;
+    return cleanContent(raw);
+  };
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -714,7 +923,7 @@ export default function Step1Analysis() {
         />
       </div>
 
-      {/* ── Minimal top action bar (Revoke Approval + error/retry only) ── */}
+      {/* ── Top action bar — Revoke Approval + error/retry only ── */}
       {(state === 4 || step1.error) && (
         <div className="flex flex-wrap items-center gap-3">
           {state === 4 && (
@@ -777,7 +986,7 @@ export default function Step1Analysis() {
 
       {/* ── Main content grid (states 2–5) ── */}
       {state !== 1 && (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 lg:items-start">
 
           {/* Left — 6 accordion sections */}
           <div className="space-y-3">
@@ -804,32 +1013,25 @@ export default function Step1Analysis() {
             ))}
           </div>
 
-          {/* Right — live navigation + data panel */}
-          <RightNavPanel
-            sections={parsedSections}
-            isStreaming={isGenerating}
-            progressCount={progressCount}
-            activeSectionTitle={activeSectionObj?.title}
-            chars={chars}
-            stats={stats}
-            approvedAt={step1.approvedAt}
-            onScrollTo={scrollTo}
-            state={state}
-          />
+          {/* Right — sticky navigation + character cards + section nav */}
+          <div className="lg:sticky lg:top-28 overflow-y-auto max-h-[calc(100vh-10rem)]">
+            <RightNavPanel
+              sections={parsedSections}
+              isStreaming={isGenerating}
+              progressCount={progressCount}
+              activeSectionTitle={activeSectionObj?.title}
+              charCards={charCards}
+              section1Status={section1Status}
+              totalDetected={totalDetected}
+              stats={stats}
+              approvedAt={step1.approvedAt}
+              onScrollTo={scrollTo}
+              state={state}
+              reviewedSections={reviewedSections}
+            />
+          </div>
         </div>
       )}
-
-      {/* Back to Setup link (replaces pipeline nav bar hidden for this step) */}
-      <div className="flex justify-start pt-2">
-        <button
-          type="button"
-          onClick={() => setActiveStep(0)}
-          className="flex items-center gap-1 text-xs text-on-surface-variant hover:text-on-surface transition-colors"
-        >
-          <span className="material-symbols-outlined text-sm">arrow_back</span>
-          Back to Project Setup
-        </button>
-      </div>
 
       {/* ── Sticky bottom action bar ── */}
       <div
@@ -870,13 +1072,13 @@ export default function Step1Analysis() {
         {/* Button row */}
         <div className="px-10 py-4 max-w-6xl mx-auto">
           {isGenerating ? (
-            // Streaming state — show progress message, no actions
+            // Streaming — centered status, no nav actions
             <div className="flex items-center justify-center gap-2 text-sm text-on-surface-variant">
               <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 animate-pulse" />
               Generating analysis… please wait
             </div>
           ) : state === 1 ? (
-            // Idle state — primary Generate action
+            // Idle — Previous Step (left) + Generate Analysis (right)
             <div className="flex items-center justify-between">
               <button
                 type="button"
@@ -899,8 +1101,17 @@ export default function Step1Analysis() {
               </button>
             </div>
           ) : (
-            // Post-stream state — Regenerate (left) + Approve & Continue (right)
-            <div className="flex items-center justify-between">
+            // Post-stream — Previous Step (left) | Regenerate (center) | Approve & Continue (right)
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveStep(0)}
+                className="flex items-center gap-2 text-sm font-semibold text-on-surface-variant hover:text-on-surface transition-colors"
+              >
+                <span className="material-symbols-outlined text-base">arrow_back</span>
+                Previous Step
+              </button>
+
               <button
                 type="button"
                 onClick={handleRegenClick}
@@ -914,7 +1125,7 @@ export default function Step1Analysis() {
               <button
                 type="button"
                 onClick={handleApproveAndContinue}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all ${
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
                   state === 4
                     ? 'bg-emerald-600 text-white hover:bg-emerald-700'
                     : 'bg-gray-900 text-white hover:opacity-90'
@@ -974,4 +1185,3 @@ export default function Step1Analysis() {
     </section>
   );
 }
-
