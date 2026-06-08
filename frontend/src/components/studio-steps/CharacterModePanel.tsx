@@ -104,17 +104,21 @@ export default function CharacterModePanel({ disabled, value, onChange }: Props)
               </button>
             </div>
           ) : null}
-          <div className="flex items-center gap-2">
-            <span className="min-w-[110px] text-[11px] text-gray-500">
-              IP scale: <span className="font-semibold">{value.ipAdapterScale.toFixed(1)}</span>
-            </span>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide">
+                Influence Strength
+              </span>
+              <span className="text-[11px] font-semibold text-gray-900">{value.ipAdapterScale.toFixed(1)}</span>
+            </div>
             <input
               type="range" min={0.1} max={1.0} step={0.1}
               value={value.ipAdapterScale}
               onChange={(e) => set({ ipAdapterScale: Number(e.target.value) })}
               disabled={disabled}
-              className="flex-1 accent-gray-900"
+              className="w-full accent-gray-900"
             />
+            <p className="text-[10px] text-gray-400">How strongly this reference guides the AI</p>
           </div>
         </div>
       )}
@@ -146,17 +150,21 @@ export default function CharacterModePanel({ disabled, value, onChange }: Props)
               </button>
             </div>
           ) : null}
-          <div className="flex items-center gap-2">
-            <span className="min-w-[110px] text-[11px] text-gray-500">
-              CN scale: <span className="font-semibold">{value.controlnetScale.toFixed(1)}</span>
-            </span>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide">
+                Pose Strength
+              </span>
+              <span className="text-[11px] font-semibold text-gray-900">{value.controlnetScale.toFixed(1)}</span>
+            </div>
             <input
               type="range" min={0.1} max={1.0} step={0.1}
               value={value.controlnetScale}
               onChange={(e) => set({ controlnetScale: Number(e.target.value) })}
               disabled={disabled}
-              className="flex-1 accent-gray-900"
+              className="w-full accent-gray-900"
             />
+            <p className="text-[10px] text-gray-400">How much this pose constrains the output</p>
           </div>
         </div>
       )}

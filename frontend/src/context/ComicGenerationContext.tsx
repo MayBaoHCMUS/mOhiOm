@@ -1650,7 +1650,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   };
 
   const handleApproveCharacterReferences = () => {
-    if (!step2ImageReview.data) return;
+    if (!step2ImageReview.data || step2ImageReview.data.characters.length === 0) {
+      setStep3((prev) => ({ ...prev, locked: false }));
+      setActiveStep(3);
+      return;
+    }
     const missing = step2ImageReview.data.characters.filter((character) => !character.selectedCandidateId);
     if (missing.length) {
       setStep2ImageReview((prev) => ({
