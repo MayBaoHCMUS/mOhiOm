@@ -1,3 +1,76 @@
+## SESSION: 2026-06-08
+
+### 🎯 CONTEXT — Pipeline Step 2 Story Breakdown (Step1Analysis.tsx) polish sprint
+
+All work this session is in a single file: `frontend/src/components/studio-steps/Step1Analysis.tsx`.
+Support files: `frontend/src/styles/globals.css`.
+
+---
+
+### ✅ COMPLETED
+
+#### Scrollbar fix — right panel thin scrollbar
+- Added `.thin-scrollbar` utility class to `frontend/src/styles/globals.css`:
+  - `scrollbar-gutter: stable` (prevents layout shift)
+  - `scrollbar-width: thin; scrollbar-color: #E5E7EB transparent` (Firefox)
+  - `::-webkit-scrollbar` 4 px wide, transparent track, #E5E7EB thumb → #9CA3AF on hover, `border-radius: 999px`
+- Applied `thin-scrollbar` to the right panel sticky container (`lg:sticky lg:top-28 overflow-y-auto max-h-[calc(100vh-10rem)]`)
+
+#### Review tracking fixes (P0)
+- **Stream auto-open no longer marks sections as reviewed** — removed `setReviewedSections` call from the auto-open `useEffect`
+- **Stream complete resets review counter to 0** — `setReviewedSections(new Set())` instead of inheriting open sections from stream; ensures "0 / 6 reviewed" at stream end
+- Only user-triggered accordion expand (`toggleSection`) marks a section reviewed
+- Right panel counter: hidden during stream, shows `{N} / 6 reviewed` after stream, shows `6 / 6 reviewed ✅` (emoji) when all 6 done
+
+#### Section dots 3 states (P0)
+- During stream: active section = blue pulse; already-complete sections = green filled check; pending = gray pulse
+- After stream: ALL dots immediately reset to green outline ○ (unreviewed state)
+- As user expands sections: dot transitions from ○ to ✅ filled (driven by `reviewedSections` set)
+
+#### Approve & Continue warning (P1)
+- Warning banner text updated:
+  - "You've reviewed **X / 6 sections**" (was "You haven't reviewed these sections")
+  - "Unreviewed: [section names]" subtitle
+  - "Review sections ↑" button (was "Review missing") — scrolls to + expands first unreviewed section
+  - "Approve anyway →" button (was "Continue anyway →")
+
+#### Bottom bar layout (P2)
+- Regrouped: `[← Previous Step]` on left · `[↺ Regenerate] [✅ Approve & Continue →]` grouped on right
+- Regenerate + Approve are now in a `flex gap-3` wrapper on the right — clearly separates navigation from story actions
+
+#### Streaming visibility fix (P0 — critical bug)
+- **Root cause**: `SECTION_DEFS` used exact markers like `'## 1. Character Breakdown'` but the backend prompt instructs the AI with `1. Character Breakdown` (no `##`). Gemini may produce `## `, `# `, `### `, `**`, or bare numbered items — any mismatch caused all sections to stay skeleton throughout streaming, so the user saw nothing.
+- **Fix**: Replaced `marker` field with `coreMarker` (number + name only, no heading prefix) and added `findMarker(text, coreMarker)` helper:
+  - Tries prefixes in order: `'## '`, `'### '`, `'# '`, `'#### '`, `'**'`, `''` (bare)
+  - Searches for `\n` + prefix + coreMarker at the start of any line
+  - Returns `{ start, contentStart }` where `contentStart` is after the full header line (handles extra suffix text like `(boxed table)` or `(the most important part)` automatically)
+- `parseStreamSections` updated to use `findMarker`; slices content from `contentStart` to next section's `start`
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/components/studio-steps/Step1Analysis.tsx` — streaming fix, review tracking, section dots, approve warning, bottom bar layout
+- `frontend/src/styles/globals.css` — added `.thin-scrollbar` utility class
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- The backend prompt (`generate_step1_stream` in `services.py`) instructs the AI with plain numbered items (`1. Character Breakdown`) inside a "clean markdown" directive. Gemini interprets this and may add heading markers. The frontend now handles all output formats robustly.
+- Review tracking resets on each new generation (via `handleConfirmRegen` → `setReviewedSections(new Set())`), so the counter always starts from 0 for each analysis run.
+- `scrollToFirstUnreviewed` still marks the scrolled-to section as reviewed (since the user sees it) — this is intentional.
+
+---
+
+### 🎯 NEXT STEPS
+
+1. **Test streaming with real backend** — verify `findMarker` correctly parses actual Gemini output for all 6 sections
+2. **Accordion scroll-to behavior** — when right panel section link is clicked, section should expand AND scroll into view on mobile (currently uses `scrollIntoView({ block: 'nearest' })`)
+3. **Edit mode save → re-approval warning** — when user saves edits to any section, consider revoking approval automatically (currently only warns once via `showEditedWarning`)
+
+---
+
 ## SESSION: 2026-06-06
 
 ### 🎯 CONTEXT — Major Architecture Refactor

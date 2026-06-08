@@ -353,48 +353,58 @@ function parseCharCardsFromStrings(chars: string[]): CharCard[] {
 
 function CharCardSkeleton() {
   return (
-    <div className="flex items-center gap-3 rounded-2xl bg-surface-container-lowest border border-outline-variant/10 px-4 py-3 motion-safe:animate-pulse">
-      <div className="w-7 h-7 rounded-full bg-on-surface/10 flex-shrink-0" />
-      <div className="flex-1 space-y-1.5">
+    <div className="rounded-2xl border border-outline-variant/10 px-3 py-2.5 motion-safe:animate-pulse space-y-1.5">
+      <div className="flex items-center gap-2">
+        <div className="w-2 h-2 rounded-full bg-on-surface/10 flex-shrink-0" />
         <div className="h-3 rounded-full bg-on-surface/10 w-3/4" />
-        <div className="h-2.5 rounded-full bg-on-surface/[0.06] w-1/2" />
-        <div className="h-2 rounded-full bg-on-surface/[0.04] w-5/6" />
       </div>
+      <div className="h-2.5 rounded-full bg-on-surface/[0.06] w-full" />
     </div>
   );
 }
 
 function CharCardItem({ card }: { card: CharCard }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const hasDetail = !!(card.role || card.visualHook);
+
   return (
-    <div className="flex items-start gap-3 rounded-2xl bg-surface-container-lowest border border-outline-variant/10 px-4 py-3">
-      <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-        card.isMain ? 'bg-primary/10' : 'bg-on-surface/5'
-      }`}>
-        <span
-          className={`material-symbols-outlined text-sm ${card.isMain ? 'text-primary' : 'text-on-surface-variant'}`}
-          style={{ fontVariationSettings: "'FILL' 1" }}
-        >
-          person
+    <div className={`rounded-2xl border overflow-hidden ${
+      card.isMain
+        ? 'bg-emerald-50/60 border-emerald-200/60'
+        : 'bg-amber-50/40 border-amber-200/40'
+    }`}>
+      <button
+        type="button"
+        onClick={() => hasDetail && setIsOpen(v => !v)}
+        className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left ${hasDetail ? 'cursor-pointer' : 'cursor-default'}`}
+      >
+        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${card.isMain ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+        <span className="text-xs font-semibold text-on-surface flex-1 min-w-0 truncate">{card.name}</span>
+        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 leading-none ${
+          card.isMain ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+        }`}>
+          {card.isMain ? 'Main' : 'Support'}
         </span>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <p className="text-sm font-semibold text-on-surface leading-snug">{card.name}</p>
-          {card.isMain && (
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary flex-shrink-0 leading-none">
-              Main
-            </span>
+        {hasDetail && (
+          <span
+            className="material-symbols-outlined text-sm text-on-surface-variant flex-shrink-0 transition-transform"
+            style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          >
+            expand_more
+          </span>
+        )}
+      </button>
+
+      {isOpen && hasDetail && (
+        <div className={`px-3 pb-3 pt-1 space-y-1 border-t ${card.isMain ? 'border-emerald-200/40' : 'border-amber-200/40'}`}>
+          {card.role && (
+            <p className="text-xs text-on-surface-variant leading-snug">{card.role}</p>
+          )}
+          {card.visualHook && (
+            <p className="text-[11px] text-on-surface-variant/60 leading-snug italic">{card.visualHook}</p>
           )}
         </div>
-        {card.role && (
-          <p className="text-xs text-on-surface-variant mt-0.5 leading-snug">{card.role}</p>
-        )}
-        {card.visualHook && (
-          <p className="text-[11px] text-on-surface-variant/60 mt-1 leading-snug line-clamp-2 italic">
-            {card.visualHook}
-          </p>
-        )}
-      </div>
+      )}
     </div>
   );
 }
