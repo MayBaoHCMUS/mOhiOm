@@ -455,6 +455,7 @@ function CharacterDesignInfo({
 }) {
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set(['physical', 'personality']));
   const [showPrompt, setShowPrompt] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const toggle = (key: string) =>
     setOpenKeys((prev) => {
@@ -467,85 +468,156 @@ function CharacterDesignInfo({
   const lines  = designMarkdown ? extractCharacterSection(designMarkdown, characterName) : [];
   const parsed = parseStructuredSections(lines);
 
+  const CHIP_SECTIONS = new Set(['physical', 'outfit']);
+
+  const extractTraitChips = (text: string): string[] =>
+    text
+      .split(/[,;·•]+/)
+      .map((p) => p.trim().replace(/^[-*]\s*/, ''))
+      .filter((p) => p.length > 1 && p.length <= 30 && p.split(/\s+/).length <= 5)
+      .slice(0, 5);
+
   const SUB_SECTIONS = [
-    { key: 'personality', label: 'Personality',        value: parsed.personality },
-    { key: 'physical',    label: 'Physical Appearance', value: parsed.physical },
-    { key: 'outfit',      label: 'Outfit',              value: parsed.outfit },
-    { key: 'visualHook',  label: 'Visual Hook',         value: parsed.visualHook },
-    { key: 'palette',     label: 'Color Palette',       value: parsed.palette },
-    { key: 'expressions', label: 'Expressions',         value: parsed.expressions?.join(' · ') },
+    { key: 'personality', label: 'Personality',         value: parsed.personality },
+    { key: 'physical',    label: 'Physical Appearance',  value: parsed.physical },
+    { key: 'outfit',      label: 'Outfit',               value: parsed.outfit },
+    { key: 'visualHook',  label: 'Visual Hook',          value: parsed.visualHook },
+    { key: 'palette',     label: 'Color Palette',        value: parsed.palette },
+    { key: 'expressions', label: 'Expressions',          value: parsed.expressions?.join(' · ') },
   ].filter((s): s is { key: string; label: string; value: string } => Boolean(s.value));
 
   const noData = !parsed.hasStructure && lines.length === 0;
 
+  const copyPrompt = async () => {
+    if (!fallbackPrompt) return;
+    await navigator.clipboard.writeText(fallbackPrompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <div>
+    <div className="max-w-[520px]">
+      {/* Character name */}
+      <p className="text-[20px] font-bold text-primary leading-tight mb-1">{characterName}</p>
+
+      {/* Subtitle / role */}
       {parsed.subtitle && (
-        <p className="text-xs text-on-surface-variant leading-snug mb-3">{parsed.subtitle}</p>
+        <p className="text-[14px] font-medium text-on-surface-variant leading-snug mb-2">
+          {parsed.subtitle}
+        </p>
       )}
 
       {noData && !fallbackPrompt && (
-        <p className="text-xs text-on-surface-variant/50 italic">No design data found.</p>
+        <p className="text-xs text-on-surface-variant/50 italic mt-2">No design data found.</p>
       )}
 
       {noData && fallbackPrompt && (
-        <p className="text-xs text-on-surface-variant leading-relaxed">{fallbackPrompt}</p>
+        <p className="text-[13px] text-[#444] leading-[1.6] mt-2">{fallbackPrompt}</p>
       )}
 
+      {/* Sub-sections */}
       {SUB_SECTIONS.length > 0 && (
-        <div className="divide-y divide-outline-variant/10">
-          {SUB_SECTIONS.map((s) => (
-            <div key={s.key}>
-              <button
-                type="button"
-                onClick={() => toggle(s.key)}
-                className="w-full flex items-center justify-between py-2.5 text-left group/sub"
-              >
-                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                  {s.label}
-                </span>
-                <span
-                  className="material-symbols-outlined text-sm text-on-surface-variant/40 group-hover/sub:text-on-surface-variant transition-all duration-200"
-                  style={{ transform: openKeys.has(s.key) ? 'rotate(180deg)' : 'none' }}
+        <div className="mt-3 divide-y divide-outline-variant/10">
+          {SUB_SECTIONS.map((s) => {
+            const allParts = CHIP_SECTIONS.has(s.key)
+              ? s.value.split(/[,;·•]+/).map((p) => p.trim().replace(/^[-*]\s*/, '')).filter(Boolean)
+              : [];
+            const chips      = allParts.filter((p) => p.length > 1 && p.length <= 30 && p.split(/\s+/).length <= 5).slice(0, 5);
+            const showChips  = chips.length >= 2;
+            const remaining  = showChips ? allParts.filter((p) => !chips.includes(p)).join(', ').trim() : '';
+            const bodyText   = showChips ? remaining : s.value;
+
+            return (
+              <div key={s.key}>
+                <button
+                  type="button"
+                  onClick={() => toggle(s.key)}
+                  className="w-full flex items-center justify-between py-2.5 text-left group/sub"
                 >
-                  expand_more
-                </span>
-              </button>
-              <div
-                className={`grid transition-all duration-200 ease-in-out ${
-                  openKeys.has(s.key) ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
-                }`}
-              >
-                <div className="overflow-hidden">
-                  <p className="text-xs text-on-surface leading-relaxed pb-3">{s.value}</p>
+                  <span
+                    className="text-[11px] font-semibold uppercase text-[#888]"
+                    style={{ letterSpacing: '0.08em' }}
+                  >
+                    {s.label}
+                  </span>
+                  <span
+                    className="material-symbols-outlined text-sm text-[#bbb] group-hover/sub:text-[#888] transition-all duration-200"
+                    style={{ transform: openKeys.has(s.key) ? 'rotate(180deg)' : 'none' }}
+                  >
+                    expand_more
+                  </span>
+                </button>
+                <div
+                  className={`grid transition-all duration-200 ease-in-out ${
+                    openKeys.has(s.key) ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+                  }`}
+                >
+                  <div className="overflow-hidden">
+                    <div className="pb-3 space-y-2">
+                      {showChips && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {chips.map((chip, i) => (
+                            <span
+                              key={i}
+                              className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-surface-container border border-outline-variant/20 text-on-surface-variant"
+                            >
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {bodyText && (
+                        <p className="text-[13px] text-[#444] leading-[1.6]">{bodyText}</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {!SUB_SECTIONS.length && lines.length > 0 && (
-        <Markdown className="text-xs [&>*:last-child]:mb-0">{lines.join('\n')}</Markdown>
+        <Markdown className="text-xs [&>*:last-child]:mb-0 mt-3">{lines.join('\n')}</Markdown>
       )}
 
+      {/* AI Image Prompt — dark code block with copy button */}
       {fallbackPrompt && (
-        <div className={`${SUB_SECTIONS.length > 0 ? 'mt-3 pt-3 border-t border-outline-variant/10' : 'mt-2'}`}>
+        <div className={SUB_SECTIONS.length > 0 ? 'mt-4 pt-3 border-t border-outline-variant/10' : 'mt-3'}>
           <button
             type="button"
             onClick={() => setShowPrompt((v) => !v)}
             className="flex items-center gap-1.5 text-[11px] font-semibold text-on-surface-variant hover:text-on-surface transition-colors"
           >
             <span className="material-symbols-outlined text-sm">
-              {showPrompt ? 'visibility_off' : 'visibility'}
+              {showPrompt ? 'expand_less' : 'code'}
             </span>
-            {showPrompt ? 'Hide Prompt' : 'View Prompt'}
+            {showPrompt ? 'Hide AI Image Prompt' : 'View AI Image Prompt'}
           </button>
           {showPrompt && (
-            <div className="mt-2 rounded-xl bg-surface-container p-3">
-              <p className="text-[11px] font-mono text-on-surface-variant leading-relaxed break-all">
+            <div className="mt-2 rounded-xl overflow-hidden border border-outline-variant/10">
+              <div className="flex items-center justify-between px-3 py-2 bg-[#2d2d2d]">
+                <span
+                  className="text-[10px] font-mono text-[#888] uppercase"
+                  style={{ letterSpacing: '0.1em' }}
+                >
+                  AI Image Prompt
+                </span>
+                <button
+                  type="button"
+                  onClick={copyPrompt}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-[#aaa] hover:text-white transition-colors"
+                >
+                  <span className="material-symbols-outlined text-sm">
+                    {copied ? 'check' : 'content_copy'}
+                  </span>
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              <pre className="px-3 py-3 text-[12px] font-mono text-[#d4d4d4] leading-relaxed bg-[#1e1e1e] overflow-x-auto whitespace-pre-wrap break-all">
                 {fallbackPrompt}
-              </p>
+              </pre>
             </div>
           )}
         </div>
@@ -1952,7 +2024,7 @@ export default function Step2Characters() {
 
           {/* ── Accordion character list ── */}
           {!step2ImageReview.locked && characters.length > 0 && (
-            <div className="space-y-2">
+            <div className="space-y-4">
               {characters.map((character, idx) => {
                 const charId    = character.characterId;
                 const versions  = computeVersions(character.candidates, versionBoundaries[charId] ?? [0]);
