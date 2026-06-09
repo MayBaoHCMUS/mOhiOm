@@ -130,6 +130,32 @@ function StateBadge({
   );
 }
 
+// ── Per-character approval progress badge (top-right, References tab) ─────────
+
+function ApprovalProgressBadge({ approved, total }: { approved: number; total: number }) {
+  const pct = total > 0 ? Math.round((approved / total) * 100) : 0;
+  const allDone = approved === total && total > 0;
+  return (
+    <div className="flex flex-col items-end gap-1.5 min-w-[160px]">
+      <div className={`flex items-center gap-1.5 text-xs font-bold ${allDone ? 'text-emerald-600' : 'text-on-surface-variant'}`}>
+        <span
+          className="material-symbols-outlined text-sm"
+          style={{ fontVariationSettings: allDone ? "'FILL' 1" : "'FILL' 0" }}
+        >
+          {allDone ? 'check_circle' : 'pending'}
+        </span>
+        Approved {approved}/{total} characters
+      </div>
+      <div className="w-full h-1.5 rounded-full bg-on-surface/8 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${allDone ? 'bg-emerald-500' : 'bg-primary/60'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── Character status badge (Reference Images tab) ─────────────────────────────
 
 function CharacterStatusBadge({ status }: { status: 'draft' | 'generated' | 'approved' }) {
@@ -1541,9 +1567,11 @@ export default function Step2Characters() {
   else if (step2.data && step2.regeneratedAfterApproval)        state = 5;
   else if (step2.data)                                          state = 3;
 
-  const approvedCount    = approvedCharIds.size;
-  const allCharsApproved = characters.length === 0 || approvedCount === characters.length;
-  const pendingCount     = characters.filter((c) => !approvedCharIds.has(c.characterId)).length;
+  const approvedCount      = approvedCharIds.size;
+  const allCharsApproved   = characters.length === 0 || approvedCount === characters.length;
+  const generatedCount     = characters.filter((c) => c.candidates.length > 0 && !approvedCharIds.has(c.characterId)).length;
+  const noCandidatesCount  = characters.filter((c) => c.candidates.length === 0).length;
+  const pendingCount       = characters.filter((c) => !approvedCharIds.has(c.characterId)).length;
   const charsWithCandidates = characters.filter((c) => c.candidates.length > 0);
   const charsWithSelection  = charsWithCandidates.filter((c) => c.selectedCandidateId !== null);
   const allCharsHaveSelection = charsWithCandidates.length === 0 ||
@@ -1752,37 +1780,59 @@ export default function Step2Characters() {
           <p className="text-sm text-on-surface-variant mt-1">
             AI-generated design sheets and reference images for each character
           </p>
+
+          {/* Summary status bar — shown when characters are loaded */}
+          {characters.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap mt-2">
+              <span className="text-sm font-semibold text-on-surface">
+                {characters.length} Character{characters.length !== 1 ? 's' : ''}
+              </span>
+              <span className="text-outline-variant/40 select-none">—</span>
+              {approvedCount > 0 && (
+                <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-600">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                  {approvedCount} Approved
+                </span>
+              )}
+              {generatedCount > 0 && (
+                <span className="flex items-center gap-1.5 text-sm font-medium text-blue-600">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+                  {generatedCount} Generated
+                </span>
+              )}
+              {noCandidatesCount > 0 && (
+                <span className="flex items-center gap-1.5 text-sm font-medium text-on-surface-variant">
+                  <span className="w-2 h-2 rounded-full bg-outline-variant flex-shrink-0" />
+                  {noCandidatesCount} Pending
+                </span>
+              )}
+            </div>
+          )}
         </div>
-        <StateBadge
-          state={state}
-          streamProgress={isGenerating ? { current: progressCount, total: TOTAL_SECTIONS } : null}
-        />
+
+        {/* Top-right badge: progress in references tab, state badge in design sheets */}
+        {activeTab === 'references' && characters.length > 0 ? (
+          <ApprovalProgressBadge approved={approvedCount} total={characters.length} />
+        ) : (
+          <StateBadge
+            state={state}
+            streamProgress={isGenerating ? { current: progressCount, total: TOTAL_SECTIONS } : null}
+          />
+        )}
       </div>
 
-      {/* Revoke / error */}
-      {(state === 4 || step2.error) && (
-        <div className="flex flex-wrap items-center gap-3">
-          {state === 4 && (
-            <button
-              type="button"
-              onClick={() => handleRevokeApproval(2)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-surface-container-high text-on-surface-variant hover:text-on-surface transition-colors"
-            >
-              <span className="material-symbols-outlined text-base">undo</span>
-              Revoke approval
-            </button>
-          )}
-          {step2.error && (
-            <button
-              type="button"
-              onClick={() => handleRetry(2)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 transition-colors"
-            >
-              <span className="material-symbols-outlined text-base">replay</span>
-              Retry
-            </button>
-          )}
-          {step2.error && <span className="text-sm text-red-500">{step2.error}</span>}
+      {/* Error bar */}
+      {step2.error && (
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => handleRetry(2)}
+            className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 transition-colors"
+          >
+            <span className="material-symbols-outlined text-base">replay</span>
+            Retry
+          </button>
+          <span className="text-sm text-red-500">{step2.error}</span>
         </div>
       )}
 
@@ -1814,7 +1864,7 @@ export default function Step2Characters() {
           >
             <span className="material-symbols-outlined text-base">image</span>
             Reference Images
-            {pendingCount > 0 ? (
+            {/*pendingCount > 0 ? (
               <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 flex-shrink-0 leading-none">
                 ⚠️ {pendingCount}
               </span>
@@ -1825,7 +1875,7 @@ export default function Step2Characters() {
               >
                 check_circle
               </span>
-            ) : null}
+            ) : null*/}
           </button>
         </div>
       )}
@@ -1917,52 +1967,63 @@ export default function Step2Characters() {
       {activeTab === 'references' && state >= 2 && (
         <div className="space-y-4">
 
-          {/* Image action bar */}
+          {/* Global toolbar — visually grouped */}
           <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                if (step2ImageReview.data) { setShowRegenAllConfirm(true); }
-                else { handleGenerateCharacterReferences(charSettings); }
-              }}
-              disabled={step2ImageReview.locked || isImageGenerating || !step2.data}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all ${
-                step2ImageReview.locked || isImageGenerating || !step2.data
-                  ? 'bg-surface-container text-on-surface-variant cursor-not-allowed opacity-50'
+            <div className="flex items-center gap-1 p-1 rounded-2xl border border-outline-variant/10 bg-surface-container">
+              {/* Primary action */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (step2ImageReview.data) { setShowRegenAllConfirm(true); }
+                  else { handleGenerateCharacterReferences(charSettings); }
+                }}
+                disabled={step2ImageReview.locked || isImageGenerating || !step2.data}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+                  step2ImageReview.locked || isImageGenerating || !step2.data
+                    ? 'text-on-surface-variant cursor-not-allowed opacity-50'
+                    : step2ImageReview.data
+                      ? 'bg-surface-container-highest text-on-surface hover:bg-surface-container-high/80'
+                      : 'bg-primary text-on-primary hover:opacity-90 shadow-sm'
+                }`}
+              >
+                <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  {isImageGenerating ? 'hourglass_empty' : step2ImageReview.data ? 'refresh' : 'image'}
+                </span>
+                {isImageGenerating
+                  ? 'Generating…'
                   : step2ImageReview.data
-                    ? 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'
-                    : 'bg-primary text-on-primary hover:opacity-90'
-              }`}
-            >
-              <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
-                {isImageGenerating ? 'hourglass_empty' : step2ImageReview.data ? 'refresh' : 'image'}
-              </span>
-              {isImageGenerating
-                ? 'Generating…'
-                : step2ImageReview.data
-                  ? 'Regenerate all'
-                  : 'Generate references'}
-            </button>
+                    ? 'Regenerate All'
+                    : 'Generate References'}
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setIsLibraryOpen(true)}
-              disabled={isImageGenerating}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-surface-container-high text-on-surface hover:bg-surface-container-highest transition-colors"
-            >
-              <span className="material-symbols-outlined text-base">library_books</span>
-              From Library
-            </button>
+              {/* Divider */}
+              <div className="w-px h-5 bg-outline-variant/20 mx-0.5 flex-shrink-0" />
 
-            <button
-              type="button"
-              onClick={handleRetryCharacterReferences}
-              disabled={step2ImageReview.locked}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold bg-surface-container-high text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-40"
-            >
-              <span className="material-symbols-outlined text-base">restart_alt</span>
-              Reset
-            </button>
+              {/* From Library */}
+              <button
+                type="button"
+                onClick={() => setIsLibraryOpen(true)}
+                disabled={isImageGenerating}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors disabled:opacity-40"
+              >
+                <span className="material-symbols-outlined text-base">library_books</span>
+                From Library
+              </button>
+
+              {/* Divider */}
+              <div className="w-px h-5 bg-outline-variant/20 mx-0.5 flex-shrink-0" />
+
+              {/* Reset */}
+              <button
+                type="button"
+                onClick={handleRetryCharacterReferences}
+                disabled={step2ImageReview.locked}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-on-surface-variant/60 hover:text-on-surface-variant transition-colors disabled:opacity-40"
+              >
+                <span className="material-symbols-outlined text-base">restart_alt</span>
+                Reset
+              </button>
+            </div>
 
             {step2ImageReview.error && (
               <span className="text-sm text-red-500">{step2ImageReview.error}</span>
@@ -2152,15 +2213,54 @@ export default function Step2Characters() {
               </button>
 
               <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowRegenConfirm(true)}
-                  disabled={!canGenerate}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40"
-                >
-                  <span className="material-symbols-outlined text-base">refresh</span>
-                  {cooldown > 0 ? `Retry in ${cooldown}s` : 'Regenerate'}
-                </button>
+                {/* Character completion dots — Reference Images tab */}
+                {activeTab === 'references' && characters.length > 0 && (
+                  <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-container border border-outline-variant/10">
+                    <div className="flex gap-1.5">
+                      {characters.map((c) => (
+                        <span
+                          key={c.characterId}
+                          title={c.name}
+                          className={`w-2.5 h-2.5 rounded-full flex-shrink-0 transition-colors duration-300 ${
+                            approvedCharIds.has(c.characterId)
+                              ? 'bg-emerald-500'
+                              : c.candidates.length > 0
+                                ? 'bg-blue-400/60'
+                                : 'bg-outline-variant/30'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-[11px] font-semibold text-on-surface-variant tabular-nums">
+                      {approvedCount}/{characters.length}
+                    </span>
+                  </div>
+                )}
+
+                {/* Regenerate Designs (design sheets tab) */}
+                {activeTab === 'designs' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowRegenConfirm(true)}
+                    disabled={!canGenerate}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40"
+                  >
+                    <span className="material-symbols-outlined text-base">refresh</span>
+                    {cooldown > 0 ? `Retry in ${cooldown}s` : 'Regenerate'}
+                  </button>
+                )}
+
+                {/* Design sheet revoke — inline in bottom bar */}
+                {activeTab === 'designs' && state === 4 && (
+                  <button
+                    type="button"
+                    onClick={() => handleRevokeApproval(2)}
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-semibold text-on-surface-variant hover:text-on-surface border border-outline-variant/20 hover:bg-surface-container transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-base">undo</span>
+                    Revoke
+                  </button>
+                )}
 
                 <button
                   type="button"
