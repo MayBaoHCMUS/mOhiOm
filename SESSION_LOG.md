@@ -1,3 +1,92 @@
+## SESSION: 2026-06-09
+
+### 🎯 CONTEXT — Step 2 Characters: Full streaming accordion rewrite + earlier UI fixes
+
+All work this session is in `frontend/src/components/studio-steps/Step2Characters.tsx` and `frontend/src/context/ComicGenerationContext.tsx`.
+
+---
+
+### ✅ COMPLETED
+
+#### Phase 1 — UI fixes (earlier in session)
+
+**Prompt queue panel fix** — was showing 27 sub-section entries instead of 2–3 character names.
+- Root cause: AI generates H2-depth character headers (`## Kael / The Blacksmith God`) with H3-depth sub-sections (`### Name & Role`). The old `sectionsWithMeta` treated H3 as `isMainChar=true`, so sub-sections became separate cards/nav tabs.
+- Fix: Added `DESIGN_SUB_RE` pattern matching; when all H3 sections look like design sub-fields, filter to depth-2 only. Nav counter changed to `{total} character{total !== 1 ? 's' : ''}`.
+
+**Sub-nav ugly pills fix** — was overflowing with sub-section names ("Name & Role", "Personality & Backstory", etc.).
+- `navLabel` strips subtitle after `/`: `sec.name.replace(/\s*[\/—–-].*$/, '')...slice(0, 24)`
+- `SectionNavPills` styling cleaned: removed gradient fade, `text-sm` pills, `bg-gray-100` inactive
+
+**Console logging** — added prompt + response logging in `ComicGenerationContext.tsx` Step 2 generation paths (both streaming and non-streaming). Logs before API call (indigo group) and after stream completes (green group with `designMarkdown` and `structuredJson`).
+
+#### Phase 2 — Full streaming accordion rewrite (Design Sheets tab)
+
+`Step2Characters.tsx` completely rewritten using the same streaming accordion pattern as `Step1Analysis.tsx`.
+
+**New parsing infrastructure:**
+- `DESIGN_SECTION_DEFS` — 5 sections matching actual AI output: Global Design Guidelines, Main Character Design Sheets, Supporting Character Design Sheets, Interaction & Relationship Notes, Final Design Summary
+- `findMarker(text, coreMarker)` — handles any heading prefix (`##`, `###`, `#`, `####`, `**`, bare)
+- `parseDesignSections(text)` — returns `skeleton | active | complete` per section during streaming
+- `cleanContent(raw)` — strips trailing bullet noise
+
+**New components:**
+- `SkeletonLines` — shimmer placeholder (same as Step1Analysis)
+- `SectionAccordion` — `React.forwardRef`, dot/spinner/checkmark per status, auto-open during stream does NOT count as reviewed
+- `DesignSheetsRightPanel` — progress bar during stream, per-section dots with 3 states, reviewed counter (`N / 5 reviewed`), approved badge, "View in Reference Images" shortcut
+- `StateBadge` — now accepts streaming progress bar props; shows live `{current} / {total}` during generation
+
+**Accordion state in main component:**
+- `openSections: Set<number>`, `reviewedSections: Set<number>`, `showReviewWarning`
+- `prevActiveRef` — detects new active section to auto-open without marking reviewed
+- `wasLoadingRef` — detects generation start to reset open sections
+- `prevStateRef` — detects stream complete (2→3) to reset review tracking
+- Auto-open effect, reset-on-generate effect, stream-complete effect
+
+**Review tracking + warning dialog:**
+- Only user-triggered expands (`toggleSection`) mark a section reviewed
+- "Approve & Continue →" when unreviewed sections exist → shows warning banner with "Review sections ↑" scroll shortcut and "Approve anyway →" override
+- Warning dismisses automatically once all sections reviewed
+
+**Scroll-to navigation:** `sectionRefs` map + `scrollTo(id)` + `scrollIntoView({ behavior: 'smooth' })`
+
+**Removed components** (no longer needed):
+- `CharSection`, `parseCharacterSections`, `slugify`, `SectionNavPills`
+- `FieldLabel`, `FieldValue`, `DesignSheetCard`, `PromptQueuePanel`
+
+**Kept 100% intact:**
+- Reference Images tab — split panel, `CharacterReviewCard`, version history, `CharacterDesignSummary`, `AspectRatioSelector`, `CharacterLibraryModal` wiring, all context hooks
+- `parseStructuredSections`, `extractCharacterSection` — still used by `CharacterDesignSummary`
+- `useSplitPanel`, `computeVersions`, `CharacterReviewCard`
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/components/studio-steps/Step2Characters.tsx` — full rewrite (streaming accordion + cleanup)
+- `frontend/src/context/ComicGenerationContext.tsx` — added Step 2 console logging
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- `findMarker` tries heading prefixes in order `## → ### → # → #### → ** → bare`. This handles all known Gemini output variants without requiring exact markdown format.
+- Fallback in `parsedSections` useMemo: if no section markers found in final markdown, dumps everything into section 1 content so the output is never lost.
+- Stream auto-open via `prevActiveRef` — only fires when `active.id !== prevActiveRef.current`, preventing re-opens on each re-render tick.
+- State 2→3 transition (stream complete): `setReviewedSections(new Set())` + `setOpenSections(new Set([1]))` — counter resets to 0, user must manually expand all 5 sections before approving.
+- TypeScript strict-mode check (`npx tsc --noEmit`) passes with zero errors after all changes.
+
+---
+
+### 🎯 NEXT STEPS
+
+1. **Test streaming with real backend** — verify `findMarker` correctly parses actual Gemini output for all 5 sections
+2. **Verify section fallback** — confirm the "dump to section 1" fallback works correctly when AI omits numbered section headers
+3. **Mobile layout** — `DesignSheetsRightPanel` is `lg:sticky lg:top-28`; verify it stacks correctly on narrow viewports below `lg` breakpoint
+4. **Review warning on References tab** — warning banner currently only shows on Design Sheets tab; confirm approve button on References tab skips warning correctly (it calls `handleApproveAndContinue` not `handleDesignApproveClick`)
+
+---
+
 ## SESSION: 2026-06-08
 
 ### 🎯 CONTEXT — Pipeline Step 2 Story Breakdown (Step1Analysis.tsx) polish sprint

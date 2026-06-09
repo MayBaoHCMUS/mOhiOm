@@ -1026,7 +1026,7 @@ export default function Step1Analysis() {
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 lg:items-start">
 
           {/* Left — 6 accordion sections */}
-          <div className="space-y-3">
+          <div className="space-y-3 max-w-[750px]">
             {parsedSections.map(sec => (
               <SectionAccordion
                 key={sec.id}

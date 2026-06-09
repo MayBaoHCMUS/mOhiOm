@@ -892,25 +892,58 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
 
     if (step === 2) {
+      const step2Params = {
+        project_id: projectId,
+        step1_json: getStep1StructuredJson(),
+        desired_main_characters: Number(mainCharacters) || 5,
+        genre_tone: mangaGenre || 'Shonen action',
+        art_style_reference: artStyle || 'classic black-and-white weekly shonen',
+        special_requests: specialRequests || 'None',
+      };
+      console.group('%c[Step 2] Character Designs — prompt inputs', 'color:#6366f1;font-weight:bold');
+      console.log('desired_main_characters:', step2Params.desired_main_characters);
+      console.log('genre_tone:', step2Params.genre_tone);
+      console.log('art_style_reference:', step2Params.art_style_reference);
+      console.log('special_requests:', step2Params.special_requests);
+      console.log('step1_json (context fed to prompt):', step2Params.step1_json);
+      console.log(
+        '%cBackend prompt template (services.py generate_step2_character_design_markdown):\n\n' +
+        'You are a professional manga adaptation studio AI. Your only job right now is Step 2: Character Designs.\n\n' +
+        'REFERENCE FROM STEP 1 (structured JSON): <step1_json above>\n\n' +
+        'USER CUSTOMIZATION INPUTS:\n' +
+        `  Desired main characters: ${step2Params.desired_main_characters}\n` +
+        `  Genre & tone: ${step2Params.genre_tone}\n` +
+        `  Art style: ${step2Params.art_style_reference}\n` +
+        `  Special requests: ${step2Params.special_requests}\n\n` +
+        'OUTPUT ORDER:\n' +
+        '  1. Global Design Guidelines\n' +
+        '  2. Main Character Design Sheets\n' +
+        '     (Name & Role, Personality & Backstory, Physical Appearance,\n' +
+        '      Outfit & Accessories, Expressions & Poses, Visual Design Hook, AI Image Prompt Ready)\n' +
+        '  3. Supporting Character Design Sheets\n' +
+        '  4. Interaction & Relationship Notes\n' +
+        '  5. Final Design Summary (boxed table)',
+        'color:#94a3b8'
+      );
+      console.groupEnd();
+
       if (useStreaming) {
         return new Promise((resolve, reject) => {
           setStreamingText('');
           let designMarkdown = '';
 
           geminiApi.generateCharacterDesignsStructuredStream(
-            {
-              project_id: projectId,
-              step1_json: getStep1StructuredJson(),
-              desired_main_characters: Number(mainCharacters) || 5,
-              genre_tone: mangaGenre || 'Shonen action',
-              art_style_reference: artStyle || 'classic black-and-white weekly shonen',
-              special_requests: specialRequests || 'None',
-            },
+            step2Params,
             (chunk) => {
               designMarkdown += chunk;
               setStreamingText(designMarkdown);
             },
             (structuredJson) => {
+              console.group('%c[Step 2] Response received', 'color:#10b981;font-weight:bold');
+              console.log('%cFull design markdown:', 'color:#10b981', designMarkdown);
+              console.log('Structured JSON:', structuredJson);
+              console.groupEnd();
+
               const structured = structuredJson as Step2StructuredJson | null;
               const mainDesigns = structured?.steps?.step_2_design?.data?.main_characters_designs || {};
               const aiPrompts = Object.values(mainDesigns)
@@ -929,17 +962,16 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
           );
         });
       } else {
-        const resp = await geminiApi.generateCharacterDesignsStructured({
-          project_id: projectId,
-          step1_json: getStep1StructuredJson(),
-          desired_main_characters: Number(mainCharacters) || 5,
-          genre_tone: mangaGenre || 'Shonen action',
-          art_style_reference: artStyle || 'classic black-and-white weekly shonen',
-          special_requests: specialRequests || 'None',
-        });
+        const resp = await geminiApi.generateCharacterDesignsStructured(step2Params);
 
         const designMarkdown: string = resp.data.design_markdown || '';
         const structuredJson = (resp.data.structured_json as Record<string, unknown>) || null;
+
+        console.group('%c[Step 2] Response received', 'color:#10b981;font-weight:bold');
+        console.log('%cFull design markdown:', 'color:#10b981', designMarkdown);
+        console.log('Structured JSON:', structuredJson);
+        console.groupEnd();
+
         const structured = structuredJson as Step2StructuredJson | null;
         const mainDesigns = structured?.steps?.step_2_design?.data?.main_characters_designs || {};
         const aiPrompts = Object.values(mainDesigns)

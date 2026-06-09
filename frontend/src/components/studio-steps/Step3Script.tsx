@@ -112,20 +112,23 @@ function PageCard({ page, defaultOpen }: { page: ScriptPage; defaultOpen: boolea
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden">
+      {/* Header — same pattern as Step 2 DesignSheetCard */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between px-5 py-4 text-left"
       >
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Page</span>
-          <span className="font-bold text-on-surface">{page.pageNumber}</span>
-          <span className="text-xs text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="text-[11px] font-bold text-on-surface-variant/40 flex-shrink-0">
+            P{page.pageNumber}
+          </span>
+          <p className="font-semibold text-sm text-on-surface">Page {page.pageNumber}</p>
+          <span className="text-[11px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full flex-shrink-0">
             {page.panels.length} panel{page.panels.length !== 1 ? 's' : ''}
           </span>
         </div>
         <span
-          className="material-symbols-outlined text-lg text-on-surface-variant transition-transform"
+          className="material-symbols-outlined text-lg text-on-surface-variant transition-transform flex-shrink-0"
           style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
         >
           expand_more
@@ -133,30 +136,59 @@ function PageCard({ page, defaultOpen }: { page: ScriptPage; defaultOpen: boolea
       </button>
 
       {open && (
-        <div className="px-5 pb-5 space-y-3">
+        <div className="border-t border-outline-variant/10">
           {page.panels.map((panel, i) => (
-            <div key={i} className="rounded-xl bg-surface-container-low p-4 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-on-surface bg-surface-container px-2 py-0.5 rounded-full">
+            <div key={i} className={i > 0 ? 'border-t border-outline-variant/10' : ''}>
+              {/* Panel label row */}
+              <div className="px-5 py-2.5 flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
                   {panel.label}
                 </span>
-                {panel.description && (
-                  <p className="text-sm text-on-surface leading-snug">{panel.description}</p>
+              </div>
+
+              {/* 2-column layout: Scene + Dialogue left, Image Prompt right */}
+              <div
+                className={`grid border-t border-outline-variant/10 divide-x divide-outline-variant/10 ${
+                  panel.prompt ? 'grid-cols-2' : 'grid-cols-1'
+                }`}
+              >
+                {/* Left — scene description + dialogue */}
+                <div className="p-4 space-y-3">
+                  {panel.description && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">
+                        Scene
+                      </p>
+                      <p className="text-xs text-on-surface leading-relaxed">{panel.description}</p>
+                    </div>
+                  )}
+                  {panel.dialogue && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">
+                        Dialogue / SFX
+                      </p>
+                      <p className="text-xs text-on-surface leading-relaxed italic">
+                        &ldquo;{panel.dialogue}&rdquo;
+                      </p>
+                    </div>
+                  )}
+                  {!panel.description && !panel.dialogue && (
+                    <p className="text-xs text-on-surface-variant/50 italic">No description</p>
+                  )}
+                </div>
+
+                {/* Right — image prompt */}
+                {panel.prompt && (
+                  <div className="p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1.5">
+                      Image Prompt
+                    </p>
+                    <p className="text-xs text-on-surface-variant leading-relaxed font-mono">
+                      {panel.prompt}
+                    </p>
+                  </div>
                 )}
               </div>
-              {panel.dialogue && (
-                <p className="text-sm text-on-surface-variant italic leading-relaxed">
-                  &ldquo;{panel.dialogue}&rdquo;
-                </p>
-              )}
-              {panel.prompt && (
-                <div className="rounded-lg bg-surface-container p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">
-                    Image prompt
-                  </p>
-                  <p className="text-xs text-on-surface-variant leading-relaxed">{panel.prompt}</p>
-                </div>
-              )}
             </div>
           ))}
         </div>
@@ -297,7 +329,7 @@ export default function Step3Script() {
 
       {/* ── Content ── */}
       {(state === 3 || state === 4 || state === 5) && step3.data && (
-        <div>
+        <div className="max-w-[750px]">
           {/* Stats row */}
           {pages.length > 0 && (
             <div className="flex items-center gap-4 mb-4">
