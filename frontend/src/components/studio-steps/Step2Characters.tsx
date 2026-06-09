@@ -574,18 +574,48 @@ function SkeletonLines({ count = 4 }: { count?: number }) {
 // ── Section accordion (Design Sheets tab) ────────────────────────────────────
 
 interface SectionAccordionProps {
-  section:     ParsedSection;
-  isOpen:      boolean;
-  onToggle:    () => void;
-  isStreaming: boolean;
+  section:        ParsedSection;
+  displayContent: string;
+  isOpen:         boolean;
+  onToggle:       () => void;
+  isStreaming:    boolean;
+  isEdited:       boolean;
+  isEditing:      boolean;
+  editBuffer:     string;
+  onEditStart:    () => void;
+  onEditChange:   (v: string) => void;
+  onEditSave:     () => void;
+  onEditCancel:   () => void;
 }
 
 const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>(
-  ({ section, isOpen, onToggle, isStreaming }, ref) => {
-    const { status, title, content } = section;
-    const isSkeleton = status === 'skeleton';
-    const isActive   = status === 'active';
-    const displayContent = cleanContent(content);
+  (
+    {
+      section, displayContent, isOpen, onToggle, isStreaming,
+      isEdited, isEditing, editBuffer,
+      onEditStart, onEditChange, onEditSave, onEditCancel,
+    },
+    ref,
+  ) => {
+    const { status, title } = section;
+    const isSkeleton   = status === 'skeleton';
+    const isActive     = status === 'active';
+    const showEditBtn  = isOpen && !isStreaming && !isSkeleton;
+    const taRef        = useRef<HTMLTextAreaElement>(null);
+
+    const insertMarkdown = (before: string, after: string) => {
+      const ta = taRef.current;
+      if (!ta) return;
+      const start  = ta.selectionStart;
+      const end    = ta.selectionEnd;
+      const sel    = editBuffer.slice(start, end);
+      const newVal = editBuffer.slice(0, start) + before + sel + after + editBuffer.slice(end);
+      onEditChange(newVal);
+      requestAnimationFrame(() => {
+        ta.focus();
+        ta.setSelectionRange(start + before.length, start + before.length + sel.length);
+      });
+    };
 
     return (
       <div ref={ref} className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden">
@@ -614,18 +644,69 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
             <span className={`font-semibold text-sm truncate ${isSkeleton ? 'text-on-surface-variant/50' : 'text-on-surface'}`}>
               {title}
             </span>
+            {isEdited && (
+              <span
+                className="material-symbols-outlined text-sm text-amber-400 flex-shrink-0"
+                title="Manually edited"
+              >
+                edit
+              </span>
+            )}
           </div>
-          <span
-            className="material-symbols-outlined text-lg text-on-surface-variant transition-transform flex-shrink-0"
-            style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
-          >
-            expand_more
-          </span>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {showEditBtn && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); if (!isEditing) onEditStart(); }}
+                title="Edit this section"
+                className={`flex items-center gap-1 text-xs text-on-surface-variant hover:text-on-surface px-2 py-1 rounded-lg hover:bg-surface-container transition-all ${
+                  isEditing ? 'opacity-100' : 'opacity-0 group-hover/header:opacity-100'
+                }`}
+              >
+                <span className="material-symbols-outlined text-sm">edit</span>
+                Edit
+              </button>
+            )}
+            <span
+              className="material-symbols-outlined text-lg text-on-surface-variant transition-transform flex-shrink-0"
+              style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+            >
+              expand_more
+            </span>
+          </div>
         </div>
 
         {isOpen && (
           <div className="px-5 pb-5 border-t border-outline-variant/10">
-            {isSkeleton ? (
+            {isEditing ? (
+              <div className="space-y-2 pt-4">
+                {/* Markdown toolbar */}
+                <div className="flex items-center gap-1 pb-2 border-b border-outline-variant/10">
+                  <button type="button" onClick={() => insertMarkdown('**', '**')} title="Bold"
+                    className="px-2 py-1 text-xs font-bold rounded hover:bg-surface-container transition-colors">B</button>
+                  <button type="button" onClick={() => insertMarkdown('*', '*')} title="Italic"
+                    className="px-2 py-1 text-xs italic rounded hover:bg-surface-container transition-colors">I</button>
+                  <button type="button" onClick={() => insertMarkdown('\n- ', '')} title="Bullet list"
+                    className="px-2 py-1 text-xs rounded hover:bg-surface-container transition-colors">• List</button>
+                  <div className="flex-1" />
+                  <button type="button" onClick={onEditCancel}
+                    className="px-3 py-1.5 text-xs rounded-xl bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors">
+                    Cancel
+                  </button>
+                  <button type="button" onClick={onEditSave}
+                    className="px-3 py-1.5 text-xs rounded-xl bg-gray-900 text-white hover:opacity-90 font-semibold transition-opacity">
+                    Save changes
+                  </button>
+                </div>
+                <textarea
+                  ref={taRef}
+                  value={editBuffer}
+                  onChange={(e) => onEditChange(e.target.value)}
+                  className="w-full min-h-[220px] rounded-xl bg-surface-container px-4 py-3 text-sm font-mono focus:outline-none border border-outline-variant/20 focus:border-primary/40 resize-y leading-relaxed"
+                />
+              </div>
+            ) : isSkeleton ? (
               <div className="pt-4"><SkeletonLines /></div>
             ) : displayContent ? (
               <div className="pt-4">
@@ -1336,6 +1417,7 @@ export default function Step2Characters() {
   const [isLibraryOpen, setIsLibraryOpen]             = useState(false);
   const [showRegenConfirm, setShowRegenConfirm]       = useState(false);
   const [showRegenAllConfirm, setShowRegenAllConfirm] = useState(false);
+  const [showSelectionAlert, setShowSelectionAlert]   = useState(false);
   const [versionBoundaries, setVersionBoundaries]     = useState<Record<string, number[]>>({});
   const [activeVersionTabs, setActiveVersionTabs]     = useState<Record<string, number>>({});
 
@@ -1343,6 +1425,10 @@ export default function Step2Characters() {
   const [openSections, setOpenSections]           = useState<Set<number>>(new Set([1]));
   const [reviewedSections, setReviewedSections]   = useState<Set<number>>(new Set());
   const [showReviewWarning, setShowReviewWarning] = useState(false);
+  const [editedContent, setEditedContent]         = useState<Map<number, string>>(new Map());
+  const [editingSection, setEditingSection]       = useState<number | null>(null);
+  const [editBuffer, setEditBuffer]               = useState('');
+  const [showEditedWarning, setShowEditedWarning] = useState(false);
   const prevActiveRef = useRef<number | null>(null);
   const wasLoadingRef = useRef(false);
   const prevStateRef  = useRef<State>(1);
@@ -1520,14 +1606,48 @@ export default function Step2Characters() {
   const handleConfirmRegen = useCallback(() => {
     setShowRegenConfirm(false);
     setApprovedCharIds(new Set());
+    setEditedContent(new Map());
+    setEditingSection(null);
+    setEditBuffer('');
+    setShowEditedWarning(false);
     handleGenerate(2);
   }, [handleGenerate]);
 
+  // ── Edit handlers (Design Sheets) ─────────────────────────────────────────
+  const handleEditStart = useCallback((id: number) => {
+    const current = editedContent.get(id) ?? parsedSections.find((s) => s.id === id)?.content ?? '';
+    setEditingSection(id);
+    setEditBuffer(current);
+  }, [editedContent, parsedSections]);
+
+  const handleEditSave = useCallback(() => {
+    if (editingSection === null) return;
+    setEditedContent((prev) => {
+      const next = new Map(prev);
+      next.set(editingSection, editBuffer);
+      return next;
+    });
+    if (editedContent.size === 0) setShowEditedWarning(true);
+    setEditingSection(null);
+    setEditBuffer('');
+  }, [editingSection, editBuffer, editedContent.size]);
+
+  const handleEditCancel = useCallback(() => {
+    setEditingSection(null);
+    setEditBuffer('');
+  }, []);
+
+  const getDisplayContent = useCallback((sec: ParsedSection): string => {
+    const raw = editedContent.get(sec.id) ?? sec.content;
+    return cleanContent(raw);
+  }, [editedContent]);
+
   const handleApproveAndContinue = useCallback(() => {
     if (step2ImageReview.isApproved) { setActiveStep(3); return; }
+    if (!allCharsHaveSelection) { setShowSelectionAlert(true); return; }
     if (!step2.isApproved) handleApprove(2);
     handleApproveCharacterReferences();
-  }, [step2.isApproved, step2ImageReview.isApproved, handleApprove, handleApproveCharacterReferences, setActiveStep]);
+  }, [step2.isApproved, step2ImageReview.isApproved, allCharsHaveSelection, handleApprove, handleApproveCharacterReferences, setActiveStep]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDesignApproveClick = useCallback(() => {
     if (state === 4) { setActiveStep(3); return; }
@@ -1659,6 +1779,24 @@ export default function Step2Characters() {
           )}
 
           {state !== 1 && (
+            <>
+              {/* Edited content warning banner */}
+              {showEditedWarning && editedContent.size > 0 && (
+                <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
+                  <span className="material-symbols-outlined text-amber-500 text-sm mt-0.5">warning</span>
+                  <p className="text-sm text-amber-800 flex-1">
+                    Manual edits may affect AI generation in later steps. Regenerating will overwrite your edits.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowEditedWarning(false)}
+                    className="text-amber-500 hover:text-amber-700 flex-shrink-0"
+                  >
+                    <span className="material-symbols-outlined text-base">close</span>
+                  </button>
+                </div>
+              )}
+
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-6 lg:items-start">
               <div className="space-y-3 max-w-[750px]">
                 {parsedSections.map((sec) => (
@@ -1669,9 +1807,17 @@ export default function Step2Characters() {
                       else sectionRefs.current.delete(sec.id);
                     }}
                     section={sec}
+                    displayContent={getDisplayContent(sec)}
                     isOpen={openSections.has(sec.id)}
                     onToggle={() => toggleSection(sec.id)}
                     isStreaming={isGenerating}
+                    isEdited={editedContent.has(sec.id)}
+                    isEditing={editingSection === sec.id}
+                    editBuffer={editingSection === sec.id ? editBuffer : ''}
+                    onEditStart={() => handleEditStart(sec.id)}
+                    onEditChange={setEditBuffer}
+                    onEditSave={handleEditSave}
+                    onEditCancel={handleEditCancel}
                   />
                 ))}
               </div>
@@ -1690,6 +1836,7 @@ export default function Step2Characters() {
                 />
               </div>
             </div>
+            </>
           )}
         </>
       )}
@@ -1946,30 +2093,16 @@ export default function Step2Characters() {
                 <button
                   type="button"
                   onClick={activeTab === 'designs' ? handleDesignApproveClick : handleApproveAndContinue}
-                  disabled={activeTab === 'references' && !step2ImageReview.isApproved && !allCharsHaveSelection}
-                  title={
-                    activeTab === 'references' && !step2ImageReview.isApproved && !allCharsHaveSelection
-                      ? `Select an image for each character (${charsWithSelection.length}/${charsWithCandidates.length} selected)`
-                      : undefined
-                  }
                   className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
                     (activeTab === 'designs' ? state === 4 : step2ImageReview.isApproved)
                       ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                      : activeTab === 'designs' || allCharsHaveSelection
-                        ? 'bg-gray-900 text-white hover:opacity-90'
-                        : 'bg-gray-900/30 text-white/70 cursor-not-allowed'
+                      : 'bg-gray-900 text-white hover:opacity-90'
                   }`}
                 >
                   <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
                   {(activeTab === 'designs' ? state === 4 : step2ImageReview.isApproved)
                     ? 'Approved · Continue →'
-                    : activeTab === 'designs'
-                      ? 'Approve & Continue →'
-                      : allCharsHaveSelection
-                        ? 'Approve & Continue →'
-                        : charsWithCandidates.length > 0
-                          ? `Select images (${charsWithSelection.length}/${charsWithCandidates.length})`
-                          : 'Approve & Continue →'}
+                    : 'Approve & Continue →'}
                 </button>
               </div>
             </div>
@@ -2013,6 +2146,37 @@ export default function Step2Characters() {
                 Regenerate
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Image selection alert ── */}
+      {showSelectionAlert && (
+        <div className="fixed inset-0 z-[110] bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-amber-600" style={{ fontVariationSettings: "'FILL' 1" }}>image_search</span>
+              </div>
+              <div>
+                <p className="font-bold text-gray-900">Select a final image first</p>
+                <p className="text-sm text-gray-500 mt-1 leading-relaxed">
+                  Please select one final image for every character before approving.
+                </p>
+                {charsWithCandidates.length > 0 && (
+                  <p className="text-xs text-amber-600 font-semibold mt-2">
+                    {charsWithSelection.length} of {charsWithCandidates.length} selected
+                  </p>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSelectionAlert(false)}
+              className="w-full py-2.5 rounded-xl text-sm font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity"
+            >
+              Got it
+            </button>
           </div>
         </div>
       )}
