@@ -1005,6 +1005,10 @@ export default function Step2Characters() {
   const approvedCount    = approvedCharIds.size;
   const allCharsApproved = characters.length === 0 || approvedCount === characters.length;
   const pendingCount     = characters.filter((c) => !approvedCharIds.has(c.characterId)).length;
+  const charsWithCandidates = characters.filter((c) => c.candidates.length > 0);
+  const charsWithSelection  = charsWithCandidates.filter((c) => c.selectedCandidateId !== null);
+  const allCharsHaveSelection = charsWithCandidates.length === 0 ||
+    charsWithCandidates.every((c) => c.selectedCandidateId !== null);
 
   // ── Section parsing ───────────────────────────────────────────────────────
   const streamText = isGenerating
@@ -1145,10 +1149,10 @@ export default function Step2Characters() {
   }, [handleGenerate]);
 
   const handleApproveAndContinue = useCallback(() => {
-    if (state === 4 || step2ImageReview.isApproved) { setActiveStep(3); return; }
+    if (step2ImageReview.isApproved) { setActiveStep(3); return; }
     if (!step2.isApproved) handleApprove(2);
     handleApproveCharacterReferences();
-  }, [state, step2.isApproved, step2ImageReview.isApproved, handleApprove, handleApproveCharacterReferences, setActiveStep]);
+  }, [step2.isApproved, step2ImageReview.isApproved, handleApprove, handleApproveCharacterReferences, setActiveStep]);
 
   const handleDesignApproveClick = useCallback(() => {
     if (state === 4) { setActiveStep(3); return; }
@@ -1629,30 +1633,30 @@ export default function Step2Characters() {
                 <button
                   type="button"
                   onClick={activeTab === 'designs' ? handleDesignApproveClick : handleApproveAndContinue}
-                  disabled={activeTab === 'references' && state !== 4 && !step2ImageReview.isApproved && !allCharsApproved}
+                  disabled={activeTab === 'references' && !step2ImageReview.isApproved && !allCharsHaveSelection}
                   title={
-                    activeTab === 'references' && state !== 4 && !step2ImageReview.isApproved && !allCharsApproved
-                      ? `Approve all ${characters.length} characters to continue`
+                    activeTab === 'references' && !step2ImageReview.isApproved && !allCharsHaveSelection
+                      ? `Select an image for each character (${charsWithSelection.length}/${charsWithCandidates.length} selected)`
                       : undefined
                   }
                   className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
-                    state === 4 || step2ImageReview.isApproved
+                    (activeTab === 'designs' ? state === 4 : step2ImageReview.isApproved)
                       ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                      : activeTab === 'designs' || allCharsApproved
+                      : activeTab === 'designs' || allCharsHaveSelection
                         ? 'bg-gray-900 text-white hover:opacity-90'
                         : 'bg-gray-900/30 text-white/70 cursor-not-allowed'
                   }`}
                 >
                   <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                  {state === 4 || step2ImageReview.isApproved
+                  {(activeTab === 'designs' ? state === 4 : step2ImageReview.isApproved)
                     ? 'Approved · Continue →'
                     : activeTab === 'designs'
                       ? 'Approve & Continue →'
-                      : allCharsApproved && characters.length > 0
+                      : allCharsHaveSelection
                         ? 'Approve & Continue →'
-                        : characters.length === 0
-                          ? 'Approve & Continue →'
-                          : `${approvedCount} / ${characters.length} approved`}
+                        : charsWithCandidates.length > 0
+                          ? `Select images (${charsWithSelection.length}/${charsWithCandidates.length})`
+                          : 'Approve & Continue →'}
                 </button>
               </div>
             </div>
