@@ -3,8 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
-import type { ImageGenSettings } from '@/context/ComicGenerationContext';
-import CharacterModePanel, { DEFAULT_SETTINGS } from '@/components/studio-steps/CharacterModePanel';
+import type { ImageGenMode, ImageGenSettings } from '@/context/ComicGenerationContext';
 import CharacterLibraryModal from '@/components/CharacterLibraryModal';
 import Markdown from '@/components/Markdown';
 
@@ -30,7 +29,6 @@ interface ParsedSection {
   status:  SectionStatus;
 }
 
-// Locate a section header regardless of heading prefix (##, #, **, or bare).
 function findMarker(text: string, coreMarker: string): { start: number; contentStart: number } {
   for (const prefix of ['## ', '### ', '# ', '#### ', '**', '']) {
     const full = prefix + coreMarker;
@@ -63,7 +61,17 @@ function cleanContent(raw: string): string {
   return raw.replace(/[\s\n]*[•·•·]{2,}[\s\n]*$/, '').trimEnd();
 }
 
-// ── State badge ───────────────────────────────────────────────────────────────
+// ── Default settings (inline — no longer imported from CharacterModePanel) ────
+
+const DEFAULT_SETTINGS: ImageGenSettings = {
+  mode: 1,
+  referenceImageBase64: '',
+  controlImageBase64: '',
+  ipAdapterScale: 0.7,
+  controlnetScale: 0.8,
+};
+
+// ── State badge (Design Sheets tab) ──────────────────────────────────────────
 
 type State = 1 | 2 | 3 | 4 | 5;
 
@@ -122,16 +130,43 @@ function StateBadge({
   );
 }
 
-// ── Aspect ratio selector ─────────────────────────────────────────────────────
+// ── Character status badge (Reference Images tab) ─────────────────────────────
 
-const ASPECT_RATIOS: { value: string; label: string; w: number; h: number }[] = [
-  { value: '1:1',  label: 'Square 1:1',                               w: 18, h: 18 },
-  { value: '2:3',  label: 'Portrait 2:3 — Recommended for characters', w: 12, h: 18 },
-  { value: '3:4',  label: 'Portrait 3:4',                              w: 14, h: 18 },
-  { value: '16:9', label: 'Landscape 16:9',                            w: 20, h: 11 },
+function CharacterStatusBadge({ status }: { status: 'draft' | 'generated' | 'approved' }) {
+  if (status === 'approved') {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full flex-shrink-0">
+        <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+        Approved
+      </span>
+    );
+  }
+  if (status === 'generated') {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-500/10 px-2 py-0.5 rounded-full flex-shrink-0">
+        <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>image</span>
+        Generated
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 text-[10px] font-bold text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full flex-shrink-0">
+      <span className="material-symbols-outlined text-xs">edit_note</span>
+      Draft
+    </span>
+  );
+}
+
+// ── Labeled aspect ratio pills ────────────────────────────────────────────────
+
+const ASPECT_RATIOS: { value: string; icon: string; label: string }[] = [
+  { value: '1:1',  icon: '□',  label: '1:1'  },
+  { value: '2:3',  icon: '▯',  label: '2:3'  },
+  { value: '3:4',  icon: '▯',  label: '3:4'  },
+  { value: '16:9', icon: '▬',  label: '16:9' },
 ];
 
-function AspectRatioSelector({
+function AspectRatioPills({
   value,
   onChange,
   disabled,
@@ -141,43 +176,164 @@ function AspectRatioSelector({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex items-end gap-3">
-      {ASPECT_RATIOS.map((r) => {
-        const selected = value === r.value;
-        return (
-          <button
-            key={r.value}
-            type="button"
-            title={r.label}
-            onClick={() => onChange(r.value)}
-            disabled={disabled}
-            className={`flex flex-col items-center gap-1.5 transition-all ${
-              disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
-            }`}
-          >
-            <div
-              style={{ width: r.w, height: r.h }}
-              className={`rounded-sm border-[1.5px] transition-colors ${
-                selected
-                  ? 'border-gray-900 bg-gray-900/10'
-                  : 'border-gray-300 bg-white hover:border-gray-500'
-              }`}
-            />
-            <span
-              className={`text-[9px] font-semibold leading-none transition-colors ${
-                selected ? 'text-gray-900' : 'text-gray-400'
-              }`}
-            >
-              {r.value}
-            </span>
-          </button>
-        );
-      })}
+    <div className="flex flex-wrap gap-1.5">
+      {ASPECT_RATIOS.map((r) => (
+        <button
+          key={r.value}
+          type="button"
+          title={r.label}
+          onClick={() => onChange(r.value)}
+          disabled={disabled}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+            disabled ? 'cursor-not-allowed opacity-40' : ''
+          } ${
+            value === r.value
+              ? 'bg-gray-900 text-white shadow-sm'
+              : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+          }`}
+        >
+          <span className="text-[11px] leading-none">{r.icon}</span>
+          {r.label}
+        </button>
+      ))}
     </div>
   );
 }
 
-// ── Structured section parser (kept for CharacterDesignSummary) ───────────────
+// ── Generation mode segmented control ─────────────────────────────────────────
+
+const GENERATION_MODES: { id: ImageGenMode; label: string; icon: string; tooltip: string }[] = [
+  { id: 1, label: 'Text',   icon: 'text_fields',      tooltip: 'Generate from text description only' },
+  { id: 2, label: '+ Ref',  icon: 'photo_library',    tooltip: 'Use a reference image to guide character appearance' },
+  { id: 3, label: '+ Pose', icon: 'accessibility_new', tooltip: 'Use a pose image to control body structure' },
+  { id: 4, label: 'All',    icon: 'tune',              tooltip: 'Use both reference and pose images' },
+];
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve((e.target?.result as string).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function GenerationModePanel({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: ImageGenSettings;
+  onChange: (s: ImageGenSettings) => void;
+  disabled?: boolean;
+}) {
+  const [refName, setRefName]   = useState('');
+  const [ctrlName, setCtrlName] = useState('');
+  const set = (patch: Partial<ImageGenSettings>) => onChange({ ...value, ...patch });
+
+  const handleRefFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    set({ referenceImageBase64: await readFileAsBase64(file) });
+    setRefName(file.name);
+  };
+
+  const handleCtrlFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    set({ controlImageBase64: await readFileAsBase64(file) });
+    setCtrlName(file.name);
+  };
+
+  const showRef  = value.mode === 2 || value.mode === 4;
+  const showCtrl = value.mode === 3 || value.mode === 4;
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Generation Mode</p>
+        <div className="flex gap-0.5 p-1 rounded-xl bg-surface-container">
+          {GENERATION_MODES.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              title={m.tooltip}
+              onClick={() => set({ mode: m.id })}
+              disabled={disabled}
+              className={`group/mode relative flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-[11px] font-bold transition-all ${
+                disabled ? 'cursor-not-allowed opacity-40' : ''
+              } ${
+                value.mode === m.id
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              <span className="material-symbols-outlined text-sm leading-none">{m.icon}</span>
+              <span className="hidden sm:inline truncate">{m.label}</span>
+              <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[160px] rounded-lg bg-gray-900 px-2.5 py-1.5 text-[10px] font-normal leading-snug text-white opacity-0 group-hover/mode:opacity-100 transition-opacity text-center z-50 whitespace-normal">
+                {m.tooltip}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {showRef && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+            Reference <span className="font-normal text-on-surface-variant/50 normal-case tracking-normal">(guides appearance)</span>
+          </p>
+          <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-outline-variant/40 bg-surface-container px-3 py-2 text-xs text-on-surface-variant hover:border-primary/40 transition-colors">
+            <span className="material-symbols-outlined text-base text-on-surface-variant/50">add_photo_alternate</span>
+            <span className="truncate">{refName || 'Upload reference image'}</span>
+            <input type="file" accept="image/*" className="hidden" disabled={disabled} onChange={handleRefFile} />
+          </label>
+          {value.referenceImageBase64 && (
+            <div className="flex items-center gap-2">
+              <img src={`data:image/png;base64,${value.referenceImageBase64}`} alt="ref" className="h-10 w-10 rounded-xl object-cover" />
+              <button type="button" onClick={() => { set({ referenceImageBase64: '' }); setRefName(''); }} className="text-[11px] text-red-500 hover:text-red-700">Remove</button>
+            </div>
+          )}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Influence</span>
+              <span className="text-[10px] font-bold text-on-surface">{value.ipAdapterScale.toFixed(1)}</span>
+            </div>
+            <input type="range" min={0.1} max={1.0} step={0.1} value={value.ipAdapterScale} onChange={(e) => set({ ipAdapterScale: Number(e.target.value) })} disabled={disabled} className="w-full accent-gray-900" />
+          </div>
+        </div>
+      )}
+
+      {showCtrl && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+            Pose <span className="font-normal text-on-surface-variant/50 normal-case tracking-normal">(guides structure)</span>
+          </p>
+          <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-outline-variant/40 bg-surface-container px-3 py-2 text-xs text-on-surface-variant hover:border-primary/40 transition-colors">
+            <span className="material-symbols-outlined text-base text-on-surface-variant/50">add_photo_alternate</span>
+            <span className="truncate">{ctrlName || 'Upload pose image'}</span>
+            <input type="file" accept="image/*" className="hidden" disabled={disabled} onChange={handleCtrlFile} />
+          </label>
+          {value.controlImageBase64 && (
+            <div className="flex items-center gap-2">
+              <img src={`data:image/png;base64,${value.controlImageBase64}`} alt="ctrl" className="h-10 w-10 rounded-xl object-cover" />
+              <button type="button" onClick={() => { set({ controlImageBase64: '' }); setCtrlName(''); }} className="text-[11px] text-red-500 hover:text-red-700">Remove</button>
+            </div>
+          )}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Strength</span>
+              <span className="text-[10px] font-bold text-on-surface">{value.controlnetScale.toFixed(1)}</span>
+            </div>
+            <input type="range" min={0.1} max={1.0} step={0.1} value={value.controlnetScale} onChange={(e) => set({ controlnetScale: Number(e.target.value) })} disabled={disabled} className="w-full accent-gray-900" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Structured section parser (used by CharacterDesignInfo) ───────────────────
 
 interface ParsedDesign {
   role?: string;
@@ -244,8 +400,6 @@ function parseStructuredSections(lines: string[]): ParsedDesign {
   return result;
 }
 
-// ── Per-character section extractor (kept for CharacterDesignSummary) ─────────
-
 function extractCharacterSection(markdown: string, characterName: string): string[] {
   const lines = markdown.split('\n');
   const nameLower = characterName.toLowerCase().trim();
@@ -288,9 +442,9 @@ function extractCharacterSection(markdown: string, characterName: string): strin
   return result;
 }
 
-// ── Compact character design summary (Reference Images tab) ───────────────────
+// ── Collapsible character design info (left column) ───────────────────────────
 
-function CharacterDesignSummary({
+function CharacterDesignInfo({
   designMarkdown,
   characterName,
   fallbackPrompt,
@@ -299,88 +453,99 @@ function CharacterDesignSummary({
   characterName: string;
   fallbackPrompt?: string;
 }) {
-  const [showFull, setShowFull] = useState(false);
+  const [openKeys, setOpenKeys] = useState<Set<string>>(new Set(['physical', 'personality']));
+  const [showPrompt, setShowPrompt] = useState(false);
 
-  if (!designMarkdown) {
-    return (
-      <div className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 p-4">
-        {fallbackPrompt ? (
-          <p className="text-xs text-on-surface-variant leading-relaxed">{fallbackPrompt}</p>
-        ) : (
-          <p className="text-xs text-on-surface-variant/60 italic">No design sheet available.</p>
-        )}
-      </div>
-    );
-  }
+  const toggle = (key: string) =>
+    setOpenKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
-  const lines  = extractCharacterSection(designMarkdown, characterName);
+  const lines  = designMarkdown ? extractCharacterSection(designMarkdown, characterName) : [];
   const parsed = parseStructuredSections(lines);
-  const traits = parsed.personality
-    ? parsed.personality.split(/[,•\n]+/).slice(0, 3).map((t) => t.trim()).filter(Boolean).join(' · ')
-    : undefined;
-  const hasData = parsed.subtitle || parsed.visualHook || traits || parsed.palette || parsed.physical;
 
-  if (!hasData && lines.length === 0) {
-    return (
-      <div className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 p-4">
-        {fallbackPrompt ? (
-          <p className="text-xs text-on-surface-variant leading-relaxed">{fallbackPrompt}</p>
-        ) : (
-          <p className="text-xs text-on-surface-variant/60 italic">No design data found.</p>
-        )}
-      </div>
-    );
-  }
+  const SUB_SECTIONS = [
+    { key: 'personality', label: 'Personality',        value: parsed.personality },
+    { key: 'physical',    label: 'Physical Appearance', value: parsed.physical },
+    { key: 'outfit',      label: 'Outfit',              value: parsed.outfit },
+    { key: 'visualHook',  label: 'Visual Hook',         value: parsed.visualHook },
+    { key: 'palette',     label: 'Color Palette',       value: parsed.palette },
+    { key: 'expressions', label: 'Expressions',         value: parsed.expressions?.join(' · ') },
+  ].filter((s): s is { key: string; label: string; value: string } => Boolean(s.value));
+
+  const noData = !parsed.hasStructure && lines.length === 0;
 
   return (
-    <div className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden">
-      <div className="p-4 space-y-3">
-        {parsed.subtitle && (
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Role</p>
-            <p className="text-xs text-on-surface leading-snug">{parsed.subtitle}</p>
-          </div>
-        )}
-        {(parsed.visualHook || parsed.physical) && (
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Visual Hook</p>
-            <p className="text-xs text-on-surface leading-snug">{parsed.visualHook ?? parsed.physical}</p>
-          </div>
-        )}
-        {traits && (
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Key Traits</p>
-            <p className="text-xs text-on-surface leading-snug">{traits}</p>
-          </div>
-        )}
-        {parsed.palette && (
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Palette</p>
-            <p className="text-xs text-on-surface leading-snug">{parsed.palette}</p>
-          </div>
-        )}
-        {!hasData && lines.length > 0 && (
-          <Markdown className="text-xs [&>*:last-child]:mb-0">{lines.join('\n')}</Markdown>
-        )}
-      </div>
-      {lines.length > 0 && hasData && (
-        <div className="border-t border-outline-variant/10">
+    <div>
+      {parsed.subtitle && (
+        <p className="text-xs text-on-surface-variant leading-snug mb-3">{parsed.subtitle}</p>
+      )}
+
+      {noData && !fallbackPrompt && (
+        <p className="text-xs text-on-surface-variant/50 italic">No design data found.</p>
+      )}
+
+      {noData && fallbackPrompt && (
+        <p className="text-xs text-on-surface-variant leading-relaxed">{fallbackPrompt}</p>
+      )}
+
+      {SUB_SECTIONS.length > 0 && (
+        <div className="divide-y divide-outline-variant/10">
+          {SUB_SECTIONS.map((s) => (
+            <div key={s.key}>
+              <button
+                type="button"
+                onClick={() => toggle(s.key)}
+                className="w-full flex items-center justify-between py-2.5 text-left group/sub"
+              >
+                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                  {s.label}
+                </span>
+                <span
+                  className="material-symbols-outlined text-sm text-on-surface-variant/40 group-hover/sub:text-on-surface-variant transition-all duration-200"
+                  style={{ transform: openKeys.has(s.key) ? 'rotate(180deg)' : 'none' }}
+                >
+                  expand_more
+                </span>
+              </button>
+              <div
+                className={`grid transition-all duration-200 ease-in-out ${
+                  openKeys.has(s.key) ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+                }`}
+              >
+                <div className="overflow-hidden">
+                  <p className="text-xs text-on-surface leading-relaxed pb-3">{s.value}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!SUB_SECTIONS.length && lines.length > 0 && (
+        <Markdown className="text-xs [&>*:last-child]:mb-0">{lines.join('\n')}</Markdown>
+      )}
+
+      {fallbackPrompt && (
+        <div className={`${SUB_SECTIONS.length > 0 ? 'mt-3 pt-3 border-t border-outline-variant/10' : 'mt-2'}`}>
           <button
             type="button"
-            onClick={() => setShowFull((v) => !v)}
-            className="w-full flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
+            onClick={() => setShowPrompt((v) => !v)}
+            className="flex items-center gap-1.5 text-[11px] font-semibold text-on-surface-variant hover:text-on-surface transition-colors"
           >
-            <span
-              className="material-symbols-outlined text-sm transition-transform"
-              style={{ transform: showFull ? 'rotate(180deg)' : 'none' }}
-            >
-              expand_more
+            <span className="material-symbols-outlined text-sm">
+              {showPrompt ? 'visibility_off' : 'visibility'}
             </span>
-            {showFull ? 'Hide full design sheet' : 'View full design sheet'}
+            {showPrompt ? 'Hide Prompt' : 'View Prompt'}
           </button>
-          {showFull && (
-            <div className="px-4 pb-4 border-t border-outline-variant/10">
-              <Markdown className="text-xs [&>*:last-child]:mb-0">{lines.join('\n')}</Markdown>
+          {showPrompt && (
+            <div className="mt-2 rounded-xl bg-surface-container p-3">
+              <p className="text-[11px] font-mono text-on-surface-variant leading-relaxed break-all">
+                {fallbackPrompt}
+              </p>
             </div>
           )}
         </div>
@@ -406,7 +571,7 @@ function SkeletonLines({ count = 4 }: { count?: number }) {
   );
 }
 
-// ── Section accordion ─────────────────────────────────────────────────────────
+// ── Section accordion (Design Sheets tab) ────────────────────────────────────
 
 interface SectionAccordionProps {
   section:     ParsedSection;
@@ -534,7 +699,6 @@ function DesignSheetsRightPanel({
 
   return (
     <div className="space-y-5">
-      {/* Progress bar during streaming */}
       {isStreaming && progressCount > 0 && (
         <div>
           <div className="flex items-center justify-between mb-1.5">
@@ -555,7 +719,6 @@ function DesignSheetsRightPanel({
         </div>
       )}
 
-      {/* Reference Images shortcut */}
       <button
         type="button"
         onClick={onSwitchToReferences}
@@ -565,7 +728,6 @@ function DesignSheetsRightPanel({
         View in Reference Images
       </button>
 
-      {/* Section list */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Sections</p>
@@ -596,7 +758,6 @@ function DesignSheetsRightPanel({
         </div>
       </div>
 
-      {/* Approved badge */}
       {state === 4 && approvedAt && (
         <div className="rounded-2xl bg-emerald-500/5 border border-emerald-500/15 p-4 text-center">
           <span
@@ -615,11 +776,93 @@ function DesignSheetsRightPanel({
   );
 }
 
-// ── Candidate type + CharacterReviewCard (Reference Images tab) ───────────────
+// ── Candidate type ────────────────────────────────────────────────────────────
 
 type Candidate = { id: string; imageUrl: string; createdAt: string };
 
-function CharacterReviewCard({
+// ── Version filmstrip ─────────────────────────────────────────────────────────
+
+function VersionFilmstrip({
+  versions,
+  activeVersion,
+  selectedCandidateId,
+  onVersionChange,
+  onAddVersion,
+  disabled,
+}: {
+  versions:            Candidate[][];
+  activeVersion:       number;
+  selectedCandidateId: string | null;
+  onVersionChange:     (v: number) => void;
+  onAddVersion:        () => void;
+  disabled:            boolean;
+}) {
+  return (
+    <div className="flex items-end gap-2 overflow-x-auto pb-1">
+      {versions.map((vCandidates, vIdx) => {
+        const hasSelection = vCandidates.some((c) => c.id === selectedCandidateId);
+        const isActive     = activeVersion === vIdx;
+        const thumb        = vCandidates[0];
+        return (
+          <button
+            key={vIdx}
+            type="button"
+            onClick={() => onVersionChange(vIdx)}
+            className="flex-shrink-0 flex flex-col items-center gap-1"
+          >
+            <div
+              className={`relative w-20 h-20 rounded-xl overflow-hidden transition-all duration-200 ${
+                isActive
+                  ? 'ring-2 ring-primary ring-offset-1 ring-offset-surface'
+                  : 'ring-1 ring-outline-variant/20 opacity-60 hover:opacity-90 hover:ring-outline-variant/40'
+              }`}
+            >
+              {thumb ? (
+                <Image src={thumb.imageUrl} alt={`V${vIdx + 1}`} fill className="object-cover" unoptimized />
+              ) : (
+                <div className="w-full h-full bg-surface-container flex items-center justify-center">
+                  <span className="material-symbols-outlined text-on-surface-variant/30 text-2xl">image</span>
+                </div>
+              )}
+              {hasSelection && (
+                <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-primary flex items-center justify-center shadow-sm">
+                  <span
+                    className="material-symbols-outlined text-white"
+                    style={{ fontSize: '10px', fontVariationSettings: "'FILL' 1" }}
+                  >
+                    check
+                  </span>
+                </div>
+              )}
+            </div>
+            <span className={`text-[10px] font-bold ${isActive ? 'text-on-surface' : 'text-on-surface-variant/50'}`}>
+              V{vIdx + 1}
+            </span>
+          </button>
+        );
+      })}
+
+      <button
+        type="button"
+        onClick={onAddVersion}
+        disabled={disabled}
+        title="Generate new version"
+        className="flex-shrink-0 flex flex-col items-center gap-1 group/add disabled:opacity-40"
+      >
+        <div className="w-20 h-20 rounded-xl border-2 border-dashed border-outline-variant/30 group-hover/add:border-primary/40 flex items-center justify-center transition-colors">
+          <span className="material-symbols-outlined text-on-surface-variant/40 group-hover/add:text-primary/60 text-2xl transition-colors">
+            add
+          </span>
+        </div>
+        <span className="text-[10px] font-bold text-on-surface-variant/40">New</span>
+      </button>
+    </div>
+  );
+}
+
+// ── Image generation panel (right column of accordion) ───────────────────────
+
+function ImageGenPanel({
   character,
   settings,
   aspectRatio,
@@ -636,291 +879,186 @@ function CharacterReviewCard({
   onRevoke,
 }: {
   character: {
-    characterId: string;
-    name: string;
-    prompt: string;
-    status: string;
-    error: string | null;
-    candidates: Candidate[];
+    characterId:         string;
+    name:                string;
+    prompt:              string;
+    status:              string;
+    error:               string | null;
+    candidates:          Candidate[];
     selectedCandidateId: string | null;
   };
-  settings: ImageGenSettings;
-  aspectRatio: string;
-  versions: Candidate[][];
-  activeVersion: number;
-  onVersionChange: (v: number) => void;
-  isApproved: boolean;
-  isAnyGenerating: boolean;
-  onRegenerate: () => void;
-  onSelectCandidate: (candidateId: string) => void;
-  onUpdateSettings: (s: ImageGenSettings) => void;
+  settings:            ImageGenSettings;
+  aspectRatio:         string;
+  versions:            Candidate[][];
+  activeVersion:       number;
+  onVersionChange:     (v: number) => void;
+  isApproved:          boolean;
+  isAnyGenerating:     boolean;
+  onRegenerate:        () => void;
+  onSelectCandidate:   (id: string) => void;
+  onUpdateSettings:    (s: ImageGenSettings) => void;
   onAspectRatioChange: (r: string) => void;
-  onApprove: () => void;
-  onRevoke: () => void;
+  onApprove:           () => void;
+  onRevoke:            () => void;
 }) {
-  const [showRegenConfirm, setShowRegenConfirm] = useState(false);
-
-  const isLoading = character.status === 'loading';
-  const isFailed  = character.status === 'error';
-
-  const activeCandidates   = versions[activeVersion] ?? [];
-  const selectedVersionIdx = versions.findIndex((v) => v.some((c) => c.id === character.selectedCandidateId));
-  const selectedCandidate  = character.candidates.find((c) => c.id === character.selectedCandidateId) ?? null;
-  const showSelectedBanner = selectedCandidate && selectedVersionIdx >= 0 && selectedVersionIdx !== activeVersion;
-
-  const handleRegenerate = () => {
-    if (isApproved) { setShowRegenConfirm(true); } else { onRegenerate(); }
-  };
+  const isLoading        = character.status === 'loading';
+  const isFailed         = character.status === 'error';
+  const activeCandidates = versions[activeVersion] ?? [];
+  const hasAnyImages     = character.candidates.length > 0;
 
   return (
-    <div
-      className={`rounded-3xl border overflow-hidden transition-colors ${
-        isApproved
-          ? 'border-emerald-500/30 bg-emerald-500/5'
-          : 'border-outline-variant/10 bg-surface-container-lowest'
-      }`}
-    >
-      <div className="bg-surface-container">
-        {versions.length > 1 && (
-          <div className="flex items-center gap-1.5 px-4 pt-3 pb-2">
-            {versions.map((vCandidates, vIdx) => {
-              const hasSelection = vCandidates.some((c) => c.id === character.selectedCandidateId);
-              return (
-                <button
-                  key={vIdx}
-                  type="button"
-                  onClick={() => onVersionChange(vIdx)}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-colors ${
-                    activeVersion === vIdx
-                      ? 'bg-gray-900 text-white'
-                      : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest'
+    <div className="space-y-4">
+      {/* Version filmstrip — shown when at least one version exists */}
+      {versions.length > 0 && (
+        <VersionFilmstrip
+          versions={versions}
+          activeVersion={activeVersion}
+          selectedCandidateId={character.selectedCandidateId}
+          onVersionChange={onVersionChange}
+          onAddVersion={onRegenerate}
+          disabled={isAnyGenerating}
+        />
+      )}
+
+      {/* Image area */}
+      {isLoading ? (
+        <div className="flex items-center justify-center rounded-2xl bg-surface-container h-40">
+          <span className="flex items-center gap-2 text-sm text-on-surface-variant">
+            <span className="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+            Generating…
+          </span>
+        </div>
+      ) : activeCandidates.length > 0 ? (
+        <div className="grid grid-cols-2 gap-2">
+          {activeCandidates.map((candidate) => {
+            const sel = candidate.id === character.selectedCandidateId;
+            return (
+              <button
+                key={candidate.id}
+                type="button"
+                onClick={() => onSelectCandidate(candidate.id)}
+                className={`group/img relative rounded-2xl overflow-hidden transition-all duration-200 ${
+                  sel
+                    ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface'
+                    : 'ring-1 ring-outline-variant/20 hover:ring-outline-variant/40'
+                }`}
+              >
+                <div className="relative aspect-[3/4] overflow-hidden">
+                  <Image
+                    src={candidate.imageUrl}
+                    alt={character.name}
+                    fill
+                    className="object-cover transition-transform duration-300 group-hover/img:scale-105"
+                    unoptimized
+                  />
+                  {sel && (
+                    <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-primary flex items-center justify-center shadow-md z-10">
+                      <span
+                        className="material-symbols-outlined text-white"
+                        style={{ fontSize: '14px', fontVariationSettings: "'FILL' 1" }}
+                      >
+                        check
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div
+                  className={`px-3 py-2 text-xs font-bold flex items-center gap-1 ${
+                    sel ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'
                   }`}
                 >
-                  V{vIdx + 1}
-                  {hasSelection && <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="min-h-[200px]">
-          {activeCandidates.length > 0 ? (
-            <div className="grid grid-cols-2 gap-3 p-4">
-              {activeCandidates.map((candidate) => {
-                const sel = candidate.id === character.selectedCandidateId;
-                return (
-                  <button
-                    key={candidate.id}
-                    type="button"
-                    onClick={() => onSelectCandidate(candidate.id)}
-                    className={`rounded-2xl overflow-hidden text-left transition-all ${
-                      sel
-                        ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface'
-                        : 'opacity-80 hover:opacity-100'
-                    }`}
-                  >
-                    <div className="relative aspect-[3/4] bg-surface-container">
-                      <Image
-                        src={candidate.imageUrl}
-                        alt={`${character.name} V${activeVersion + 1}`}
-                        fill
-                        className="object-cover"
-                        unoptimized
-                      />
-                      {sel && (
-                        <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-primary flex items-center justify-center shadow-md z-10">
-                          <span
-                            className="material-symbols-outlined text-white"
-                            style={{ fontSize: '14px', fontVariationSettings: "'FILL' 1" }}
-                          >
-                            check
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div
-                      className={`px-3 py-2 text-xs font-bold flex items-center gap-1.5 ${
-                        sel ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'
-                      }`}
-                    >
-                      {sel && (
-                        <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
-                          check_circle
-                        </span>
-                      )}
-                      {sel ? 'Selected' : 'Select'}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          ) : isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <span className="flex items-center gap-2 text-sm text-on-surface-variant">
-                <span className="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                Generating images…
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center py-12">
-              <span className="text-sm text-on-surface-variant">No images yet — click Generate.</span>
-            </div>
-          )}
+                  {sel && (
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      check_circle
+                    </span>
+                  )}
+                  {sel ? 'Selected' : 'Select'}
+                </div>
+              </button>
+            );
+          })}
         </div>
-
-        {showSelectedBanner && selectedCandidate && (
-          <div className="mx-4 mb-4 rounded-2xl border border-primary/20 bg-primary/5 p-3 flex items-center gap-3">
-            <div className="relative w-10 h-12 rounded-xl overflow-hidden flex-shrink-0 ring-2 ring-primary">
-              <Image src={selectedCandidate.imageUrl} alt="selected" fill className="object-cover" unoptimized />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-0.5">Selected image</p>
-              <p className="text-xs font-semibold text-on-surface">
-                V{selectedVersionIdx + 1} · img {(versions[selectedVersionIdx]?.findIndex((c) => c.id === character.selectedCandidateId) ?? 0) + 1}
-              </p>
+      ) : !hasAnyImages ? (
+        /* Empty state */
+        <div className="relative rounded-2xl border-2 border-dashed border-primary/20 bg-primary/[0.02] py-10 px-4 text-center overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.04] via-transparent to-transparent motion-safe:animate-pulse" />
+          <div className="relative space-y-3">
+            <span className="text-3xl text-primary/30 block leading-none">✦</span>
+            <div>
+              <p className="text-sm font-semibold text-on-surface">No images yet</p>
+              <p className="text-xs text-on-surface-variant mt-0.5">Generate the first reference image</p>
             </div>
             <button
               type="button"
-              onClick={() => onVersionChange(selectedVersionIdx)}
-              className="text-xs font-semibold text-primary hover:underline flex-shrink-0"
+              onClick={onRegenerate}
+              disabled={isAnyGenerating}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-primary text-on-primary font-bold text-sm hover:opacity-90 disabled:opacity-40 transition-opacity shadow-md shadow-primary/20"
             >
-              View →
+              <span className="text-sm">✦</span>
+              Generate First Image
             </button>
           </div>
-        )}
+        </div>
+      ) : (
+        <div className="flex items-center justify-center rounded-2xl bg-surface-container h-24">
+          <p className="text-xs text-on-surface-variant">No images in this version</p>
+        </div>
+      )}
+
+      {isFailed && (
+        <p className="text-xs text-red-500 flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-sm">error</span>
+          {character.error ?? 'Generation failed'}
+        </p>
+      )}
+
+      {/* Aspect ratio */}
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Aspect Ratio</p>
+        <AspectRatioPills value={aspectRatio} onChange={onAspectRatioChange} disabled={isAnyGenerating} />
       </div>
 
-      <div className="p-4 space-y-4 border-t border-outline-variant/10">
-        <div>
-          <p className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-widest mb-2">
-            Aspect Ratio
-          </p>
-          <AspectRatioSelector value={aspectRatio} onChange={onAspectRatioChange} disabled={isAnyGenerating} />
-        </div>
+      {/* Generation mode */}
+      <GenerationModePanel value={settings} onChange={onUpdateSettings} disabled={isAnyGenerating} />
 
-        <CharacterModePanel disabled={isAnyGenerating} value={settings} onChange={onUpdateSettings} />
-
-        {character.error && (
-          <p className="text-xs text-red-500 flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-sm">error</span>
-            {character.error}
-          </p>
-        )}
-
-        <div className="pt-2 border-t border-gray-100">
-          {isLoading ? (
-            <div className="flex items-center gap-2 text-sm text-on-surface-variant py-1">
-              <span className="w-3.5 h-3.5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-              Generating…
-            </div>
-          ) : isFailed ? (
-            <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 text-xs text-red-500">
-                <span className="material-symbols-outlined text-sm">error</span>
-                Failed
-              </span>
-              <button
-                type="button"
-                onClick={onRegenerate}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
-              >
-                <span className="material-symbols-outlined text-sm">replay</span>Retry
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleRegenerate}
-                disabled={isAnyGenerating}
-                className="flex items-center gap-1.5 flex-1 justify-center px-3 py-2.5 rounded-2xl text-xs font-bold border border-outline-variant/20 text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors disabled:opacity-40"
-              >
-                <span className="material-symbols-outlined text-sm">refresh</span>
-                Regenerate
-              </button>
-              {isApproved ? (
-                <button
-                  type="button"
-                  onClick={onRevoke}
-                  className="flex items-center gap-1.5 flex-1 justify-center px-3 py-2.5 rounded-2xl text-xs font-bold border border-outline-variant/20 text-on-surface-variant hover:bg-surface-container transition-colors"
-                >
-                  <span className="material-symbols-outlined text-sm">undo</span>
-                  Unapprove
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onApprove}
-                  disabled={isAnyGenerating || !character.selectedCandidateId}
-                  className="flex items-center gap-1.5 flex-1 justify-center px-3 py-2.5 rounded-2xl text-xs font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity disabled:opacity-40"
-                >
-                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                  Approve
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {showRegenConfirm && (
-          <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
-            <p className="text-xs font-semibold text-amber-900 mb-2.5">
-              Regenerating will remove approval. Continue?
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setShowRegenConfirm(false)}
-                className="flex-1 px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-300 text-amber-800 hover:bg-amber-100 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowRegenConfirm(false); onRegenerate(); }}
-                className="flex-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity"
-              >
-                Regenerate
-              </button>
-            </div>
-          </div>
+      {/* Action row */}
+      <div className="flex items-center gap-2 pt-2 border-t border-outline-variant/10">
+        <button
+          type="button"
+          onClick={onRegenerate}
+          disabled={isAnyGenerating}
+          className="flex items-center gap-1.5 flex-1 justify-center px-3 py-2.5 rounded-2xl text-xs font-bold border border-outline-variant/20 text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors disabled:opacity-40"
+        >
+          <span className="material-symbols-outlined text-sm">refresh</span>
+          {character.candidates.length > 0 ? 'Regenerate' : 'Generate'}
+        </button>
+        {isApproved ? (
+          <button
+            type="button"
+            onClick={onRevoke}
+            className="flex items-center gap-1.5 flex-1 justify-center px-3 py-2.5 rounded-2xl text-xs font-semibold text-emerald-600 hover:bg-emerald-500/5 border border-emerald-500/20 transition-colors"
+          >
+            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+            Approved — Revoke
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onApprove}
+            disabled={isAnyGenerating || !character.selectedCandidateId}
+            title={!character.selectedCandidateId ? 'Select an image first' : undefined}
+            className="flex items-center gap-1.5 flex-1 justify-center px-3 py-2.5 rounded-2xl text-xs font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity disabled:opacity-40"
+          >
+            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+            Approve
+          </button>
         )}
       </div>
     </div>
   );
 }
 
-// ── Draggable split panel ─────────────────────────────────────────────────────
-
-function useSplitPanel(defaultPct = 40, min = 30, max = 50) {
-  const [leftPct, setLeftPct] = useState(defaultPct);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const dragging     = useRef(false);
-
-  const onDividerMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      dragging.current = true;
-      const onMove = (ev: MouseEvent) => {
-        if (!dragging.current || !containerRef.current) return;
-        const rect = containerRef.current.getBoundingClientRect();
-        const pct  = ((ev.clientX - rect.left) / rect.width) * 100;
-        setLeftPct(Math.min(max, Math.max(min, pct)));
-      };
-      const onUp = () => {
-        dragging.current = false;
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
-      };
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
-    },
-    [min, max],
-  );
-
-  return { leftPct, containerRef, onDividerMouseDown };
-}
+// ── Version helpers ───────────────────────────────────────────────────────────
 
 function computeVersions(candidates: Candidate[], boundaries: number[]): Candidate[][] {
   const bounds = boundaries.length > 0 ? boundaries : [0];
@@ -931,6 +1069,242 @@ function computeVersions(candidates: Candidate[], boundaries: number[]): Candida
     versions.push(candidates.slice(start, end));
   }
   return versions.filter((v) => v.length > 0);
+}
+
+// ── Character accordion card ──────────────────────────────────────────────────
+
+function CharacterAccordionCard({
+  idx,
+  character,
+  isExpanded,
+  onToggle,
+  settings,
+  aspectRatio,
+  versions,
+  activeVersion,
+  onVersionChange,
+  isApproved,
+  isAnyGenerating,
+  onRegenerate,
+  onSelectCandidate,
+  onUpdateSettings,
+  onAspectRatioChange,
+  onApprove,
+  onRevoke,
+  designMarkdown,
+}: {
+  idx:                 number;
+  character: {
+    characterId:         string;
+    name:                string;
+    prompt:              string;
+    status:              string;
+    error:               string | null;
+    candidates:          Candidate[];
+    selectedCandidateId: string | null;
+  };
+  isExpanded:          boolean;
+  onToggle:            () => void;
+  settings:            ImageGenSettings;
+  aspectRatio:         string;
+  versions:            Candidate[][];
+  activeVersion:       number;
+  onVersionChange:     (v: number) => void;
+  isApproved:          boolean;
+  isAnyGenerating:     boolean;
+  onRegenerate:        () => void;
+  onSelectCandidate:   (id: string) => void;
+  onUpdateSettings:    (s: ImageGenSettings) => void;
+  onAspectRatioChange: (r: string) => void;
+  onApprove:           () => void;
+  onRevoke:            () => void;
+  designMarkdown:      string | null;
+}) {
+  const [showRegenConfirm, setShowRegenConfirm] = useState(false);
+
+  const selectedCandidate = character.candidates.find((c) => c.id === character.selectedCandidateId) ?? null;
+  const isLoading = character.status === 'loading';
+
+  const cardStatus: 'draft' | 'generated' | 'approved' = isApproved
+    ? 'approved'
+    : character.candidates.length > 0
+      ? 'generated'
+      : 'draft';
+
+  const handleRegenClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isApproved) { setShowRegenConfirm(true); } else { onRegenerate(); }
+  };
+
+  const handleConfirmRegen = () => {
+    setShowRegenConfirm(false);
+    onRevoke();
+    onRegenerate();
+  };
+
+  return (
+    <>
+      <div
+        className={`rounded-2xl bg-surface-container-lowest overflow-hidden transition-all duration-200 ${
+          isExpanded
+            ? 'border border-outline-variant/20 border-l-[3px] border-l-primary shadow-sm'
+            : 'border border-outline-variant/10'
+        }`}
+      >
+        {/* ── Compact header row ── */}
+        <button
+          type="button"
+          onClick={onToggle}
+          className="w-full flex items-center gap-3 px-4 py-3 text-left"
+        >
+          {/* Thumbnail */}
+          <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-surface-container flex-shrink-0">
+            {selectedCandidate ? (
+              <Image src={selectedCandidate.imageUrl} alt={character.name} fill className="object-cover" unoptimized />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <span className="material-symbols-outlined text-on-surface-variant/30 text-xl">
+                  {isLoading ? 'hourglass_empty' : 'person'}
+                </span>
+              </div>
+            )}
+            {isLoading && (
+              <div className="absolute inset-0 bg-surface-container/80 flex items-center justify-center">
+                <span className="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+              </div>
+            )}
+          </div>
+
+          {/* Name + meta */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[10px] font-bold text-on-surface-variant/30 flex-shrink-0">#{idx + 1}</span>
+              <p className="font-semibold text-sm text-on-surface truncate">{character.name}</p>
+            </div>
+            {character.candidates.length > 0 && (
+              <p className="text-[10px] text-on-surface-variant/50 mt-0.5 truncate">
+                {character.candidates.length} image{character.candidates.length !== 1 ? 's' : ''}
+                {character.selectedCandidateId ? ' · 1 selected' : ' · none selected'}
+              </p>
+            )}
+          </div>
+
+          {/* Status + chevron */}
+          <CharacterStatusBadge status={cardStatus} />
+          <span
+            className="material-symbols-outlined text-on-surface-variant/60 transition-transform duration-200 flex-shrink-0"
+            style={{ transform: isExpanded ? 'rotate(180deg)' : 'none' }}
+          >
+            expand_more
+          </span>
+        </button>
+
+        {/* ── Collapsed quick actions ── */}
+        {!isExpanded && (
+          <div className="px-4 pb-3 flex items-center gap-2 border-t border-outline-variant/10 pt-2.5">
+            <button
+              type="button"
+              onClick={handleRegenClick}
+              disabled={isAnyGenerating}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface disabled:opacity-40 transition-colors"
+            >
+              <span className="material-symbols-outlined text-sm">
+                {character.candidates.length > 0 ? 'refresh' : 'image'}
+              </span>
+              {character.candidates.length > 0 ? 'Regenerate' : 'Generate'}
+            </button>
+            {isApproved ? (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onRevoke(); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-emerald-600 hover:bg-emerald-500/10 transition-colors"
+              >
+                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                Approved — Revoke
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onApprove(); }}
+                disabled={isAnyGenerating || !character.selectedCandidateId}
+                title={!character.selectedCandidateId ? 'Select an image first' : undefined}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-gray-900 text-white hover:opacity-90 disabled:opacity-40 transition-opacity"
+              >
+                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                Approve
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ── Expanded content (smooth CSS grid animation) ── */}
+        <div
+          className={`grid transition-all duration-200 ease-in-out ${
+            isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+          }`}
+        >
+          <div className="overflow-hidden">
+            <div className="border-t border-outline-variant/10 grid grid-cols-1 md:grid-cols-2">
+              {/* Left — design info */}
+              <div className="p-5 md:border-r border-outline-variant/10 border-b md:border-b-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3">Design Sheet</p>
+                <CharacterDesignInfo
+                  characterName={character.name}
+                  designMarkdown={designMarkdown}
+                  fallbackPrompt={character.prompt}
+                />
+              </div>
+              {/* Right — image gen panel */}
+              <div className="p-5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3">Reference Images</p>
+                <ImageGenPanel
+                  character={character}
+                  settings={settings}
+                  aspectRatio={aspectRatio}
+                  versions={versions}
+                  activeVersion={activeVersion}
+                  onVersionChange={onVersionChange}
+                  isApproved={isApproved}
+                  isAnyGenerating={isAnyGenerating}
+                  onRegenerate={() => { if (isApproved) { setShowRegenConfirm(true); } else { onRegenerate(); } }}
+                  onSelectCandidate={onSelectCandidate}
+                  onUpdateSettings={onUpdateSettings}
+                  onAspectRatioChange={onAspectRatioChange}
+                  onApprove={onApprove}
+                  onRevoke={onRevoke}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Per-card regen confirm */}
+      {showRegenConfirm && (
+        <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-amber-600" style={{ fontVariationSettings: "'FILL' 1" }}>refresh</span>
+              </div>
+              <div>
+                <p className="font-bold text-gray-900">Regenerate {character.name}?</p>
+                <p className="text-sm text-gray-500 mt-1">This will remove the current approval and generate new images.</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setShowRegenConfirm(false)} className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors">
+                Cancel
+              </button>
+              <button type="button" onClick={handleConfirmRegen} className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity">
+                Regenerate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -954,16 +1328,16 @@ export default function Step2Characters() {
   } = useComicGeneration();
 
   // ── Reference Images tab state ────────────────────────────────────────────
-  const [charSettings, setCharSettings]         = useState<Record<string, ImageGenSettings>>({});
-  const [aspectRatioMap, setAspectRatioMap]     = useState<Record<string, string>>({});
-  const [approvedCharIds, setApprovedCharIds]   = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab]               = useState<'designs' | 'references'>('designs');
-  const [isLibraryOpen, setIsLibraryOpen]       = useState(false);
-  const [showRegenConfirm, setShowRegenConfirm] = useState(false);
+  const [charSettings, setCharSettings]               = useState<Record<string, ImageGenSettings>>({});
+  const [aspectRatioMap, setAspectRatioMap]           = useState<Record<string, string>>({});
+  const [approvedCharIds, setApprovedCharIds]         = useState<Set<string>>(new Set());
+  const [expandedCharIds, setExpandedCharIds]         = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab]                     = useState<'designs' | 'references'>('designs');
+  const [isLibraryOpen, setIsLibraryOpen]             = useState(false);
+  const [showRegenConfirm, setShowRegenConfirm]       = useState(false);
   const [showRegenAllConfirm, setShowRegenAllConfirm] = useState(false);
-  const [versionBoundaries, setVersionBoundaries]    = useState<Record<string, number[]>>({});
-  const [activeVersionTabs, setActiveVersionTabs]    = useState<Record<string, number>>({});
-  const { leftPct, containerRef, onDividerMouseDown } = useSplitPanel();
+  const [versionBoundaries, setVersionBoundaries]     = useState<Record<string, number[]>>({});
+  const [activeVersionTabs, setActiveVersionTabs]     = useState<Record<string, number>>({});
 
   // ── Design Sheets accordion state ─────────────────────────────────────────
   const [openSections, setOpenSections]           = useState<Set<number>>(new Set([1]));
@@ -986,14 +1360,21 @@ export default function Step2Characters() {
   const revokeChar  = (id: string) =>
     setApprovedCharIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
 
-  const cooldown    = getCooldownSeconds(2);
+  const toggleCharExpanded = (id: string) =>
+    setExpandedCharIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const cooldown      = getCooldownSeconds(2);
   const isGenerating  = step2.isLoading;
   const canGenerate   = !isGenerating && cooldown === 0;
 
   const characters        = (step2ImageReview.data?.characters ?? []).filter(
     (c) => !/^\d+[\.\)]\s/.test(c.name.trim()),
   );
-  const isImageGenerating = !!step2ImageReview.data?.isGenerating;
+  const isImageGenerating    = !!step2ImageReview.data?.isGenerating;
   const existingCharacterIds = new Set(characters.map((c) => c.characterId));
 
   let state: State = 1;
@@ -1022,7 +1403,6 @@ export default function Step2Characters() {
       }));
     }
     const result = parseDesignSections(streamText);
-    // Fallback: if no section markers found in the final markdown, show everything in section 1
     if (!isGenerating && step2.data && !result.some((s) => s.content !== '')) {
       return result.map((s, i) => ({
         ...s,
@@ -1038,12 +1418,10 @@ export default function Step2Characters() {
     [parsedSections, reviewedSections],
   );
 
-  // Dismiss review warning once everything is reviewed
   useEffect(() => {
     if (showReviewWarning && unreviewedSections.length === 0) setShowReviewWarning(false);
   }, [showReviewWarning, unreviewedSections.length]);
 
-  // Reset accordion open state when generation starts
   useEffect(() => {
     if (isGenerating && !wasLoadingRef.current) {
       setOpenSections(new Set([1]));
@@ -1052,7 +1430,6 @@ export default function Step2Characters() {
     wasLoadingRef.current = isGenerating;
   }, [isGenerating]);
 
-  // When stream completes (2→3): reset review tracking, collapse to section 1
   useEffect(() => {
     if (state >= 3 && prevStateRef.current === 2) {
       setReviewedSections(new Set());
@@ -1061,7 +1438,6 @@ export default function Step2Characters() {
     prevStateRef.current = state;
   }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-open the section currently being streamed (does NOT count as reviewed)
   useEffect(() => {
     const active = parsedSections.find((s) => s.status === 'active');
     if (active && active.id !== prevActiveRef.current) {
@@ -1083,7 +1459,6 @@ export default function Step2Characters() {
         next.delete(id);
       } else {
         next.add(id);
-        // Only user-triggered expands count as reviewed
         setReviewedSections((r) => new Set([...r, id]));
       }
       return next;
@@ -1219,7 +1594,7 @@ export default function Step2Characters() {
         </div>
       )}
 
-      {/* ── Tab navigation (only after generation starts) ── */}
+      {/* ── Tab navigation ── */}
       {state >= 2 && (
         <div className="flex gap-1 border-b border-outline-variant/10">
           <button
@@ -1266,7 +1641,6 @@ export default function Step2Characters() {
       {/* ══ TAB 1: Design Sheets ══════════════════════════════════════════════ */}
       {(activeTab === 'designs' || state < 2) && (
         <>
-          {/* Empty state */}
           {state === 1 && (
             <div className="rounded-3xl border-2 border-dashed border-outline-variant/20 py-16 flex flex-col items-center gap-4">
               <span
@@ -1284,11 +1658,8 @@ export default function Step2Characters() {
             </div>
           )}
 
-          {/* Main content grid — states 2–5 */}
           {state !== 1 && (
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-6 lg:items-start">
-
-              {/* Left — 5 accordion sections */}
               <div className="space-y-3 max-w-[750px]">
                 {parsedSections.map((sec) => (
                   <SectionAccordion
@@ -1305,7 +1676,6 @@ export default function Step2Characters() {
                 ))}
               </div>
 
-              {/* Right — sticky navigation panel */}
               <div className="lg:sticky lg:top-28 overflow-y-auto max-h-[calc(100vh-10rem)] thin-scrollbar">
                 <DesignSheetsRightPanel
                   sections={parsedSections}
@@ -1326,7 +1696,7 @@ export default function Step2Characters() {
 
       {/* ══ TAB 2: Reference Images ═══════════════════════════════════════════ */}
       {activeTab === 'references' && state >= 2 && (
-        <div className="space-y-6">
+        <div className="space-y-4">
 
           {/* Image action bar */}
           <div className="flex flex-wrap items-center gap-3">
@@ -1433,93 +1803,36 @@ export default function Step2Characters() {
             </div>
           )}
 
-          {/* Per-character split layout */}
+          {/* ── Accordion character list ── */}
           {!step2ImageReview.locked && characters.length > 0 && (
-            <div ref={containerRef} className="space-y-0">
+            <div className="space-y-2">
               {characters.map((character, idx) => {
                 const charId    = character.characterId;
                 const versions  = computeVersions(character.candidates, versionBoundaries[charId] ?? [0]);
                 const activeVer = activeVersionTabs[charId] ?? Math.max(0, versions.length - 1);
 
                 return (
-                  <div key={charId}>
-                    {idx > 0 && <div className="h-px bg-gray-200 my-6" />}
-
-                    <div className="sticky top-0 z-10 -mx-1 px-1 bg-white/95 backdrop-blur-sm flex items-center gap-2.5 py-3 mb-4">
-                      <span className="text-[11px] font-bold text-on-surface-variant/40 flex-shrink-0">#{idx + 1}</span>
-                      <h3 className="font-bold text-on-surface flex-shrink-0 mr-0.5">{character.name}</h3>
-                      {approvedCharIds.has(charId) ? (
-                        <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full flex-shrink-0">
-                          <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                          Approved
-                        </span>
-                      ) : character.status === 'error' ? (
-                        <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full flex-shrink-0">
-                          <span className="material-symbols-outlined text-xs">warning</span>
-                          Has issues
-                        </span>
-                      ) : null}
-                    </div>
-
-                    {/* Mobile: stack vertically */}
-                    <div className="md:hidden space-y-4">
-                      <CharacterDesignSummary
-                        characterName={character.name}
-                        designMarkdown={step2.data?.designMarkdown ?? null}
-                        fallbackPrompt={character.prompt}
-                      />
-                      <CharacterReviewCard
-                        character={character}
-                        settings={getCharSettings(charId)}
-                        aspectRatio={getAspectRatio(charId)}
-                        versions={versions}
-                        activeVersion={activeVer}
-                        onVersionChange={(v) => setActiveVersionTabs((prev) => ({ ...prev, [charId]: v }))}
-                        isApproved={approvedCharIds.has(charId)}
-                        isAnyGenerating={isImageGenerating}
-                        onRegenerate={() => handleCharacterVersionedRegenerate(charId, getCharSettings(charId))}
-                        onSelectCandidate={(id) => handleSelectCharacterCandidate(charId, id)}
-                        onUpdateSettings={(s) => updateCharSettings(charId, s)}
-                        onAspectRatioChange={(r) => updateAspectRatio(charId, r)}
-                        onApprove={() => approveChar(charId)}
-                        onRevoke={() => revokeChar(charId)}
-                      />
-                    </div>
-
-                    {/* Desktop: draggable split */}
-                    <div className="hidden md:flex items-start">
-                      <div className="sticky top-28 flex-shrink-0" style={{ width: `${leftPct}%` }}>
-                        <CharacterDesignSummary
-                          characterName={character.name}
-                          designMarkdown={step2.data?.designMarkdown ?? null}
-                          fallbackPrompt={character.prompt}
-                        />
-                      </div>
-                      <div
-                        onMouseDown={onDividerMouseDown}
-                        title="Drag to resize panels"
-                        className="w-1 self-stretch mx-3 rounded-full bg-outline-variant/20 hover:bg-primary/40 cursor-col-resize flex-shrink-0 transition-colors"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <CharacterReviewCard
-                          character={character}
-                          settings={getCharSettings(charId)}
-                          aspectRatio={getAspectRatio(charId)}
-                          versions={versions}
-                          activeVersion={activeVer}
-                          onVersionChange={(v) => setActiveVersionTabs((prev) => ({ ...prev, [charId]: v }))}
-                          isApproved={approvedCharIds.has(charId)}
-                          isAnyGenerating={isImageGenerating}
-                          onRegenerate={() => handleCharacterVersionedRegenerate(charId, getCharSettings(charId))}
-                          onSelectCandidate={(id) => handleSelectCharacterCandidate(charId, id)}
-                          onUpdateSettings={(s) => updateCharSettings(charId, s)}
-                          onAspectRatioChange={(r) => updateAspectRatio(charId, r)}
-                          onApprove={() => approveChar(charId)}
-                          onRevoke={() => revokeChar(charId)}
-                        />
-                      </div>
-                    </div>
-                  </div>
+                  <CharacterAccordionCard
+                    key={charId}
+                    idx={idx}
+                    character={character}
+                    isExpanded={expandedCharIds.has(charId)}
+                    onToggle={() => toggleCharExpanded(charId)}
+                    settings={getCharSettings(charId)}
+                    aspectRatio={getAspectRatio(charId)}
+                    versions={versions}
+                    activeVersion={activeVer}
+                    onVersionChange={(v) => setActiveVersionTabs((prev) => ({ ...prev, [charId]: v }))}
+                    isApproved={approvedCharIds.has(charId)}
+                    isAnyGenerating={isImageGenerating}
+                    onRegenerate={() => handleCharacterVersionedRegenerate(charId, getCharSettings(charId))}
+                    onSelectCandidate={(id) => handleSelectCharacterCandidate(charId, id)}
+                    onUpdateSettings={(s) => updateCharSettings(charId, s)}
+                    onAspectRatioChange={(r) => updateAspectRatio(charId, r)}
+                    onApprove={() => approveChar(charId)}
+                    onRevoke={() => revokeChar(charId)}
+                    designMarkdown={step2.data?.designMarkdown ?? null}
+                  />
                 );
               })}
             </div>
@@ -1664,7 +1977,7 @@ export default function Step2Characters() {
         </div>
       </div>
 
-      {/* ── Regenerate confirm modal ── */}
+      {/* ── Global regenerate confirm modal ── */}
       {showRegenConfirm && (
         <div className="fixed inset-0 z-[90] bg-black/40 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 flex flex-col gap-4">
