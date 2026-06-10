@@ -1,3 +1,150 @@
+## SESSION: 2026-06-11
+
+### 🎯 CONTEXT — Step 3 Script polish + Step 4 Generation full UI overhaul
+
+All work this session is in:
+- `frontend/src/components/studio-steps/Step3Script.tsx`
+- `frontend/src/components/studio-steps/Step4Generation.tsx`
+- `frontend/src/styles/globals.css`
+
+---
+
+### ✅ COMPLETED
+
+#### Step 3 Script — UI polish pass
+
+**Panel-level accordion (one panel open globally):**
+- Replaced per-panel local expand state with `expandedPanelKey: string | null` (format `ch-pg-panel`)
+- 48px collapsed header: chevron, `[PANEL N]` badge, shot-type tag, 1-line summary, Ch.N·P.N ref, StatusDot
+- Expanded: `#EEF2FF` bg + 3px brand-color left border
+- Approved panels dim to 70% opacity
+- CSS grid accordion: `grid-rows-[0fr]` ↔ `grid-rows-[1fr]`
+
+**Auto-advance on approve:** clicking approve in a panel auto-expands the next un-approved panel on the same page; when all panels on a page are done, auto-advances to the next page's first panel.
+
+**Navigation panel — sticky + scrollable:**
+- Removed `items-start` from flex container (was causing parent height = element height → zero scroll range)
+- Fixed height via `style={{ height: 'calc(100vh - 14rem)' }}` (not `max-h`) to activate `flex-1 overflow-y-auto`
+- Accounts for topbar + bottom bar in the calc
+
+**Toolbar cleanup (duplicate CTAs removed):**
+- Removed `[Approve All]` button entirely
+- Removed `[Regen Pending]` disabled stub from toolbar
+- Removed `Filter` select from toolbar (duplicates left nav filter)
+- Kept: Hide Nav toggle, Collapse All / Expand All, View Mode selector
+
+**Bottom bar redesign:**
+- 4px animated progress bar at top of bar (emerald when approved, brand-blue otherwise)
+- `Regen Pending (N)` with pill badge + tooltip "Regenerate all N pending panels at once"
+- `Revoke` button (shown when step is approved)
+- CTA: `Approved · Continue →` (emerald + glow + 2× pulse on first completion) vs `Approve & Continue →`
+- Pulse animation via `useRef` detecting `allDone` transition
+
+**Markdown rendering:**
+- Replaced raw text renders with `<Markdown>` shared component (`react-markdown` + `remark-gfm` + `rehype-raw`)
+- Applied to both streaming live text and raw script fallback `<pre>`
+
+**Lint fixes in Step3Script:**
+- Removed unused `StateBadge` component (leftover from earlier rewrite)
+- Rewrote ternary `s.has(n) ? s.delete(n) : s.add(n)` as `if/else` blocks (ESLint `no-unused-expressions`)
+
+---
+
+#### Step 4 Generation — full UI overhaul
+
+**Global Generation Dashboard (4 visual states):**
+- **Before / building panels:** centered card, "✦ Ready to generate" or spinner; full-width gradient CTA `⚡ Generate All Panels` (`bg-gradient-to-r from-[#4F46E5] to-[#7C3AED]`, `rounded-full`, shadow glow)
+- **Panels built, ready for images:** "✦ Panels ready — generate your images", `⚡ Generate All Images` CTA
+- **Generating:** `SegmentedProgressBar` (green/amber/shimmer/gray), color-coded stats row, italic "Drawing: Page X…" label, Pause + Cancel buttons
+- **Paused:** amber bar + "Paused — N/M completed", Resume + Cancel
+- **Complete (no errors):** "🎉 Comic của bạn đã sẵn sàng!" banner (`linear-gradient(135deg,#EEF2FF,#F0FDF4)`, `border-[#BBF7D0]`, `animate-slide-down`), "👁 Preview Comic" + "⬇ Export & Finish →" CTA
+- **Complete (with errors):** amber theme, segmented bar, "↺ Thử lại N panels lỗi"
+
+**Panel card — 5-state image areas (`PanelImageArea` component):**
+1. **Queued** (`idle`, far back): gray dashed border, hollow circle icon, "#N trong hàng đợi"
+2. **Skeleton** (`idle`, queue position 0–1): shimmer wave animation
+3. **Generating** (`loading`): `#EEF2FF` bg, `animate-border-pulse`, 32px brand spinner, "Đang vẽ...", mini progress bar + countdown timer (~45s estimate, updates per second)
+4. **Success** (`success` + imageUrl): image fill, green border flash on first appear, `animate-panel-appear` entry; hover overlay → "🔍 Xem full / ↺ Vẽ lại / ✓"
+5. **Error** (`error`): `#FEF2F2` bg, dashed red border, ⚠ icon, "↺ Thử lại" button
+
+**Queue position computation:** global `panelQueuePositions` memo counts idle panels in flat order across all pages; skeleton threshold ≤ 1.
+
+**`PanelHeaderBadge` component:** replaces `PanelStatusDot` in card headers — shows "⟳ Generating" (blue), "✗ Error" (red), "✓ Done" (green) contextual badges.
+
+**Finish button — 4-state machine (bottom bar):**
+- `not-started`: gray, disabled, 60% opacity; tooltip "Vui lòng generate ảnh trước…"
+- `in-progress`: gray, disabled; SVG mini progress ring (inline `<circle>` with `strokeDasharray`); tooltip "Đang tạo ảnh… N/M hoàn thành"
+- `has-errors`: amber `#FEF3C7` bg, `#92400E` text, yellow border, clickable → opens error confirmation modal
+- `all-complete`: green `#22C55E`, "✓ Finish & Export →", shadow glow; pulse+scale animation on first completion; click → opens Export modal
+
+**Error confirmation modal** (state `has-errors`): "↺ Thử lại panels lỗi" (retries all error pages) + "Tiếp tục anyway →" (calls `handleApprove(4)`)
+
+**Error handling system:**
+- `SegmentedProgressBar` component: 3 segments — emerald (success) / amber (errors) / shimmer (loading) / gray bg (pending); used in dashboard, StatsBar section, and bottom bar
+- **Toast stack** (fixed top-right, z-60): fires on new panel error transitions (detected via `prevPanelStatesRef`); auto-dismiss after 6s; "Bỏ qua" / "Thử lại ngay" buttons; max 4 stacked; `animate-panel-appear` entry; toast timeouts cleaned up on unmount
+- **Error filter toggle**: "⚠ Xem panels lỗi (N)" button in panel view header; when active, narrows all 3 views (page/grid/list) to error panels only; auto-clears when `step4Stats.error === 0`
+- **Bottom bar center**: "✓ N/M hoàn thành · ⚠ N lỗi · [↺ Thử lại]" with inline segmented bar (6px height)
+- **Dashboard complete card**: shows error count + retry CTA inline; hides export CTA when errors exist
+
+**Completion emotional payoff:**
+- `ConfettiCanvas` component: fixed canvas overlay (z-70, pointer-events-none), 90 brand-colored rectangular particles, gravity + rotation physics, fades out over 1.8s, auto-removes via `onDone`; triggered once when `isImageGenerating` transitions false with 100% success
+- **Success banner**: "🎉 Comic của bạn đã sẵn sàng!" with panel/chapter/page counts, `animate-slide-down` 400ms
+- `PreviewModal` component: full-screen dark overlay, page image slideshow, keyboard arrow navigation + Escape to close, page counter
+- `ExportModal` component: "📦 Xuất truyện tranh" modal, 2×2 grid (PDF Comic — soon, Image Pack — soon, Save to Cloud — live, Export JSON — live), resolution selector (Web 72dpi / HD 150dpi / Print 300dpi), "✓ Đánh dấu hoàn thành" footer → calls `handleApprove(4)`
+
+**Button style:** all `rounded-[10px]` → `rounded-full` to match webapp style system.
+
+**Bottom bar 4px progress line:** replaces border-t at top of bar; color follows `finishBtnState` (green/amber/indigo).
+
+---
+
+#### CSS additions (`globals.css`)
+
+```css
+@keyframes shimmer        /* skeleton loading wave */
+.animate-shimmer
+
+@keyframes border-pulse   /* generating panel border oscillation */
+.animate-border-pulse
+
+@keyframes panel-appear   /* scale(0.95)→1, opacity 0→1 on image reveal */
+.animate-panel-appear
+
+@keyframes slide-down     /* translateY(-14px)→0 for success banner + export modal */
+.animate-slide-down
+```
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/components/studio-steps/Step3Script.tsx` — panel accordion, nav sticky, toolbar cleanup, bottom bar redesign, markdown fix, lint fixes
+- `frontend/src/components/studio-steps/Step4Generation.tsx` — Generation Dashboard 4 states, 5-state panel image areas, finish button state machine, error toasts, segmented progress bar, error filter, confetti, success banner, preview modal, export modal
+- `frontend/src/styles/globals.css` — 4 new keyframe animations + utility classes
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **`isImageGenerating` before initialization bug**: derived value was placed after the `useEffect` that depended on it → fixed by moving all derived values (`cooldown`, `isGenerating`, `isImageGenerating`, `canBuildPanels`) above the effects
+- **Sticky nav + `items-start`**: classic sticky trap — parent height equals sticky element height = zero scroll range. Fix: remove `items-start` from flex container so column stretches to content height
+- **Queue position for skeleton state**: panels with `status === 'idle'` are counted in flat order across all pages; position 0–1 → skeleton (shimmer); 2+ → queued (static)
+- **Toast timer cleanup**: `toastTimeoutsRef` accumulates `setTimeout` IDs; a separate `useEffect([])`  clears all on unmount; individual `dismissToast` calls clear their specific timeout
+- **PDF/Image Pack in export modal**: marked "Soon" (disabled) since backend doesn't support these formats yet; UI is ready to wire up
+- **`handleApprove(4)`** is called from within the export modal (not from the Finish button directly) — the button now opens the modal, and "Mark Complete" lives inside the modal
+
+---
+
+### 🎯 NEXT STEPS
+
+1. **Test panel-level accordion with real script data** — verify `expandedPanelKey` auto-advance works correctly with the actual backend panel numbering
+2. **Wire PDF/Image Pack export** — implement backend endpoints for PDF generation (e.g., using `reportlab`) and image ZIP packaging
+3. **Panel-level regeneration** — currently "↺ Vẽ lại" and "↺ Thử lại" in panel image areas call `handleRegeneratePage(pageNumber)` (page-level); implement panel-level regen in context when backend supports it
+4. **Pause button functionality** — `setIsPaused(true)` updates UI to paused state but doesn't actually pause the generation queue; needs backend SSE cancellation or queue management
+5. **Preview modal with panel images** — currently shows page-level images (`pageStates[].imageUrl`); could also support panel-level images if those become available
+
+---
+
 ## SESSION: 2026-06-10
 
 ### 🎯 CONTEXT — Step 2 Character Designs UI polish + Step 3 Panel Script full rewrite
