@@ -125,15 +125,6 @@ function matchesFilter(panel: ParsedPanel, filter: FilterMode, isApproved: boole
   return getPanelStatus(panel, isApproved, isLocallyApproved) === filter;
 }
 
-// ── State badge ───────────────────────────────────────────────────────────────
-
-function StateBadge({ state }: { state: OverallState }) {
-  if (state === 1) return null;
-  if (state === 2) return <div className="flex items-center gap-2 text-sm text-on-surface-variant"><span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />Generating…</div>;
-  if (state === 4) return <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-bold"><span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>Approved</div>;
-  if (state === 5) return <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-600 text-xs font-bold"><span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>refresh</span>Regenerated — re-approval needed</div>;
-  return <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-600 text-xs font-bold"><span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>pending</span>Pending review</div>;
-}
 
 // ── Panel status dot ──────────────────────────────────────────────────────────
 
@@ -560,8 +551,8 @@ function NavPanel({ chapters, filterMode, onFilterChange, isScriptApproved, acti
 }) {
   const [collapsedChapters, setCollapsedChapters] = useState<Set<number>>(new Set());
   const [collapsedPages, setCollapsedPages]       = useState<Set<string>>(new Set());
-  const toggleCh = (n: number) => setCollapsedChapters((p) => { const s = new Set(p); s.has(n) ? s.delete(n) : s.add(n); return s; });
-  const togglePg = (k: string) => setCollapsedPages((p) => { const s = new Set(p); s.has(k) ? s.delete(k) : s.add(k); return s; });
+  const toggleCh = (n: number) => setCollapsedChapters((p) => { const s = new Set(p); if (s.has(n)) { s.delete(n); } else { s.add(n); } return s; });
+  const togglePg = (k: string) => setCollapsedPages((p) => { const s = new Set(p); if (s.has(k)) { s.delete(k); } else { s.add(k); } return s; });
 
   return (
     <div className="flex flex-col h-full">
