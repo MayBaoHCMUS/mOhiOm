@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
+import Markdown from '@/components/Markdown';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -106,15 +107,22 @@ function parseScript(md: string): ParsedChapter[] {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getPanelStatus(panel: ParsedPanel, isScriptApproved: boolean): PanelStatus {
-  if (isScriptApproved) return 'approved';
-  if (panel.prompt)     return 'generated';
+function extractShotType(text: string): string | null {
+  if (!text) return null;
+  const m = text.match(/\b(wide\s+shot|close[- ]?up|medium\s+shot|establishing\s+shot|two[- ]?shot|overhead\s+shot|bird['s\s-]+eye|low[- ]+angle|high[- ]+angle|aerial|tracking\s+shot|full\s+shot|long\s+shot|extreme\s+close[- ]?up|reaction\s+shot|panning?\s+shot|insert\s+shot)\b/i);
+  if (!m) return null;
+  return m[1].replace(/[-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function getPanelStatus(panel: ParsedPanel, isScriptApproved: boolean, isLocallyApproved = false): PanelStatus {
+  if (isScriptApproved || isLocallyApproved) return 'approved';
+  if (panel.prompt) return 'generated';
   return 'pending';
 }
 
-function matchesFilter(panel: ParsedPanel, filter: FilterMode, isApproved: boolean): boolean {
+function matchesFilter(panel: ParsedPanel, filter: FilterMode, isApproved: boolean, isLocallyApproved = false): boolean {
   if (filter === 'all') return true;
-  return getPanelStatus(panel, isApproved) === filter;
+  return getPanelStatus(panel, isApproved, isLocallyApproved) === filter;
 }
 
 // ── State badge ───────────────────────────────────────────────────────────────
@@ -135,19 +143,143 @@ function StatusDot({ status }: { status: PanelStatus }) {
   return <span className="w-2 h-2 rounded-full border-2 border-[#9CA3AF] flex-shrink-0 inline-block" />;
 }
 
-// ── AI prompt code block ──────────────────────────────────────────────────────
+// ── Rich AI prompt block (right column) ──────────────────────────────────────
 
-function PromptBlock({ prompt, promptKey, copiedKey, onCopy }: { prompt: string; promptKey: string; copiedKey: string | null; onCopy: (k: string, t: string) => void }) {
-  const isCopied = copiedKey === promptKey;
+const SKIP_CAPS = new Set([
+  'WIDE', 'CLOSE', 'PANEL', 'SCENE', 'VIEW', 'SHOT', 'OVER', 'FADE',
+  'WITH', 'FROM', 'INTO', 'BACK', 'FULL', 'LONG', 'HIGH', 'NOTE',
+  'DARK', 'LIGHT', 'STYLE', 'COMIC', 'MANGA', 'EPIC', 'BOLD', 'ANGLE',
+  'FOCUS', 'FRAME', 'FLASH', 'ABOVE', 'BELOW', 'FRONT', 'THERE', 'THEIR',
+]);
+
+function renderInline(text: string, baseColor: string): React.ReactNode {
+  const parts = text.split(/(\[[^\]]+\]|[A-Z]{4,}(?:\s+[A-Z]{3,})*)/g);
+  return parts.map((part, i) => {
+    if (/^\[.+\]$/.test(part)) {
+      return (
+        <span key={i} className="rounded-[3px]" style={{ color: '#C4B5FD', background: 'rgba(196,181,253,0.15)', padding: '1px 4px' }}>
+          {part}
+        </span>
+      );
+    }
+    if (/^[A-Z]{4,}(\s+[A-Z]{3,})*$/.test(part) && !SKIP_CAPS.has(part.trim())) {
+      return <span key={i} style={{ color: '#67E8F9', fontWeight: 600 }}>{part}</span>;
+    }
+    return <span key={i} style={{ color: baseColor }}>{part}</span>;
+  });
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-[6px] overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2 bg-[#2D2D4E]">
-        <span className="text-[10px] font-mono text-[#9CA3AF] uppercase" style={{ letterSpacing: '0.1em' }}>AI Image Prompt</span>
-        <button type="button" onClick={() => onCopy(promptKey, prompt)} className="flex items-center gap-1 text-[11px] font-semibold text-[#9CA3AF] hover:text-white transition-colors">
-          <span className="material-symbols-outlined text-sm">{isCopied ? 'check' : 'content_copy'}</span>{isCopied ? 'Copied!' : 'Copy'}
-        </button>
+    <p className="pb-1 mb-2 uppercase" style={{ fontSize: '9px', letterSpacing: '0.1em', color: '#4B5563', borderBottom: '1px solid #1E2035' }}>
+      {children}
+    </p>
+  );
+}
+
+function RichPromptBlock({
+  panel, promptKey, copiedKey, onCopy,
+}: {
+  panel: ParsedPanel;
+  promptKey: string;
+  copiedKey: string | null;
+  onCopy: (k: string, t: string) => void;
+}) {
+  const isCopied    = copiedKey === promptKey;
+  const hasNotes    = !!(panel.layoutSummary || panel.description);
+  const hasDialogue = panel.dialogues.some((d) => d.type !== 'sfx');
+  const hasSfx      = panel.dialogues.some((d) => d.type === 'sfx');
+  const hasPrompt   = !!panel.prompt;
+
+  const copyTarget = panel.prompt || [
+    panel.layoutSummary,
+    panel.description,
+    ...panel.dialogues.map((d) =>
+      d.type === 'sfx' ? `SFX: ${d.text}` : d.speaker ? `${d.speaker}: "${d.text}"` : `"${d.text}"`
+    ),
+  ].filter(Boolean).join('\n');
+
+  return (
+    <div className="relative flex flex-col" style={{ background: '#12131F', minHeight: '180px' }}>
+      <button
+        type="button"
+        onClick={() => onCopy(promptKey, copyTarget)}
+        className={`absolute top-2.5 right-2.5 z-10 rounded-[6px] px-[10px] py-[4px] text-[11px] border border-white/[0.15] transition-colors ${
+          isCopied
+            ? 'bg-white/[0.12] text-[#86EFAC]'
+            : 'bg-white/[0.08] text-[#94A3B8] hover:bg-white/[0.15] hover:text-[#E2E8F0]'
+        }`}
+      >
+        {isCopied ? '✓ Copied!' : 'Copy'}
+      </button>
+
+      <div className="flex-1 px-4 pr-16 pt-3 pb-2" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }}>
+        {hasNotes && (
+          <div className="mb-3">
+            <SectionLabel>Panel Notes</SectionLabel>
+            {panel.layoutSummary && (
+              <p className="mb-1" style={{ fontSize: '12.5px', lineHeight: 1.75, color: '#94A3B8' }}>
+                {'📐 '}{renderInline(panel.layoutSummary, '#94A3B8')}
+              </p>
+            )}
+            {panel.description && (
+              <p style={{ fontSize: '12.5px', lineHeight: 1.75, color: '#94A3B8' }}>
+                {renderInline(panel.description, '#94A3B8')}
+              </p>
+            )}
+          </div>
+        )}
+
+        {hasDialogue && (
+          <div className="mb-3">
+            <SectionLabel>Dialogue</SectionLabel>
+            <div className="space-y-1.5">
+              {panel.dialogues.filter((d) => d.type !== 'sfx').map((d, i) => (
+                <div key={i} className="pl-2" style={{ borderLeft: '2px solid #FDE68A' }}>
+                  {d.speaker && (
+                    <span className="mr-1 uppercase" style={{ color: '#67E8F9', fontWeight: 600, fontSize: '10px', letterSpacing: '0.05em' }}>
+                      {d.speaker}:{' '}
+                    </span>
+                  )}
+                  <span className="italic" style={{ color: '#FDE68A', fontSize: '12.5px', lineHeight: 1.75 }}>
+                    &ldquo;{d.text}&rdquo;
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {hasSfx && (
+          <div className="mb-3">
+            <SectionLabel>SFX</SectionLabel>
+            <div className="space-y-1">
+              {panel.dialogues.filter((d) => d.type === 'sfx').map((d, i) => (
+                <p key={i} style={{ fontSize: '12.5px', lineHeight: 1.75, color: '#FCA5A5', fontWeight: 600 }}>
+                  <span className="mr-1.5" style={{ color: '#4B5563', fontSize: '9px', letterSpacing: '0.08em' }}>[SFX]</span>
+                  {d.text}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <SectionLabel>Style Prompt</SectionLabel>
+          {hasPrompt ? (
+            <p style={{ fontSize: '12.5px', lineHeight: 1.75, color: '#D4D8F0', fontWeight: 400, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {renderInline(panel.prompt, '#D4D8F0')}
+            </p>
+          ) : (
+            <p className="italic" style={{ fontSize: '11px', color: '#4B5563' }}>No AI image prompt for this panel</p>
+          )}
+        </div>
       </div>
-      <pre className="px-3 py-3 text-[12px] font-mono text-[#A8B4FF] leading-relaxed bg-[#1E1E2E] overflow-x-auto whitespace-pre-wrap break-all">{prompt}</pre>
+
+      <div className="mx-4 mb-4 mt-3 flex flex-col items-center justify-center py-3 rounded-[4px]" style={{ border: '1px dashed #1E2035' }}>
+        <span className="material-symbols-outlined text-lg" style={{ color: '#2D3050' }}>photo_library</span>
+        <p className="text-[11px] mt-0.5" style={{ color: '#2D3050' }}>Generated in Step 4</p>
+      </div>
     </div>
   );
 }
@@ -186,15 +318,109 @@ function ChapterHeading({ chapter }: { chapter: ParsedChapter }) {
   );
 }
 
-// ── Page heading ──────────────────────────────────────────────────────────────
+// ── Scene accordion ────────────────────────────────────────────────────────────
 
-function PageHeading({ page }: { page: ParsedPage }) {
+function SceneAccordion({
+  chapter, page, isExpanded, isApprovedLocally, isScriptApproved,
+  allPanelsApproved,
+  onToggle, onApproveLocal, onRegen, canApprove, children,
+}: {
+  chapter: ParsedChapter; page: ParsedPage;
+  isExpanded: boolean; isApprovedLocally: boolean; isScriptApproved: boolean;
+  allPanelsApproved: boolean;
+  onToggle: () => void; onApproveLocal: () => void; onRegen: () => void;
+  canApprove: boolean; children: React.ReactNode;
+}) {
+  const pageKey     = `${chapter.chapterNumber}-${page.pageNumber}`;
+  const totalPanels = page.panels.length;
+  const readyPanels = page.panels.filter((p) => p.prompt).length;
+  const isAllDone   = isApprovedLocally || isScriptApproved || allPanelsApproved;
+  const status: PanelStatus = isAllDone ? 'approved' : readyPanels === totalPanels && totalPanels > 0 ? 'generated' : 'pending';
+
   return (
-    <div className="sticky top-[2.5rem] z-10 py-2 bg-white -mx-1 px-1">
-      <div className="flex items-center gap-3 pl-3.5 border-l-[3px] border-[#CBD5E1]">
-        <p className="text-[15px] font-semibold text-on-surface">Page {page.pageNumber}</p>
-        <span className="text-[#CBD5E1]">—</span>
-        <span className="text-sm text-on-surface-variant">{page.panels.length} Panel{page.panels.length !== 1 ? 's' : ''}</span>
+    <div
+      data-page-key={pageKey}
+      className={`rounded-xl border overflow-hidden transition-colors duration-150 ${
+        isAllDone ? 'border-emerald-200/70 opacity-60' : isExpanded ? 'border-primary/25' : 'border-[#E2E6F0]'
+      }`}
+    >
+      {/* ── Header bar (always 52px) ── */}
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`w-full flex items-center gap-3 px-4 h-[52px] text-left transition-colors group ${
+          isAllDone
+            ? 'bg-emerald-50/50 hover:bg-emerald-50'
+            : isExpanded
+            ? 'bg-primary/[0.04]'
+            : 'bg-[#F7F8FC] hover:bg-[#F0F2FA]'
+        }`}
+        style={isExpanded && !isAllDone ? { borderLeft: '3px solid var(--color-primary)' } : {}}
+      >
+        <span
+          className="material-symbols-outlined text-base flex-shrink-0 transition-transform duration-200"
+          style={{
+            transform: isExpanded ? 'rotate(90deg)' : 'none',
+            color: isAllDone ? '#10B981' : isExpanded ? 'var(--color-primary)' : '#9CA3AF',
+          }}
+        >
+          {isAllDone && !isExpanded ? 'check_circle' : 'chevron_right'}
+        </span>
+
+        <span className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wide ${
+          isAllDone ? 'bg-emerald-100/70 text-emerald-600' : isExpanded ? 'bg-primary text-on-primary' : 'bg-[#E8EAF0] text-[#5A6375]'
+        }`}>
+          Page {page.pageNumber}
+        </span>
+
+        <StatusDot status={status} />
+
+        {allPanelsApproved && !isApprovedLocally && !isScriptApproved ? (
+          <span className="text-[12px] font-semibold text-emerald-600 flex items-center gap-1">
+            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+            All Done
+          </span>
+        ) : (
+          <span className="text-[13px] font-medium text-on-surface-variant/70">
+            {totalPanels} Panel{totalPanels !== 1 ? 's' : ''}
+            {readyPanels > 0 && readyPanels < totalPanels && (
+              <span className="text-blue-400 ml-1.5">· {readyPanels}/{totalPanels} ready</span>
+            )}
+          </span>
+        )}
+
+        <div className="flex-1" />
+
+        {isAllDone ? (
+          <span className="text-[11px] font-semibold text-emerald-500 flex items-center gap-1 flex-shrink-0">
+            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+            Approved
+          </span>
+        ) : (
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+            <button type="button" onClick={(e) => { e.stopPropagation(); onRegen(); }}
+              title="Regenerate script" className="flex items-center px-2 py-1 rounded-md text-[11px] font-semibold text-[#9CA3AF] bg-white border border-[#E0E0E0] hover:text-on-surface hover:border-[#C0C0C0] transition-colors">
+              <span className="material-symbols-outlined text-sm">refresh</span>
+            </button>
+            {canApprove && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); onApproveLocal(); }}
+                title="Approve this page" className="flex items-center px-2 py-1 rounded-md text-[11px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors">
+                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+              </button>
+            )}
+          </div>
+        )}
+      </button>
+
+      {/* ── Animated body ── */}
+      <div className={`grid transition-all ${isExpanded ? 'grid-rows-[1fr] duration-[250ms] ease-out' : 'grid-rows-[0fr] duration-[200ms] ease-in'}`}>
+        <div className="overflow-hidden">
+          <div className={`transition-opacity duration-150 ${isExpanded ? 'opacity-100 delay-[50ms]' : 'opacity-0'}`}>
+            <div className="px-3 pt-3 pb-3 space-y-3">
+              {children}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -202,58 +428,123 @@ function PageHeading({ page }: { page: ParsedPage }) {
 
 // ── Panel card ────────────────────────────────────────────────────────────────
 
-function PanelCard({ panel, chapterNumber, pageNumber, panelKey, isExpanded, onToggle, viewMode, isScriptApproved, copiedKey, onCopyPrompt, onApproveScript }: {
+function PanelCard({
+  panel, chapterNumber, pageNumber, panelKey,
+  isExpanded, onToggle, viewMode,
+  isScriptApproved, isApprovedLocally,
+  copiedKey, onCopyPrompt, onApprovePanelLocally,
+}: {
   panel: ParsedPanel; chapterNumber: number; pageNumber: number; panelKey: string;
-  isExpanded: boolean; onToggle: () => void; viewMode: ViewMode; isScriptApproved: boolean;
-  copiedKey: string | null; onCopyPrompt: (k: string, t: string) => void; onApproveScript: () => void;
+  isExpanded: boolean; onToggle: () => void; viewMode: ViewMode;
+  isScriptApproved: boolean; isApprovedLocally: boolean;
+  copiedKey: string | null; onCopyPrompt: (k: string, t: string) => void;
+  onApprovePanelLocally: () => void;
 }) {
   const effectiveExpanded = viewMode !== 'compact' && isExpanded;
-  const showLeft  = viewMode === 'script' || viewMode === 'dialogue';
-  const showRight = viewMode === 'script' || viewMode === 'prompts';
+  const showLeft     = viewMode === 'script' || viewMode === 'dialogue';
+  const showRight    = viewMode === 'script' || viewMode === 'prompts';
   const dialogueOnly = viewMode === 'dialogue';
-  const hasPrompt = !!panel.prompt;
+  const hasPrompt    = !!panel.prompt;
+  const isApproved   = isScriptApproved || isApprovedLocally;
+  const shotType     = extractShotType(panel.layoutSummary || panel.description);
+  const summary      = panel.layoutSummary || panel.description || '';
 
   return (
-    <div id={`panel-${panelKey}`} className="rounded-lg border border-[#E0E0E0] overflow-hidden">
-      <button type="button" onClick={onToggle} className="w-full flex items-center justify-between px-4 py-3 bg-[#F5F5F5] hover:bg-[#EEEEEE] text-left transition-colors group">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="flex-shrink-0 px-2.5 py-1 rounded-md text-[13px] font-semibold uppercase text-on-primary bg-primary" style={{ letterSpacing: '0.04em', boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }}>{panel.label}</span>
-          {panel.description && <span className="text-[13px] text-on-surface-variant truncate max-w-[300px]">{panel.description}</span>}
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-          <span className="hidden sm:block text-[11px] text-on-surface-variant/50">Ch.{chapterNumber} · P.{pageNumber}</span>
-          <div className="h-4 w-px bg-outline-variant/20" />
-          <span className="material-symbols-outlined text-lg text-on-surface-variant/50 group-hover:text-on-surface-variant transition-transform duration-200" style={{ transform: effectiveExpanded ? 'rotate(180deg)' : 'none' }}>expand_more</span>
+    <div
+      id={`panel-${panelKey}`}
+      className={`rounded-lg border overflow-hidden transition-all duration-150 ${
+        isApproved ? 'border-emerald-200/60 opacity-70' : isExpanded ? 'border-primary/30' : 'border-[#E2E6F0]'
+      }`}
+    >
+      {/* ── Collapsed header — always 48px ── */}
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`w-full flex items-center gap-2.5 px-3 h-12 text-left transition-colors group ${
+          isExpanded ? 'bg-[#EEF2FF]' : isApproved ? 'bg-emerald-50/40' : 'bg-[#F7F8FC] hover:bg-[#EEF2FF]'
+        }`}
+        style={isExpanded ? { borderLeft: '3px solid var(--color-primary)' } : {}}
+      >
+        {/* Chevron */}
+        <span
+          className="material-symbols-outlined text-[18px] flex-shrink-0 transition-transform duration-200"
+          style={{
+            transform: isExpanded ? 'rotate(90deg)' : 'none',
+            color: isApproved ? '#10B981' : isExpanded ? 'var(--color-primary)' : '#9CA3AF',
+          }}
+        >
+          {isApproved ? 'check_circle' : 'chevron_right'}
+        </span>
+
+        {/* Panel badge */}
+        <span className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wide ${
+          isApproved ? 'bg-emerald-100/70 text-emerald-600' : isExpanded ? 'bg-primary text-on-primary' : 'bg-[#E8EAF0] text-[#5A6375]'
+        }`}>
+          {panel.label}
+        </span>
+
+        {/* Shot type tag */}
+        {shotType && (
+          <span className="hidden sm:inline-flex flex-shrink-0 items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#F0F0FB] text-[#7C85C8] border border-[#DDE0F5]">
+            {shotType}
+          </span>
+        )}
+
+        {/* 1-line summary */}
+        <span className="text-[12.5px] text-on-surface-variant/70 truncate flex-1 min-w-0">
+          {summary}
+        </span>
+
+        {/* Right: Ch/P ref + status */}
+        <div className="flex items-center gap-2 flex-shrink-0 ml-1">
+          <span className="hidden sm:block text-[11px] text-on-surface-variant/40">
+            Ch.{chapterNumber} · P.{pageNumber}
+          </span>
+          <StatusDot status={getPanelStatus(panel, isScriptApproved, isApprovedLocally)} />
         </div>
       </button>
-      <div className={`grid transition-all duration-200 ease-in-out ${effectiveExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+
+      {/* ── Expandable body ── */}
+      <div className={`grid transition-all ${effectiveExpanded ? 'grid-rows-[1fr] duration-[250ms] ease-out' : 'grid-rows-[0fr] duration-[200ms] ease-in'}`}>
         <div className="overflow-hidden">
-          <div className={`grid grid-cols-1 divide-y md:divide-y-0 md:divide-x divide-[#E0E0E0] ${showLeft && showRight ? 'md:grid-cols-2' : ''}`}>
-            {showLeft && (
-              <div className="bg-white p-4 space-y-4">
-                {!dialogueOnly && <p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>📋 Script</p>}
-                {!dialogueOnly && panel.layoutSummary && <div className="space-y-1"><p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>Layout Summary</p><p className="text-[13px] text-[#374151] leading-[1.7]">{panel.layoutSummary}</p></div>}
-                {!dialogueOnly && panel.description && <div className="space-y-1"><p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>Panel Description</p><p className="text-[13px] text-[#374151] leading-[1.7]">{panel.description}</p></div>}
-                {panel.dialogues.length > 0 ? <DialogueLines dialogues={panel.dialogues} /> : dialogueOnly ? <p className="text-xs text-[#9CA3AF] italic">No dialogue in this panel.</p> : null}
-                {!dialogueOnly && !panel.layoutSummary && !panel.description && !panel.dialogues.length && <p className="text-xs text-[#9CA3AF] italic">No script data.</p>}
-              </div>
-            )}
-            {showRight && (
-              <div className="bg-[#F8F9FF] p-4 space-y-4">
-                <p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>🖼 Image Prompt</p>
-                {hasPrompt ? <PromptBlock prompt={panel.prompt} promptKey={panelKey} copiedKey={copiedKey} onCopy={onCopyPrompt} /> : <div className="flex flex-col items-center justify-center py-8 rounded-[6px] border-2 border-dashed border-[#E0E0E0] text-center"><span className="material-symbols-outlined text-3xl text-[#D0D0D0] mb-2">image_search</span><p className="text-xs text-[#9CA3AF]">No AI image prompt detected</p></div>}
-                <div className="flex flex-col items-center justify-center h-20 rounded-[6px] border-2 border-dashed border-[#E0E0E0] text-center bg-white/60"><span className="material-symbols-outlined text-xl text-[#D0D0D0]">photo_library</span><p className="text-[11px] text-[#9CA3AF] mt-1">Generated in Step 4</p></div>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2 px-4 py-3 bg-[#FAFAFA] border-t border-[#E0E0E0]">
-            <button type="button" disabled title="Panel-level regeneration coming soon" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#9CA3AF] bg-white border border-[#E0E0E0] cursor-not-allowed select-none"><span className="material-symbols-outlined text-sm">refresh</span>Regen Panel</button>
-            <button type="button" disabled title="Inline editing coming soon" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#9CA3AF] bg-white border border-[#E0E0E0] cursor-not-allowed select-none"><span className="material-symbols-outlined text-sm">edit</span>Edit</button>
-            <div className="flex-1" />
-            {hasPrompt && <button type="button" onClick={() => onCopyPrompt(panelKey, panel.prompt)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-on-surface-variant bg-white border border-[#E0E0E0] hover:bg-surface-container transition-colors"><span className="material-symbols-outlined text-sm">content_copy</span>Copy Prompt</button>}
-            <button type="button" onClick={() => { if (!isScriptApproved) onApproveScript(); }} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${isScriptApproved ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-200 cursor-default' : 'bg-primary text-on-primary hover:opacity-90'}`}>
-              <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>{isScriptApproved ? 'Approved' : 'Approve Script'}
-            </button>
+          <div className={`transition-opacity duration-150 ${effectiveExpanded ? 'opacity-100 delay-[40ms]' : 'opacity-0'}`}>
+            <div className={`grid grid-cols-1 divide-y divide-[#E0E0E0] md:divide-y-0 ${showLeft && showRight ? 'md:grid-cols-2' : ''}`}>
+              {showLeft && (
+                <div className="bg-white p-4 space-y-4">
+                  {!dialogueOnly && <p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>📋 Script</p>}
+                  {!dialogueOnly && panel.layoutSummary && <div className="space-y-1"><p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>Layout Summary</p><p className="text-[13px] text-[#374151] leading-[1.7]">{panel.layoutSummary}</p></div>}
+                  {!dialogueOnly && panel.description && <div className="space-y-1"><p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>Panel Description</p><p className="text-[13px] text-[#374151] leading-[1.7]">{panel.description}</p></div>}
+                  {panel.dialogues.length > 0 ? <DialogueLines dialogues={panel.dialogues} /> : dialogueOnly ? <p className="text-xs text-[#9CA3AF] italic">No dialogue in this panel.</p> : null}
+                  {!dialogueOnly && !panel.layoutSummary && !panel.description && !panel.dialogues.length && <p className="text-xs text-[#9CA3AF] italic">No script data.</p>}
+                </div>
+              )}
+              {showRight && (
+                <div className="bg-[#12131F]">
+                  <RichPromptBlock panel={panel} promptKey={panelKey} copiedKey={copiedKey} onCopy={onCopyPrompt} />
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2 px-4 py-3 bg-[#FAFAFA] border-t border-[#E0E0E0]">
+              <button type="button" disabled title="Coming soon" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#9CA3AF] bg-white border border-[#E0E0E0] cursor-not-allowed select-none">
+                <span className="material-symbols-outlined text-sm">refresh</span>Regen
+              </button>
+              <div className="flex-1" />
+              {hasPrompt && (
+                <button type="button" onClick={() => onCopyPrompt(panelKey, panel.prompt)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-on-surface-variant bg-white border border-[#E0E0E0] hover:bg-surface-container transition-colors">
+                  <span className="material-symbols-outlined text-sm">content_copy</span>Copy Prompt
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => { if (!isApproved) onApprovePanelLocally(); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  isApproved ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-200 cursor-default' : 'bg-primary text-on-primary hover:opacity-90'
+                }`}
+              >
+                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                {isApproved ? 'Approved' : 'Approve Panel'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -263,9 +554,9 @@ function PanelCard({ panel, chapterNumber, pageNumber, panelKey, isExpanded, onT
 
 // ── Navigation panel ──────────────────────────────────────────────────────────
 
-function NavPanel({ chapters, filterMode, onFilterChange, isScriptApproved, onScrollTo }: {
+function NavPanel({ chapters, filterMode, onFilterChange, isScriptApproved, activePageKey, onScrollTo }: {
   chapters: ParsedChapter[]; filterMode: FilterMode; onFilterChange: (f: FilterMode) => void;
-  isScriptApproved: boolean; onScrollTo: (key: string) => void;
+  isScriptApproved: boolean; activePageKey: string | null; onScrollTo: (key: string) => void;
 }) {
   const [collapsedChapters, setCollapsedChapters] = useState<Set<number>>(new Set());
   const [collapsedPages, setCollapsedPages]       = useState<Set<string>>(new Set());
@@ -279,7 +570,7 @@ function NavPanel({ chapters, filterMode, onFilterChange, isScriptApproved, onSc
         <div className="flex gap-1 flex-wrap">
           {(['all', 'pending', 'generated', 'approved'] as FilterMode[]).map((f) => (
             <button key={f} type="button" onClick={() => onFilterChange(f)}
-              className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors ${filterMode === f ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}>
+              className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-colors ${filterMode === f ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}>
               {f === 'all' ? 'All' : f === 'pending' ? '○ Pending' : f === 'generated' ? '● Ready' : '✓ Approved'}
             </button>
           ))}
@@ -298,11 +589,14 @@ function NavPanel({ chapters, filterMode, onFilterChange, isScriptApproved, onSc
               {!isChColl && chapter.pages.map((page) => {
                 const pgKey    = `${chapter.chapterNumber}-${page.pageNumber}`;
                 const isPgColl = collapsedPages.has(pgKey);
+                const isActive = activePageKey === pgKey || activePageKey === 'ALL';
                 return (
                   <div key={pgKey}>
-                    <button type="button" onClick={() => togglePg(pgKey)} className="w-full flex items-center gap-1.5 pl-6 pr-3 py-1 hover:bg-surface-container text-left transition-colors">
-                      <span className="material-symbols-outlined text-sm text-on-surface-variant/40 flex-shrink-0 transition-transform duration-150" style={{ transform: isPgColl ? 'rotate(-90deg)' : 'none' }}>expand_more</span>
-                      <span className="text-[12px] font-semibold text-on-surface-variant">Page {page.pageNumber}</span>
+                    <button type="button" onClick={() => togglePg(pgKey)}
+                      className={`w-full flex items-center gap-1.5 pl-6 pr-3 py-1 text-left transition-colors ${isActive ? 'bg-primary/8 text-primary' : 'hover:bg-surface-container text-on-surface-variant'}`}>
+                      <span className="material-symbols-outlined text-sm flex-shrink-0 transition-transform duration-150" style={{ transform: isPgColl ? 'rotate(-90deg)' : 'none', color: isActive ? 'var(--color-primary)' : '#9CA3AF' }}>expand_more</span>
+                      <span className={`text-[12px] font-semibold ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}>Page {page.pageNumber}</span>
+                      {isActive && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />}
                       <span className="ml-auto text-[10px] text-on-surface-variant/40">{page.panels.length}p</span>
                     </button>
                     {!isPgColl && page.panels.map((panel) => {
@@ -341,11 +635,9 @@ const VIEW_MODES: { id: ViewMode; label: string; icon: string }[] = [
   { id: 'compact',  label: 'Compact',  icon: 'view_headline' },
 ];
 
-function Toolbar({ filterMode, onFilterChange, viewMode, onViewModeChange, onCollapseAll, onExpandAll, onApproveAll, canApprove }: {
-  filterMode: FilterMode; onFilterChange: (f: FilterMode) => void;
+function Toolbar({ viewMode, onViewModeChange, onCollapseAll, onExpandAll }: {
   viewMode: ViewMode; onViewModeChange: (v: ViewMode) => void;
   onCollapseAll: () => void; onExpandAll: () => void;
-  onApproveAll: () => void; canApprove: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 py-2">
@@ -353,21 +645,6 @@ function Toolbar({ filterMode, onFilterChange, viewMode, onViewModeChange, onCol
         <button type="button" onClick={onCollapseAll} title="Collapse all" className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold text-on-surface-variant hover:bg-surface-container-high transition-colors"><span className="material-symbols-outlined text-sm">unfold_less</span><span className="hidden sm:inline">Collapse All</span></button>
         <button type="button" onClick={onExpandAll}   title="Expand all"   className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold text-on-surface-variant hover:bg-surface-container-high transition-colors"><span className="material-symbols-outlined text-sm">unfold_more</span><span className="hidden sm:inline">Expand All</span></button>
       </div>
-      <div className="h-6 w-px bg-outline-variant/20 hidden sm:block" />
-      <div className="flex items-center gap-1.5">
-        <span className="text-[11px] font-semibold text-on-surface-variant hidden sm:inline">Filter:</span>
-        <select value={filterMode} onChange={(e) => onFilterChange(e.target.value as FilterMode)} className="text-xs font-semibold text-on-surface bg-surface-container border border-outline-variant/20 rounded-lg px-2 py-1.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary/40">
-          <option value="all">All</option>
-          <option value="pending">○ Pending</option>
-          <option value="generated">● Ready</option>
-          <option value="approved">✓ Approved</option>
-        </select>
-      </div>
-      <div className="h-6 w-px bg-outline-variant/20 hidden sm:block" />
-      <button type="button" disabled title="Panel-level regeneration coming soon" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#9CA3AF] bg-white border border-[#E0E0E0] cursor-not-allowed select-none"><span className="material-symbols-outlined text-sm">refresh</span><span className="hidden sm:inline">Regen Pending</span></button>
-      <button type="button" onClick={onApproveAll} disabled={!canApprove} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${canApprove ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-surface-container text-on-surface-variant cursor-not-allowed opacity-50'}`}>
-        <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span><span className="hidden sm:inline">Approve All</span>
-      </button>
       <div className="h-6 w-px bg-outline-variant/20 hidden sm:block" />
       <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-surface-container border border-outline-variant/10">
         {VIEW_MODES.map((v) => (
@@ -383,67 +660,179 @@ function Toolbar({ filterMode, onFilterChange, viewMode, onViewModeChange, onCol
 // ── Bottom bar ────────────────────────────────────────────────────────────────
 
 function ScriptBottomBar({
-  state, totalPanels, panelsWithPrompts, isApproved,
-  canGenerate, cooldown,
-  onPrevious, onContinue, onRegenerate, showContinueWarning, onConfirmContinue, onCancelContinue,
+  isGenerating, approvedScenes, totalScenes, pendingPanelCount,
+  canGenerate, cooldown, error, isScriptApproved,
+  onPrevious, onContinue, onRegenerate, onRetry, onRevoke,
+  showContinueWarning, onConfirmContinue, onCancelContinue,
 }: {
-  state: OverallState; totalPanels: number; panelsWithPrompts: number; isApproved: boolean;
-  canGenerate: boolean; cooldown: number;
-  onPrevious: () => void; onContinue: () => void; onRegenerate: () => void;
+  isGenerating: boolean; approvedScenes: number; totalScenes: number; pendingPanelCount: number;
+  canGenerate: boolean; cooldown: number; error: string | null;
+  isScriptApproved: boolean;
+  onPrevious: () => void; onContinue: () => void; onRegenerate: () => void; onRetry: () => void; onRevoke: () => void;
   showContinueWarning: boolean; onConfirmContinue: () => void; onCancelContinue: () => void;
 }) {
-  const pendingCount = totalPanels - panelsWithPrompts;
-  const pct = totalPanels > 0 ? Math.round((isApproved ? totalPanels : panelsWithPrompts) / totalPanels * 100) : 0;
+  const allDone   = totalScenes > 0 && approvedScenes >= totalScenes;
+  const remaining = Math.max(0, totalScenes - approvedScenes);
+  const pct       = totalScenes > 0 ? Math.round(approvedScenes / totalScenes * 100) : 0;
+  const showRegen = (totalScenes === 0 || pendingPanelCount > 0) && !isGenerating;
+
+  // Pulse 2× when first reaching allDone
+  const prevAllDoneRef = useRef(false);
+  const [pulse, setPulse] = useState(false);
+  useEffect(() => {
+    if (allDone && !prevAllDoneRef.current) {
+      setPulse(true);
+      const t = setTimeout(() => setPulse(false), 1000);
+      return () => clearTimeout(t);
+    }
+    prevAllDoneRef.current = allDone;
+  }, [allDone]);
+
+  const ctaTooltip = !allDone && !isGenerating && totalScenes > 0
+    ? `Review all ${totalScenes} pages to continue. ${remaining} page${remaining !== 1 ? 's' : ''} remaining.`
+    : undefined;
+
+  const regenTooltip = pendingPanelCount > 0
+    ? `Regenerate all ${pendingPanelCount} pending panel${pendingPanelCount !== 1 ? 's' : ''} at once`
+    : undefined;
 
   return (
-    <div className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]" style={{ left: 'var(--studio-sidebar-width, 0)' }}>
+    <div
+      className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
+      style={{ left: 'var(--studio-sidebar-width)' }}
+    >
+      {/* Warning dialog */}
       {showContinueWarning && (
         <div className="absolute inset-x-0 bottom-full mb-2 flex justify-center px-4">
           <div className="bg-white rounded-2xl shadow-xl border border-outline-variant/20 p-4 max-w-sm w-full">
-            <p className="font-semibold text-on-surface text-sm">{pendingCount} panel{pendingCount !== 1 ? 's' : ''} pending</p>
-            <p className="text-xs text-on-surface-variant mt-1 mb-3">Some panels don&apos;t have AI image prompts yet. Continue to Step 4 anyway?</p>
+            <p className="font-semibold text-on-surface text-sm">Some panels have no AI image prompts</p>
+            <p className="text-xs text-on-surface-variant mt-1 mb-3">Continue to Step 4 anyway?</p>
             <div className="flex gap-2">
-              <button type="button" onClick={onCancelContinue} className="flex-1 px-3 py-2 rounded-xl text-xs font-semibold border border-outline-variant/20 text-on-surface-variant hover:bg-surface-container transition-colors">Cancel</button>
-              <button type="button" onClick={onConfirmContinue} className="flex-1 px-3 py-2 rounded-xl text-xs font-bold bg-primary text-on-primary hover:opacity-90">Continue Anyway</button>
+              <button type="button" onClick={onCancelContinue} className="flex-1 px-3 py-2 rounded-xl text-xs font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
+              <button type="button" onClick={onConfirmContinue} className="flex-1 px-3 py-2 rounded-xl text-xs font-bold bg-gray-900 text-white hover:opacity-90">Continue Anyway</button>
             </div>
           </div>
         </div>
       )}
-      <div className="px-6 py-3 flex items-center justify-between gap-4">
-        <button type="button" onClick={onPrevious} className="flex items-center gap-1.5 text-sm font-semibold text-on-surface-variant hover:text-on-surface transition-colors flex-shrink-0">
+
+      <div className="px-10 py-4 max-w-6xl mx-auto flex items-center justify-between gap-4">
+        {/* Left: Previous Step */}
+        <button
+          type="button"
+          onClick={onPrevious}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors flex-shrink-0"
+        >
           <span className="material-symbols-outlined text-base">arrow_back</span>
           <span className="hidden sm:inline">Previous Step</span>
         </button>
-        {state >= 3 && totalPanels > 0 && (
-          <div className="flex-1 max-w-[320px] hidden sm:block">
-            <div className="flex items-center justify-between text-[11px] text-on-surface-variant mb-1">
-              <span className="font-semibold">
-                {isApproved ? `${totalPanels} Approved` : `${panelsWithPrompts} Generated · ${pendingCount} Pending`}
-              </span>
-              <span className="tabular-nums">{pct}%</span>
+
+        {/* Center: progress bar + label */}
+        <div className="flex-1 min-w-0 hidden sm:block">
+          {isGenerating ? (
+            <div className="flex items-center gap-2">
+              <span className="w-3.5 h-3.5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin flex-shrink-0" />
+              <span className="text-sm text-gray-500">Generating script…</span>
             </div>
-            <div className="h-1.5 rounded-full bg-on-surface/8 overflow-hidden">
-              <div className={`h-full rounded-full transition-all duration-500 ${isApproved ? 'bg-emerald-500' : 'bg-primary/60'}`} style={{ width: `${pct}%` }} />
+          ) : error ? (
+            <span className="text-sm text-red-500 truncate">{error}</span>
+          ) : totalScenes > 0 ? (
+            <div>
+              <div className="flex items-center justify-between text-[11px] mb-1">
+                <span className={`font-semibold ${allDone ? 'text-emerald-600' : 'text-gray-500'}`}>
+                  {allDone ? 'All pages approved — ready to continue!' : `${approvedScenes} / ${totalScenes} pages approved`}
+                </span>
+                <span className="text-gray-400 tabular-nums ml-3">{pct}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${allDone ? 'bg-emerald-500' : 'bg-gray-400'}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
             </div>
+          ) : null}
+        </div>
+
+        {/* Right: action buttons */}
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {error && !isGenerating && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold border border-gray-300 text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <span className="material-symbols-outlined text-base">replay</span>
+              Retry
+            </button>
+          )}
+
+          {showRegen && (
+            <div className="relative group/regen">
+              <button
+                type="button"
+                onClick={onRegenerate}
+                disabled={!canGenerate}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span className="material-symbols-outlined text-base">{totalScenes === 0 ? 'edit_document' : 'refresh'}</span>
+                {cooldown > 0
+                  ? `Retry in ${cooldown}s`
+                  : totalScenes === 0
+                  ? 'Generate Script'
+                  : <>Regen Pending{pendingPanelCount > 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600 text-[10px] font-bold tabular-nums">{pendingPanelCount}</span>}</>}
+              </button>
+              {regenTooltip && canGenerate && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 hidden group-hover/regen:block z-50 pointer-events-none">
+                  <div className="bg-gray-900 text-white rounded-xl px-3 py-2 text-xs whitespace-nowrap shadow-xl">{regenTooltip}</div>
+                  <div className="w-2.5 h-2.5 bg-gray-900 rotate-45 mx-auto -mt-1.5" />
+                </div>
+              )}
+            </div>
+          )}
+
+          {isScriptApproved && (
+            <button
+              type="button"
+              onClick={onRevoke}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-semibold text-on-surface-variant hover:text-on-surface border border-outline-variant/20 hover:bg-surface-container transition-colors"
+            >
+              <span className="material-symbols-outlined text-base">undo</span>
+              Revoke
+            </button>
+          )}
+
+          <div className="relative group/cta">
+            <button
+              type="button"
+              onClick={allDone && !isGenerating ? onContinue : undefined}
+              disabled={!allDone || isGenerating}
+              className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all duration-300 ${
+                isGenerating
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  : allDone
+                  ? `bg-emerald-600 text-white hover:bg-emerald-700 shadow-[0_4px_14px_rgba(5,150,105,0.35)] ${pulse ? 'animate-[pulse_0.4s_ease-in-out_2]' : ''}`
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              {isGenerating ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-gray-400/30 border-t-gray-400 rounded-full animate-spin" />
+                  Processing…
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                  {allDone ? 'Approved · Continue →' : 'Approve & Continue →'}
+                </>
+              )}
+            </button>
+            {ctaTooltip && (
+              <div className="absolute bottom-full right-0 mb-2.5 hidden group-hover/cta:block z-50 pointer-events-none">
+                <div className="bg-gray-900 text-white rounded-xl px-3 py-2 text-xs whitespace-nowrap shadow-xl">{ctaTooltip}</div>
+                <div className="w-2.5 h-2.5 bg-gray-900 rotate-45 ml-auto mr-4 -mt-1.5" />
+              </div>
+            )}
           </div>
-        )}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {state >= 3 && (
-            <button type="button" onClick={onRegenerate} disabled={!canGenerate}
-              className="hidden sm:flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40">
-              <span className="material-symbols-outlined text-sm">refresh</span>
-              {cooldown > 0 ? `Retry in ${cooldown}s` : 'Regenerate'}
-            </button>
-          )}
-          {state >= 2 && (
-            <button type="button" onClick={onContinue}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all ${isApproved ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-gray-900 text-white hover:opacity-90'}`}>
-              <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
-                {isApproved ? 'check_circle' : 'arrow_forward'}
-              </span>
-              {isApproved ? 'Approved · Continue →' : 'Continue → Images'}
-            </button>
-          )}
         </div>
       </div>
     </div>
@@ -459,20 +848,21 @@ export default function Step3Script() {
   } = useComicGeneration();
 
   const [copiedKey,           setCopiedKey]           = useState<string | null>(null);
-  const [panelExpandStates,   setPanelExpandStates]   = useState<Record<string, boolean>>({});
+  const [expandedPanelKey,    setExpandedPanelKey]    = useState<string | null>(null);
+  const [approvedPanelKeys,   setApprovedPanelKeys]   = useState<Set<string>>(new Set());
   const [filterMode,          setFilterMode]          = useState<FilterMode>('all');
   const [viewMode,            setViewMode]            = useState<ViewMode>('script');
   const [navOpen,             setNavOpen]             = useState(true);
   const [showContinueWarning, setShowContinueWarning] = useState(false);
+  const [expandedPageKey,     setExpandedPageKey]     = useState<string | null>(null);
+  const [approvedPageKeys,    setApprovedPageKeys]    = useState<Set<string>>(new Set());
+  const lastScriptRef = useRef<string | null>(null);
 
   const handleCopyPrompt = useCallback(async (key: string, text: string) => {
     await navigator.clipboard.writeText(text);
     setCopiedKey(key);
     setTimeout(() => setCopiedKey((prev) => (prev === key ? null : prev)), 2000);
   }, []);
-
-  const isPanelExpanded = useCallback((key: string) => panelExpandStates[key] !== false, [panelExpandStates]);
-  const togglePanel = useCallback((key: string) => setPanelExpandStates((prev) => ({ ...prev, [key]: !isPanelExpanded(key) })), [isPanelExpanded]);
 
   const cooldown     = getCooldownSeconds(3);
   const isGenerating = step3.isLoading;
@@ -491,10 +881,10 @@ export default function Step3Script() {
   const hasContent   = totalPanels > 0;
   const isApproved   = state === 4;
 
-  const allPanelKeys = useMemo(() => {
+  const allPageKeys = useMemo(() => {
     const keys: string[] = [];
-    for (const c of chapters) for (const p of c.pages) for (const pan of p.panels)
-      keys.push(`${c.chapterNumber}-${p.pageNumber}-${pan.panelNumber}`);
+    for (const c of chapters) for (const p of c.pages)
+      keys.push(`${c.chapterNumber}-${p.pageNumber}`);
     return keys;
   }, [chapters]);
 
@@ -502,60 +892,129 @@ export default function Step3Script() {
     chapters.reduce((s, c) => c.pages.reduce((ps, p) => ps + p.panels.filter((pan) => pan.prompt).length, s), 0),
     [chapters]);
 
-  const collapseAll = useCallback(() => { const n: Record<string, boolean> = {}; allPanelKeys.forEach((k) => { n[k] = false; }); setPanelExpandStates(n); if (viewMode === 'compact') setViewMode('script'); }, [allPanelKeys, viewMode]);
-  const expandAll   = useCallback(() => { const n: Record<string, boolean> = {}; allPanelKeys.forEach((k) => { n[k] = true; });  setPanelExpandStates(n); if (viewMode === 'compact') setViewMode('script'); }, [allPanelKeys, viewMode]);
+  const approvedScenes   = isApproved ? allPageKeys.length : approvedPageKeys.size;
+  const totalScenes      = allPageKeys.length;
+  const hasPendingPanels = panelsWithPrompts < totalPanels;
+
+  // Auto-expand first page + first panel when script first loads or regenerates
+  useEffect(() => {
+    const scriptId = step3.data?.scriptMarkdown ?? null;
+    if (scriptId !== lastScriptRef.current) {
+      lastScriptRef.current = scriptId;
+      if (chapters.length > 0 && chapters[0].pages.length > 0) {
+        const firstPage  = chapters[0].pages[0];
+        const firstPageK = `${chapters[0].chapterNumber}-${firstPage.pageNumber}`;
+        setExpandedPageKey(firstPageK);
+        setApprovedPageKeys(new Set());
+        setApprovedPanelKeys(new Set());
+        if (firstPage.panels.length > 0) {
+          setExpandedPanelKey(`${chapters[0].chapterNumber}-${firstPage.pageNumber}-${firstPage.panels[0].panelNumber}`);
+        }
+      }
+    }
+  }, [step3.data, chapters]);
+
+  // approvePanel: mark panel done, open next un-approved panel (or first of next page)
+  const approvePanel = useCallback((panelKey: string) => {
+    setApprovedPanelKeys((prev) => new Set([...prev, panelKey]));
+    const [cNum, pNum] = panelKey.split('-').map(Number);
+    const chapter = chapters.find((c) => c.chapterNumber === cNum);
+    const page    = chapter?.pages.find((p) => p.pageNumber === pNum);
+    if (!page) return;
+
+    // Find next un-approved panel on same page
+    const panelIdx = page.panels.findIndex((p) => p.panelNumber === Number(panelKey.split('-')[2]));
+    const nextOnPage = page.panels.slice(panelIdx + 1).find((p) => {
+      const k = `${cNum}-${pNum}-${p.panelNumber}`;
+      return !approvedPanelKeys.has(k) && k !== panelKey;
+    });
+    if (nextOnPage) {
+      setExpandedPanelKey(`${cNum}-${pNum}-${nextOnPage.panelNumber}`);
+      return;
+    }
+
+    // All panels on this page done → mark page approved, move to next page
+    const pageKey = `${cNum}-${pNum}`;
+    setApprovedPageKeys((prev) => new Set([...prev, pageKey]));
+    const pageIdx = allPageKeys.indexOf(pageKey);
+    const nextPageKey = allPageKeys[pageIdx + 1];
+    if (nextPageKey) {
+      setExpandedPageKey(nextPageKey);
+      const [nc, np] = nextPageKey.split('-').map(Number);
+      const nextChapter = chapters.find((c) => c.chapterNumber === nc);
+      const nextPage    = nextChapter?.pages.find((p) => p.pageNumber === np);
+      if (nextPage && nextPage.panels.length > 0) {
+        setExpandedPanelKey(`${nc}-${np}-${nextPage.panels[0].panelNumber}`);
+      }
+    } else {
+      setExpandedPanelKey(null);
+    }
+  }, [chapters, allPageKeys, approvedPanelKeys]);
+
+  const collapseAll = useCallback(() => {
+    setExpandedPageKey(null);
+    if (viewMode === 'compact') setViewMode('script');
+  }, [viewMode]);
+
+  const expandAll = useCallback(() => {
+    setExpandedPageKey('ALL');
+    if (viewMode === 'compact') setViewMode('script');
+  }, [viewMode]);
 
   const scrollToPanel = useCallback((key: string) => {
-    const el = document.getElementById(`panel-${key}`);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const parts = key.split('-');
+    const pageKey = `${parts[0]}-${parts[1]}`;
+    setExpandedPageKey(pageKey);
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`panel-${key}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName ?? '';
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+      const idx = allPageKeys.indexOf(expandedPageKey ?? '');
+      if (e.key === 'ArrowDown' && !e.shiftKey && idx < allPageKeys.length - 1) {
+        e.preventDefault(); setExpandedPageKey(allPageKeys[idx + 1]);
+      } else if (e.key === 'ArrowUp' && !e.shiftKey && idx > 0) {
+        e.preventDefault(); setExpandedPageKey(allPageKeys[idx - 1]);
+      } else if (e.shiftKey && e.key === 'A' && expandedPageKey && expandedPageKey !== 'ALL' && (state === 3 || state === 5)) {
+        e.preventDefault();
+        setApprovedPageKeys((p) => new Set([...p, expandedPageKey]));
+        const next = allPageKeys[idx + 1];
+        setExpandedPageKey(next ?? null);
+      } else if (e.shiftKey && e.key === 'R' && canGenerate) {
+        e.preventDefault(); handleGenerate(3);
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [allPageKeys, expandedPageKey, state, canGenerate, handleGenerate]);
 
   const handleContinue = useCallback(() => {
     if (isApproved) { setActiveStep(4); return; }
-    const pendingPanels = totalPanels - panelsWithPrompts;
-    if (pendingPanels > 0) { setShowContinueWarning(true); return; }
+    if (hasPendingPanels) { setShowContinueWarning(true); return; }
     handleApprove(3);
     setActiveStep(4);
-  }, [isApproved, totalPanels, panelsWithPrompts, handleApprove, setActiveStep]);
+  }, [isApproved, hasPendingPanels, handleApprove, setActiveStep]);
 
   return (
     <section className="text-on-surface space-y-4 pb-20">
 
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-on-surface">Panel Script</h2>
-          <p className="text-sm text-on-surface-variant mt-1">Full page-by-page, panel-by-panel script for image generation</p>
-        </div>
-        <StateBadge state={state} />
-      </div>
-
-      {/* ── Global action bar ── */}
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={() => handleGenerate(3)} disabled={!canGenerate}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all ${!canGenerate ? 'bg-surface-container text-on-surface-variant cursor-not-allowed opacity-50' : state >= 3 ? 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest' : 'bg-primary text-on-primary hover:opacity-90'}`}>
-          <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>{isGenerating ? 'hourglass_empty' : state >= 3 ? 'refresh' : 'edit_document'}</span>
-          {isGenerating ? 'Generating…' : cooldown > 0 ? `Retry in ${cooldown}s` : state >= 3 ? 'Regenerate script' : 'Generate script'}
-        </button>
-        {(state === 3 || state === 5) && (
-          <button type="button" onClick={() => handleApprove(3)} className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-primary text-on-primary hover:opacity-90 transition-opacity">
-            <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>Approve script
-          </button>
-        )}
-        {state === 4 && (
-          <button type="button" onClick={() => handleRevokeApproval(3)} className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-surface-container-high text-on-surface-variant hover:text-on-surface transition-colors">
-            <span className="material-symbols-outlined text-base">undo</span>Revoke approval
-          </button>
-        )}
-        {step3.error && <button type="button" onClick={() => handleRetry(3)} className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 transition-colors"><span className="material-symbols-outlined text-base">replay</span>Retry</button>}
-        {step3.error && <span className="text-sm text-red-500">{step3.error}</span>}
+      <div>
+        <h2 className="text-2xl font-bold text-on-surface">Panel Script</h2>
+        <p className="text-sm text-on-surface-variant mt-1">Full page-by-page, panel-by-panel script for image generation</p>
       </div>
 
       {/* ── Streaming ── */}
       {state === 2 && step3.streamingText && (
         <div className="rounded-3xl bg-surface-container-low border border-outline-variant/10 p-6">
           <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-4 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />Live script stream</p>
-          <pre className="text-xs text-on-surface leading-relaxed whitespace-pre-wrap font-mono overflow-x-auto">{step3.streamingText}</pre>
+          <Markdown className="text-xs">{step3.streamingText}</Markdown>
         </div>
       )}
 
@@ -589,21 +1048,20 @@ export default function Step3Script() {
           </div>
 
           {/* Two-column: Nav + Content */}
-          <div className="flex gap-4 items-start">
+          <div className="flex gap-4">
             {navOpen && (
               <div className="flex-shrink-0 w-[280px]">
-                <div className="sticky top-14 rounded-xl border border-outline-variant/10 bg-surface-container-lowest overflow-hidden max-h-[calc(100vh-9rem)] flex flex-col">
-                  <NavPanel chapters={chapters} filterMode={filterMode} onFilterChange={setFilterMode} isScriptApproved={isApproved} onScrollTo={scrollToPanel} />
+                <div className="sticky top-20 rounded-xl border border-outline-variant/10 bg-surface-container-lowest overflow-hidden flex flex-col" style={{ height: 'calc(100vh - 12rem)' }}>
+                  <NavPanel chapters={chapters} filterMode={filterMode} onFilterChange={setFilterMode} isScriptApproved={isApproved} activePageKey={expandedPageKey} onScrollTo={scrollToPanel} />
                 </div>
               </div>
             )}
 
             <div className="flex-1 min-w-0">
               {/* Sticky toolbar */}
-              <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm border-b border-outline-variant/10 -mx-1 px-1 mb-4">
-                <Toolbar filterMode={filterMode} onFilterChange={setFilterMode} viewMode={viewMode} onViewModeChange={setViewMode}
-                  onCollapseAll={collapseAll} onExpandAll={expandAll}
-                  onApproveAll={() => { if (state === 3 || state === 5) handleApprove(3); }} canApprove={state === 3 || state === 5} />
+              <div className="sticky top-16 z-20 bg-white/95 backdrop-blur-sm border-b border-outline-variant/10 -mx-1 px-1 mb-4">
+                <Toolbar viewMode={viewMode} onViewModeChange={setViewMode}
+                  onCollapseAll={collapseAll} onExpandAll={expandAll} />
               </div>
 
               {/* Chapters / Pages / Panels */}
@@ -612,31 +1070,73 @@ export default function Step3Script() {
                   {chapters.map((chapter) => (
                     <div key={chapter.chapterNumber}>
                       {showChapters && <ChapterHeading chapter={chapter} />}
-                      <div className={showChapters ? 'mt-4 space-y-5' : 'space-y-5'}>
-                        {chapter.pages.map((page) => (
-                          <div key={page.pageNumber} className="relative">
-                            <PageHeading page={page} />
-                            <div className="mt-3 space-y-3">
-                              {page.panels.filter((pan) => matchesFilter(pan, filterMode, isApproved)).map((panel) => {
+                      <div className={showChapters ? 'mt-4 space-y-2' : 'space-y-2'}>
+                        {chapter.pages.map((page) => {
+                          const pageKey = `${chapter.chapterNumber}-${page.pageNumber}`;
+                          const pageIsExpanded = expandedPageKey === 'ALL' || expandedPageKey === pageKey;
+                          const pageIsApproved = approvedPageKeys.has(pageKey);
+                          const allPanelsOnPageApproved = page.panels.length > 0 &&
+                            page.panels.every((pan) => {
+                              const k = `${chapter.chapterNumber}-${page.pageNumber}-${pan.panelNumber}`;
+                              return isApproved || approvedPanelKeys.has(k);
+                            });
+                          return (
+                            <SceneAccordion
+                              key={page.pageNumber}
+                              chapter={chapter} page={page}
+                              isExpanded={pageIsExpanded}
+                              isApprovedLocally={pageIsApproved}
+                              isScriptApproved={isApproved}
+                              allPanelsApproved={allPanelsOnPageApproved}
+                              onToggle={() => {
+                                const opening = expandedPageKey !== pageKey;
+                                setExpandedPageKey((prev) => (prev === pageKey ? null : pageKey));
+                                if (opening && page.panels.length > 0) {
+                                  // Auto-expand first un-approved panel, or first panel
+                                  const firstUnApproved = page.panels.find((pan) => {
+                                    const k = `${chapter.chapterNumber}-${page.pageNumber}-${pan.panelNumber}`;
+                                    return !approvedPanelKeys.has(k) && !isApproved;
+                                  });
+                                  const target = firstUnApproved ?? page.panels[0];
+                                  setExpandedPanelKey(`${chapter.chapterNumber}-${page.pageNumber}-${target.panelNumber}`);
+                                }
+                              }}
+                              onApproveLocal={() => {
+                                setApprovedPageKeys((p) => new Set([...p, pageKey]));
+                                const next = allPageKeys[allPageKeys.indexOf(pageKey) + 1];
+                                setExpandedPageKey(next ?? null);
+                              }}
+                              onRegen={() => { if (canGenerate) handleGenerate(3); }}
+                              canApprove={state === 3 || state === 5}
+                            >
+                              {page.panels.filter((pan) => matchesFilter(pan, filterMode, isApproved, approvedPanelKeys.has(`${chapter.chapterNumber}-${page.pageNumber}-${pan.panelNumber}`))).map((panel) => {
                                 const key = `${chapter.chapterNumber}-${page.pageNumber}-${panel.panelNumber}`;
                                 return (
-                                  <PanelCard key={key} panel={panel} chapterNumber={chapter.chapterNumber} pageNumber={page.pageNumber}
-                                    panelKey={key} isExpanded={isPanelExpanded(key)} onToggle={() => togglePanel(key)}
-                                    viewMode={viewMode} isScriptApproved={isApproved}
-                                    copiedKey={copiedKey} onCopyPrompt={handleCopyPrompt}
-                                    onApproveScript={() => { if (state === 3 || state === 5) handleApprove(3); }} />
+                                  <PanelCard
+                                    key={key} panel={panel}
+                                    chapterNumber={chapter.chapterNumber} pageNumber={page.pageNumber}
+                                    panelKey={key}
+                                    isExpanded={expandedPanelKey === key}
+                                    onToggle={() => setExpandedPanelKey((prev) => (prev === key ? null : key))}
+                                    viewMode={viewMode}
+                                    isScriptApproved={isApproved}
+                                    isApprovedLocally={approvedPanelKeys.has(key)}
+                                    copiedKey={copiedKey}
+                                    onCopyPrompt={handleCopyPrompt}
+                                    onApprovePanelLocally={() => approvePanel(key)}
+                                  />
                                 );
                               })}
-                            </div>
-                          </div>
-                        ))}
+                            </SceneAccordion>
+                          );
+                        })}
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 p-5">
-                  <pre className="text-xs text-on-surface leading-relaxed whitespace-pre-wrap font-mono overflow-x-auto">{step3.data.scriptMarkdown}</pre>
+                  <Markdown>{step3.data.scriptMarkdown}</Markdown>
                 </div>
               )}
             </div>
@@ -645,18 +1145,24 @@ export default function Step3Script() {
       )}
 
       {/* ── Bottom bar ── */}
-      {state >= 2 && (
-        <ScriptBottomBar
-          state={state} totalPanels={totalPanels} panelsWithPrompts={panelsWithPrompts} isApproved={isApproved}
-          canGenerate={canGenerate} cooldown={cooldown}
-          onPrevious={() => setActiveStep(2)}
-          onContinue={handleContinue}
-          onRegenerate={() => handleGenerate(3)}
-          showContinueWarning={showContinueWarning}
-          onConfirmContinue={() => { setShowContinueWarning(false); setActiveStep(4); }}
-          onCancelContinue={() => setShowContinueWarning(false)}
-        />
-      )}
+      <ScriptBottomBar
+        isGenerating={isGenerating}
+        approvedScenes={approvedScenes}
+        totalScenes={totalScenes}
+        pendingPanelCount={totalPanels - panelsWithPrompts}
+        canGenerate={canGenerate}
+        cooldown={cooldown}
+        error={step3.error ?? null}
+        isScriptApproved={isApproved}
+        onPrevious={() => setActiveStep(2)}
+        onContinue={handleContinue}
+        onRegenerate={() => handleGenerate(3)}
+        onRetry={() => handleRetry(3)}
+        onRevoke={() => handleRevokeApproval(3)}
+        showContinueWarning={showContinueWarning}
+        onConfirmContinue={() => { setShowContinueWarning(false); setActiveStep(4); }}
+        onCancelContinue={() => setShowContinueWarning(false)}
+      />
     </section>
   );
 }

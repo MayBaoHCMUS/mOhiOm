@@ -1,3 +1,113 @@
+## SESSION: 2026-06-10
+
+### 🎯 CONTEXT — Step 2 Character Designs UI polish + Step 3 Panel Script full rewrite
+
+All work this session is in:
+- `frontend/src/components/studio-steps/Step2Characters.tsx`
+- `frontend/src/components/studio-steps/Step3Script.tsx`
+
+---
+
+### ✅ COMPLETED
+
+#### Step 2 Characters — UI redesign
+
+**Typography & readability (`CharacterDesignInfo`)**
+- Character name: `text-[20px] font-bold text-primary`, subtitle: `text-[14px] font-medium text-on-surface-variant`
+- Section labels: `text-[11px] font-semibold uppercase text-[#888] letterSpacing: 0.08em`
+- Section content: `text-[13px] text-[#444] leading-[1.6]`, wrapper `max-w-[520px]`
+- Chip extraction from Physical/Outfit sections: `split(/[,;·•]+/)` → filter ≤30 chars, 1–5 words → show as pills when ≥2 found
+- Dark AI prompt code block: `bg-[#1e1e1e]` pre, `bg-[#2d2d2d]` toolbar, copy button with `check` / `content_copy` icon toggle
+
+**Accordion list spacing:** `space-y-2` → `space-y-4` (16px between character cards)
+
+**Header summary status bar:**
+- Shows `N Character(s)` + colored dot indicators: emerald `Approved`, blue `Generated`, gray `Pending`
+- Computed from `approvedCount`, `generatedCount` (candidates but not approved), `noCandidatesCount`
+
+**`ApprovalProgressBadge` component (references tab, top-right):**
+- Shows `Approved N/total characters` with check_circle / pending icon
+- Progress bar: `bg-emerald-500` when all done, `bg-primary/60` otherwise
+
+**Global toolbar (references tab) grouped into single pill container:**
+- `Regenerate All (primary) | From Library | Reset` with `|` dividers inside one `rounded-2xl border bg-surface-container` wrapper
+
+**Sticky bottom bar redesign:**
+- Completion dots: colored circles per character (emerald = approved, blue = generated, gray = pending) + `N/total` counter
+- `Revoke` button moved inline to bottom bar (designs tab only, state 4)
+- Regenerate button shown only on designs tab
+
+#### Step 3 Panel Script — full rewrite (`Step3Script.tsx`, ~370 lines)
+
+**Parser:**
+- `parseScript(md)` — state machine with 5 modes (description/dialogue/prompt/layout/none)
+- Handles `Chapter N`, `Page N`, `Panel N` headers; `Layout Summary:`, `AI Image Prompt:`, `Dialogue/SFX:` labels
+- Fallback to raw `<pre>` if no page/panel markers found
+- Produces `ParsedChapter[] → ParsedPage[] → ParsedPanel[]`
+
+**Components:**
+- `StatusDot` — emerald check_circle (approved), blue filled circle (generated), gray ring (pending)
+- `PromptBlock` — `bg-[#1E1E2E]` / `text-[#A8B4FF]` code block with `bg-[#2D2D4E]` toolbar and copy button
+- `DialogueLines` — speech (left border `border-primary/30`, italic, speaker bold), SFX (`text-[#FF6B00]` monospace), caption (gray italic)
+- `ChapterHeading` — `CH.N` badge `bg-primary`, `text-[18px] font-bold`, `bg-primary/10` container
+- `PageHeading` — `text-[15px] font-semibold`, `border-l-[3px] border-[#CBD5E1]`, `sticky top-[2.5rem] z-10 bg-white`
+- `PanelCard` — 2-column layout (Script: white | Image Prompt: `bg-[#F8F9FF]`), CSS grid accordion animation (`grid-rows-[0fr]` ↔ `grid-rows-[1fr]`), per-panel Regen/Edit/Copy/Approve footer
+
+**Left nav panel (280px):**
+- Tree view: Chapter → Page → Panel with collapse toggles
+- `StatusDot` per panel; filter pills (All / Pending / Ready / Approved) sync with main content
+- Non-matching panels dimmed (`opacity-30`); clicking scrolls via `document.getElementById`
+
+**Toolbar (sticky below page title):**
+- Collapse All / Expand All pills
+- Filter select (synced with nav panel filter)
+- Disabled "Regen Pending" stub
+- "Approve All" button (active when state 3 or 5)
+- 4-way View Mode toggle: Script | Prompts | Dialogue | Compact
+
+**Bottom navigation bar (`ScriptBottomBar`, fixed):**
+- `fixed bottom-0 right-0 style={{ left: 'var(--studio-sidebar-width, 0)' }}`
+- Left: `← Previous Step` → `setActiveStep(2)`
+- Center: progress bar (`X Generated · Y Pending — Z%`) turns emerald when approved
+- Right: Regenerate button (disabled during cooldown, shows countdown) + `Continue → Images` button
+- Continue warning popover if pending panels > 0 ("continue anyway?" with Cancel / Continue Anyway)
+
+**Removed (user requested, too over-designed):**
+- `GlobalRulesBanner` — collapsible scripting rules banner at top of page
+- `RulesSlideOver` — fixed 400px slide-over panel for rules
+- Floating "Rules" tab button pinned to right edge
+- `SummaryDrawer` — slide-up table with chapter/page/panel stats
+- Floating "📊 Summary" button
+- `parsePreamble`, `parsePreambleIntoSections`, `DEFAULT_RULES`, `PageSummaryRow`, `handleExportJSON`
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/components/studio-steps/Step2Characters.tsx` — UI polish: typography, chips, status bar, progress badge, toolbar pill, bottom bar redesign
+- `frontend/src/components/studio-steps/Step3Script.tsx` — **full rewrite**: structured panel cards, nav panel, toolbar, bottom bar (~370 lines final)
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- `parsePanelStatus`: `undefined` key in `panelExpandStates` means expanded (truthy default), avoids needing an init effect
+- ViewMode `compact` overrides `isExpanded` locally in `PanelCard` without modifying stored state — switching back restores previous expand states
+- Filter in nav dims non-matching panels (structural nav preserved); filter in toolbar hides panels entirely from main content
+- `setActiveStep(2)` = go to Step 2 (Character Designs), `setActiveStep(4)` = go to Step 4 (Image Generation) from Step 3
+- TypeScript strict-mode check (`npx tsc --noEmit`) passes with zero errors after all changes
+
+---
+
+### 🎯 NEXT STEPS
+
+1. **Test Step 3 parser with real backend output** — verify `parseScript` correctly detects Chapter/Page/Panel headers from actual Gemini script markdown
+2. **Step 4 Generation** — connect Step 3 `Continue → Images` to actual Step 4 generation flow
+3. **Panel-level regeneration** — currently stubbed as disabled; implement per-panel regen when backend supports it
+4. **Inline panel editing** — "Edit" button in each PanelCard footer is currently disabled stub
+
+---
+
 ## SESSION: 2026-06-09
 
 ### 🎯 CONTEXT — Step 2 Characters: Full streaming accordion rewrite + earlier UI fixes

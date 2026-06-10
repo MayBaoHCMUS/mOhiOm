@@ -143,7 +143,7 @@ function WizardContent() {
       </main>
 
       {/* Sticky bottom navigation bar — hidden on steps that own their action bar */}
-      {activeStep !== 1 && activeStep !== 2 && <div className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
+      {activeStep !== 1 && activeStep !== 2 && activeStep !== 3 && activeStep !== 4 && <div className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
         style={{ left: 'var(--studio-sidebar-width)' }}>
         <div className="px-10 py-4 max-w-6xl mx-auto flex items-center justify-between">
           {/* Previous Step — hidden on Step 1, ghost on Steps 2–5 */}
