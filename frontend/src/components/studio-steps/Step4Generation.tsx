@@ -3,10 +3,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
-import ImageGenModePanel from '@/components/studio-steps/ImageGenModePanel';
+import type { Step4Panel } from '@/context/ComicGenerationContext';
 import ProjectsDrawer from '@/components/ProjectsDrawer';
+import Markdown from '@/components/Markdown';
 
-type ViewMode = 'page' | 'grid' | 'list';
 type State = 1 | 2 | 3 | 4 | 5;
 
 // ── State badge ──────────────────────────────────────────────────────────────
@@ -126,10 +126,10 @@ function PanelImageArea({
         <Image src={imageUrl} alt={label} fill className="object-cover" unoptimized />
         <div className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity duration-200 flex items-end justify-center pb-4 gap-2">
           <button type="button" className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-white/20 text-white text-xs font-semibold backdrop-blur-sm hover:bg-white/30 transition-colors">
-            🔍 Xem full
+            🔍 View full
           </button>
           <button type="button" onClick={onRegenerate} className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-white/20 text-white text-xs font-semibold backdrop-blur-sm hover:bg-white/30 transition-colors">
-            ↺ Vẽ lại
+            ↺ Redraw
           </button>
           <button type="button" className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500/80 text-white text-xs font-semibold backdrop-blur-sm hover:bg-emerald-600/80 transition-colors">
             ✓
@@ -144,11 +144,11 @@ function PanelImageArea({
     return (
       <div className="rounded-lg aspect-video border-2 border-dashed border-[#FCA5A5] bg-[#FEF2F2] flex flex-col items-center justify-center gap-2">
         <span className="text-[#EF4444] text-2xl">⚠</span>
-        <p className="text-xs text-[#EF4444] font-medium">Không thể tạo ảnh</p>
+        <p className="text-xs text-[#EF4444] font-medium">Image generation failed</p>
         {error && <p className="text-[10px] text-red-400 max-w-[80%] text-center truncate">{error}</p>}
         <button type="button" onClick={onRegenerate}
           className="mt-1 flex items-center gap-1 px-3 py-1 rounded-full border border-[#EF4444] text-[#EF4444] text-xs font-semibold hover:bg-red-50 transition-colors">
-          ↺ Thử lại
+          ↺ Retry
         </button>
       </div>
     );
@@ -162,13 +162,13 @@ function PanelImageArea({
         <div className="absolute inset-0 opacity-[0.04] pointer-events-none"
           style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")" }} />
         <span className="w-8 h-8 border-[3px] border-[#4F46E5]/30 border-t-[#4F46E5] rounded-full animate-spin" />
-        <p className="text-xs text-[#4F46E5] font-semibold">Đang vẽ...</p>
+        <p className="text-xs text-[#4F46E5] font-semibold">Generating...</p>
         <div className="flex items-center gap-2">
           <div className="h-1.5 w-20 rounded-full bg-[#4F46E5]/20 overflow-hidden">
             <div className="h-full rounded-full bg-[#4F46E5] transition-[width] duration-1000"
               style={{ width: `${pct}%` }} />
           </div>
-          <span className="text-[10px] text-[#6366F1]">~{estRemaining}s còn lại</span>
+          <span className="text-[10px] text-[#6366F1]">~{estRemaining}s remaining</span>
         </div>
       </div>
     );
@@ -188,8 +188,8 @@ function PanelImageArea({
   return (
     <div className="rounded-lg aspect-video border-2 border-dashed border-[#CBD5E1] bg-[#F1F5F9] flex flex-col items-center justify-center gap-1">
       <span className="w-5 h-5 rounded-full border-2 border-[#94A3B8] flex-shrink-0" />
-      <p className="text-xs text-[#94A3B8] font-medium">Panel đang chờ xử lý</p>
-      <p className="text-[10px] text-[#94A3B8]">#{queuePosition + 1} trong hàng đợi</p>
+      <p className="text-xs text-[#94A3B8] font-medium">Panel queued</p>
+      <p className="text-[10px] text-[#94A3B8]">#{queuePosition + 1} in queue</p>
     </div>
   );
 }
@@ -199,7 +199,7 @@ function StatsBar({ total, success, loading: load, error }: { total: number; suc
   return (
     <div className="grid grid-cols-4 gap-3">
       {[
-        { label: 'Total', value: total, color: 'text-on-surface' },
+        { label: 'Pages', value: total, color: 'text-on-surface' },
         { label: 'Done', value: success, color: 'text-emerald-500' },
         { label: 'Generating', value: load, color: 'text-blue-500' },
         { label: 'Errors', value: error, color: 'text-red-500' },
@@ -235,34 +235,6 @@ function SegmentedProgressBar({ total, success, error, loading, height = 12 }: {
       )}
       <div className="absolute top-0 left-0 h-full rounded-l-full transition-all duration-500 bg-emerald-500"
         style={{ width: `${sPct}%` }} />
-    </div>
-  );
-}
-
-// ── View mode toggle ─────────────────────────────────────────────────────────
-function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
-  const opts: { key: ViewMode; icon: string; label: string }[] = [
-    { key: 'page', icon: 'auto_stories', label: 'Page' },
-    { key: 'grid', icon: 'grid_view', label: 'Grid' },
-    { key: 'list', icon: 'view_list', label: 'List' },
-  ];
-  return (
-    <div className="flex items-center gap-1 bg-surface-container-low rounded-full p-1">
-      {opts.map((o) => (
-        <button
-          key={o.key}
-          type="button"
-          onClick={() => onChange(o.key)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-            mode === o.key
-              ? 'bg-primary text-on-primary'
-              : 'text-on-surface-variant hover:text-on-surface'
-          }`}
-        >
-          <span className="material-symbols-outlined text-sm">{o.icon}</span>
-          {o.label}
-        </button>
-      ))}
     </div>
   );
 }
@@ -374,55 +346,53 @@ function ExportPanel({
   );
 }
 
-// ── Panel card used in grid + list view ──────────────────────────────────────
-function PanelItem({
-  panel,
-  panelState,
-  viewMode,
-  queuePosition,
-  onRegenerate,
-}: {
-  panel: { id: string; contextLabel: string; dialogueSfx: string; aiImagePrompt: string };
-  panelState: { status: string; imageUrl: string | null; error: string | null } | undefined;
-  viewMode: 'grid' | 'list';
-  queuePosition: number;
-  onRegenerate: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const status = panelState?.status ?? 'idle';
 
-  if (viewMode === 'grid') {
+
+// Strip leading/trailing markdown bold markers the LLM sometimes wraps field values in
+function stripBold(s: string) {
+  return s.replace(/^\*{1,3}\s*/, '').replace(/\s*\*{1,3}$/, '').trim();
+}
+
+// ── Prompt display: dims the shared art-style prefix, highlights unique content ──
+function PromptDisplay({ prompt, artStyle }: { prompt: string; artStyle: string }) {
+  const style = artStyle.trim().replace(/\.$/, '');
+  const lower = prompt.toLowerCase();
+  const styleLen = style.toLowerCase().length;
+  if (style && lower.startsWith(style.toLowerCase())) {
+    // advance past the style prefix and any trailing punctuation/comma/space
+    let end = styleLen;
+    while (end < prompt.length && /[,.\s]/.test(prompt[end])) end++;
+    const prefix = prompt.slice(0, end);
+    const rest = prompt.slice(end);
     return (
-      <div className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden">
-        <div className="p-2">
-          <PanelImageArea
-            status={status}
-            imageUrl={panelState?.imageUrl ?? null}
-            error={panelState?.error ?? null}
-            queuePosition={queuePosition}
-            label={panel.contextLabel}
-            onRegenerate={onRegenerate}
-          />
-        </div>
-        <div className="px-3 pb-3 flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold text-on-surface truncate">{panel.contextLabel}</p>
-          <PanelHeaderBadge status={status} />
-        </div>
-      </div>
+      <p className="text-[11px] leading-relaxed font-mono">
+        <span className="text-outline-variant">{prefix}{rest ? ',' : ''}</span>
+        {rest && <span className="text-on-surface-variant"> {rest}</span>}
+      </p>
     );
   }
+  return <p className="text-[11px] text-on-surface-variant leading-relaxed font-mono">{prompt}</p>;
+}
 
-  // List view
+// ── Compact script card for page view (no image area) ────────────────────────
+function PanelScriptCard({ panel, artStyle }: { panel: Step4Panel; artStyle: string }) {
+  const [open, setOpen] = useState(false);
+  const shotType = panel.shotType ? stripBold(panel.shotType) : null;
+  const dialogue = panel.dialogueSfx ? stripBold(panel.dialogueSfx) : '';
+  const prompt = stripBold(panel.aiImagePrompt);
   return (
-    <div className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden">
+    <div className="rounded-xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left"
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-surface-container transition-colors"
       >
-        <PanelStatusDot status={status} />
-        <span className="text-sm font-semibold text-on-surface flex-1 truncate">{panel.contextLabel}</span>
-        <PanelHeaderBadge status={status} />
+        <span className="text-[11px] font-bold text-on-surface truncate flex-1">{panel.contextLabel}</span>
+        {shotType && (
+          <span className="px-2 py-0.5 rounded-full bg-surface-container text-[10px] font-bold text-on-surface-variant uppercase tracking-wide flex-shrink-0">
+            {shotType}
+          </span>
+        )}
         <span
           className="material-symbols-outlined text-sm text-on-surface-variant transition-transform flex-shrink-0"
           style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
@@ -431,25 +401,19 @@ function PanelItem({
         </span>
       </button>
       {open && (
-        <div className="px-4 pb-4 space-y-3">
-          <PanelImageArea
-            status={status}
-            imageUrl={panelState?.imageUrl ?? null}
-            error={panelState?.error ?? null}
-            queuePosition={queuePosition}
-            label={panel.contextLabel}
-            onRegenerate={onRegenerate}
-          />
-          {panel.dialogueSfx && (
+        <div className="px-3 pb-3 space-y-2.5 border-t border-outline-variant/10 pt-2.5">
+          {dialogue && dialogue !== 'No dialogue/SFX provided.' && (
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Dialogue / SFX</p>
-              <p className="text-sm text-on-surface-variant">{panel.dialogueSfx}</p>
+              <Markdown className="[&_p]:text-[12px] [&_p]:text-on-surface [&_p]:leading-relaxed [&_p]:mb-1 [&_p]:last:mb-0">{dialogue}</Markdown>
             </div>
           )}
-          <div className="rounded-xl bg-surface-container-low p-3">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Image prompt</p>
-            <p className="text-xs text-on-surface-variant leading-relaxed whitespace-pre-wrap">{panel.aiImagePrompt}</p>
-          </div>
+          {prompt && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Image Prompt</p>
+              <PromptDisplay prompt={prompt} artStyle={artStyle} />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -529,26 +493,26 @@ function PreviewModal({ pages, onClose }: {
 
   const page = pages[idx];
   return (
-    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/85">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90">
       <button type="button" onClick={onClose}
         className="absolute top-5 right-5 text-white/60 hover:text-white transition-colors z-10">
         <span className="material-symbols-outlined text-3xl">close</span>
       </button>
       <button type="button" onClick={() => setIdx((i) => Math.max(0, i - 1))} disabled={idx === 0}
-        className="absolute left-5 text-white/60 hover:text-white disabled:opacity-20 transition-colors">
+        className="absolute left-5 top-1/2 -translate-y-1/2 text-white/60 hover:text-white disabled:opacity-20 transition-colors">
         <span className="material-symbols-outlined text-5xl">chevron_left</span>
       </button>
-      <div className="flex flex-col items-center gap-3 px-20 max-h-screen py-8">
+      <div className="flex flex-col items-center gap-3 px-20 py-6 w-full h-full justify-center">
         {page && (
           <Image src={page.imageUrl} alt={`Page ${page.pageNumber}`}
             width={800} height={1100}
-            className="max-h-[80vh] w-auto rounded-xl shadow-2xl object-contain"
+            className="max-h-[90vh] w-auto rounded-xl shadow-2xl object-contain"
             unoptimized />
         )}
         <p className="text-white/50 text-sm">{idx + 1} / {pages.length}</p>
       </div>
       <button type="button" onClick={() => setIdx((i) => Math.min(pages.length - 1, i + 1))} disabled={idx === pages.length - 1}
-        className="absolute right-5 text-white/60 hover:text-white disabled:opacity-20 transition-colors">
+        className="absolute right-5 top-1/2 -translate-y-1/2 text-white/60 hover:text-white disabled:opacity-20 transition-colors">
         <span className="material-symbols-outlined text-5xl">chevron_right</span>
       </button>
     </div>
@@ -582,9 +546,9 @@ function ExportModal({
       <div className="relative bg-white rounded-3xl shadow-2xl p-8 max-w-lg w-full space-y-6 animate-slide-down">
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">📦 Xuất truyện tranh</h2>
+            <h2 className="text-xl font-bold text-gray-900">📦 Export Comic</h2>
             <p className="text-sm text-gray-400 mt-0.5">
-              {panelCount} panels · {pageCount} trang · {chapterCount} chương
+              {panelCount} panels · {pageCount} pages · {chapterCount} chapters
             </p>
           </div>
           <button type="button" onClick={onClose}
@@ -633,11 +597,11 @@ function ExportModal({
         <div className="pt-2 border-t border-gray-100 flex gap-3">
           <button type="button" onClick={onClose}
             className="flex-1 px-4 py-2.5 rounded-full border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
-            Đóng
+            Close
           </button>
           <button type="button" onClick={() => { onMarkComplete(); onClose(); }}
             className="flex-1 px-4 py-2.5 rounded-full bg-gray-900 text-white text-sm font-bold hover:opacity-90 transition-opacity">
-            ✓ Đánh dấu hoàn thành
+            ✓ Mark Complete
           </button>
         </div>
       </div>
@@ -667,17 +631,17 @@ export default function Step4Generation() {
     saveToCloud,
     cloudSaveStatus,
     cloudSaveError,
+    artStyle,
     getCooldownSeconds,
     setActiveStep,
   } = useComicGeneration();
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('page');
   const [isPaused, setIsPaused] = useState(false);
   const [showFinishErrorModal, setShowFinishErrorModal] = useState(false);
   const [toasts, setToasts] = useState<{ id: string; label: string; pageNumber: number; panelId: string }[]>([]);
   const [errorFilter, setErrorFilter] = useState(false);
-  const [showConfetti, setShowConfetti] = useState(false);
+  const [showConfetti] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -703,7 +667,6 @@ export default function Step4Generation() {
       step4Stats.total > 0 && step4Stats.success === step4Stats.total;
     if (justDone) {
       setExportPulse(true);
-      setShowConfetti(true);
       setTimeout(() => setExportPulse(false), 1000);
     }
     prevImgGenRef.current = isImageGenerating;
@@ -724,16 +687,6 @@ export default function Step4Generation() {
   // All panels flat for grid/list views
   const allPanels = step4PanelsByPage.flatMap(([, panels]) => panels);
 
-  // Queue positions: index among idle panels in order (for skeleton vs queued state)
-  const panelQueuePositions = useMemo(() => {
-    const map: Record<string, number> = {};
-    let slot = 0;
-    for (const p of allPanels) {
-      const s = step4.data?.panelStates?.[p.id]?.status ?? 'idle';
-      map[p.id] = (s === 'idle') ? slot++ : -1;
-    }
-    return map;
-  }, [allPanels, step4.data?.panelStates]);
 
   // Map panel id → page number for regenerate calls
   const panelPageMap = useMemo(() => {
@@ -828,10 +781,6 @@ export default function Step4Generation() {
         <StateBadge state={state} />
       </div>
 
-      {/* ── Generation Mode selector ── */}
-      <div>
-        <ImageGenModePanel disabled={isGenerating || isImageGenerating} />
-      </div>
 
       {/* ── Generation Dashboard ── */}
       {(() => {
@@ -850,16 +799,16 @@ export default function Step4Generation() {
               <div className="rounded-[12px] border border-amber-200 p-6 space-y-4 animate-slide-down"
                 style={{ background: 'linear-gradient(135deg, #FFFBEB, #FEF9F0)' }}>
                 <div className="flex items-center justify-between text-sm font-semibold">
-                  <span className="text-amber-700">⚠ Hoàn thành với {step4Stats.error} lỗi</span>
+                  <span className="text-amber-700">⚠ Completed with {step4Stats.error} error{step4Stats.error !== 1 ? 's' : ''}</span>
                   <span className="text-amber-600 tabular-nums">{Math.round((step4Stats.success / step4Stats.total) * 100)}%</span>
                 </div>
                 <SegmentedProgressBar total={step4Stats.total} success={step4Stats.success} error={step4Stats.error} loading={0} height={12} />
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-sm text-emerald-600 font-semibold">✓ {step4Stats.success}/{step4Stats.total} hoàn thành</span>
-                  <span className="text-sm text-amber-500 font-semibold">⚠ {step4Stats.error} lỗi</span>
+                  <span className="text-sm text-emerald-600 font-semibold">✓ {step4Stats.success}/{step4Stats.total} complete</span>
+                  <span className="text-sm text-amber-500 font-semibold">⚠ {step4Stats.error} error{step4Stats.error !== 1 ? 's' : ''}</span>
                   <button type="button" onClick={retryErrorPages}
                     className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition-colors">
-                    ↺ Thử lại {step4Stats.error} panels lỗi
+                    ↺ Retry {step4Stats.error} failed page{step4Stats.error !== 1 ? 's' : ''}
                   </button>
                 </div>
               </div>
@@ -869,9 +818,9 @@ export default function Step4Generation() {
             <div className="rounded-[12px] border border-[#BBF7D0] p-6 space-y-5 animate-slide-down"
               style={{ background: 'linear-gradient(135deg, #EEF2FF, #F0FDF4)' }}>
               <div className="text-center space-y-1">
-                <p className="text-2xl font-bold text-gray-900">🎉 Comic của bạn đã sẵn sàng!</p>
+                <p className="text-2xl font-bold text-gray-900">🎉 Your comic is ready to export!</p>
                 <p className="text-sm text-gray-500">
-                  {step4Stats.total} ô tranh · {chapterCount} chương · {step4PanelsByPage.length} trang
+                  {step4Stats.total} pages · {chapterCount} chapter{chapterCount !== 1 ? 's' : ''} · {step4PanelsByPage.length} page{step4PanelsByPage.length !== 1 ? 's' : ''} generated
                 </p>
               </div>
               <SegmentedProgressBar total={step4Stats.total} success={step4Stats.success} error={0} loading={0} height={8} />
@@ -903,7 +852,7 @@ export default function Step4Generation() {
                 <div className="flex items-center justify-between text-sm font-semibold mb-2">
                   <span className="text-on-surface-variant">
                     {step4Stats.error > 0
-                      ? <span>✓ {step4Stats.success} · <span className="text-amber-500">⚠ {step4Stats.error} lỗi</span> · {step4Stats.loading} đang xử lý</span>
+                      ? <span>✓ {step4Stats.success} · <span className="text-amber-500">⚠ {step4Stats.error} error{step4Stats.error !== 1 ? 's' : ''}</span> · {step4Stats.loading} processing</span>
                       : <>Processing {step4Stats.loading > 0 ? `${step4Stats.loading} panel${step4Stats.loading !== 1 ? 's' : ''}` : '…'}</>
                     }
                   </span>
@@ -1108,24 +1057,18 @@ export default function Step4Generation() {
         </div>
       )}
 
-      {/* ── Panel view ── */}
+      {/* ── Page view ── */}
       {(state === 3 || state === 4 || state === 5) && step4PanelsByPage.length > 0 && (() => {
-        const displayPanels = errorFilter
-          ? allPanels.filter((p) => step4.data?.panelStates?.[p.id]?.status === 'error')
-          : allPanels;
         const displayPages = errorFilter
-          ? step4PanelsByPage.map(([pn, panels]) => [pn, panels.filter((p) => step4.data?.panelStates?.[p.id]?.status === 'error')] as [number, typeof panels]).filter(([, panels]) => panels.length > 0)
+          ? step4PanelsByPage.filter(([pn]) => step4.data?.pageStates?.[`page-${pn}`]?.status === 'error')
           : step4PanelsByPage;
         return (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-on-surface">
+              {step4PanelsByPage.length} page{step4PanelsByPage.length !== 1 ? 's' : ''} · {allPanels.length} panel{allPanels.length !== 1 ? 's' : ''}
+            </p>
             <div className="flex items-center gap-3">
-              <p className="text-sm font-semibold text-on-surface">
-                {errorFilter
-                  ? <span className="text-amber-600">⚠ {displayPanels.length} error panel{displayPanels.length !== 1 ? 's' : ''}</span>
-                  : <>{step4PanelsByPage.length} page{step4PanelsByPage.length !== 1 ? 's' : ''} · {allPanels.length} panel{allPanels.length !== 1 ? 's' : ''}</>
-                }
-              </p>
               {step4Stats.error > 0 && (
                 <button
                   type="button"
@@ -1136,24 +1079,19 @@ export default function Step4Generation() {
                       : 'border border-amber-300 text-amber-600 bg-amber-50 hover:bg-amber-100'
                   }`}
                 >
-                  ⚠ Xem panels lỗi ({step4Stats.error})
+                  ⚠ {errorFilter ? 'Show all' : `Show ${step4Stats.error} error${step4Stats.error !== 1 ? 's' : ''}`}
                 </button>
               )}
-            </div>
-            <div className="flex items-center gap-3">
               {step4Stats.error > 0 && !errorFilter && (
                 <button type="button" onClick={retryErrorPages}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors">
-                  ↺ Thử lại {step4Stats.error} panels lỗi
+                  ↺ Retry {step4Stats.error} failed page{step4Stats.error !== 1 ? 's' : ''}
                 </button>
               )}
-              <ViewToggle mode={viewMode} onChange={setViewMode} />
             </div>
           </div>
 
-          {/* Page view */}
-          {viewMode === 'page' && (
-            <div className="space-y-6">
+          <div className="space-y-6">
               {displayPages.map(([pageNumber, panels]) => {
                 const pageState = step4.data?.pageStates?.[`page-${pageNumber}`];
                 const pageStatus = pageState?.status ?? 'idle';
@@ -1213,80 +1151,23 @@ export default function Step4Generation() {
                     )}
 
                     {/* Panel script cards */}
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                      {panels.map((panel) => {
-                        const ps = step4.data?.panelStates?.[panel.id];
-                        const pStatus = ps?.status ?? 'idle';
-                        return (
-                          <div key={panel.id} className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 p-4 space-y-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant truncate">{panel.contextLabel}</p>
-                              <PanelHeaderBadge status={pStatus} />
-                            </div>
-                            <PanelImageArea
-                              status={pStatus}
-                              imageUrl={ps?.imageUrl ?? null}
-                              error={ps?.error ?? null}
-                              queuePosition={panelQueuePositions[panel.id] ?? 999}
-                              label={panel.contextLabel}
-                              onRegenerate={() => handleRegeneratePage(pageNumber)}
-                            />
-                            {panel.dialogueSfx && (
-                              <p className="text-sm text-on-surface">{panel.dialogueSfx}</p>
-                            )}
-                            <div className="rounded-xl bg-surface-container-low p-3">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Prompt</p>
-                              <p className="text-xs text-on-surface-variant leading-relaxed">{panel.aiImagePrompt}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                      {panels.map((panel) => (
+                        <PanelScriptCard key={panel.id} panel={panel} artStyle={artStyle} />
+                      ))}
                     </div>
                   </div>
                 );
               })}
             </div>
-          )}
-
-          {/* Grid view */}
-          {viewMode === 'grid' && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
-              {displayPanels.map((panel) => (
-                <PanelItem
-                  key={panel.id}
-                  panel={panel}
-                  panelState={step4.data?.panelStates?.[panel.id]}
-                  viewMode="grid"
-                  queuePosition={panelQueuePositions[panel.id] ?? 999}
-                  onRegenerate={() => handleRegeneratePage(panelPageMap[panel.id])}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* List view */}
-          {viewMode === 'list' && (
-            <div className="space-y-2">
-              {displayPanels.map((panel) => (
-                <PanelItem
-                  key={panel.id}
-                  panel={panel}
-                  panelState={step4.data?.panelStates?.[panel.id]}
-                  viewMode="list"
-                  queuePosition={panelQueuePositions[panel.id] ?? 999}
-                  onRegenerate={() => handleRegeneratePage(panelPageMap[panel.id])}
-                />
-              ))}
-            </div>
-          )}
         </div>
         );
       })()}
 
       <ProjectsDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
 
-      {/* ── Confetti ── */}
-      <ConfettiCanvas active={showConfetti} onDone={() => setShowConfetti(false)} />
+      {/* confetti disabled */}
+      {showConfetti && null}
 
       {/* ── Preview modal ── */}
       {showPreview && (() => {
@@ -1319,16 +1200,16 @@ export default function Step4Generation() {
               className="pointer-events-auto flex items-start gap-3 bg-white border border-gray-200 rounded-2xl shadow-xl px-4 py-3 w-[300px] animate-panel-appear">
               <span className="text-amber-500 text-lg mt-0.5 flex-shrink-0">⚠</span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900 truncate">{toast.label} gặp lỗi</p>
+                <p className="text-sm font-semibold text-gray-900 truncate">{toast.label} failed</p>
                 <div className="flex items-center gap-3 mt-1.5">
                   <button type="button" onClick={() => dismissToast(toast.id)}
                     className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
-                    Bỏ qua
+                    Dismiss
                   </button>
                   <button type="button"
                     onClick={() => { handleRegeneratePage(toast.pageNumber); dismissToast(toast.id); }}
                     className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
-                    Thử lại ngay
+                    Retry now
                   </button>
                 </div>
               </div>
@@ -1347,23 +1228,23 @@ export default function Step4Generation() {
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowFinishErrorModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full space-y-4">
             <p className="text-base font-bold text-on-surface">
-              {step4Stats.error} panel{step4Stats.error !== 1 ? 's' : ''} chưa có ảnh do lỗi.
+              {step4Stats.error} page{step4Stats.error !== 1 ? 's' : ''} failed to generate.
             </p>
-            <p className="text-sm text-on-surface-variant">Bạn có thể thử lại các panel lỗi hoặc tiếp tục mà không có chúng.</p>
+            <p className="text-sm text-on-surface-variant">You can retry the failed pages or continue without them.</p>
             <div className="flex gap-3 pt-1">
               <button
                 type="button"
                 onClick={retryErrorPages}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
               >
-                ↺ Thử lại panels lỗi
+                ↺ Retry failed pages
               </button>
               <button
                 type="button"
                 onClick={() => { setShowFinishErrorModal(false); handleApprove(4); }}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-gray-900 text-white text-sm font-bold hover:opacity-90 transition-opacity"
               >
-                Tiếp tục anyway →
+                Continue anyway →
               </button>
             </div>
           </div>
@@ -1408,14 +1289,14 @@ export default function Step4Generation() {
               <div className="w-full max-w-xs space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-xs font-semibold">
-                    <span className="text-emerald-600">✓ {step4Stats.success}/{step4Stats.total} hoàn thành</span>
+                    <span className="text-emerald-600">✓ {step4Stats.success}/{step4Stats.total} complete</span>
                     {step4Stats.error > 0 && (
                       <>
                         <span className="text-gray-300">·</span>
-                        <span className="text-amber-500">⚠ {step4Stats.error} lỗi</span>
+                        <span className="text-amber-500">⚠ {step4Stats.error} error{step4Stats.error !== 1 ? 's' : ''}</span>
                         <button type="button" onClick={retryErrorPages}
                           className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-700 text-[10px] font-bold hover:bg-amber-100 transition-colors">
-                          ↺ Thử lại
+                          ↺ Retry
                         </button>
                       </>
                     )}
@@ -1494,8 +1375,8 @@ export default function Step4Generation() {
                     </button>
                     <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 pointer-events-none w-64">
                       <div className="bg-gray-900 text-white rounded-xl px-3 py-2 text-xs leading-relaxed shadow-xl">
-                        Vui lòng generate ảnh trước khi hoàn thành.<br />
-                        {step4Stats.total > 0 ? `${step4Stats.total} panels chưa được tạo.` : 'Chưa có panels nào.'}
+                        Generate images before marking complete.<br />
+                        {step4Stats.total > 0 ? `${step4Stats.total} page${step4Stats.total !== 1 ? 's' : ''} not yet generated.` : 'No panels built yet.'}
                       </div>
                       <div className="w-2.5 h-2.5 bg-gray-900 rotate-45 ml-auto mr-5 -mt-1.5" />
                     </div>
@@ -1525,8 +1406,8 @@ export default function Step4Generation() {
                     </button>
                     <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 pointer-events-none w-64">
                       <div className="bg-gray-900 text-white rounded-xl px-3 py-2 text-xs leading-relaxed shadow-xl">
-                        Đang tạo ảnh... {step4Stats.success}/{step4Stats.total} hoàn thành.<br />
-                        Vui lòng đợi quá trình hoàn tất.
+                        Generating images… {step4Stats.success}/{step4Stats.total} complete.<br />
+                        Please wait for generation to finish.
                       </div>
                       <div className="w-2.5 h-2.5 bg-gray-900 rotate-45 ml-auto mr-5 -mt-1.5" />
                     </div>
@@ -1549,8 +1430,8 @@ export default function Step4Generation() {
                     </button>
                     <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 pointer-events-none w-64">
                       <div className="bg-gray-900 text-white rounded-xl px-3 py-2 text-xs leading-relaxed shadow-xl">
-                        ⚠ {step4Stats.error} panel{step4Stats.error !== 1 ? 's' : ''} gặp lỗi.<br />
-                        Bạn có thể tiếp tục hoặc thử lại các panel lỗi.
+                        ⚠ {step4Stats.error} page{step4Stats.error !== 1 ? 's' : ''} failed to generate.<br />
+                        You can continue or retry the failed pages.
                       </div>
                       <div className="w-2.5 h-2.5 bg-gray-900 rotate-45 ml-auto mr-5 -mt-1.5" />
                     </div>

@@ -287,8 +287,8 @@ const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {
 
   const workingPanels: WorkingPanel[] = [];
   const lines = normalized.split('\n');
-  const pageRegex = /^\s*(?:[-*]\s*)?(?:\*{0,2})?Page\s+(\d+)(?:\s+of\s+Chapter\s+\d+)?(?:\*{0,2})?\s*:?.*$/i;
-  const panelRegex = /^\s*(?:[-*]\s*)?(?:\*{0,2})?Panel\s+(\d+)(?:\*{0,2})?\s*:?.*$/i;
+  const pageRegex = /^\s*(?:#+\s*)?(?:[-*]\s*)?(?:\*{0,2})?Page\s+(\d+)(?:\s+of\s+Chapter\s+\d+)?(?:\*{0,2})?\s*:?.*$/i;
+  const panelRegex = /^\s*(?:#+\s*)?(?:[-*]\s*)?(?:\*{0,2})?Panel\s+(\d+)(?:\*{0,2})?\s*:?.*$/i;
 
   let currentPage = 1;
   let activePanel: WorkingPanel | null = null;
@@ -1234,6 +1234,23 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
               },
             }
           : {}),
+        ...(step4.data
+          ? {
+              step_4_generation: {
+                status: step4.isApproved ? 'approved' : 'review_pending',
+                last_updated: step4.lastUpdated,
+                data: {
+                  panels: step4.data.panels,
+                  page_images: Object.fromEntries(
+                    Object.entries(step4.data.pageStates || {}).map(([pageId, state]) => [
+                      pageId,
+                      { image_url: state.imageUrl, status: state.status },
+                    ])
+                  ),
+                },
+              },
+            }
+          : {}),
       },
     };
   }, [
@@ -1257,7 +1274,9 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     step3.isApproved,
     step3.isLoading,
     step3.lastUpdated,
+    step4.data,
     step4.isApproved,
+    step4.lastUpdated,
     getSelectedCharacterReferences,
     step1JsonStatus,
   ]);
