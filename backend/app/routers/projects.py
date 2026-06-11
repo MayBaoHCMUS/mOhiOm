@@ -5,7 +5,7 @@ API routes for project save / load.
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Header
 from typing import Any, Dict, List, Optional
-from app.schemas import ProjectSaveRequest, ProjectListItem, CharacterSummary, CharacterUpsertPayload, CharacterPatchPayload, StatsResponse
+from app.schemas import ProjectSaveRequest, ProjectListItem, CharacterSummary, CharacterUpsertPayload, CharacterPatchPayload, StatsResponse, ProjectPublishPayload
 from app.database import mongo_db
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -70,6 +70,7 @@ def list_projects(
                 step2_approved=bool(s2.get("isApproved")),
                 step2_images_approved=bool(s2ir.get("isApproved")),
                 step3_approved=bool(s3.get("isApproved")),
+                is_public=bool(doc.get("is_public", False)),
             )
         )
     return sorted(result, key=lambda x: x.saved_at, reverse=True)
@@ -97,6 +98,7 @@ def list_characters(
                 prompt=char.get("prompt") or None,
                 selected_image_url=char.get("selected_image_url") or None,
                 project_id=char.get("project_id") or None,
+                is_public=bool(char.get("is_public", False)),
             )
         )
 
@@ -175,6 +177,8 @@ def update_standalone_character(
         updates["prompt"] = payload.prompt
     if payload.selected_image_url is not None:
         updates["selected_image_url"] = payload.selected_image_url
+    if payload.is_public is not None:
+        updates["is_public"] = payload.is_public
     if updates:
         _char_col().update_one({"user_id": user_id, "character_id": character_id}, {"$set": updates})
     char.update(updates)
@@ -184,6 +188,7 @@ def update_standalone_character(
         prompt=char.get("prompt"),
         selected_image_url=char.get("selected_image_url"),
         project_id=None,
+        is_public=bool(char.get("is_public", False)),
     )
 
 
@@ -342,6 +347,23 @@ def load_project(
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found")
     return doc
+
+
+@router.patch("/{project_id}/publish")
+def publish_project(
+    project_id: str,
+    payload: ProjectPublishPayload,
+    x_user_id: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Toggle a project's public visibility in the community gallery."""
+    user_id = _require_user(x_user_id)
+    result = _col().update_one(
+        {"user_id": user_id, "project_id": project_id},
+        {"$set": {"is_public": payload.is_public}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"project_id": project_id, "is_public": payload.is_public}
 
 
 @router.delete("/{project_id}")

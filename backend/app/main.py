@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import mongo_db
-from app.routers import items, gemini, text_to_comic, auth, projects
+from app.routers import items, gemini, text_to_comic, auth, projects, gallery
 
 
 @asynccontextmanager
@@ -33,6 +33,7 @@ app.include_router(gemini.router, prefix=settings.API_PREFIX)
 app.include_router(text_to_comic.router, prefix=settings.API_PREFIX)
 app.include_router(auth.router, prefix=settings.API_PREFIX)
 app.include_router(projects.router, prefix=settings.API_PREFIX)
+app.include_router(gallery.router, prefix=settings.API_PREFIX)
 
 
 

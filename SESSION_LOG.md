@@ -1,3 +1,139 @@
+## SESSION: 2026-06-12
+
+### 🎯 CONTEXT — Export feature (ZIP + PDF) + Community Gallery (characters + comics)
+
+---
+
+### ✅ COMPLETED
+
+#### Export Feature — ZIP Image Pack + PDF Comic
+
+**New utility: `frontend/src/lib/export.ts`**
+- `exportAsZip(pages, opts)` — builds a JSZip archive with `page-1.png … page-N.png` (base64-stripped from data URLs) + optional `manifest.json` (per-page panel metadata); triggers browser download as `comic-{projectId}.zip`
+- `exportAsPdf(pages, opts)` — builds a jsPDF A4 portrait document, one full-bleed image per PDF page; optional text appendix page with dialogue/shot types; downloads as `comic-{projectId}.pdf`
+- Packages installed: `jszip`, `jspdf`
+
+**Context (`ComicGenerationContext.tsx`)**
+- `buildExportPages(data)` — joins `pageStates` (success only) with `panels` by `pageNumber` into `ExportPage[]`
+- `exportZip(includeMetadata)` / `exportPdf(includeMetadata)` — call the lib functions; manage `exportStatus: 'idle' | 'exporting' | 'error'`
+- Added to `ComicGenerationContextValue` interface + provider value
+
+**UI (`Step4Generation.tsx` — ExportModal)**
+- Removed `soon: true` from "PDF Comic" and "Image Pack" — both now active
+- Removed the unused resolution selector (Web / HD / Print)
+- Added metadata checkbox: "Include panel script (dialogue, shot types, prompts)"
+- Buttons disabled when no images exist (`hasImages` prop) or while exporting
+- Both buttons trigger download then close the modal
+
+---
+
+#### Community Gallery — Characters + Comics
+
+**Backend**
+
+`backend/app/schemas.py`:
+- `is_public: bool = False` added to `CharacterSummary`, `CharacterPatchPayload`, `ProjectListItem`
+- New: `ProjectPublishPayload(is_public)`, `GalleryComicSummary`, `GalleryComicDetail`
+
+`backend/app/routers/projects.py`:
+- `list_characters` response now includes `is_public` from `user_characters` doc
+- `update_standalone_character` PATCH handles `is_public` field
+- `list_projects` response now includes `is_public` from project doc
+- New: `PATCH /api/projects/{project_id}/publish` — toggles `is_public` on project doc
+
+`backend/app/routers/gallery.py` (new file):
+- `GET /api/gallery/characters` — all `user_characters` where `is_public=True`; no auth required
+- `GET /api/gallery/comics` — all `projects` where `is_public=True` AND has ≥1 success page image; returns `GalleryComicSummary` (cover URL, title from first story line, genre, art style, synopsis, page count)
+- `GET /api/gallery/comics/{project_id}` — full detail for reader (story text, characters, all success page URLs)
+
+`backend/app/main.py`: registered gallery router at `/api/gallery`
+
+**Frontend — Types + API (`api.ts`)**
+- `is_public?: boolean` on `CharacterSummary` and `CloudProjectListItem`
+- New interfaces: `GalleryComicSummary`, `GalleryComicDetail`
+- `projectsApi.publishProject(id, isPublic)` → `PATCH /api/projects/{id}/publish`
+- New `galleryApi`: `characters()`, `comics()`, `comicDetail(id)`
+
+**`CharacterLibraryModal.tsx`**
+- Globe icon (lucide-react) share toggle on each card (bottom-right corner)
+- Optimistic state update: clicks call `projectsApi.updateStandaloneCharacter(id, { is_public })`, reverts on error
+- `onShareToggle` prop passed down from modal to `CharacterCard`
+
+**`GalleryModal.tsx` (new component)**
+- Community character picker modal — same layout/UX as `CharacterLibraryModal` but fetches from `galleryApi.characters()`
+- No share toggle (can't modify others' data)
+- "Add to Project" footer → `onConfirm(selected)` → `injectLibraryCharacters()`
+
+**`ComicReaderModal.tsx` (new component)**
+- Fullscreen black-background comic reader
+- Screen 0: story info (title, genre, art style, synopsis); "Start Reading" button
+- Pages 1…N: full-bleed image per screen
+- Keyboard nav (← → Escape), prev/next chevron buttons, page counter
+- "Story" toggle button in top bar opens overlay with full `story_content` + `main_characters`
+- Page dot indicator (shown if ≤12 pages)
+
+**`Step2Characters.tsx`**
+- Added "Browse Community" button (public icon) in the same toolbar row as "From Library"
+- Opens `GalleryModal` with same `existingIds` and `onConfirm={injectLibraryCharacters}`
+
+**`ProjectsDrawer.tsx`**
+- "Publish" / "Published" globe button on each project card that has Step 4 images (`has_step4=true`)
+- Calls `projectsApi.publishProject()` with optimistic state update
+- Indigo styling when published; gray when private
+
+**`app/gallery/page.tsx` (replaced static marketing page)**
+- Full-page community gallery with **Comics** | **Characters** tab switcher
+- **Comics tab**: responsive grid of comic cover cards (3:4 image, title, genre badge, art style, synopsis snippet, page count); click → opens `ComicReaderModal`
+- **Characters tab**: responsive grid of character cards; "Add to My Library" button per card → `POST /api/projects/characters` (clone to own library); shows "✓ In Library" after success
+- Search in both tabs; loading skeletons; empty states with CTAs
+- Back link to Studio
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+**Backend**
+- `backend/app/schemas.py` — `is_public` on 3 schemas; new `ProjectPublishPayload`, `GalleryComicSummary`, `GalleryComicDetail`
+- `backend/app/routers/projects.py` — `is_public` flows through list/update; new PATCH publish endpoint
+- `backend/app/routers/gallery.py` — **New** (3 public GET endpoints)
+- `backend/app/main.py` — gallery router registered
+
+**Frontend**
+- `frontend/src/lib/export.ts` — **New** (ZIP + PDF utilities)
+- `frontend/src/services/api.ts` — `is_public` on types; new gallery types + APIs
+- `frontend/src/context/ComicGenerationContext.tsx` — `exportZip`, `exportPdf`, `exportStatus`; imports from `@/lib/export`
+- `frontend/src/components/CharacterLibraryModal.tsx` — globe share toggle
+- `frontend/src/components/GalleryModal.tsx` — **New** (community character picker)
+- `frontend/src/components/ComicReaderModal.tsx` — **New** (fullscreen reader)
+- `frontend/src/components/studio-steps/Step2Characters.tsx` — "Browse Community" button + `GalleryModal`
+- `frontend/src/components/studio-steps/Step4Generation.tsx` — ExportModal: remove `soon`, metadata toggle, `exportZip`/`exportPdf` wired
+- `frontend/src/components/ProjectsDrawer.tsx` — publish toggle per project
+- `frontend/src/app/gallery/page.tsx` — **Full rewrite** (tabbed community gallery)
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **Gallery characters**: only `user_characters` (standalone library chars) are shareable. Characters embedded only in projects (`step2ImageReview`) must be saved to the library first before sharing.
+- **Gallery comics**: only projects with `is_public=True` AND ≥1 success page image appear. The cover is the first success pageState URL. Story title is derived from the first line of `story_content` (80-char limit).
+- **"Add to My Library" on gallery page**: clones the character as a new standalone `user_characters` doc with a fresh `gallery-{original_id}-{timestamp}` ID. Does not import it into the current project (that's the GalleryModal flow inside Step 2).
+- **Standalone `/gallery` page context**: lives outside `ComicGenerationProvider`, so cannot call `injectLibraryCharacters()` directly. The two flows are: (A) gallery page → Add to Library → use via library modal in Step 2; (B) Studio Step 2 → GalleryModal → inject directly.
+- **Pre-existing TS errors**: 13 `ConfettiCanvas` null-check errors in `Step4Generation.tsx` remain; not introduced by this session. `npx tsc --noEmit` shows zero new errors.
+- **`user_inputs` field names**: backend saves camelCase from frontend (`story_content` or `storyText`, `manga_genre` or `genre`, etc.) depending on when the project was saved. Gallery endpoint tries both key variants with `or` fallback.
+
+---
+
+### 🎯 NEXT STEPS
+
+1. **Test gallery end-to-end**: share a character → verify it appears in `/gallery` Characters tab; publish a project with images → verify it appears in Comics tab
+2. **Gallery page auth**: currently shows "Add to My Library" even for unauthenticated users — should check for `localStorage['mohiom-user-id']` and prompt sign-in
+3. **Pagination**: gallery endpoints return all public items; add `?limit=` + `?skip=` pagination when content grows
+4. **Character gallery search backend**: current search is frontend-only (client-side filter on fetched array) — fine for now, needs backend search when gallery grows
+5. **PDF appendix improvement**: currently only includes dialogue/SFX; could also include shot types and panel labels for richer script output
+6. **Export error UX**: `exportStatus === 'error'` currently no visible error message in UI — should show a toast
+
+---
+
 ## SESSION: 2026-06-11
 
 ### 🎯 CONTEXT — Step 3 Script polish + Step 4 Generation full UI overhaul

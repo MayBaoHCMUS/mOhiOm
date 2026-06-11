@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { Globe } from 'lucide-react';
 import { projectsApi } from '@/services/api';
 import type { CharacterSummary } from '@/services/api';
 
@@ -16,50 +17,67 @@ function CharacterCard({
   char,
   state,
   onToggle,
+  onShareToggle,
 }: {
   char: CharacterSummary;
   state: 'selectable' | 'selected' | 'added';
   onToggle: () => void;
+  onShareToggle: (isPublic: boolean) => void;
 }) {
   const isAdded    = state === 'added';
   const isSelected = state === 'selected';
+  const isPublic   = char.is_public ?? false;
 
   return (
-    <button
-      type="button"
-      onClick={isAdded ? undefined : onToggle}
-      disabled={isAdded}
-      className={`relative w-full text-left rounded-2xl border-2 overflow-hidden transition-all duration-150 ${
-        isAdded
-          ? 'border-outline-variant/20 opacity-50 cursor-default'
-          : isSelected
-            ? 'border-primary shadow-md scale-[1.01]'
-            : 'border-transparent bg-surface-container-low hover:border-primary/30 hover:bg-surface-container'
-      }`}
-    >
-      {/* Image */}
-      <div className="aspect-[3/4] bg-surface-container-high overflow-hidden">
-        {char.selected_image_url ? (
-          <img
-            src={char.selected_image_url}
-            alt={char.name}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <span className="material-symbols-outlined text-5xl text-outline-variant">person</span>
-          </div>
-        )}
-      </div>
+    <div className={`relative w-full rounded-2xl border-2 overflow-hidden transition-all duration-150 ${
+      isAdded
+        ? 'border-outline-variant/20 opacity-50'
+        : isSelected
+          ? 'border-primary shadow-md scale-[1.01]'
+          : 'border-transparent bg-surface-container-low hover:border-primary/30 hover:bg-surface-container'
+    }`}>
+      <button
+        type="button"
+        onClick={isAdded ? undefined : onToggle}
+        disabled={isAdded}
+        className="w-full text-left cursor-pointer disabled:cursor-default"
+      >
+        {/* Image */}
+        <div className="aspect-[3/4] bg-surface-container-high overflow-hidden">
+          {char.selected_image_url ? (
+            <img
+              src={char.selected_image_url}
+              alt={char.name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <span className="material-symbols-outlined text-5xl text-outline-variant">person</span>
+            </div>
+          )}
+        </div>
 
-      {/* Info */}
-      <div className="p-3">
-        <p className="font-bold text-sm text-on-surface truncate">{char.name}</p>
-        <p className="text-[10px] text-outline truncate mt-0.5">{char.project_id ? char.project_id.replace(/_/g, ' ') : 'My Library'}</p>
-        {char.prompt && (
-          <p className="text-[11px] text-on-surface-variant mt-1 line-clamp-2 leading-relaxed">{char.prompt}</p>
-        )}
-      </div>
+        {/* Info */}
+        <div className="p-3 pb-2">
+          <p className="font-bold text-sm text-on-surface truncate">{char.name}</p>
+          <p className="text-[10px] text-outline truncate mt-0.5">{char.project_id ? char.project_id.replace(/_/g, ' ') : 'My Library'}</p>
+          {char.prompt && (
+            <p className="text-[11px] text-on-surface-variant mt-1 line-clamp-2 leading-relaxed">{char.prompt}</p>
+          )}
+        </div>
+      </button>
+
+      {/* Share toggle */}
+      <button
+        type="button"
+        title={isPublic ? 'Remove from Gallery' : 'Share to Gallery'}
+        onClick={(e) => { e.stopPropagation(); onShareToggle(!isPublic); }}
+        className={`absolute bottom-2 right-2 w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
+          isPublic ? 'bg-indigo-100 text-indigo-600' : 'bg-surface-container-highest text-outline hover:text-indigo-500'
+        }`}
+      >
+        <Globe size={12} />
+      </button>
 
       {/* State badge */}
       {isAdded && (
@@ -69,11 +87,11 @@ function CharacterCard({
         </div>
       )}
       {isSelected && (
-        <div className="absolute top-2 right-2 w-6 h-6 bg-primary rounded-full flex items-center justify-center shadow">
+        <div className="absolute top-2 left-2 w-6 h-6 bg-primary rounded-full flex items-center justify-center shadow">
           <span className="material-symbols-outlined text-white text-[14px]" style={{ fontVariationSettings: "'FILL' 1" }}>check</span>
         </div>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -117,6 +135,20 @@ export default function CharacterLibraryModal({ isOpen, onClose, existingIds, on
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  };
+
+  const handleShareToggle = (char: CharacterSummary, isPublic: boolean) => {
+    // Optimistic update
+    setCharacters((prev) =>
+      prev.map((c) => c.character_id === char.character_id ? { ...c, is_public: isPublic } : c)
+    );
+    projectsApi.updateStandaloneCharacter(char.character_id, { is_public: isPublic })
+      .catch(() => {
+        // Revert on error
+        setCharacters((prev) =>
+          prev.map((c) => c.character_id === char.character_id ? { ...c, is_public: !isPublic } : c)
+        );
+      });
   };
 
   const handleConfirm = () => {
@@ -212,6 +244,7 @@ export default function CharacterLibraryModal({ isOpen, onClose, existingIds, on
                     char={char}
                     state={isAdded ? 'added' : isSelected ? 'selected' : 'selectable'}
                     onToggle={() => toggle(char.character_id)}
+                    onShareToggle={(v) => handleShareToggle(char, v)}
                   />
                 );
               })}

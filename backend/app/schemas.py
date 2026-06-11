@@ -120,6 +120,7 @@ class ProjectListItem(BaseModel):
     step2_approved: bool
     step2_images_approved: bool
     step3_approved: bool
+    is_public: bool = False
 
 
 class CharacterSummary(BaseModel):
@@ -130,6 +131,7 @@ class CharacterSummary(BaseModel):
     prompt: Optional[str] = None
     selected_image_url: Optional[str] = None
     project_id: Optional[str] = None
+    is_public: bool = False
 
 
 class CharacterUpsertPayload(BaseModel):
@@ -147,6 +149,38 @@ class CharacterPatchPayload(BaseModel):
     name: Optional[str] = None
     prompt: Optional[str] = None
     selected_image_url: Optional[str] = None
+    is_public: Optional[bool] = None
+
+
+class ProjectPublishPayload(BaseModel):
+    """Payload for toggling a project's gallery visibility."""
+
+    is_public: bool
+
+
+class GalleryComicSummary(BaseModel):
+    """Summary of a public comic shown in the community gallery."""
+
+    project_id: str
+    title: str
+    genre: str
+    art_style: str
+    story_synopsis: str
+    cover_image_url: Optional[str] = None
+    page_count: int
+    published_at: str
+
+
+class GalleryComicDetail(BaseModel):
+    """Full data for reading a public comic."""
+
+    project_id: str
+    title: str
+    genre: str
+    art_style: str
+    story_content: str
+    main_characters: str
+    pages: List[Dict[str, Any]]
 
 
 class ChangePasswordRequest(BaseModel):

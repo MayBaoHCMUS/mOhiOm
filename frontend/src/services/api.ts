@@ -1022,6 +1022,7 @@ export interface CloudProjectListItem {
   step2_approved: boolean;
   step2_images_approved: boolean;
   step3_approved: boolean;
+  is_public?: boolean;
 }
 
 export interface CharacterSummary {
@@ -1030,6 +1031,28 @@ export interface CharacterSummary {
   prompt: string | null;
   selected_image_url: string | null;
   project_id: string | null;
+  is_public?: boolean;
+}
+
+export interface GalleryComicSummary {
+  project_id: string;
+  title: string;
+  genre: string;
+  art_style: string;
+  story_synopsis: string;
+  cover_image_url: string | null;
+  page_count: number;
+  published_at: string;
+}
+
+export interface GalleryComicDetail {
+  project_id: string;
+  title: string;
+  genre: string;
+  art_style: string;
+  story_content: string;
+  main_characters: string;
+  pages: { page_number: number; image_url: string }[];
 }
 
 export interface CharacterCreatePayload {
@@ -1043,6 +1066,7 @@ export interface CharacterPatchPayload {
   name?: string;
   prompt?: string;
   selected_image_url?: string;
+  is_public?: boolean;
 }
 
 export const projectsApi = {
@@ -1070,6 +1094,17 @@ export const projectsApi = {
     apiClient.delete<{ message: string }>(`/projects/${encodeURIComponent(projectId)}/characters/${encodeURIComponent(characterId)}`),
   stats: () =>
     apiClient.get<{ project_count: number; character_count: number; panel_count: number }>("/projects/stats"),
+  publishProject: (projectId: string, isPublic: boolean) =>
+    apiClient.patch<{ project_id: string; is_public: boolean }>(`/projects/${encodeURIComponent(projectId)}/publish`, { is_public: isPublic }),
+};
+
+export const galleryApi = {
+  characters: () =>
+    apiClient.get<CharacterSummary[]>('/gallery/characters'),
+  comics: () =>
+    apiClient.get<GalleryComicSummary[]>('/gallery/comics'),
+  comicDetail: (projectId: string) =>
+    apiClient.get<GalleryComicDetail>(`/gallery/comics/${encodeURIComponent(projectId)}`),
 };
 
 export const authApi = {

@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { Globe } from 'lucide-react';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
+import { projectsApi } from '@/services/api';
 import type { CloudProjectListItem } from '@/services/api';
 
 interface Props {
@@ -42,6 +44,7 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
 
   const fetchProjects = useCallback(async () => {
     setIsFetching(true);
@@ -73,6 +76,20 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
       onClose();
     } else {
       setLoadError(result.error ?? 'Load failed.');
+    }
+  };
+
+  const handlePublish = async (projectId: string, isPublic: boolean) => {
+    setPublishingId(projectId);
+    // Optimistic update
+    setProjects((prev) => prev.map((p) => p.project_id === projectId ? { ...p, is_public: isPublic } : p));
+    try {
+      await projectsApi.publishProject(projectId, isPublic);
+    } catch {
+      // Revert on error
+      setProjects((prev) => prev.map((p) => p.project_id === projectId ? { ...p, is_public: !isPublic } : p));
+    } finally {
+      setPublishingId(null);
     }
   };
 
@@ -159,7 +176,7 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
                         <StepBadge label="S4" active={p.has_step4} />
                       </div>
                     </div>
-                    <div className="flex flex-col gap-2 flex-shrink-0">
+                    <div className="flex flex-col gap-2 flex-shrink-0 items-end">
                       {deleteConfirmId === p.project_id ? (
                         <div className="flex gap-2">
                           <button
@@ -182,6 +199,22 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
                           }`}
                         >
                           {loadingId === p.project_id ? 'Loading…' : 'Load'}
+                        </button>
+                      )}
+                      {p.has_step4 && (
+                        <button
+                          type="button"
+                          title={p.is_public ? 'Remove from Gallery' : 'Publish to Gallery'}
+                          disabled={publishingId === p.project_id}
+                          onClick={() => handlePublish(p.project_id, !p.is_public)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-colors ${
+                            p.is_public
+                              ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          } ${publishingId === p.project_id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          <Globe size={11} />
+                          {p.is_public ? 'Published' : 'Publish'}
                         </button>
                       )}
                     </div>
