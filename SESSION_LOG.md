@@ -135,6 +135,29 @@ All work this session is in:
 
 ---
 
+### ✅ Step 3 — Streaming Render System
+
+Replaced raw `<Markdown>{step3.streamingText}</Markdown>` during generation with a structured live render:
+
+**New types:** `PanelStreamStatus`, `LivePanelField`, `LivePanel`, `LivePage`, `LiveChapter`, `StreamParserState`, `StreamProgressInfo`
+
+**`buildSkeletonChapters()`:** Reads chapter titles from `step1.data.structuredJson.steps.step_1_analysis.data.chapter_outline`. Falls back to `numChapters × (targetPages/numChapters)` pages. Shows real chapter titles in skeletons before streaming begins.
+
+**`useStreamParser` (ref-based):** `parserRef` holds `StreamParserState` — mutated in-place each tick, never triggers re-renders directly. `streamTick` counter incremented on each `setStreamTick(t+1)` causes re-renders. O(n) total parse cost. Lines stripped of `##`, `**`, `- ` prefix before matching. Stops at `===JSON===` (JSON block never visible).
+
+**`LivePanelCard`:** Renders live panels during streaming. `status === 'skeleton'` → `SkeletonPanelCard` shimmer. `status === 'streaming'` → `animate-border-pulse` border, `▋` cursor on active field, shimmer placeholders for empty fields. `status === 'complete'` → static card, no cursor.
+
+**Streaming layout:** Two-column (NavPanel + content) same as post-stream. NavPanel reads `liveChaptersAsParsed` (LiveChapters converted to ParsedChapter[] via useMemo + streamTick). Active streaming panel auto-expanded via `activeStreamPanelKey`.
+
+**Skeleton placeholders:** Before first chapter arrives, shows full skeleton structure. After chapters start arriving, shows remaining expected chapters as skeleton accordions (with real titles from step1 outline).
+
+**Progress bar:** `ScriptBottomBar` accepts new `streamProgressInfo?: StreamProgressInfo` prop. Shows "N panels written · Ch.X · P.Y · Panel Z" during generation.
+
+**Key files changed:**
+- `frontend/src/components/studio-steps/Step3Script.tsx` (+538 lines)
+
+---
+
 ### 🎯 NEXT STEPS
 
 1. **Test panel-level accordion with real script data** — verify `expandedPanelKey` auto-advance works correctly with the actual backend panel numbering

@@ -88,6 +88,9 @@ export interface Step4Panel {
   contextLabel: string;
   dialogueSfx: string;
   aiImagePrompt: string;
+  shotType?: string;
+  aspectRatio?: string;
+  negativePrompt?: string;
 }
 
 export interface Step4PanelState {
@@ -323,9 +326,15 @@ const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {
   flushPanel();
 
   const dialogueRegex =
-    /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?Dialogue(?:\s*\/\s*SFX)?(?:\s*\/\s*Thoughts)?(?:\*{0,2})?\s*:\s*([\s\S]*?)(?=\n\s*(?:[-*]\s*)?(?:\*{0,2})?(?:AI\s*Image\s*Prompt|Panel\s+\d+|Page\s+\d+|Chapter\s+End\s+Notes|Special\s+Pages|Final\s+Script\s+Summary)\b|$)/i;
+    /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?(?:Dialogue(?:\s*\/\s*SFX)?(?:\s*\/\s*Thoughts)?|dialogue_sfx)(?:\*{0,2})?\s*:\s*([\s\S]*?)(?=\n\s*(?:[-*]\s*)?(?:\*{0,2})?(?:AI\s*Image\s*Prompt|ai_image_prompt|Panel\s+\d+|Page\s+\d+|Chapter\s+End\s+Notes|Special\s+Pages|Final\s+Script\s+Summary)\b|$)/i;
   const promptRegex =
-    /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?AI\s*Image\s*Prompt(?:\*{0,2})?\s*:\s*([\s\S]*?)(?=\n\s*(?:[-*]\s*)?(?:\*{0,2})?(?:Panel\s+\d+|Page\s+\d+|Chapter\s+End\s+Notes|Special\s+Pages|Final\s+Script\s+Summary)\b|$)/i;
+    /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?(?:AI\s*Image\s*Prompt|ai_image_prompt)(?:\*{0,2})?\s*:\s*([\s\S]*?)(?=\n\s*(?:[-*]\s*)?(?:\*{0,2})?(?:negative_prompt|Panel\s+\d+|Page\s+\d+|Chapter\s+End\s+Notes|Special\s+Pages|Final\s+Script\s+Summary)\b|$)/i;
+  const shotTypeRegex =
+    /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?shot_type(?:\*{0,2})?\s*:\s*([^\n]+)/i;
+  const aspectRatioRegex =
+    /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?aspect_ratio(?:\*{0,2})?\s*:\s*([^\n]+)/i;
+  const negativePromptRegex =
+    /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?negative_prompt(?:\*{0,2})?\s*:\s*([^\n]+)/i;
 
   const parsed = workingPanels
     .map((panel) => {
@@ -336,15 +345,23 @@ const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {
         return null;
       }
 
+      const shotType = (body.match(shotTypeRegex)?.[1] || '').trim() || undefined;
+      const aspectRatio = (body.match(aspectRatioRegex)?.[1] || '').trim() || undefined;
+      const negativePrompt = (body.match(negativePromptRegex)?.[1] || '').trim() || undefined;
+
       const id = `p${panel.pageNumber}-n${panel.panelNumber}`;
-      return {
+      const p: Step4Panel = {
         id,
         pageNumber: panel.pageNumber,
         panelNumber: panel.panelNumber,
         contextLabel: `Page ${panel.pageNumber}, Panel ${panel.panelNumber}`,
         dialogueSfx: dialogueSfx || 'No dialogue/SFX provided.',
         aiImagePrompt,
-      } satisfies Step4Panel;
+      };
+      if (shotType) p.shotType = shotType;
+      if (aspectRatio) p.aspectRatio = aspectRatio;
+      if (negativePrompt) p.negativePrompt = negativePrompt;
+      return p;
     })
     .filter((item): item is Step4Panel => item !== null);
 
@@ -352,7 +369,7 @@ const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {
     const promptOnlyRegex =
       /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?AI\s*Image\s*Prompt(?:\*{0,2})?\s*:\s*([\s\S]*?)(?=\n\s*(?:[-*]\s*)?(?:\*{0,2})?(?:AI\s*Image\s*Prompt|Panel\s+\d+|Page\s+\d+|Chapter\s+End\s+Notes|Special\s+Pages|Final\s+Script\s+Summary)\b|$)/gi;
     const prompts = [...normalized.matchAll(promptOnlyRegex)].map((match) => (match[1] || '').trim()).filter(Boolean);
-    return prompts.map((prompt, idx) => ({
+    return prompts.map((prompt, idx): Step4Panel => ({
       id: `p1-n${idx + 1}`,
       pageNumber: 1,
       panelNumber: idx + 1,

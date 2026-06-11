@@ -24,6 +24,9 @@ interface ParsedPanel {
   description: string;
   dialogues: DialogueLine[];
   prompt: string;
+  shotType?: string;
+  aspectRatio?: string;
+  negativePrompt?: string;
 }
 
 interface ParsedPage {
@@ -35,6 +38,50 @@ interface ParsedChapter {
   chapterNumber: number;
   title: string;
   pages: ParsedPage[];
+}
+
+// ── Streaming types ───────────────────────────────────────────────────────────
+
+type PanelStreamStatus = 'skeleton' | 'streaming' | 'complete';
+type LivePanelField = 'shot_type' | 'aspect_ratio' | 'description' | 'dialogue_sfx' | 'ai_image_prompt' | 'negative_prompt';
+
+interface LivePanel {
+  number: number;
+  status: PanelStreamStatus;
+  activeField: LivePanelField | null;
+  shot_type: string;
+  aspect_ratio: string;
+  description: string;
+  dialogue_sfx: string;
+  ai_image_prompt: string;
+  negative_prompt: string;
+}
+
+interface LivePage {
+  number: number;
+  panels: LivePanel[];
+}
+
+interface LiveChapter {
+  number: number;
+  title: string;
+  pages: LivePage[];
+}
+
+interface StreamParserState {
+  parsedLength: number;
+  lineBuffer: string;
+  stopped: boolean;
+  curChIdx: number;
+  curPgIdx: number;
+  curPnIdx: number;
+  activeField: LivePanelField | null;
+  chapters: LiveChapter[];
+}
+
+interface StreamProgressInfo {
+  completedPanels: number;
+  activePanelLabel: string;
 }
 
 // ── Parsers ───────────────────────────────────────────────────────────────────
@@ -75,7 +122,9 @@ function parseScript(md: string): ParsedChapter[] {
   for (const rawLine of md.split('\n')) {
     const line = rawLine.trim();
     if (!line || /^-{3,}$/.test(line)) continue;
-    const clean = line.replace(/^#{1,4}\s*/, '').replace(/[*_`]/g, '').trim();
+    if (/^===JSON===/.test(line)) break;   // stop before JSON block
+    // Strip markdown decorators + leading bullet so "- **field:** value" → "field: value"
+    const clean = line.replace(/^#{1,4}\s*/, '').replace(/[*`]/g, '').replace(/^-\s+/, '').trim();
 
     const chM = clean.match(/^Chapter\s+(\d+)[:\-–—]?\s*(.*)/i);
     if (chM) { commitChapter(); curChapter = { chapterNumber: +chM[1], title: chM[2].trim(), pages: [] }; mode = 'none'; continue; }
@@ -88,18 +137,36 @@ function parseScript(md: string): ParsedChapter[] {
     const pnM = clean.match(/^Panel\s+(\d+)[:\s]?(.*)/i);
     if (pnM) {
       commitPanel(); ensureChapter(); if (!curPage) curPage = { pageNumber: 1, panels: [] };
-      curPanel = { panelNumber: +pnM[1], label: `Panel ${pnM[1]}`, layoutSummary: '', description: pnM[2].trim(), dialogues: [], prompt: '' };
+      // pnM[2] may itself start with "- field:" if panel header had inline content — strip bullet
+      const desc = pnM[2].trim().replace(/^-\s+/, '').trim();
+      curPanel = { panelNumber: +pnM[1], label: `Panel ${pnM[1]}`, layoutSummary: '', description: desc, dialogues: [], prompt: '' };
       mode = 'description'; continue;
     }
     if (!curPanel) continue;
-    if (/^(layout\s+summary|scene|setting)\s*:/i.test(clean)) { mode = 'layout'; const r = clean.replace(/^[^:]+:\s*/, '').trim(); if (r) curPanel.layoutSummary += (curPanel.layoutSummary ? ' ' : '') + r; continue; }
-    if (/^(ai\s+image\s+prompt|image\s+prompt)\s*:/i.test(clean)) { mode = 'prompt'; const r = clean.replace(/^[^:]+:\s*/, '').trim(); if (r) curPanel.prompt = r; continue; }
-    if (/^(dialogue(\/sfx)?|speech)\s*:/i.test(clean)) { mode = 'dialogue'; const r = clean.replace(/^[^:]+:\s*/, '').trim(); if (r) appendDialogueLine(curPanel, r); continue; }
+    // underscores preserved (removed [_] from the replace above); field names with underscores match directly
+    if (/^shot_?type\s*:/i.test(clean))      { curPanel.shotType    = clean.replace(/^[^:]+:\s*/, '').trim(); mode = 'none';        continue; }
+    if (/^aspect_?ratio\s*:/i.test(clean))   { curPanel.aspectRatio = clean.replace(/^[^:]+:\s*/, '').trim(); mode = 'none';        continue; }
+    if (/^negative_?prompt\s*:/i.test(clean)) { curPanel.negativePrompt = clean.replace(/^[^:]+:\s*/, '').trim(); mode = 'none';   continue; }
+    if (/^description\s*:/i.test(clean)) {
+      mode = 'description';
+      const r = clean.replace(/^[^:]+:\s*/, '').trim();
+      if (r) curPanel.description = r;
+      continue;
+    }
+    if (/^(layout[\s_]*summary|scene|setting)\s*:/i.test(clean)) { mode = 'layout'; const r = clean.replace(/^[^:]+:\s*/, '').trim(); if (r) curPanel.layoutSummary += (curPanel.layoutSummary ? ' ' : '') + r; continue; }
+    if (/^(ai[\s_]*image[\s_]*prompt|image[\s_]*prompt)\s*:/i.test(clean)) { mode = 'prompt'; const r = clean.replace(/^[^:]+:\s*/, '').trim(); if (r) curPanel.prompt = r; continue; }
+    if (/^(dialogue[\s_/]*sfx?|speech)\s*:/i.test(clean)) {
+      mode = 'dialogue';
+      const r = clean.replace(/^[^:]+:\s*/, '').trim();
+      if (r) r.split(/\s*\|\s*/).forEach((part) => { if (part) appendDialogueLine(curPanel!, part); });
+      continue;
+    }
     if (/^SFX\s*:/i.test(clean)) { curPanel.dialogues.push({ type: 'sfx', text: clean.replace(/^SFX\s*:\s*/i, '').trim() }); continue; }
-    if (mode === 'layout')    curPanel.layoutSummary += ' ' + clean;
+    if (mode === 'layout')        curPanel.layoutSummary += ' ' + clean;
     else if (mode === 'prompt')   curPanel.prompt += (curPanel.prompt ? '\n' : '') + clean;
-    else if (mode === 'dialogue') appendDialogueLine(curPanel, clean);
-    else { curPanel.description += (curPanel.description ? ' ' : '') + clean; }
+    else if (mode === 'dialogue') clean.split(/\s*\|\s*/).forEach((part) => { if (part) appendDialogueLine(curPanel!, part); });
+    else if (mode === 'description') { curPanel.description += (curPanel.description ? ' ' : '') + clean; }
+    // mode === 'none': stray lines (summaries, tables) after known fields are ignored
   }
   commitChapter();
   return chapters;
@@ -125,6 +192,36 @@ function matchesFilter(panel: ParsedPanel, filter: FilterMode, isApproved: boole
   return getPanelStatus(panel, isApproved, isLocallyApproved) === filter;
 }
 
+// ── Skeleton helpers ──────────────────────────────────────────────────────────
+
+function makeSkeletonPanel(num: number): LivePanel {
+  return { number: num, status: 'skeleton', activeField: null, shot_type: '', aspect_ratio: '', description: '', dialogue_sfx: '', ai_image_prompt: '', negative_prompt: '' };
+}
+
+function buildSkeletonChapters(
+  numChaptersStr: string,
+  targetPagesStr: string,
+  structuredJson: Record<string, unknown> | null,
+): LiveChapter[] {
+  const nc = Math.max(1, parseInt(numChaptersStr) || 4);
+  const tp = Math.max(nc, parseInt(targetPagesStr) || 100);
+  const ppc = Math.max(1, Math.round(tp / nc));
+  const stepsObj = structuredJson?.steps as Record<string, unknown> | undefined;
+  const analysisObj = stepsObj?.step_1_analysis as Record<string, unknown> | undefined;
+  const dataObj = analysisObj?.data as Record<string, unknown> | undefined;
+  const outlineArr = Array.isArray(dataObj?.chapter_outline) ? (dataObj.chapter_outline as Record<string, unknown>[]) : [];
+
+  return Array.from({ length: nc }, (_, i) => {
+    const chNum = i + 1;
+    const oc = outlineArr.find((c) => c?.chapter_number === chNum);
+    const title = (oc?.title as string | undefined) || `Chapter ${chNum}`;
+    const pages: LivePage[] = Array.from({ length: ppc }, (__, j) => ({
+      number: j + 1,
+      panels: [makeSkeletonPanel(1)],
+    }));
+    return { number: chNum, title, pages };
+  });
+}
 
 // ── Panel status dot ──────────────────────────────────────────────────────────
 
@@ -132,6 +229,136 @@ function StatusDot({ status }: { status: PanelStatus }) {
   if (status === 'approved') return <span className="material-symbols-outlined text-[13px] text-emerald-500 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>;
   if (status === 'generated') return <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 inline-block" />;
   return <span className="w-2 h-2 rounded-full border-2 border-[#9CA3AF] flex-shrink-0 inline-block" />;
+}
+
+// ── Skeleton panel card (shimmer, during streaming) ──────────────────────────
+
+function SkeletonPanelCard() {
+  return (
+    <div className="rounded-lg border border-[#E2E6F0] overflow-hidden">
+      <div className="flex items-center gap-2.5 px-3 h-12 bg-[#F7F8FC]">
+        <div className="w-4 h-4 rounded-full bg-gray-200 animate-shimmer flex-shrink-0" />
+        <div className="w-16 h-5 rounded-md bg-gray-200 animate-shimmer flex-shrink-0" />
+        <div className="flex-1 h-3 rounded bg-gray-200 animate-shimmer" />
+      </div>
+    </div>
+  );
+}
+
+// ── Live panel card (used during streaming) ───────────────────────────────────
+
+function LivePanelCard({ panel, isExpanded, onToggle }: {
+  panel: LivePanel;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  if (panel.status === 'skeleton') return <SkeletonPanelCard />;
+
+  const shotType     = panel.shot_type || extractShotType(panel.description);
+  const isStreaming  = panel.status === 'streaming';
+
+  return (
+    <div className={`rounded-lg border overflow-hidden transition-all duration-150 animate-panel-appear ${
+      isStreaming ? 'border-blue-300 animate-border-pulse' : 'border-[#E2E6F0]'
+    }`}>
+      {/* Header */}
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`w-full flex items-center gap-2.5 px-3 h-12 text-left transition-colors ${
+          isExpanded ? 'bg-[#EEF2FF]' : 'bg-[#F7F8FC] hover:bg-[#EEF2FF]'
+        }`}
+        style={isExpanded ? { borderLeft: '3px solid var(--color-primary)' } : {}}
+      >
+        <span
+          className="material-symbols-outlined text-[18px] flex-shrink-0 transition-transform duration-200"
+          style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', color: isExpanded ? 'var(--color-primary)' : '#9CA3AF' }}
+        >chevron_right</span>
+        <span className="flex-shrink-0 px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wide bg-[#E8EAF0] text-[#5A6375]">
+          Panel {panel.number}
+        </span>
+        {shotType && (
+          <span className="hidden sm:inline-flex flex-shrink-0 items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#F0F0FB] text-[#7C85C8] border border-[#DDE0F5]">
+            {shotType}
+          </span>
+        )}
+        <span className="text-[12.5px] text-on-surface-variant/70 truncate flex-1 min-w-0">
+          {panel.description || <span className="text-gray-400 italic">Generating…</span>}
+        </span>
+        <div className="flex-shrink-0 ml-1">
+          {isStreaming
+            ? <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse inline-block" />
+            : <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />}
+        </div>
+      </button>
+
+      {/* Expandable body */}
+      <div className={`grid transition-all ${isExpanded ? 'grid-rows-[1fr] duration-[250ms] ease-out' : 'grid-rows-[0fr] duration-[200ms] ease-in'}`}>
+        <div className="overflow-hidden">
+          <div className={`transition-opacity duration-150 ${isExpanded ? 'opacity-100 delay-[40ms]' : 'opacity-0'}`}>
+            <div className="grid grid-cols-1 md:grid-cols-2 divide-y divide-[#E0E0E0] md:divide-y-0">
+              {/* Left: description + dialogue */}
+              <div className="bg-white p-4 space-y-3">
+                {panel.description ? (
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase text-[#9CA3AF] mb-1" style={{ letterSpacing: '0.06em' }}>Description</p>
+                    <p className="text-[13px] text-[#374151] leading-[1.7]">
+                      {panel.description}
+                      {isStreaming && panel.activeField === 'description' && <span className="animate-pulse text-blue-400">▋</span>}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="h-3 rounded bg-gray-100 animate-shimmer w-full" />
+                    <div className="h-3 rounded bg-gray-100 animate-shimmer w-4/5" />
+                  </div>
+                )}
+                {panel.dialogue_sfx && (
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase text-[#9CA3AF] mb-1" style={{ letterSpacing: '0.06em' }}>Dialogue / SFX</p>
+                    <p className="text-[13px] text-[#374151] italic leading-[1.7]">
+                      {panel.dialogue_sfx}
+                      {isStreaming && panel.activeField === 'dialogue_sfx' && <span className="animate-pulse text-blue-400">▋</span>}
+                    </p>
+                  </div>
+                )}
+              </div>
+              {/* Right: AI prompt */}
+              <div className="bg-[#12131F] relative" style={{ minHeight: '140px' }}>
+                <div className="p-4" style={{ fontFamily: "'JetBrains Mono', 'Fira Code', monospace" }}>
+                  {panel.aspect_ratio && (
+                    <span className="inline-flex items-center gap-1 mb-2 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-white/[0.06] text-[#7C85C8] border border-white/[0.1]">
+                      {panel.aspect_ratio}
+                    </span>
+                  )}
+                  {panel.ai_image_prompt ? (
+                    <>
+                      <p style={{ fontSize: '12.5px', lineHeight: 1.75, color: '#D4D8F0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {renderInline(panel.ai_image_prompt, '#D4D8F0')}
+                        {isStreaming && panel.activeField === 'ai_image_prompt' && <span className="animate-pulse" style={{ color: '#86EFAC' }}>▋</span>}
+                      </p>
+                      {panel.negative_prompt && (
+                        <p className="mt-2 italic" style={{ fontSize: '11px', lineHeight: 1.6, color: '#6B7280' }}>
+                          <span style={{ color: '#4B5563', fontStyle: 'normal', fontWeight: 600 }}>–</span>{' '}{panel.negative_prompt}
+                          {isStreaming && panel.activeField === 'negative_prompt' && <span className="animate-pulse" style={{ color: '#86EFAC' }}>▋</span>}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="h-3 rounded bg-white/[0.06] animate-shimmer w-full" />
+                      <div className="h-3 rounded bg-white/[0.06] animate-shimmer w-4/5" />
+                      <div className="h-3 rounded bg-white/[0.06] animate-shimmer w-3/4" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Rich AI prompt block (right column) ──────────────────────────────────────
@@ -209,14 +436,16 @@ function RichPromptBlock({
           <div className="mb-3">
             <SectionLabel>Panel Notes</SectionLabel>
             {panel.layoutSummary && (
-              <p className="mb-1" style={{ fontSize: '12.5px', lineHeight: 1.75, color: '#94A3B8' }}>
+              <p className="mb-1 text-[#94A3B8]" style={{ fontSize: '12.5px', lineHeight: 1.75 }}>
                 {'📐 '}{renderInline(panel.layoutSummary, '#94A3B8')}
               </p>
             )}
             {panel.description && (
-              <p style={{ fontSize: '12.5px', lineHeight: 1.75, color: '#94A3B8' }}>
-                {renderInline(panel.description, '#94A3B8')}
-              </p>
+              <div className="text-[#94A3B8]" style={{ fontSize: '12.5px', lineHeight: 1.75 }}>
+                <Markdown className="[&_p]:text-[#94A3B8] [&_p]:text-[12.5px] [&_p]:leading-[1.75] [&_table]:text-[11px] [&_th]:text-[#7C85C8] [&_td]:text-[#94A3B8] [&_td]:border-white/10 [&_th]:border-white/10">
+                  {panel.description}
+                </Markdown>
+              </div>
             )}
           </div>
         )}
@@ -257,12 +486,22 @@ function RichPromptBlock({
 
         <div>
           <SectionLabel>Style Prompt</SectionLabel>
+          {panel.aspectRatio && (
+            <span className="inline-flex items-center gap-1 mb-2 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-white/[0.06] text-[#7C85C8] border border-white/[0.1]">
+              {panel.aspectRatio}
+            </span>
+          )}
           {hasPrompt ? (
             <p style={{ fontSize: '12.5px', lineHeight: 1.75, color: '#D4D8F0', fontWeight: 400, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
               {renderInline(panel.prompt, '#D4D8F0')}
             </p>
           ) : (
             <p className="italic" style={{ fontSize: '11px', color: '#4B5563' }}>No AI image prompt for this panel</p>
+          )}
+          {panel.negativePrompt && (
+            <p className="mt-2 italic" style={{ fontSize: '11px', lineHeight: 1.6, color: '#6B7280' }}>
+              <span style={{ color: '#4B5563', fontStyle: 'normal', fontWeight: 600 }}>–</span>{' '}{panel.negativePrompt}
+            </p>
           )}
         </div>
       </div>
@@ -437,7 +676,7 @@ function PanelCard({
   const dialogueOnly = viewMode === 'dialogue';
   const hasPrompt    = !!panel.prompt;
   const isApproved   = isScriptApproved || isApprovedLocally;
-  const shotType     = extractShotType(panel.layoutSummary || panel.description);
+  const shotType     = panel.shotType || extractShotType(panel.layoutSummary || panel.description);
   const summary      = panel.layoutSummary || panel.description || '';
 
   return (
@@ -503,8 +742,18 @@ function PanelCard({
               {showLeft && (
                 <div className="bg-white p-4 space-y-4">
                   {!dialogueOnly && <p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>📋 Script</p>}
-                  {!dialogueOnly && panel.layoutSummary && <div className="space-y-1"><p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>Layout Summary</p><p className="text-[13px] text-[#374151] leading-[1.7]">{panel.layoutSummary}</p></div>}
-                  {!dialogueOnly && panel.description && <div className="space-y-1"><p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>Panel Description</p><p className="text-[13px] text-[#374151] leading-[1.7]">{panel.description}</p></div>}
+                  {!dialogueOnly && panel.layoutSummary && (
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>Layout Summary</p>
+                      <Markdown className="text-[13px] text-[#374151] leading-[1.7]">{panel.layoutSummary}</Markdown>
+                    </div>
+                  )}
+                  {!dialogueOnly && panel.description && (
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>Panel Description</p>
+                      <Markdown className="text-[13px] text-[#374151] leading-[1.7]">{panel.description}</Markdown>
+                    </div>
+                  )}
                   {panel.dialogues.length > 0 ? <DialogueLines dialogues={panel.dialogues} /> : dialogueOnly ? <p className="text-xs text-[#9CA3AF] italic">No dialogue in this panel.</p> : null}
                   {!dialogueOnly && !panel.layoutSummary && !panel.description && !panel.dialogues.length && <p className="text-xs text-[#9CA3AF] italic">No script data.</p>}
                 </div>
@@ -655,12 +904,14 @@ function ScriptBottomBar({
   canGenerate, cooldown, error, isScriptApproved,
   onPrevious, onContinue, onRegenerate, onRetry, onRevoke,
   showContinueWarning, onConfirmContinue, onCancelContinue,
+  streamProgressInfo,
 }: {
   isGenerating: boolean; approvedScenes: number; totalScenes: number; pendingPanelCount: number;
   canGenerate: boolean; cooldown: number; error: string | null;
   isScriptApproved: boolean;
   onPrevious: () => void; onContinue: () => void; onRegenerate: () => void; onRetry: () => void; onRevoke: () => void;
   showContinueWarning: boolean; onConfirmContinue: () => void; onCancelContinue: () => void;
+  streamProgressInfo?: StreamProgressInfo;
 }) {
   const allDone   = totalScenes > 0 && approvedScenes >= totalScenes;
   const remaining = Math.max(0, totalScenes - approvedScenes);
@@ -720,9 +971,19 @@ function ScriptBottomBar({
         {/* Center: progress bar + label */}
         <div className="flex-1 min-w-0 hidden sm:block">
           {isGenerating ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <span className="w-3.5 h-3.5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin flex-shrink-0" />
-              <span className="text-sm text-gray-500">Generating script…</span>
+              <div className="min-w-0">
+                <span className="text-sm text-gray-500">Writing panel scripts…</span>
+                {streamProgressInfo && streamProgressInfo.completedPanels > 0 && (
+                  <span className="ml-2 text-xs text-gray-400 tabular-nums">
+                    {streamProgressInfo.completedPanels} panel{streamProgressInfo.completedPanels !== 1 ? 's' : ''} written
+                    {streamProgressInfo.activePanelLabel && (
+                      <span className="ml-1 text-gray-300">· {streamProgressInfo.activePanelLabel}</span>
+                    )}
+                  </span>
+                )}
+              </div>
             </div>
           ) : error ? (
             <span className="text-sm text-red-500 truncate">{error}</span>
@@ -836,6 +1097,7 @@ export default function Step3Script() {
   const {
     step3, handleGenerate, handleApprove, handleRevokeApproval, handleRetry,
     getCooldownSeconds, setActiveStep,
+    step1, numChapters, targetPages,
   } = useComicGeneration();
 
   const [copiedKey,           setCopiedKey]           = useState<string | null>(null);
@@ -847,7 +1109,13 @@ export default function Step3Script() {
   const [showContinueWarning, setShowContinueWarning] = useState(false);
   const [expandedPageKey,     setExpandedPageKey]     = useState<string | null>(null);
   const [approvedPageKeys,    setApprovedPageKeys]    = useState<Set<string>>(new Set());
-  const lastScriptRef = useRef<string | null>(null);
+  const lastScriptRef  = useRef<string | null>(null);
+  const parserRef      = useRef<StreamParserState>({
+    parsedLength: 0, lineBuffer: '', stopped: false,
+    curChIdx: -1, curPgIdx: -1, curPnIdx: -1,
+    activeField: null, chapters: [],
+  });
+  const [streamTick, setStreamTick] = useState(0);
 
   const handleCopyPrompt = useCallback(async (key: string, text: string) => {
     await navigator.clipboard.writeText(text);
@@ -985,12 +1253,190 @@ export default function Step3Script() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [allPageKeys, expandedPageKey, state, canGenerate, handleGenerate]);
 
+  // ── Stream parser effect ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isGenerating) return;
+
+    const text = step3.streamingText || '';
+    const p    = parserRef.current;
+
+    // Detect new stream (text reset to empty)
+    if (text.length < p.parsedLength) {
+      parserRef.current = { parsedLength: 0, lineBuffer: '', stopped: false, curChIdx: -1, curPgIdx: -1, curPnIdx: -1, activeField: null, chapters: [] };
+      setStreamTick(0);
+      return;
+    }
+    if (text.length <= p.parsedLength || p.stopped) return;
+
+    const newChunk = text.slice(p.parsedLength);
+    p.parsedLength  = text.length;
+
+    const combined  = p.lineBuffer + newChunk;
+    const lines     = combined.split('\n');
+    p.lineBuffer    = lines[lines.length - 1];
+
+    for (const rawLine of lines.slice(0, -1)) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      if (/^===JSON===/.test(line)) {
+        p.stopped = true;
+        for (const ch of p.chapters) for (const pg of ch.pages) for (const pn of pg.panels) {
+          pn.status = 'complete'; pn.activeField = null;
+        }
+        break;
+      }
+
+      const clean = line
+        .replace(/^#{1,6}\s*/, '')
+        .replace(/\*\*/g, '')
+        .replace(/^[-•*]\s*/, '')
+        .trim();
+
+      // Chapter
+      const chM = clean.match(/^(?:CHAPTER|Chapter)\s+(\d+)[:\-–—]?\s*(.*)/i);
+      if (chM) {
+        if (p.curChIdx >= 0 && p.curPgIdx >= 0 && p.curPnIdx >= 0) {
+          p.chapters[p.curChIdx].pages[p.curPgIdx].panels[p.curPnIdx].status = 'complete';
+          p.chapters[p.curChIdx].pages[p.curPgIdx].panels[p.curPnIdx].activeField = null;
+        }
+        const chNum = parseInt(chM[1]);
+        const title = chM[2].trim() || `Chapter ${chNum}`;
+        let idx = p.chapters.findIndex((c) => c.number === chNum);
+        if (idx === -1) { p.chapters.push({ number: chNum, title, pages: [] }); idx = p.chapters.length - 1; }
+        else { p.chapters[idx].title = title; }
+        p.curChIdx = idx; p.curPgIdx = -1; p.curPnIdx = -1; p.activeField = null;
+        continue;
+      }
+
+      // Page
+      const pgM = clean.match(/^Page\s+(\d+)/i);
+      if (pgM) {
+        if (p.curChIdx < 0) { p.chapters.push({ number: 1, title: 'Chapter 1', pages: [] }); p.curChIdx = 0; }
+        if (p.curPnIdx >= 0 && p.curPgIdx >= 0) {
+          p.chapters[p.curChIdx].pages[p.curPgIdx].panels[p.curPnIdx].status = 'complete';
+          p.chapters[p.curChIdx].pages[p.curPgIdx].panels[p.curPnIdx].activeField = null;
+        }
+        const pgNum = parseInt(pgM[1]);
+        let pgIdx = p.chapters[p.curChIdx].pages.findIndex((pg) => pg.number === pgNum);
+        if (pgIdx === -1) { p.chapters[p.curChIdx].pages.push({ number: pgNum, panels: [] }); pgIdx = p.chapters[p.curChIdx].pages.length - 1; }
+        p.curPgIdx = pgIdx; p.curPnIdx = -1; p.activeField = null;
+        continue;
+      }
+
+      // Panel
+      const pnM = clean.match(/^Panel\s+(\d+)/i);
+      if (pnM) {
+        if (p.curChIdx < 0) { p.chapters.push({ number: 1, title: 'Chapter 1', pages: [] }); p.curChIdx = 0; }
+        if (p.curPgIdx < 0) { p.chapters[p.curChIdx].pages.push({ number: 1, panels: [] }); p.curPgIdx = 0; }
+        if (p.curPnIdx >= 0) {
+          p.chapters[p.curChIdx].pages[p.curPgIdx].panels[p.curPnIdx].status = 'complete';
+          p.chapters[p.curChIdx].pages[p.curPgIdx].panels[p.curPnIdx].activeField = null;
+        }
+        const pnNum = parseInt(pnM[1]);
+        let pnIdx = p.chapters[p.curChIdx].pages[p.curPgIdx].panels.findIndex((pn) => pn.number === pnNum);
+        if (pnIdx === -1) {
+          p.chapters[p.curChIdx].pages[p.curPgIdx].panels.push({ number: pnNum, status: 'streaming', activeField: null, shot_type: '', aspect_ratio: '', description: '', dialogue_sfx: '', ai_image_prompt: '', negative_prompt: '' });
+          pnIdx = p.chapters[p.curChIdx].pages[p.curPgIdx].panels.length - 1;
+        }
+        p.curPnIdx = pnIdx; p.activeField = null;
+        continue;
+      }
+
+      // Field markers
+      if (p.curChIdx < 0 || p.curPgIdx < 0 || p.curPnIdx < 0) continue;
+      const pn = p.chapters[p.curChIdx].pages[p.curPgIdx].panels[p.curPnIdx];
+
+      const setF = (field: LivePanelField, val: string) => { pn[field] = val; pn.activeField = field; p.activeField = field; };
+      const appF = (field: LivePanelField, val: string) => { pn[field] += ' ' + val; };
+
+      if (/^shot_type\s*:/i.test(clean))                          { setF('shot_type',       clean.replace(/^[^:]+:\s*/, '')); continue; }
+      if (/^aspect_ratio\s*:/i.test(clean))                       { setF('aspect_ratio',     clean.replace(/^[^:]+:\s*/, '')); continue; }
+      if (/^description\s*:/i.test(clean))                        { setF('description',      clean.replace(/^[^:]+:\s*/, '')); continue; }
+      if (/^(dialogue_sfx|dialogue\/sfx)\s*:/i.test(clean))       { setF('dialogue_sfx',    clean.replace(/^[^:]+:\s*/, '')); continue; }
+      if (/^(ai_image_prompt|ai\s+image\s+prompt)\s*:/i.test(clean)) { setF('ai_image_prompt', clean.replace(/^[^:]+:\s*/, '')); continue; }
+      if (/^negative_prompt\s*:/i.test(clean))                    { setF('negative_prompt',  clean.replace(/^[^:]+:\s*/, '')); continue; }
+
+      // Continuation line
+      if (p.activeField && pn.status === 'streaming') appF(p.activeField, clean);
+    }
+
+    setStreamTick((t) => t + 1);
+  }, [step3.streamingText, isGenerating]);
+
   const handleContinue = useCallback(() => {
     if (isApproved) { setActiveStep(4); return; }
     if (hasPendingPanels) { setShowContinueWarning(true); return; }
     handleApprove(3);
     setActiveStep(4);
   }, [isApproved, hasPendingPanels, handleApprove, setActiveStep]);
+
+  // ── Streaming computed values ────────────────────────────────────────────────
+  const skeletonChapters = useMemo(
+    () => buildSkeletonChapters(numChapters, targetPages, step1.data?.structuredJson ?? null),
+    [numChapters, targetPages, step1.data],
+  );
+
+  // Read live chapters from ref (safe in render because streamTick triggers re-render)
+  const liveChapters = parserRef.current.chapters;
+
+  // Active streaming panel: the last panel with status 'streaming'
+  const activeStreamPanelKey = useMemo<string | null>(() => {
+    if (!isGenerating) return null;
+    const p = parserRef.current;
+    if (p.curChIdx >= 0 && p.curPgIdx >= 0 && p.curPnIdx >= 0) {
+      const ch = p.chapters[p.curChIdx];
+      const pg = ch?.pages[p.curPgIdx];
+      const pn = pg?.panels[p.curPnIdx];
+      if (pn?.status === 'streaming') return `${ch.number}-${pg.number}-${pn.number}`;
+    }
+    return null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGenerating, streamTick]);
+
+  // Stream progress info for bottom bar
+  const streamProgressInfo = useMemo<StreamProgressInfo | undefined>(() => {
+    if (!isGenerating) return undefined;
+    let completed = 0;
+    for (const ch of liveChapters) for (const pg of ch.pages) for (const pn of pg.panels) {
+      if (pn.status === 'complete') completed++;
+    }
+    const p  = parserRef.current;
+    let label = '';
+    if (p.curChIdx >= 0 && p.curPgIdx >= 0 && p.curPnIdx >= 0) {
+      const ch = p.chapters[p.curChIdx];
+      const pg = ch?.pages[p.curPgIdx];
+      const pn = pg?.panels[p.curPnIdx];
+      if (ch && pg && pn) label = `Ch.${ch.number} · P.${pg.number} · Panel ${pn.number}`;
+    }
+    return { completedPanels: completed, activePanelLabel: label };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGenerating, streamTick]);
+
+  // Convert live chapters to ParsedChapter[] for NavPanel during streaming
+  const liveChaptersAsParsed = useMemo<ParsedChapter[]>(
+    () => liveChapters.map((ch) => ({
+      chapterNumber: ch.number,
+      title: ch.title,
+      pages: ch.pages.map((pg) => ({
+        pageNumber: pg.number,
+        panels: pg.panels
+          .filter((pn) => pn.status !== 'skeleton')
+          .map((pn) => ({
+            panelNumber: pn.number,
+            label: `Panel ${pn.number}`,
+            layoutSummary: '',
+            description: pn.description,
+            dialogues: [],
+            prompt: pn.ai_image_prompt,
+            shotType: pn.shot_type || undefined,
+            aspectRatio: pn.aspect_ratio || undefined,
+            negativePrompt: pn.negative_prompt || undefined,
+          })),
+      })),
+    })),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [streamTick]);
 
   return (
     <section className="text-on-surface space-y-4 pb-20">
@@ -1002,10 +1448,146 @@ export default function Step3Script() {
       </div>
 
       {/* ── Streaming ── */}
-      {state === 2 && step3.streamingText && (
-        <div className="rounded-3xl bg-surface-container-low border border-outline-variant/10 p-6">
-          <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-4 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />Live script stream</p>
-          <Markdown className="text-xs">{step3.streamingText}</Markdown>
+      {state === 2 && (
+        <div>
+          {/* Header bar */}
+          <div className="flex items-center gap-4 mb-3 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setNavOpen((v) => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                navOpen ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-surface-container border-outline-variant/20 text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              <span className="material-symbols-outlined text-base">account_tree</span>{navOpen ? 'Hide Nav' : 'Show Nav'}
+            </button>
+            <span className="text-sm text-on-surface-variant flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse flex-shrink-0" />
+              Writing panel script…
+            </span>
+          </div>
+
+          {/* Two-column: nav + live content */}
+          <div className="flex gap-4">
+            {navOpen && liveChaptersAsParsed.length > 0 && (
+              <div className="flex-shrink-0 w-[280px]">
+                <div className="sticky top-20 rounded-xl border border-outline-variant/10 bg-surface-container-lowest overflow-hidden flex flex-col" style={{ height: 'calc(100vh - 12rem)' }}>
+                  <NavPanel
+                    chapters={liveChaptersAsParsed}
+                    filterMode="all"
+                    onFilterChange={() => undefined}
+                    isScriptApproved={false}
+                    activePageKey={activeStreamPanelKey ? activeStreamPanelKey.split('-').slice(0, 2).join('-') : null}
+                    onScrollTo={() => undefined}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex-1 min-w-0 space-y-4">
+              {liveChapters.length === 0 ? (
+                /* No chapters arrived yet — show skeleton */
+                <div className="space-y-4">
+                  {skeletonChapters.map((ch) => (
+                    <div key={ch.number} className="mt-2 first:mt-0">
+                      {/* Skeleton chapter header */}
+                      <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/5 border border-primary/10">
+                        <div className="flex-shrink-0 px-2.5 py-1 rounded-lg bg-primary/20 text-[11px] font-bold tracking-widest text-primary/60">CH.{ch.number}</div>
+                        <h3 className="text-[18px] font-bold text-on-surface leading-tight min-w-0 truncate">{ch.title}</h3>
+                        <div className="ml-auto w-16 h-3 rounded bg-gray-200 animate-shimmer flex-shrink-0" />
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {ch.pages.slice(0, 2).map((pg) => (
+                          <div key={pg.number} className="rounded-xl border border-[#E2E6F0] overflow-hidden">
+                            <div className="flex items-center gap-3 px-4 h-[52px] bg-[#F7F8FC]">
+                              <div className="w-4 h-4 rounded bg-gray-200 animate-shimmer flex-shrink-0" />
+                              <div className="w-14 h-5 rounded-md bg-gray-200 animate-shimmer flex-shrink-0" />
+                              <div className="flex-1 h-3 rounded bg-gray-200 animate-shimmer" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* Live chapters */
+                <div className="space-y-4">
+                  {liveChapters.map((ch) => {
+                    const showChapterHeader = liveChapters.length > 1 || ch.title !== '';
+                    return (
+                      <div key={ch.number} className="mt-2 first:mt-0">
+                        {showChapterHeader && (
+                          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/10 border border-primary/15 mb-2">
+                            <span className="flex-shrink-0 px-2.5 py-1 rounded-lg bg-primary text-on-primary text-[11px] font-bold tracking-widest">CH.{ch.number}</span>
+                            <h3 className="text-[18px] font-bold text-on-surface leading-tight min-w-0 truncate">{ch.title}</h3>
+                            <div className="ml-auto flex items-center gap-1.5 text-xs text-on-surface-variant flex-shrink-0">
+                              <span>{ch.pages.length}p</span>
+                              <span className="text-outline-variant/40">·</span>
+                              <span>{ch.pages.reduce((s, p) => s + p.panels.filter((pn) => pn.status !== 'skeleton').length, 0)} panels</span>
+                            </div>
+                          </div>
+                        )}
+                        <div className="space-y-2">
+                          {ch.pages.map((pg) => {
+                            const livePanels = pg.panels.filter((pn) => pn.status !== 'skeleton');
+                            return (
+                              <div key={pg.number} className="rounded-xl border border-[#E2E6F0] overflow-hidden">
+                                <div className="flex items-center gap-3 px-4 h-[52px] bg-[#F7F8FC]">
+                                  <span className="flex-shrink-0 px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wide bg-[#E8EAF0] text-[#5A6375]">
+                                    Page {pg.number}
+                                  </span>
+                                  <span className="text-[13px] font-medium text-on-surface-variant/70">
+                                    {livePanels.length} Panel{livePanels.length !== 1 ? 's' : ''}
+                                  </span>
+                                </div>
+                                {livePanels.length > 0 && (
+                                  <div className="px-3 pt-3 pb-3 space-y-2">
+                                    {livePanels.map((pn) => {
+                                      const key = `${ch.number}-${pg.number}-${pn.number}`;
+                                      return (
+                                        <LivePanelCard
+                                          key={key}
+                                          panel={pn}
+                                          isExpanded={activeStreamPanelKey === key}
+                                          onToggle={() => undefined}
+                                        />
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Skeleton placeholders for remaining expected chapters */}
+                  {Array.from({ length: Math.max(0, parseInt(numChapters) - liveChapters.length) }, (_, i) => {
+                    const chNum = liveChapters.length + i + 1;
+                    const sk    = skeletonChapters.find((c) => c.number === chNum);
+                    return (
+                      <div key={`sk-${chNum}`} className="mt-2">
+                        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/5 border border-primary/10 mb-2">
+                          <div className="flex-shrink-0 px-2.5 py-1 rounded-lg bg-primary/20 text-[11px] font-bold tracking-widest text-primary/60">CH.{chNum}</div>
+                          <h3 className="text-[18px] font-bold text-on-surface leading-tight min-w-0 truncate">{sk?.title ?? `Chapter ${chNum}`}</h3>
+                          <div className="ml-auto w-16 h-3 rounded bg-gray-200 animate-shimmer flex-shrink-0" />
+                        </div>
+                        <div className="rounded-xl border border-[#E2E6F0] overflow-hidden">
+                          <div className="flex items-center gap-3 px-4 h-[52px] bg-[#F7F8FC]">
+                            <div className="w-4 h-4 rounded bg-gray-200 animate-shimmer flex-shrink-0" />
+                            <div className="w-14 h-5 rounded-md bg-gray-200 animate-shimmer flex-shrink-0" />
+                            <div className="flex-1 h-3 rounded bg-gray-200 animate-shimmer" />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -1153,6 +1735,7 @@ export default function Step3Script() {
         showContinueWarning={showContinueWarning}
         onConfirmContinue={() => { setShowContinueWarning(false); setActiveStep(4); }}
         onCancelContinue={() => setShowContinueWarning(false)}
+        streamProgressInfo={streamProgressInfo}
       />
     </section>
   );

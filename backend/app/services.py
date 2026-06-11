@@ -411,6 +411,39 @@ def _trim_json_for_prompt(obj, max_str: int = 600):
     return obj
 
 
+def extract_character_visual_tags(step2_json: dict) -> str:
+    """
+    Build the CHARACTER VISUAL TAGS block injected into the Step 3 prompt.
+    Extracts name + first 60 chars of ai_image_prompt_ready (falls back to
+    physical_appearance) for every character in Step 2's main_characters_designs.
+
+    main_characters_designs is a dict keyed by character_id, not a list.
+    """
+    main_designs = (
+        step2_json
+        .get("steps", {})
+        .get("step_2_design", {})
+        .get("data", {})
+        .get("main_characters_designs", {})
+    )
+    characters = list(main_designs.values()) if isinstance(main_designs, dict) else (main_designs or [])
+
+    tags_lines: list[str] = []
+    for char in characters:
+        if not isinstance(char, dict):
+            continue
+        name = char.get("name", "UNKNOWN").upper()
+        prompt_ready = char.get("ai_image_prompt_ready", "")
+        physical = char.get("physical_appearance", "")
+        tokens = prompt_ready[:60] if prompt_ready else physical[:60]
+        tokens = tokens.replace("\n", " ").strip()
+        if not tokens:
+            tokens = "[visual data missing — use physical description]"
+        tags_lines.append(f"{name}: {tokens}")
+
+    return "\n".join(tags_lines) if tags_lines else "[NO CHARACTER DATA]"
+
+
 def _extract_step3_context(step1_json: dict, step2_json: dict) -> tuple[str, str]:
     """
     Extract the minimal fields from Step 1 and Step 2 structured JSON that
@@ -947,45 +980,155 @@ Rules: each main character needs ai_image_prompt_ready. Return valid JSON only a
         # Trim context to only what Step 3 needs — strips base64 images, long
         # markdown blobs, and the duplicate step_1 data nested inside step_2.
         step1_ctx, step2_ctx = _extract_step3_context(step1_json, step2_json)
+        character_visual_tags_block = extract_character_visual_tags(step2_json)
 
-        prompt = f"""You are a professional manga adaptation studio AI. Your only job right now is Step 3: Panel-by-Panel Script & Image Prompts.
+        prompt = f"""You are a professional manga adaptation studio AI.
+Your ONLY task is Step 3: Panel-by-Panel Script & Image Prompts.
+Generate detailed scripts and image prompts (text only — no actual images).
 
-REFERENCE FROM PREVIOUS STEPS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INJECTED REFERENCES (do not alter these values)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 [STEP 1 – Chapter & Scene Structure]
 {step1_ctx}
 
 [STEP 2 – Character Designs & Image Prompts]
 {step2_ctx}
 
-USER CUSTOMIZATION INPUTS:
-- Number of chapters: {num_chapters}
-- Target total pages: {target_total_pages}
+[CHARACTER VISUAL TAGS — EXTRACTED, USE VERBATIM]
+{character_visual_tags_block}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+USER PARAMETERS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- Chapters: {num_chapters}
+- Target pages: {target_total_pages}
 - Genre & tone: {genre_tone}
 - Art style reference: {art_style_reference}
-- Maximum panels per page: {max_panels_per_page}
+- Max panels per page: {max_panels_per_page}
 - Special requests: {special_requests}
 
-TASK – STEP 3 ONLY
-Using the chapter/scene structure from Step 1 and character designs from Step 2, write the full panel-by-panel manga script.
-Output EXACTLY in this order using clean markdown:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[INTERNAL RULES — Follow these. Do NOT output them.]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. Global Scripting Rules
-2. Chapter-by-Chapter Script
-For each chapter:
-  Chapter Title & Page Range
-  For each page:
-    Page Number:
-    Layout Summary:
-    Panel 1: [description]
-    Dialogue/SFX/Thoughts: [content]
-    AI Image Prompt: [detailed prompt — incorporate the character's ai_image_prompt_ready from Step 2 for visual consistency]
-    (repeat for all panels up to {max_panels_per_page} per page)
-  Chapter End Notes:
-3. Special Pages Inventory (splash/spreads with prompts)
-4. Final Script Summary (boxed table): total pages / panels / image prompts / chapters / deviations
+RULE 1 — IMAGE PROMPT FORMAT (STRICT):
+  Every AI Image Prompt MUST follow this exact structure:
+  {{art_style_reference}}, {{character_visual_tags}}, {{shot_type}}, {{action_or_pose}}, {{mood_lighting}}
+  Example: "manga black ink detailed, pale child ash-black hair hollow gray eyes tattered coat, medium shot, reaching toward small dark dog, dim cityscape dusk"
 
-IMPORTANT CHARACTER CONSISTENCY: For every character listed in Step 2, use their ai_image_prompt_ready text as the base of every AI Image Prompt that features them. If selected_reference is "[image provided]", note "consistent with approved reference" in that prompt.
+RULE 2 — PROMPT LENGTH BUDGET:
+  Hard limit: 200 characters per AI Image Prompt.
+  Priority order if trimming needed:
+    1st keep: {art_style_reference} prefix (NEVER drop)
+    2nd keep: character visual tags (use CHARACTER VISUAL TAGS block)
+    3rd keep: shot_type
+    4th keep: action/pose
+    5th keep: mood/lighting (trim last if needed)
 
+RULE 3 — ART STYLE ANCHOR:
+  EVERY AI Image Prompt MUST begin with: "{art_style_reference},"
+  This prefix is mandatory. Never omit. Never paraphrase.
+  Repeat it identically in every single panel prompt.
+
+RULE 4 — CHARACTER TOKEN USAGE:
+  When a character appears in a panel:
+  - Copy their tokens VERBATIM from CHARACTER VISUAL TAGS block
+  - Do NOT paraphrase, summarize, or describe differently
+  - If multiple characters: concatenate their tags with comma
+  - If character not in scene: omit their tokens entirely
+
+RULE 5 — SHOT TYPE FIELD:
+  Each panel MUST declare shot_type as a SEPARATE field.
+  Valid values: extreme close-up | close-up | medium shot | medium-wide | wide shot | establishing shot | overhead | low angle | dutch angle | over-the-shoulder | two-shot
+
+RULE 6 — ASPECT RATIO:
+  Assign aspect_ratio based on panel layout:
+    establishing/wide shot → "16:9"
+    standard panel         → "4:3"
+    portrait/vertical      → "9:16"
+    close-up face          → "1:1"
+    double-spread          → "2:1"
+
+RULE 7 — NEGATIVE PROMPT:
+  Every panel includes a negative_prompt field.
+  Default: "blurry, deformed hands, extra limbs, text overlay, watermark, western cartoon, 3D render, photorealistic"
+  Add panel-specific negatives when needed.
+
+RULE 8 — PACING ADHERENCE:
+  Strictly follow scenes-per-page and panels-per-page from Step 1 JSON.
+  Do not add or remove panels without noting deviation in Final Summary.
+
+RULE 9 — CONSISTENCY ANCHOR:
+  At the start of each new chapter, re-read CHARACTER VISUAL TAGS and art_style_reference.
+  Character tokens must not drift across chapters.
+
+RULE 10 — FALLBACK:
+  If CHARACTER VISUAL TAGS block is empty for a character: use physical_description from step1_json.
+  If step1_json scene data missing: note as [DATA MISSING — estimated from context].
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUTPUT — Write exactly in this order:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## SECTION 1: Global Scripting Rules
+- Visual Commentary Protocol
+- Dialogue style guide
+- SFX/Thought integration rules
+- Tonal calibration notes
+- Art style being used: {art_style_reference}
+
+---
+
+## SECTION 2: Chapter-by-Chapter Script
+
+For EACH chapter, output:
+
+### CHAPTER N: [title]
+Pages [start]–[end]
+
+Then for EACH page:
+
+#### Page N
+**Layout:** [panel_count] panels | [layout_note]
+
+Then for EACH panel:
+
+**Panel N**
+- **shot_type:** [value from RULE 5]
+- **aspect_ratio:** [value from RULE 6]
+- **description:** [visual scene description, 1-2 sentences]
+- **dialogue_sfx:** [spoken lines | SFX | thoughts | NONE]
+- **ai_image_prompt:** [structured prompt per RULE 1+2, max 200 chars]
+- **negative_prompt:** [per RULE 7]
+
+[Repeat for all panels, pages, chapters]
+
+---
+
+## SECTION 3: Special Pages Inventory
+
+| Type | Location | Prompt | Aspect Ratio |
+|------|----------|--------|--------------|
+
+---
+
+## SECTION 4: Final Script Summary
+
+| Metric | Value |
+|--------|-------|
+| Total chapters | [N] |
+| Total pages | [N] |
+| Total panels | [N] |
+| Total image prompts | [N] |
+| Art style used | {art_style_reference} |
+| Characters featured | [list] |
+| Deviations from Step 1 | [list or NONE] |
+| Missing data flags | [list or NONE] |
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 After you finish the script above, write this separator on its own line (nothing else on that line):
 {sep}
 Then immediately write one valid JSON object (no markdown, no code fence):
@@ -1007,7 +1150,7 @@ Then immediately write one valid JSON object (no markdown, no code fence):
                 "page_number": 1,
                 "layout_summary": "",
                 "panels": [
-                  {{"panel_number":1,"description":"","dialogue_sfx_thoughts":"","ai_image_prompt":""}}
+                  {{"panel_number":1,"shot_type":"","aspect_ratio":"","description":"","dialogue_sfx_thoughts":"","ai_image_prompt":"","negative_prompt":""}}
                 ]
               }}
             ],
@@ -2009,13 +2152,13 @@ Rules:
         special_requests: str,
         stream: bool = False,
     ):
-        """Generate Step 3 markdown script using Step 1 and Step 2 structured context."""
+        """Generate Step 3 markdown script using Step 1 and Step 2 structured context (non-streaming fallback)."""
         step1_json_text = json.dumps(step1_json, ensure_ascii=True, indent=2)
         step2_json_text = json.dumps(step2_json, ensure_ascii=True, indent=2)
-        prompt = f"""
-You are a professional manga adaptation studio AI. Your only job right now is Step 3: Panel-by-Panel Script & Image Prompts. Now you can generate detailed scripts and image prompts, but do not actually create images - only text prompts that could be fed into an AI image generator like Midjourney or Stable Diffusion.
-
-REFERENCE FROM PREVIOUS STEPS:
+        character_visual_tags_block = extract_character_visual_tags(step2_json)
+        prompt = f"""You are a professional manga adaptation studio AI.
+Your ONLY task is Step 3: Panel-by-Panel Script & Image Prompts.
+Generate detailed scripts and image prompts (text only — no actual images).
 
 [STEP 1 JSON]
 {step1_json_text}
@@ -2023,63 +2166,37 @@ REFERENCE FROM PREVIOUS STEPS:
 [STEP 2 JSON]
 {step2_json_text}
 
-USER CUSTOMIZATION INPUTS:
-- Number of chapters: {num_chapters}
-- Target total pages: {target_total_pages}
-- Preferred manga genre & tone: {genre_tone}
-- Art style reference: {art_style_reference}
-- Maximum panels per page: {max_panels_per_page}
-- Any special requests: {special_requests}
+[CHARACTER VISUAL TAGS — USE VERBATIM]
+{character_visual_tags_block}
 
-TASK - STEP 3 ONLY
-Using the scene breakdowns from Step 1 and designs from Step 2, create a full manga script. Output EXACTLY in this order using clean markdown:
+USER PARAMETERS:
+- Chapters: {num_chapters}  - Target pages: {target_total_pages}
+- Genre & tone: {genre_tone}  - Art style: {art_style_reference}
+- Max panels per page: {max_panels_per_page}  - Special requests: {special_requests}
 
-IMPORTANT CHARACTER CONSISTENCY RULE:
-- Step 2 JSON may include user-approved character reference image URLs at:
-  steps.step_2_design.data.main_characters_designs[*].selected_reference_image_url
-  and/or steps.step_2_design.data.selected_character_references.
-- When present, treat these as the canonical look for that character and mention consistent traits in each AI Image Prompt.
-- Do not output the URLs in every panel line; use them internally as references for appearance consistency.
+RULES (follow strictly, do not output them):
+- RULE 1: Every AI Image Prompt format: "{art_style_reference}, {{char_tokens}}, {{shot_type}}, {{action}}, {{mood}}"
+- RULE 2: Hard limit 200 chars per prompt. Priority: art style > character tokens > shot type > action > mood.
+- RULE 3: EVERY prompt MUST begin with "{art_style_reference}," — never omit.
+- RULE 4: Copy character tokens VERBATIM from CHARACTER VISUAL TAGS block.
+- RULE 5: Each panel has a separate shot_type field (close-up | medium shot | wide shot | establishing shot | overhead | low angle | dutch angle | over-the-shoulder | two-shot).
+- RULE 6: Each panel has aspect_ratio: wide/establishing→"16:9", standard→"4:3", portrait→"9:16", face close-up→"1:1", spread→"2:1".
+- RULE 7: Each panel has negative_prompt (default: "blurry, deformed hands, extra limbs, text overlay, watermark, western cartoon, 3D render, photorealistic").
 
-1. Global Scripting Rules
-
-Dialogue style (e.g. "Casual teen speak for protagonists, formal for villains").
-Sound effects & text integration (e.g. "Use bold for SFX, italics for thoughts").
-Pacing adherence: Stick to Step 1's scenes-per-page and panels-per-page.
-Image prompt style: Make them detailed, consistent (include art style, character designs, composition, mood, lighting, etc.).
-
-2. Chapter-by-Chapter Script
-For each chapter (exactly the number from Step 1):
-
-Chapter Title & Page Range: [Title] - Pages [X-Y]
-Then, for each page in the chapter:
-Page Number: [e.g. Page 1 of Chapter 1]
-Layout Summary: Number of panels, any spreads/splashes.
-Panel-by-Panel Breakdown:
-Panel 1: [Description]
-Dialogue/SFX/Thoughts: [content]
-AI Image Prompt: [full prompt]
-
-Repeat for all panels on the page.
-
-End each chapter with: "Chapter End Notes: [Any cliffhanger setup or visual recap]"
-
-3. Special Pages Inventory
-
-List all splash pages, double-spreads, or covers with their prompts.
-Any recurring elements.
-
-4. Final Script Summary (in a boxed table)
-
-Total pages generated: __
-Total panels: __
-Total image prompts: __
-Chapters completed: __ / {num_chapters}
-Any deviations from Step 1 plan and why
-
-After you output everything above, end with this exact line:
-"Step 3 complete. This is the full manga script ready for image generation. Reply with 'Generate Images' if you want me to simulate or batch the image creation process, or tell me any revisions."
-        """
+OUTPUT ORDER:
+## SECTION 1: Global Scripting Rules
+## SECTION 2: Chapter-by-Chapter Script
+  For each panel:
+  **Panel N**
+  - **shot_type:** [value]
+  - **aspect_ratio:** [value]
+  - **description:** [1-2 sentences]
+  - **dialogue_sfx:** [content or NONE]
+  - **ai_image_prompt:** [max 200 chars, follows RULE 1-4]
+  - **negative_prompt:** [per RULE 7]
+## SECTION 3: Special Pages Inventory
+## SECTION 4: Final Script Summary
+"""
         return await self.generate_text(prompt, stream=stream)
 
     async def generate_step3_structured_snapshot(
@@ -2132,9 +2249,12 @@ Use this exact shape:
                 "panels": [
                   {{
                     "panel_number": 1,
+                    "shot_type": "",
+                    "aspect_ratio": "",
                     "description": "",
                     "dialogue_sfx_thoughts": "",
-                    "ai_image_prompt": ""
+                    "ai_image_prompt": "",
+                    "negative_prompt": ""
                   }}
                 ]
               }}
