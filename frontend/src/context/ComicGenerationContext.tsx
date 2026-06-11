@@ -10,6 +10,8 @@ import {
   toApiError,
 } from '@/services/api';
 import type { FullProjectSave, CloudProjectListItem, CharacterSummary } from '@/services/api';
+import { exportAsZip, exportAsPdf } from '@/lib/export';
+import type { ExportPage } from '@/lib/export';
 
 export type StepKey = 1 | 2 | 3 | 4;
 export type WizardStepKey = 0 | StepKey;
@@ -470,6 +472,9 @@ export interface ComicGenerationContextValue {
   handleRegeneratePage: (pageNumber: number) => Promise<void>;
   copyProjectJson: () => Promise<void>;
   downloadProjectJson: () => void;
+  exportZip: (includeMetadata: boolean) => Promise<void>;
+  exportPdf: (includeMetadata: boolean) => Promise<void>;
+  exportStatus: 'idle' | 'exporting' | 'error';
   getStep2PromptList: () => string[];
   getSelectedCharacterReferences: () => Array<{
     character_id: string;
@@ -2034,6 +2039,58 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
   };
 
+  const [exportStatus, setExportStatus] = useState<'idle' | 'exporting' | 'error'>('idle');
+
+  function buildExportPages(data: { panels: Step4Panel[]; pageStates: Record<string, Step4PanelState> }): ExportPage[] {
+    const byPage = new Map<number, Step4Panel[]>();
+    for (const panel of data.panels) {
+      const arr = byPage.get(panel.pageNumber) ?? [];
+      arr.push(panel);
+      byPage.set(panel.pageNumber, arr);
+    }
+    const pages: ExportPage[] = [];
+    for (const [pageNumber, panels] of Array.from(byPage.entries()).sort(([a], [b]) => a - b)) {
+      const state = data.pageStates[`page-${pageNumber}`];
+      if (!state || state.status !== 'success' || !state.imageUrl) continue;
+      pages.push({
+        pageNumber,
+        imageUrl: state.imageUrl,
+        panels: panels.map((pan) => ({
+          panelNumber: pan.panelNumber,
+          contextLabel: pan.contextLabel,
+          shotType: pan.shotType,
+          dialogueSfx: pan.dialogueSfx,
+          aiImagePrompt: pan.aiImagePrompt,
+        })),
+      });
+    }
+    return pages;
+  }
+
+  const exportZip = useCallback(async (includeMetadata: boolean) => {
+    if (!step4.data) return;
+    setExportStatus('exporting');
+    try {
+      const pages = buildExportPages(step4.data);
+      await exportAsZip(pages, { includeMetadata, projectId: projectId || 'comic' });
+      setExportStatus('idle');
+    } catch {
+      setExportStatus('error');
+    }
+  }, [step4.data, projectId]);
+
+  const exportPdf = useCallback(async (includeMetadata: boolean) => {
+    if (!step4.data) return;
+    setExportStatus('exporting');
+    try {
+      const pages = buildExportPages(step4.data);
+      await exportAsPdf(pages, { includeMetadata, projectId: projectId || 'comic' });
+      setExportStatus('idle');
+    } catch {
+      setExportStatus('error');
+    }
+  }, [step4.data, projectId]);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -2603,6 +2660,9 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     handleRegeneratePage,
     copyProjectJson,
     downloadProjectJson,
+    exportZip,
+    exportPdf,
+    exportStatus,
     getStep2PromptList,
     getSelectedCharacterReferences,
     getCooldownSeconds,

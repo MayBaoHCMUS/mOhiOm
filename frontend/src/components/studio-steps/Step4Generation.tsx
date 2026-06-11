@@ -523,6 +523,7 @@ function PreviewModal({ pages, onClose }: {
 function ExportModal({
   panelCount, pageCount, chapterCount,
   onClose, onDownloadJson, onSaveCloud, cloudSaveStatus, onMarkComplete,
+  onExportZip, onExportPdf, hasImages, exportStatus,
 }: {
   panelCount: number; pageCount: number; chapterCount: number;
   onClose: () => void;
@@ -530,14 +531,27 @@ function ExportModal({
   onSaveCloud: () => void;
   cloudSaveStatus: string;
   onMarkComplete: () => void;
+  onExportZip: (includeMetadata: boolean) => void;
+  onExportPdf: (includeMetadata: boolean) => void;
+  hasImages: boolean;
+  exportStatus: 'idle' | 'exporting' | 'error';
 }) {
-  const [resolution, setResolution] = useState<'web' | 'hd' | 'print'>('web');
+  const [includeMetadata, setIncludeMetadata] = useState(false);
+  const isExporting = exportStatus === 'exporting';
 
-  const opts: { icon: string; label: string; desc: string; soon: boolean; action: (() => void) | null; saved?: boolean }[] = [
-    { icon: '🖼', label: 'PDF Comic', desc: 'Full comic, print-ready', soon: true, action: null },
-    { icon: '📱', label: 'Image Pack', desc: 'All panels as PNG ZIP', soon: true, action: null },
-    { icon: '☁', label: 'Save to Cloud', desc: 'Save to My Projects', soon: false, action: onSaveCloud, saved: cloudSaveStatus === 'saved' },
-    { icon: '{ }', label: 'Export JSON', desc: 'Script + metadata', soon: false, action: onDownloadJson },
+  const opts: { icon: string; label: string; desc: string; disabled: boolean; action: (() => void) | null; saved?: boolean }[] = [
+    {
+      icon: '🖼', label: 'PDF Comic', desc: 'Full comic, print-ready',
+      disabled: !hasImages || isExporting,
+      action: () => { onExportPdf(includeMetadata); onClose(); },
+    },
+    {
+      icon: '📱', label: 'Image Pack', desc: 'All pages as PNG ZIP',
+      disabled: !hasImages || isExporting,
+      action: () => { onExportZip(includeMetadata); onClose(); },
+    },
+    { icon: '☁', label: 'Save to Cloud', desc: 'Save to My Projects', disabled: false, action: onSaveCloud, saved: cloudSaveStatus === 'saved' },
+    { icon: '{ }', label: 'Export JSON', desc: 'Script + metadata', disabled: false, action: onDownloadJson },
   ];
 
   return (
@@ -561,9 +575,9 @@ function ExportModal({
           {opts.map((o) => (
             <button key={o.label} type="button"
               onClick={o.action ?? undefined}
-              disabled={o.soon || !o.action}
+              disabled={o.disabled || !o.action}
               className={`relative text-left p-4 rounded-2xl border-2 transition-all ${
-                o.soon
+                o.disabled
                   ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
                   : o.saved
                   ? 'border-emerald-300 bg-emerald-50'
@@ -572,27 +586,20 @@ function ExportModal({
               <span className="text-2xl">{o.icon}</span>
               <p className="text-sm font-bold text-gray-900 mt-2">{o.label}</p>
               <p className="text-xs text-gray-400 mt-0.5">{o.desc}</p>
-              {o.soon && (
-                <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-500 text-[9px] font-bold uppercase tracking-wide">Soon</span>
-              )}
               {o.saved && <span className="absolute top-2 right-2 text-emerald-500 text-sm">✓</span>}
             </button>
           ))}
         </div>
 
-        <div className="space-y-2">
-          <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Resolution</p>
-          <div className="flex gap-2">
-            {([['web', 'Web 72dpi'], ['hd', 'HD 150dpi'], ['print', 'Print 300dpi']] as const).map(([k, label]) => (
-              <button key={k} type="button" onClick={() => setResolution(k)}
-                className={`flex-1 px-3 py-2 rounded-full text-xs font-semibold transition-all ${
-                  resolution === k ? 'bg-gray-900 text-white' : 'border border-gray-200 text-gray-600 hover:border-gray-300'
-                }`}>
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={includeMetadata}
+            onChange={(e) => setIncludeMetadata(e.target.checked)}
+            className="w-4 h-4 rounded accent-indigo-600"
+          />
+          <span className="text-sm text-gray-700">Include panel script (dialogue, shot types, prompts)</span>
+        </label>
 
         <div className="pt-2 border-t border-gray-100 flex gap-3">
           <button type="button" onClick={onClose}
@@ -628,6 +635,9 @@ export default function Step4Generation() {
     handleRegeneratePage,
     copyProjectJson,
     downloadProjectJson,
+    exportZip,
+    exportPdf,
+    exportStatus,
     saveToCloud,
     cloudSaveStatus,
     cloudSaveError,
@@ -1189,6 +1199,10 @@ export default function Step4Generation() {
           onSaveCloud={saveToCloud}
           cloudSaveStatus={cloudSaveStatus}
           onMarkComplete={() => handleApprove(4)}
+          onExportZip={exportZip}
+          onExportPdf={exportPdf}
+          hasImages={Object.values(step4.data?.pageStates ?? {}).some((s) => s.status === 'success' && s.imageUrl)}
+          exportStatus={exportStatus}
         />
       )}
 
