@@ -108,6 +108,8 @@ function DetailPanel({ character, onSaved, onDeleted, onBack }: DetailPanelProps
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [isPublic, setIsPublic] = useState(character.is_public ?? false);
+  const [sharingBusy, setSharingBusy] = useState(false);
 
   useEffect(() => {
     // Reset form when character changes
@@ -117,6 +119,7 @@ function DetailPanel({ character, onSaved, onDeleted, onBack }: DetailPanelProps
     setConfirmDelete(false);
     setError(null);
     setSuccess(false);
+    setIsPublic(character.is_public ?? false);
   }, [character.character_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -283,6 +286,43 @@ function DetailPanel({ character, onSaved, onDeleted, onBack }: DetailPanelProps
       </div>
 
       {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
+
+      {/* Share to Gallery (standalone characters only) */}
+      {!character.project_id && (
+        <div className="mb-4 flex items-center justify-between px-4 py-3 rounded-xl bg-surface-container-low">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-base text-indigo-500">public</span>
+            <div>
+              <p className="text-xs font-bold text-on-surface">Share to Community Gallery</p>
+              <p className="text-[10px] text-outline mt-0.5">
+                {isPublic ? 'Visible in the public gallery' : 'Only you can see this character'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={sharingBusy}
+            onClick={async () => {
+              const next = !isPublic;
+              setIsPublic(next);
+              setSharingBusy(true);
+              try {
+                await projectsApi.updateStandaloneCharacter(character.character_id, { is_public: next });
+                onSaved({ ...character, is_public: next });
+              } catch {
+                setIsPublic(!next);
+              } finally {
+                setSharingBusy(false);
+              }
+            }}
+            className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+              isPublic ? 'bg-indigo-500' : 'bg-surface-container-highest'
+            } ${sharingBusy ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${isPublic ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+        </div>
+      )}
 
       {/* Save */}
       <button

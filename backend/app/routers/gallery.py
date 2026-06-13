@@ -2,7 +2,7 @@
 Public gallery API — community characters and comics (no auth required).
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from typing import Any, Dict, List
 from app.schemas import CharacterSummary, GalleryComicSummary, GalleryComicDetail
 from app.database import mongo_db
@@ -49,9 +49,12 @@ def _title_from_story(story: str) -> str:
 
 
 @router.get("/characters", response_model=List[CharacterSummary])
-def list_public_characters() -> List[CharacterSummary]:
+def list_public_characters(
+    limit: int = Query(default=20, ge=1, le=100),
+    skip: int = Query(default=0, ge=0),
+) -> List[CharacterSummary]:
     """Return all characters that users have opted to share publicly."""
-    chars = list(_char_col().find({"is_public": True}, {"_id": 0}))
+    chars = list(_char_col().find({"is_public": True}, {"_id": 0}).skip(skip).limit(limit))
     return [
         CharacterSummary(
             character_id=c.get("character_id", ""),
@@ -67,7 +70,10 @@ def list_public_characters() -> List[CharacterSummary]:
 
 
 @router.get("/comics", response_model=List[GalleryComicSummary])
-def list_public_comics() -> List[GalleryComicSummary]:
+def list_public_comics(
+    limit: int = Query(default=20, ge=1, le=100),
+    skip: int = Query(default=0, ge=0),
+) -> List[GalleryComicSummary]:
     """Return published comics that have at least one generated page image."""
     docs = list(_proj_col().find({"is_public": True}, {"_id": 0, "user_id": 0}))
     result = []
@@ -89,7 +95,8 @@ def list_public_comics() -> List[GalleryComicSummary]:
             page_count=len(pages),
             published_at=doc.get("saved_at", ""),
         ))
-    return sorted(result, key=lambda x: x.published_at, reverse=True)
+    sorted_result = sorted(result, key=lambda x: x.published_at, reverse=True)
+    return sorted_result[skip: skip + limit]
 
 
 @router.get("/comics/{project_id}", response_model=GalleryComicDetail)

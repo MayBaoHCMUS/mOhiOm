@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
-import type { Step4Panel } from '@/context/ComicGenerationContext';
+import type { Step4Panel, Step4PanelState, PanelVersion } from '@/context/ComicGenerationContext';
 import ProjectsDrawer from '@/components/ProjectsDrawer';
 import Markdown from '@/components/Markdown';
 
@@ -375,6 +375,230 @@ function PromptDisplay({ prompt, artStyle }: { prompt: string; artStyle: string 
 }
 
 // ── Compact script card for page view (no image area) ────────────────────────
+// ── Regenerate feedback modal ─────────────────────────────────────────────────
+const REGEN_CHIPS = [
+  { label: '🌙 Night time', text: 'night time setting' },
+  { label: '😠 More intense', text: 'more intense emotion' },
+  { label: '📷 Wide shot', text: 'wide establishing shot' },
+  { label: '👤 Full body', text: 'show full body' },
+  { label: '🌟 More detail', text: 'more detailed artwork' },
+  { label: '🎨 Darker', text: 'darker mood and colors' },
+];
+
+function RegenerateModal({
+  pageNumber,
+  contextLabel,
+  currentImageUrl,
+  prevFeedback,
+  onClose,
+  onRegenerate,
+}: {
+  pageNumber: number;
+  contextLabel: string;
+  currentImageUrl: string | null;
+  prevFeedback: string;
+  onClose: () => void;
+  onRegenerate: (feedback: string) => void;
+}) {
+  const [feedback, setFeedback] = useState(prevFeedback);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => { textareaRef.current?.focus(); }, []);
+
+  const appendChip = (text: string) => {
+    setFeedback((prev) => {
+      const t = prev.trim();
+      return t ? `${t}, ${text}` : text;
+    });
+    textareaRef.current?.focus();
+  };
+
+  const submit = (withFeedback: boolean) => {
+    onRegenerate(withFeedback ? feedback.trim() : '');
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="relative z-10 w-full max-w-[520px] bg-surface rounded-2xl shadow-2xl overflow-hidden animate-panel-appear">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20">
+          <div>
+            <h3 className="text-base font-bold text-on-surface">Regenerate {contextLabel}</h3>
+            <p className="text-xs text-on-surface-variant mt-0.5">Page {pageNumber}</p>
+          </div>
+          <button type="button" onClick={onClose} className="w-8 h-8 rounded-full hover:bg-surface-container flex items-center justify-center transition-colors">
+            <span className="material-symbols-outlined text-sm text-on-surface-variant">close</span>
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {/* Current image preview */}
+          {currentImageUrl ? (
+            <div className="rounded-xl overflow-hidden border border-outline-variant/20 relative" style={{ height: 200 }}>
+              <Image src={currentImageUrl} alt="Current version" fill className="object-cover" unoptimized />
+              <div className="absolute bottom-0 inset-x-0 bg-black/40 backdrop-blur-sm py-1.5 px-3">
+                <p className="text-[11px] text-white font-medium">{contextLabel} — current version</p>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl bg-surface-container-low border border-outline-variant/20 py-6 text-center">
+              <p className="text-sm text-on-surface-variant">No image yet — provide guidance below or regenerate from scratch</p>
+            </div>
+          )}
+
+          {/* Feedback textarea */}
+          <div>
+            <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-2 block">
+              What would you like to change?
+            </label>
+            <div className="relative">
+              <textarea
+                ref={textareaRef}
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value.slice(0, 200))}
+                placeholder="e.g. make the character look angrier, change to night time, show full body"
+                className="w-full bg-surface-container-low rounded-xl px-4 py-3 text-sm text-on-surface placeholder-outline outline-none focus:ring-2 focus:ring-primary/30 resize-none leading-relaxed"
+                style={{ minHeight: 80, maxHeight: 160 }}
+                rows={3}
+              />
+              <span className="absolute bottom-2 right-3 text-[10px] text-outline select-none">{feedback.length}/200</span>
+            </div>
+            <p className="text-[11px] text-outline mt-1.5">Describe what to change, not what to keep</p>
+          </div>
+
+          {/* Quick chips */}
+          <div className="flex flex-wrap gap-2">
+            {REGEN_CHIPS.map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                onClick={() => appendChip(chip.text)}
+                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors"
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-outline-variant/20 bg-surface-container-low">
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-on-surface-variant hover:bg-surface-container transition-colors">
+            Cancel
+          </button>
+          <div className="flex flex-col items-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => submit(true)}
+              disabled={!feedback.trim()}
+              className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${feedback.trim() ? 'bg-primary text-on-primary hover:opacity-90' : 'bg-surface-container text-outline cursor-not-allowed opacity-50'}`}
+            >
+              ↺ Regenerate →
+            </button>
+            <button type="button" onClick={() => submit(false)} className="text-xs text-on-surface-variant hover:text-primary transition-colors">
+              ↺ Regenerate without changes
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Version comparison view ───────────────────────────────────────────────────
+function ComparisonView({
+  pageNumber,
+  prevImageUrl,
+  newImageUrl,
+  feedback,
+  versions,
+  onAccept,
+  onReject,
+  onTryAgain,
+}: {
+  pageNumber: number;
+  prevImageUrl: string | null;
+  newImageUrl: string;
+  feedback: string;
+  versions: PanelVersion[];
+  onAccept: () => void;
+  onReject: () => void;
+  onTryAgain: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border-2 border-primary/40 overflow-hidden bg-surface">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-primary/5 border-b border-primary/20">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-primary uppercase tracking-wide">Compare versions — Page {pageNumber}</span>
+          <span className="px-2 py-0.5 rounded-full bg-primary/15 text-primary text-[10px] font-bold">New ready</span>
+        </div>
+      </div>
+
+      {/* Side-by-side */}
+      <div className="grid grid-cols-2 divide-x divide-outline-variant/20">
+        <div className="p-4 space-y-3">
+          <p className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wide">
+            V{versions.length || 1} — Previous
+          </p>
+          <div className="rounded-xl overflow-hidden relative bg-surface-container-low" style={{ height: 180 }}>
+            {prevImageUrl ? (
+              <Image src={prevImageUrl} alt="Previous" fill className="object-cover" unoptimized />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <p className="text-xs text-outline">No previous version</p>
+              </div>
+            )}
+          </div>
+          <button type="button" onClick={onReject} className="w-full py-2 rounded-xl text-xs font-bold border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container transition-colors">
+            Keep previous
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wide">
+            V{(versions.length || 1) + 1} — New
+          </p>
+          <div className="rounded-xl overflow-hidden relative" style={{ height: 180 }}>
+            <Image src={newImageUrl} alt="New version" fill className="object-cover" unoptimized />
+          </div>
+          {feedback && <p className="text-[11px] text-outline italic">Feedback: &ldquo;{feedback}&rdquo;</p>}
+          <button type="button" onClick={onAccept} className="w-full py-2 rounded-xl text-xs font-bold bg-primary text-on-primary hover:opacity-90 transition-opacity">
+            ✓ Use this version
+          </button>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between px-4 py-3 bg-surface-container-low border-t border-outline-variant/20">
+        <p className="text-[11px] text-outline">Not satisfied?</p>
+        <button type="button" onClick={onTryAgain} className="text-xs font-semibold text-primary hover:opacity-80 transition-opacity">
+          ↺ Try again with new feedback
+        </button>
+      </div>
+
+      {/* Version strip (3+ versions) */}
+      {versions.length >= 2 && (
+        <div className="px-4 pb-3 flex items-center gap-2 flex-wrap border-t border-outline-variant/10 pt-3">
+          <p className="text-[10px] text-outline mr-1">History:</p>
+          {versions.map((v, i) => (
+            <div key={i} className="w-9 h-9 rounded-lg overflow-hidden border-2 border-outline-variant/30 flex-shrink-0 relative">
+              <Image src={v.imageUrl} alt={`V${i + 1}`} fill className="object-cover" unoptimized />
+            </div>
+          ))}
+          <div className="w-9 h-9 rounded-lg overflow-hidden border-2 border-primary flex-shrink-0 relative">
+            <Image src={newImageUrl} alt={`V${versions.length + 1}`} fill className="object-cover" unoptimized />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelScriptCard({ panel, artStyle }: { panel: Step4Panel; artStyle: string }) {
   const [open, setOpen] = useState(false);
   const shotType = panel.shotType ? stripBold(panel.shotType) : null;
@@ -633,6 +857,9 @@ export default function Step4Generation() {
     handleRetry,
     handleStartFullGeneration,
     handleRegeneratePage,
+    handleRegenerateWithFeedback,
+    acceptPanelRegen,
+    rejectPanelRegen,
     copyProjectJson,
     downloadProjectJson,
     exportZip,
@@ -649,6 +876,12 @@ export default function Step4Generation() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [showFinishErrorModal, setShowFinishErrorModal] = useState(false);
+  const [regenModal, setRegenModal] = useState<{
+    pageNumber: number;
+    contextLabel: string;
+    currentImageUrl: string | null;
+    prevFeedback: string;
+  } | null>(null);
   const [toasts, setToasts] = useState<{ id: string; label: string; pageNumber: number; panelId: string }[]>([]);
   const [errorFilter, setErrorFilter] = useState(false);
   const [showConfetti] = useState(false);
@@ -750,6 +983,17 @@ export default function Step4Generation() {
   useEffect(() => {
     if (step4Stats.error === 0) setErrorFilter(false);
   }, [step4Stats.error]);
+
+  // Export error toast
+  useEffect(() => {
+    if (exportStatus !== 'error') return;
+    const id = `export-error-${Date.now()}`;
+    setToasts((t) => [...t.slice(-3), { id, label: 'Export', pageNumber: 0, panelId: '__export__' }]);
+    toastTimeoutsRef.current[id] = setTimeout(() => {
+      setToasts((t) => t.filter((x) => x.id !== id));
+      delete toastTimeoutsRef.current[id];
+    }, 6000);
+  }, [exportStatus]);
 
   const dismissToast = (id: string) => {
     clearTimeout(toastTimeoutsRef.current[id]);
@@ -1112,15 +1356,23 @@ export default function Step4Generation() {
                         <h3 className="text-base font-bold text-on-surface">Page {pageNumber}</h3>
                         <PanelStatusDot status={pageStatus} />
                         <span className="text-xs text-on-surface-variant">
-                          {pageStatus === 'loading' ? 'Generating…' : pageStatus === 'success' ? 'Done' : pageStatus === 'error' ? 'Error' : 'Pending'}
+                          {pageStatus === 'loading' ? 'Generating…' : pageStatus === 'success' ? 'Done' : pageStatus === 'comparing' ? 'Comparing…' : pageStatus === 'error' ? 'Error' : 'Pending'}
                         </span>
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleRegeneratePage(pageNumber)}
-                        disabled={!step4.data || isImageGenerating}
+                        onClick={() => {
+                          const pState = step4.data?.pageStates?.[`page-${pageNumber}`];
+                          setRegenModal({
+                            pageNumber,
+                            contextLabel: `Page ${pageNumber}`,
+                            currentImageUrl: pState?.imageUrl ?? null,
+                            prevFeedback: pState?.pendingFeedback ?? '',
+                          });
+                        }}
+                        disabled={!step4.data || pageStatus === 'loading'}
                         className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all ${
-                          !step4.data || isImageGenerating
+                          !step4.data || pageStatus === 'loading'
                             ? 'bg-surface-container text-on-surface-variant cursor-not-allowed opacity-50'
                             : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'
                         }`}
@@ -1128,13 +1380,29 @@ export default function Step4Generation() {
                         <span className="material-symbols-outlined text-sm">
                           {pageStatus === 'loading' ? 'hourglass_empty' : pageStatus === 'error' ? 'replay' : 'refresh'}
                         </span>
-                        {pageStatus === 'loading' ? 'Generating…' : pageStatus === 'error' ? 'Retry page' : 'Regenerate page'}
+                        {pageStatus === 'loading' ? 'Generating…' : pageStatus === 'error' ? 'Retry page' : '↺ Regenerate'}
                       </button>
                     </div>
 
-                    {/* Full-page image */}
+                    {/* Full-page image / comparison view */}
                     {pageState?.error && <p className="text-sm text-red-500">{pageState.error}</p>}
-                    {pageState?.imageUrl ? (
+                    {pageStatus === 'comparing' && pageState?.pendingUrl ? (
+                      <ComparisonView
+                        pageNumber={pageNumber}
+                        prevImageUrl={pageState.imageUrl ?? null}
+                        newImageUrl={pageState.pendingUrl}
+                        feedback={pageState.pendingFeedback ?? ''}
+                        versions={pageState.versions ?? []}
+                        onAccept={() => acceptPanelRegen(pageNumber)}
+                        onReject={() => rejectPanelRegen(pageNumber)}
+                        onTryAgain={() => setRegenModal({
+                          pageNumber,
+                          contextLabel: `Page ${pageNumber}`,
+                          currentImageUrl: pageState?.pendingUrl ?? pageState?.imageUrl ?? null,
+                          prevFeedback: pageState?.pendingFeedback ?? '',
+                        })}
+                      />
+                    ) : pageState?.imageUrl ? (
                       <div className="overflow-hidden rounded-2xl bg-surface-container">
                         <Image
                           src={pageState.imageUrl}
@@ -1154,7 +1422,7 @@ export default function Step4Generation() {
                           </span>
                         ) : (
                           <span className="text-sm text-on-surface-variant">
-                            No image yet — click &ldquo;Regenerate page&rdquo; above.
+                            No image yet — click &ldquo;↺ Regenerate&rdquo; above.
                           </span>
                         )}
                       </div>
@@ -1173,6 +1441,17 @@ export default function Step4Generation() {
         </div>
         );
       })()}
+
+      {regenModal && (
+        <RegenerateModal
+          pageNumber={regenModal.pageNumber}
+          contextLabel={regenModal.contextLabel}
+          currentImageUrl={regenModal.currentImageUrl}
+          prevFeedback={regenModal.prevFeedback}
+          onClose={() => setRegenModal(null)}
+          onRegenerate={(feedback) => handleRegenerateWithFeedback(regenModal.pageNumber, feedback)}
+        />
+      )}
 
       <ProjectsDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
 
@@ -1220,11 +1499,13 @@ export default function Step4Generation() {
                     className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
                     Dismiss
                   </button>
-                  <button type="button"
-                    onClick={() => { handleRegeneratePage(toast.pageNumber); dismissToast(toast.id); }}
-                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
-                    Retry now
-                  </button>
+                  {toast.panelId !== '__export__' && (
+                    <button type="button"
+                      onClick={() => { handleRegeneratePage(toast.pageNumber); dismissToast(toast.id); }}
+                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
+                      Retry now
+                    </button>
+                  )}
                 </div>
               </div>
               <button type="button" onClick={() => dismissToast(toast.id)}

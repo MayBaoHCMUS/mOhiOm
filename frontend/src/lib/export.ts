@@ -96,6 +96,15 @@ export async function exportAsPdf(pages: ExportPage[], opts: ExportOpts): Promis
       const maxY = H - 14;
       const lineH = 5;
 
+      const addText = (text: string, x: number, width: number) => {
+        const lines = doc.splitTextToSize(text, width) as string[];
+        for (const line of lines) {
+          if (y + lineH > maxY) { doc.addPage(); y = 20; }
+          doc.text(line, x, y);
+          y += lineH;
+        }
+      };
+
       for (const page of pages) {
         if (y + lineH > maxY) { doc.addPage(); y = 20; }
         doc.setFont('helvetica', 'bold');
@@ -107,19 +116,18 @@ export async function exportAsPdf(pages: ExportPage[], opts: ExportOpts): Promis
 
         for (const pan of page.panels) {
           if (y + lineH * 3 > maxY) { doc.addPage(); y = 20; }
-          const header = `Panel ${pan.panelNumber}${pan.shotType ? ` — ${pan.shotType}` : ''}`;
+          const shotPart = pan.shotType ? ` [${pan.shotType}]` : '';
+          const labelPart = pan.contextLabel ? ` · ${pan.contextLabel}` : '';
           doc.setFont('helvetica', 'bold');
-          doc.text(header, 18, y);
+          doc.text(`Panel ${pan.panelNumber}${shotPart}${labelPart}`, 18, y);
           y += lineH;
           doc.setFont('helvetica', 'normal');
 
           if (pan.dialogueSfx.trim()) {
-            const lines = doc.splitTextToSize(`Dialogue: ${pan.dialogueSfx}`, W - 32);
-            for (const line of lines as string[]) {
-              if (y + lineH > maxY) { doc.addPage(); y = 20; }
-              doc.text(line, 22, y);
-              y += lineH;
-            }
+            addText(`Dialogue: ${pan.dialogueSfx}`, 22, W - 36);
+          }
+          if (pan.aiImagePrompt.trim()) {
+            addText(`Prompt: ${pan.aiImagePrompt}`, 22, W - 36);
           }
           y += 2;
         }

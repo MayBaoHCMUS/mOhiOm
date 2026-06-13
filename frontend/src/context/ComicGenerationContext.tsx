@@ -81,7 +81,12 @@ export interface Step3Result {
   structuredJson: Record<string, unknown> | null;
 }
 
-export type PanelImageStatus = 'idle' | 'loading' | 'success' | 'error';
+export type PanelImageStatus = 'idle' | 'loading' | 'success' | 'error' | 'comparing';
+
+export interface PanelVersion {
+  imageUrl: string;
+  feedback: string;
+}
 
 export interface Step4Panel {
   id: string;
@@ -99,6 +104,9 @@ export interface Step4PanelState {
   status: PanelImageStatus;
   imageUrl: string | null;
   error: string | null;
+  versions: PanelVersion[];
+  pendingUrl: string | null;
+  pendingFeedback: string;
 }
 
 export interface Step4Result {
@@ -470,6 +478,9 @@ export interface ComicGenerationContextValue {
   handleRetryCharacterReferences: () => void;
   handleStartFullGeneration: () => Promise<void>;
   handleRegeneratePage: (pageNumber: number) => Promise<void>;
+  handleRegenerateWithFeedback: (pageNumber: number, feedback: string) => Promise<void>;
+  acceptPanelRegen: (pageNumber: number) => void;
+  rejectPanelRegen: (pageNumber: number) => void;
   copyProjectJson: () => Promise<void>;
   downloadProjectJson: () => void;
   exportZip: (includeMetadata: boolean) => Promise<void>;
@@ -1072,13 +1083,13 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
 
     const panelStates: Record<string, Step4PanelState> = {};
     panels.forEach((panel) => {
-      panelStates[panel.id] = { status: 'idle', imageUrl: null, error: null };
+      panelStates[panel.id] = { status: 'idle', imageUrl: null, error: null, versions: [], pendingUrl: null, pendingFeedback: '' };
     });
 
     const pageNumbers = [...new Set(panels.map((p) => p.pageNumber))];
     const pageStates: Record<string, Step4PanelState> = {};
     pageNumbers.forEach((pageNumber) => {
-      pageStates[`page-${pageNumber}`] = { status: 'idle', imageUrl: null, error: null };
+      pageStates[`page-${pageNumber}`] = { status: 'idle', imageUrl: null, error: null, versions: [], pendingUrl: null, pendingFeedback: '' };
     });
 
     return {
@@ -1776,9 +1787,13 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         batch.forEach((panel) => {
           const prevState = nextStates[panel.id];
           nextStates[panel.id] = {
+            ...(prevState ?? {}),
             status: 'loading',
             imageUrl: prevState?.imageUrl || null,
             error: null,
+            versions: prevState?.versions ?? [],
+            pendingUrl: null,
+            pendingFeedback: '',
           };
         });
         return {
@@ -1817,9 +1832,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         const nextStates = { ...prev.data.panelStates };
         results.forEach((result) => {
           nextStates[result.id] = {
+            ...(prev.data!.panelStates[result.id] ?? {}),
             status: result.status,
             imageUrl: result.imageUrl,
             error: result.error,
+            pendingUrl: null,
           };
         });
         return {
@@ -1864,6 +1881,9 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
             status: 'loading',
             imageUrl: prev.data!.pageStates[pageId]?.imageUrl ?? null,
             error: null,
+            versions: prev.data!.pageStates[pageId]?.versions ?? [],
+            pendingUrl: null,
+            pendingFeedback: '',
           };
         });
         return { ...prev, data: { ...prev.data, pageStates: nextPageStates } };
@@ -1899,7 +1919,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         if (!prev.data) return prev;
         const nextPageStates = { ...prev.data.pageStates };
         results.forEach((r) => {
-          nextPageStates[r.pageId] = { status: r.status, imageUrl: r.imageUrl, error: r.error };
+          nextPageStates[r.pageId] = { ...(prev.data!.pageStates[r.pageId] ?? {}), status: r.status, imageUrl: r.imageUrl, error: r.error, pendingUrl: null };
         });
         return {
           ...prev,
@@ -1966,6 +1986,141 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
   };
 
+  const handleRegenerateWithFeedback = async (pageNumber: number, feedback: string) => {
+    if (!step4.data) return;
+    const panels = step4.data.panels
+      .filter((p) => p.pageNumber === pageNumber)
+      .sort((a, b) => a.panelNumber - b.panelNumber);
+    if (!panels.length) return;
+
+    const pageId = `page-${pageNumber}`;
+    const currentState = step4.data.pageStates[pageId];
+    const currentImageUrl = currentState?.imageUrl ?? null;
+
+    // Save current image to version history and set page to loading
+    setStep4((prev) => {
+      if (!prev.data) return prev;
+      const prevState = prev.data.pageStates[pageId];
+      const existingVersions = prevState?.versions ?? [];
+      const newVersions = currentImageUrl
+        ? [...existingVersions, { imageUrl: currentImageUrl, feedback: prevState?.pendingFeedback ?? '' }].slice(-4)
+        : existingVersions;
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          pageStates: {
+            ...prev.data.pageStates,
+            [pageId]: {
+              ...(prevState ?? {}),
+              status: 'loading',
+              error: null,
+              versions: newVersions,
+              pendingUrl: null,
+              pendingFeedback: feedback,
+            },
+          },
+        },
+        error: null,
+      };
+    });
+
+    try {
+      const characterRefs = getSelectedCharacterReferences();
+      const firstRefImageUrl = characterRefs.find((c) => c.image_url)?.image_url || '';
+      const refBase64 = firstRefImageUrl.startsWith('data:image/') && firstRefImageUrl.includes(',')
+        ? firstRefImageUrl.split(',')[1] || '' : '';
+      let prompt = buildComicPagePrompt(
+        panels, artStyle, mangaGenre,
+        characterRefs.map((c) => ({ name: c.name, prompt: c.prompt }))
+      );
+      if (feedback.trim()) {
+        prompt += `\nUser revision request: ${feedback.trim()}`;
+      }
+      const effectiveSettings: ImageGenSettings = {
+        mode: refBase64 ? 2 : imageGenMode,
+        referenceImageBase64: refBase64 || referenceImageBase64,
+        controlImageBase64,
+        ipAdapterScale,
+        controlnetScale,
+      };
+      const newImageUrl = await fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings);
+      setStep4((prev) => {
+        if (!prev.data) return prev;
+        const prevState = prev.data.pageStates[pageId];
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            pageStates: {
+              ...prev.data.pageStates,
+              [pageId]: { ...(prevState ?? {}), status: 'comparing', pendingUrl: newImageUrl, error: null },
+            },
+          },
+          lastUpdated: new Date().toISOString(),
+        };
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Image generation failed.';
+      setStep4((prev) => {
+        if (!prev.data) return prev;
+        const prevState = prev.data.pageStates[pageId];
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            pageStates: {
+              ...prev.data.pageStates,
+              [pageId]: {
+                ...(prevState ?? {}),
+                status: currentImageUrl ? 'success' : 'error',
+                error: message,
+                pendingUrl: null,
+              },
+            },
+          },
+        };
+      });
+    }
+  };
+
+  const acceptPanelRegen = (pageNumber: number) => {
+    const pageId = `page-${pageNumber}`;
+    setStep4((prev) => {
+      if (!prev.data) return prev;
+      const prevState = prev.data.pageStates[pageId];
+      if (!prevState?.pendingUrl) return prev;
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          pageStates: {
+            ...prev.data.pageStates,
+            [pageId]: { ...prevState, status: 'success', imageUrl: prevState.pendingUrl, pendingUrl: null },
+          },
+        },
+      };
+    });
+  };
+
+  const rejectPanelRegen = (pageNumber: number) => {
+    const pageId = `page-${pageNumber}`;
+    setStep4((prev) => {
+      if (!prev.data) return prev;
+      const prevState = prev.data.pageStates[pageId];
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          pageStates: {
+            ...prev.data.pageStates,
+            [pageId]: { ...prevState, status: prevState?.imageUrl ? 'success' : 'idle', pendingUrl: null, error: null },
+          },
+        },
+      };
+    });
+  };
+
   const step4PanelsByPage = useMemo(() => {
     if (!step4.data) return [] as Array<[number, Step4Panel[]]>;
     const pageMap = new Map<number, Step4Panel[]>();
@@ -1989,7 +2144,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     const list = Object.values(pageStates);
     return {
       total: list.length,
-      success: list.filter((e) => e.status === 'success').length,
+      success: list.filter((e) => e.status === 'success' || e.status === 'comparing').length,
       loading: list.filter((e) => e.status === 'loading').length,
       error: list.filter((e) => e.status === 'error').length,
     };
@@ -2202,15 +2357,16 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       },
     ];
 
+    const emptyV = { versions: [] as PanelVersion[], pendingUrl: null, pendingFeedback: '' };
     const panelStates: Record<string, Step4PanelState> = {
-      'p1-n1': { status: 'success', imageUrl: mockImageUrl('Panel 1'), error: null },
-      'p1-n2': { status: 'idle', imageUrl: null, error: null },
-      'p2-n1': { status: 'error', imageUrl: null, error: 'Mock: generation failed.' },
+      'p1-n1': { status: 'success', imageUrl: mockImageUrl('Panel 1'), error: null, ...emptyV },
+      'p1-n2': { status: 'idle', imageUrl: null, error: null, ...emptyV },
+      'p2-n1': { status: 'error', imageUrl: null, error: 'Mock: generation failed.', ...emptyV },
     };
 
     const pageStates: Record<string, Step4PanelState> = {
-      'page-1': { status: 'success', imageUrl: mockImageUrl('Page 1'), error: null },
-      'page-2': { status: 'error', imageUrl: null, error: 'Mock: generation failed.' },
+      'page-1': { status: 'success', imageUrl: mockImageUrl('Page 1'), error: null, ...emptyV },
+      'page-2': { status: 'error', imageUrl: null, error: 'Mock: generation failed.', ...emptyV },
     };
 
     setStep4({
@@ -2658,6 +2814,9 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     handleRetryCharacterReferences,
     handleStartFullGeneration,
     handleRegeneratePage,
+    handleRegenerateWithFeedback,
+    acceptPanelRegen,
+    rejectPanelRegen,
     copyProjectJson,
     downloadProjectJson,
     exportZip,

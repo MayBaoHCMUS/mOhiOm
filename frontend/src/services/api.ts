@@ -1099,10 +1099,10 @@ export const projectsApi = {
 };
 
 export const galleryApi = {
-  characters: () =>
-    apiClient.get<CharacterSummary[]>('/gallery/characters'),
-  comics: () =>
-    apiClient.get<GalleryComicSummary[]>('/gallery/comics'),
+  characters: (params?: { limit?: number; skip?: number }) =>
+    apiClient.get<CharacterSummary[]>('/gallery/characters', { params }),
+  comics: (params?: { limit?: number; skip?: number }) =>
+    apiClient.get<GalleryComicSummary[]>('/gallery/comics', { params }),
   comicDetail: (projectId: string) =>
     apiClient.get<GalleryComicDetail>(`/gallery/comics/${encodeURIComponent(projectId)}`),
 };
