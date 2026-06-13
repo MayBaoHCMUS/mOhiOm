@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import type { Step4Panel, Step4PanelState, PanelVersion } from '@/context/ComicGenerationContext';
+import { apiClient } from '@/services/api';
 import ProjectsDrawer from '@/components/ProjectsDrawer';
 import Markdown from '@/components/Markdown';
 
@@ -847,6 +848,234 @@ function ExportModal({
   );
 }
 
+// ── Emoji reaction bar ────────────────────────────────────────────────────────
+type Reaction = 'love' | 'good' | 'neutral' | 'bad';
+
+const REACTIONS: { value: Reaction; emoji: string; label: string }[] = [
+  { value: 'love',    emoji: '😍', label: 'Love it!' },
+  { value: 'good',    emoji: '👍', label: 'Good' },
+  { value: 'neutral', emoji: '😐', label: 'Okay' },
+  { value: 'bad',     emoji: '👎', label: 'Poor' },
+];
+
+function EmojiReactionBar({
+  pageId,
+  panels,
+  comicId,
+  reaction,
+  onReaction,
+  onError,
+}: {
+  pageId: string;
+  panels: Step4Panel[];
+  comicId: string;
+  reaction: Reaction | null;
+  onReaction: (pageId: string, r: Reaction) => void;
+  onError: () => void;
+}) {
+  const regenCount = panels.reduce((n, p) => {
+    return n; // panel version tracking happens at page level
+  }, 0);
+  const wasRegenerated = panels.some(() => false); // filled from pageState versions
+  const selected = REACTIONS.find((r) => r.value === reaction);
+
+  const handleClick = async (r: Reaction) => {
+    onReaction(pageId, r);
+    try {
+      await apiClient.post('/ratings/panel', {
+        panel_id: pageId,
+        comic_id: comicId,
+        reaction: r,
+        panel_version: 1,
+        was_regenerated: wasRegenerated,
+        regen_count: regenCount,
+      });
+    } catch {
+      onError();
+    }
+  };
+
+  return (
+    <div className="px-4 py-3 border-t border-outline-variant/10 flex items-center gap-3">
+      {selected ? (
+        <span className="text-xs text-on-surface-variant flex items-center gap-1.5">
+          <span className="text-base">{selected.emoji}</span>
+          <span className="font-medium">{selected.label}</span>
+        </span>
+      ) : (
+        <span className="text-xs text-on-surface-variant">Rate this panel:</span>
+      )}
+      <div className="flex items-center gap-2 ml-auto">
+        {REACTIONS.map((r) => {
+          const isSelected = reaction === r.value;
+          return (
+            <button
+              key={r.value}
+              type="button"
+              onClick={() => handleClick(r.value)}
+              title={r.label}
+              className={`w-7 h-7 rounded-lg flex items-center justify-center text-base transition-all duration-100 ${
+                isSelected
+                  ? 'bg-[#EEF2FF] border border-primary scale-100'
+                  : 'bg-transparent border border-transparent hover:bg-gray-100 hover:scale-[1.15]'
+              }`}
+              style={{ opacity: isSelected ? 1 : 0.7 }}
+            >
+              {r.emoji}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Comic rating modal ────────────────────────────────────────────────────────
+function ComicRatingModal({
+  panelReactions,
+  totalPanels,
+  onClose,
+  onSubmit,
+  onSkip,
+  initialStars,
+  initialPositive,
+  initialNegative,
+}: {
+  panelReactions: Record<string, Reaction>;
+  totalPanels: number;
+  onClose: () => void;
+  onSubmit: (stars: number, positive: string, negative: string) => void;
+  onSkip: () => void;
+  initialStars?: number;
+  initialPositive?: string;
+  initialNegative?: string;
+}) {
+  const [stars, setStars] = useState(initialStars ?? 0);
+  const [hovered, setHovered] = useState(0);
+  const [positive, setPositive] = useState(initialPositive ?? '');
+  const [negative, setNegative] = useState(initialNegative ?? '');
+  const [skipCountdown, setSkipCountdown] = useState(3);
+
+  useEffect(() => {
+    if (skipCountdown <= 0) return;
+    const t = setTimeout(() => setSkipCountdown((n) => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [skipCountdown]);
+
+  const reactionCounts = REACTIONS.map((r) => ({
+    ...r,
+    count: Object.values(panelReactions).filter((v) => v === r.value).length,
+  })).filter((r) => r.count > 0);
+
+  const displayStars = hovered || stars;
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-[500px] bg-surface rounded-3xl shadow-2xl overflow-hidden animate-panel-appear">
+        {/* Header */}
+        <div className="px-8 pt-8 pb-5 text-center">
+          <p className="text-3xl mb-2">🎉</p>
+          <h2 className="text-xl font-bold text-on-surface">Your comic is ready!</h2>
+          <p className="text-sm text-on-surface-variant mt-1">Before we export, how was your experience?</p>
+        </div>
+
+        <div className="px-8 pb-6 space-y-5">
+          {/* Star rating */}
+          <div>
+            <div className="border-t border-outline-variant/20 pt-5">
+              <p className="text-sm font-semibold text-on-surface mb-3 text-center">Overall quality</p>
+              <div className="flex items-center justify-center gap-2">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setStars(n)}
+                    onMouseEnter={() => setHovered(n)}
+                    onMouseLeave={() => setHovered(0)}
+                    className="transition-transform hover:scale-110"
+                  >
+                    <svg width="32" height="32" viewBox="0 0 24 24">
+                      <path
+                        d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                        fill={n <= displayStars ? '#F59E0B' : '#E5E7EB'}
+                        stroke={n <= displayStars ? '#F59E0B' : '#D1D5DB'}
+                        strokeWidth="1"
+                      />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+              {stars === 0 && <p className="text-[11px] text-outline text-center mt-1.5">Click to rate — required</p>}
+            </div>
+          </div>
+
+          {/* Text fields */}
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">What worked well? <span className="font-normal text-outline">(optional)</span></label>
+              <textarea
+                value={positive}
+                onChange={(e) => setPositive(e.target.value)}
+                placeholder="e.g. The art style came out great, characters looked accurate…"
+                rows={2}
+                className="w-full bg-surface-container-low rounded-xl px-4 py-2.5 text-sm text-on-surface placeholder-outline outline-none focus:ring-2 focus:ring-primary/30 resize-none leading-relaxed"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">What could be better? <span className="font-normal text-outline">(optional)</span></label>
+              <textarea
+                value={negative}
+                onChange={(e) => setNegative(e.target.value)}
+                placeholder="e.g. Panel composition felt off, text prompts were unclear…"
+                rows={2}
+                className="w-full bg-surface-container-low rounded-xl px-4 py-2.5 text-sm text-on-surface placeholder-outline outline-none focus:ring-2 focus:ring-primary/30 resize-none leading-relaxed"
+              />
+            </div>
+          </div>
+
+          {/* Panel reaction summary */}
+          {reactionCounts.length > 0 && (
+            <div className="border-t border-outline-variant/20 pt-4">
+              <p className="text-xs font-semibold text-on-surface-variant mb-2">Your panel reactions:</p>
+              <div className="flex items-center gap-4">
+                {reactionCounts.map((r) => (
+                  <span key={r.value} className="text-sm">
+                    {r.emoji} <span className="text-on-surface-variant text-xs">×{r.count}</span>
+                  </span>
+                ))}
+                <span className="text-xs text-outline ml-auto">{totalPanels} panels total</span>
+              </div>
+            </div>
+          )}
+
+          {/* Footer */}
+          <div className="border-t border-outline-variant/20 pt-4 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onSkip}
+              disabled={skipCountdown > 0}
+              className="text-sm text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {skipCountdown > 0 ? `Skip (${skipCountdown})` : 'Skip — export now'}
+            </button>
+            <button
+              type="button"
+              onClick={() => onSubmit(stars, positive, negative)}
+              disabled={stars === 0}
+              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                stars > 0 ? 'bg-primary text-on-primary hover:opacity-90' : 'bg-surface-container text-outline cursor-not-allowed opacity-50'
+              }`}
+            >
+              Submit &amp; Export →
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function Step4Generation() {
   const {
@@ -876,6 +1105,8 @@ export default function Step4Generation() {
     cloudSaveStatus,
     cloudSaveError,
     artStyle,
+    mangaGenre,
+    projectId,
     getCooldownSeconds,
     setActiveStep,
   } = useComicGeneration();
@@ -894,6 +1125,79 @@ export default function Step4Generation() {
   const [showConfetti] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+
+  // ── Rating state ──────────────────────────────────────────────────────────
+  const [panelReactions, setPanelReactions] = useState<Record<string, Reaction>>({});
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [comicRating, setComicRating] = useState<{ stars: number; positive: string; negative: string } | null>(null);
+  const sessionStartRef = useRef(Date.now());
+
+  // Load saved ratings on mount
+  useEffect(() => {
+    if (!projectId) return;
+    apiClient.get(`/ratings/panels/${projectId}`).then((res) => {
+      const map: Record<string, Reaction> = {};
+      for (const r of (res.data.ratings ?? [])) map[r.panel_id] = r.reaction;
+      setPanelReactions(map);
+    }).catch(() => {});
+    apiClient.get(`/ratings/comic/${projectId}`).then((res) => {
+      const r = res.data.rating;
+      if (r) setComicRating({ stars: r.stars ?? 0, positive: r.comment_positive ?? '', negative: r.comment_negative ?? '' });
+    }).catch(() => {});
+  }, [projectId]);
+
+  const addRatingErrorToast = useCallback(() => {
+    const id = `rating-err-${Date.now()}`;
+    setToasts((prev) => [...prev, { id, label: "Couldn't save rating", pageNumber: 0, panelId: '' }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
+  }, []);
+
+  const handleOpenExport = useCallback(() => {
+    if (comicRating) { setShowExportModal(true); }
+    else { setShowRatingModal(true); }
+  }, [comicRating]);
+
+  const handleRatingSubmit = useCallback(async (stars: number, positive: string, negative: string) => {
+    const elapsed = Math.round((Date.now() - sessionStartRef.current) / 1000);
+    const reactionSummary = REACTIONS.reduce((acc, r) => {
+      acc[r.value] = Object.values(panelReactions).filter((v) => v === r.value).length;
+      return acc;
+    }, {} as Record<string, number>);
+    const panelsRegenerated = Object.values(step4.data?.pageStates ?? {}).filter(
+      (s) => (s as Step4PanelState).versions && (s as Step4PanelState).versions.length > 0
+    ).length;
+    const totalRegenCount = Object.values(step4.data?.pageStates ?? {}).reduce(
+      (n, s) => n + ((s as Step4PanelState).versions?.length ?? 0), 0
+    );
+    setComicRating({ stars, positive, negative });
+    setShowRatingModal(false);
+    setShowExportModal(true);
+    try {
+      await apiClient.post('/ratings/comic', {
+        comic_id: projectId,
+        stars,
+        skipped: false,
+        comment_positive: positive,
+        comment_negative: negative,
+        total_panels: step4.data?.panels?.length ?? 0,
+        panels_regenerated: panelsRegenerated,
+        total_regen_count: totalRegenCount,
+        art_style: artStyle,
+        genre: mangaGenre,
+        total_session_time_seconds: elapsed,
+        panel_reactions_summary: reactionSummary,
+        step_completion_times: {},
+      });
+    } catch { /* fire-and-forget */ }
+  }, [panelReactions, step4.data, projectId, artStyle, mangaGenre]);
+
+  const handleRatingSkip = useCallback(async () => {
+    setShowRatingModal(false);
+    setShowExportModal(true);
+    try {
+      await apiClient.post('/ratings/comic', { comic_id: projectId, stars: null, skipped: true });
+    } catch { /* fire-and-forget */ }
+  }, [projectId]);
 
   const cooldown = getCooldownSeconds(4);
   const isGenerating = step4.isLoading;
@@ -1083,6 +1387,15 @@ export default function Step4Generation() {
                 <p className="text-sm text-gray-500">
                   {step4Stats.total} pages · {chapterCount} chapter{chapterCount !== 1 ? 's' : ''} · {step4PanelsByPage.length} page{step4PanelsByPage.length !== 1 ? 's' : ''} generated
                 </p>
+                {comicRating && comicRating.stars > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowRatingModal(true)}
+                    className="inline-flex items-center gap-1.5 text-xs text-amber-600 hover:text-amber-700 transition-colors mt-1"
+                  >
+                    {'★'.repeat(comicRating.stars)}{'☆'.repeat(5 - comicRating.stars)} Rated · Edit →
+                  </button>
+                )}
               </div>
               <SegmentedProgressBar total={step4Stats.total} success={step4Stats.success} error={0} loading={0} height={8} />
               <div className="flex gap-3 justify-center">
@@ -1090,7 +1403,7 @@ export default function Step4Generation() {
                   className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
                   👁 Preview Comic
                 </button>
-                <button type="button" onClick={() => setShowExportModal(true)}
+                <button type="button" onClick={handleOpenExport}
                   className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold text-white transition-all hover:brightness-110
                     ${exportPulse ? 'animate-[pulse_0.4s_ease-in-out_2] scale-105' : ''}`}
                   style={{ background: 'linear-gradient(135deg,#059669,#10B981)', boxShadow: '0 4px 20px rgba(16,185,129,0.4)' }}
@@ -1410,7 +1723,7 @@ export default function Step4Generation() {
                         })}
                       />
                     ) : pageState?.imageUrl ? (
-                      <div className="overflow-hidden rounded-2xl bg-surface-container">
+                      <div className="rounded-2xl bg-surface-container overflow-hidden border border-outline-variant/10">
                         <Image
                           src={pageState.imageUrl}
                           alt={`Page ${pageNumber} comic render`}
@@ -1418,6 +1731,14 @@ export default function Step4Generation() {
                           height={960}
                           className="h-auto w-full object-cover"
                           unoptimized
+                        />
+                        <EmojiReactionBar
+                          pageId={`page-${pageNumber}`}
+                          panels={panels}
+                          comicId={projectId}
+                          reaction={panelReactions[`page-${pageNumber}`] ?? null}
+                          onReaction={(id, r) => setPanelReactions((prev) => ({ ...prev, [id]: r }))}
+                          onError={addRatingErrorToast}
                         />
                       </div>
                     ) : (
@@ -1473,6 +1794,20 @@ export default function Step4Generation() {
           .sort((a, b) => a.pageNumber - b.pageNumber);
         return <PreviewModal pages={pages} onClose={() => setShowPreview(false)} />;
       })()}
+
+      {/* ── Comic rating modal ── */}
+      {showRatingModal && (
+        <ComicRatingModal
+          panelReactions={panelReactions}
+          totalPanels={allPanels.length}
+          onClose={() => setShowRatingModal(false)}
+          onSubmit={handleRatingSubmit}
+          onSkip={handleRatingSkip}
+          initialStars={comicRating?.stars}
+          initialPositive={comicRating?.positive}
+          initialNegative={comicRating?.negative}
+        />
+      )}
 
       {/* ── Export modal ── */}
       {showExportModal && (
@@ -1745,7 +2080,7 @@ export default function Step4Generation() {
               return (
                 <button
                   type="button"
-                  onClick={() => setShowExportModal(true)}
+                  onClick={handleOpenExport}
                   className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold text-white transition-all
                     ${exportPulse ? 'animate-[pulse_0.4s_ease-in-out_2] scale-[1.05]' : ''}`}
                   style={{ background: '#22C55E', boxShadow: '0 4px 16px rgba(34,197,94,0.4)' }}
