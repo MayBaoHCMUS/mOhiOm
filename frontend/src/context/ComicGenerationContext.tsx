@@ -477,7 +477,7 @@ export interface ComicGenerationContextValue {
   handleRevokeApproval: (step: StepKey) => void;
   handleRetry: (step: StepKey) => void;
   handleGenerateCharacterReferences: (settingsMap?: Record<string, ImageGenSettings>) => Promise<void>;
-  handleRegenerateCharacterImage: (characterId: string, settings?: ImageGenSettings) => Promise<void>;
+  handleRegenerateCharacterImage: (characterId: string, settings?: ImageGenSettings, feedback?: string) => Promise<void>;
   handleSelectCharacterCandidate: (characterId: string, candidateId: string) => void;
   handleApproveCharacterReferences: () => void;
   handleRetryCharacterReferences: () => void;
@@ -1645,7 +1645,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }));
   };
 
-  const handleRegenerateCharacterImage = async (characterId: string, settings?: ImageGenSettings) => {
+  const handleRegenerateCharacterImage = async (characterId: string, settings?: ImageGenSettings, feedback?: string) => {
     if (!step2ImageReview.data || step2ImageReview.data.isGenerating) return;
     const target = step2ImageReview.data.characters.find((character) => character.characterId === characterId);
     if (!target) return;
@@ -1668,7 +1668,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
 
     try {
       const effectiveSettings = settings ?? { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale };
-      const imageUrl = await fetchImageFromAI(target.prompt, localImageApiUrl || undefined, effectiveSettings);
+      const prompt = feedback?.trim() ? `${target.prompt}\nUser revision request: ${feedback.trim()}` : target.prompt;
+      const imageUrl = await fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings);
       const candidateId = `${target.characterId}-${Date.now()}`;
 
       setStep2ImageReview((prev) => {

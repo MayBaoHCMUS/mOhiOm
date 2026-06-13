@@ -1520,6 +1520,7 @@ export default function Step2Characters() {
   const [showSelectionAlert, setShowSelectionAlert]   = useState(false);
   const [versionBoundaries, setVersionBoundaries]     = useState<Record<string, number[]>>({});
   const [activeVersionTabs, setActiveVersionTabs]     = useState<Record<string, number>>({});
+  const [charRegenModal, setCharRegenModal]           = useState<{ charId: string; charName: string; settings: ImageGenSettings } | null>(null);
 
   // ── Design Sheets accordion state ─────────────────────────────────────────
   const [openSections, setOpenSections]           = useState<Set<number>>(new Set([1]));
@@ -1688,7 +1689,7 @@ export default function Step2Characters() {
   }, [step2ImageReview.isApproved, characters]);
 
   const handleCharacterVersionedRegenerate = useCallback(
-    (charId: string, settings: ImageGenSettings) => {
+    (charId: string, settings: ImageGenSettings, feedback?: string) => {
       const char = characters.find((c) => c.characterId === charId);
       if (!char) return;
       const currentCount = char.candidates.length;
@@ -1700,7 +1701,7 @@ export default function Step2Characters() {
         setActiveVersionTabs((prevTabs) => ({ ...prevTabs, [charId]: newVersionIdx }));
         return { ...prev, [charId]: newBoundaries };
       });
-      handleRegenerateCharacterImage(charId, settings);
+      handleRegenerateCharacterImage(charId, settings, feedback);
     },
     [characters, revokeChar, handleRegenerateCharacterImage],
   );
@@ -2118,7 +2119,7 @@ export default function Step2Characters() {
                     onVersionChange={(v) => setActiveVersionTabs((prev) => ({ ...prev, [charId]: v }))}
                     isApproved={approvedCharIds.has(charId)}
                     isAnyGenerating={isImageGenerating}
-                    onRegenerate={() => handleCharacterVersionedRegenerate(charId, getCharSettings(charId))}
+                    onRegenerate={() => setCharRegenModal({ charId, charName: character.name, settings: getCharSettings(charId) })}
                     onSelectCandidate={(id) => handleSelectCharacterCandidate(charId, id)}
                     onUpdateSettings={(s) => updateCharSettings(charId, s)}
                     onAspectRatioChange={(r) => updateAspectRatio(charId, r)}
@@ -2378,6 +2379,118 @@ export default function Step2Characters() {
         existingIds={existingCharacterIds}
         onConfirm={injectLibraryCharacters}
       />
+
+      {charRegenModal && (
+        <CharacterRegenModal
+          charName={charRegenModal.charName}
+          onClose={() => setCharRegenModal(null)}
+          onRegenerate={(feedback) => {
+            handleCharacterVersionedRegenerate(charRegenModal.charId, charRegenModal.settings, feedback || undefined);
+            setCharRegenModal(null);
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+// ── Character regenerate modal ────────────────────────────────────────────────
+function CharacterRegenModal({
+  charName,
+  onClose,
+  onRegenerate,
+}: {
+  charName: string;
+  onClose: () => void;
+  onRegenerate: (feedback: string) => void;
+}) {
+  const [feedback, setFeedback] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => { textareaRef.current?.focus(); }, []);
+
+  const CHIPS = [
+    { label: '😠 More intense', text: 'more intense expression' },
+    { label: '💪 Full body', text: 'full body view' },
+    { label: '🌙 Darker tone', text: 'darker color palette' },
+    { label: '✨ More detail', text: 'more detailed linework' },
+    { label: '👁 Close-up', text: 'close-up portrait' },
+    { label: '⚔️ With weapon', text: 'holding signature weapon' },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="relative z-10 w-full max-w-[520px] bg-surface rounded-2xl shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20">
+          <h3 className="text-base font-bold text-on-surface">Regenerate {charName}</h3>
+          <button type="button" onClick={onClose} className="w-8 h-8 rounded-full hover:bg-surface-container flex items-center justify-center transition-colors">
+            <span className="material-symbols-outlined text-sm text-on-surface-variant">close</span>
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          <div>
+            <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-2 block">
+              What would you like to change?
+            </label>
+            <div className="relative">
+              <textarea
+                ref={textareaRef}
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value.slice(0, 200))}
+                placeholder="e.g. make the armor more ornate, add glowing eyes, darker skin tone"
+                className="w-full bg-surface-container-low rounded-xl px-4 py-3 text-sm text-on-surface placeholder-outline outline-none focus:ring-2 focus:ring-primary/30 resize-none leading-relaxed"
+                rows={3}
+              />
+              <span className="absolute bottom-2 right-3 text-[10px] text-outline select-none">{feedback.length}/200</span>
+            </div>
+            <p className="text-[11px] text-outline mt-1.5">Describe what to change, not what to keep</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {CHIPS.map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                onClick={() => setFeedback((prev) => { const t = prev.trim(); return t ? `${t}, ${chip.text}` : chip.text; })}
+                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors"
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between px-6 py-4 border-t border-outline-variant/20 bg-surface-container-low">
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-on-surface-variant hover:bg-surface-container transition-colors">
+            Cancel
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onRegenerate('')}
+              title="Re-run the original prompt without any new instructions"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-on-surface-variant bg-surface-container hover:bg-surface-container-high transition-colors whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-sm">replay</span>
+              Regenerate without changes
+            </button>
+            <button
+              type="button"
+              onClick={() => onRegenerate(feedback)}
+              disabled={!feedback.trim()}
+              title="Regenerate using your feedback above as guidance"
+              className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all ${feedback.trim() ? 'bg-primary text-on-primary hover:opacity-90' : 'bg-surface-container text-outline cursor-not-allowed opacity-50'}`}
+            >
+              <span className="material-symbols-outlined text-sm">refresh</span>
+              Regenerate
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
