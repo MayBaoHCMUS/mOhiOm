@@ -429,7 +429,6 @@ function RegenerateModal({
         <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20">
           <div>
             <h3 className="text-base font-bold text-on-surface">Regenerate {contextLabel}</h3>
-            <p className="text-xs text-on-surface-variant mt-0.5">Page {pageNumber}</p>
           </div>
           <button type="button" onClick={onClose} className="w-8 h-8 rounded-full hover:bg-surface-container flex items-center justify-center transition-colors">
             <span className="material-symbols-outlined text-sm text-on-surface-variant">close</span>
@@ -491,17 +490,25 @@ function RegenerateModal({
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-on-surface-variant hover:bg-surface-container transition-colors">
             Cancel
           </button>
-          <div className="flex flex-col items-end gap-1.5">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => submit(false)}
+              title="Re-run the original prompt without any new instructions"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-on-surface-variant bg-surface-container hover:bg-surface-container-high transition-colors whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-sm">replay</span>
+              Regenerate without changes
+            </button>
             <button
               type="button"
               onClick={() => submit(true)}
               disabled={!feedback.trim()}
-              className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${feedback.trim() ? 'bg-primary text-on-primary hover:opacity-90' : 'bg-surface-container text-outline cursor-not-allowed opacity-50'}`}
+              title="Regenerate using your feedback above as guidance"
+              className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all ${feedback.trim() ? 'bg-primary text-on-primary hover:opacity-90' : 'bg-surface-container text-outline cursor-not-allowed opacity-50'}`}
             >
-              ↺ Regenerate →
-            </button>
-            <button type="button" onClick={() => submit(false)} className="text-xs text-on-surface-variant hover:text-primary transition-colors">
-              ↺ Regenerate without changes
+              <span className="material-symbols-outlined text-sm">refresh</span>
+              Regenerate
             </button>
           </div>
         </div>
@@ -1380,7 +1387,7 @@ export default function Step4Generation() {
                         <span className="material-symbols-outlined text-sm">
                           {pageStatus === 'loading' ? 'hourglass_empty' : pageStatus === 'error' ? 'replay' : 'refresh'}
                         </span>
-                        {pageStatus === 'loading' ? 'Generating…' : pageStatus === 'error' ? 'Retry page' : '↺ Regenerate'}
+                        {pageStatus === 'loading' ? 'Generating…' : pageStatus === 'error' ? 'Retry page' : 'Regenerate'}
                       </button>
                     </div>
 

@@ -405,7 +405,12 @@ const buildComicPagePrompt = (
     parts.push(`Characters: ${characterRefs.map(c => `${c.name} — ${c.prompt}`).join('; ')}.`);
   }
   panels.forEach((panel, i) => {
-    parts.push(`Panel ${i + 1}: ${panel.aiImagePrompt}`);
+    let panelLine = `Panel ${i + 1}: ${panel.aiImagePrompt}`;
+    const sfx = panel.dialogueSfx?.trim();
+    if (sfx && !/^(none|no dialogue\/sfx provided\.?)$/i.test(sfx)) {
+      panelLine += `. Dialogue/SFX: ${sfx}`;
+    }
+    parts.push(panelLine);
   });
   parts.push('Professional comic book artwork, panel borders, clear sequential storytelling.');
   return parts.join('\n');
