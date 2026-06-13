@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from fastapi import APIRouter, Header
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from pydantic import BaseModel
 from app.database import mongo_db
 
@@ -103,4 +103,92 @@ def get_comic_rating(
         {"user_id": user_id, "comic_id": comic_id},
         {"_id": 0},
     )
+    return {"rating": doc}
+
+
+# ─── Character ratings ────────────────────────────────────────────────────────
+
+def _char_col():
+    return mongo_db.get_database()["character_ratings"]
+
+
+def _char_set_col():
+    return mongo_db.get_database()["character_set_ratings"]
+
+
+class CharacterRatingRequest(BaseModel):
+    character_id: str
+    comic_id: str
+    version: int
+    reaction: str  # "love" | "good" | "neutral" | "bad"
+    chips_selected: List[str] = []
+    feedback_text: str = ""
+
+
+class CharacterSetRatingRequest(BaseModel):
+    comic_id: str
+    stars: Optional[int] = None
+    comment: str = ""
+    total_characters: int = 0
+    characters_regenerated: int = 0
+    avg_versions_per_character: float = 0.0
+    character_reactions: Dict[str, Dict] = {}
+    time_spent_seconds: int = 0
+
+
+@router.post("/character")
+def rate_character(
+    payload: CharacterRatingRequest,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = x_user_id or "anonymous"
+    doc = {
+        **payload.model_dump(),
+        "user_id": user_id,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _char_col().update_one(
+        {"user_id": user_id, "comic_id": payload.comic_id, "character_id": payload.character_id, "version": payload.version},
+        {"$set": doc},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+@router.get("/characters/{comic_id}")
+def get_character_ratings(
+    comic_id: str,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = x_user_id or "anonymous"
+    docs = list(_char_col().find({"user_id": user_id, "comic_id": comic_id}, {"_id": 0}))
+    return {"ratings": docs}
+
+
+@router.post("/character-set")
+def rate_character_set(
+    payload: CharacterSetRatingRequest,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = x_user_id or "anonymous"
+    doc = {
+        **payload.model_dump(),
+        "user_id": user_id,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _char_set_col().update_one(
+        {"user_id": user_id, "comic_id": payload.comic_id},
+        {"$set": doc},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+@router.get("/character-set/{comic_id}")
+def get_character_set_rating(
+    comic_id: str,
+    x_user_id: Optional[str] = Header(None),
+):
+    user_id = x_user_id or "anonymous"
+    doc = _char_set_col().find_one({"user_id": user_id, "comic_id": comic_id}, {"_id": 0})
     return {"rating": doc}

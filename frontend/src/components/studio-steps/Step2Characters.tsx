@@ -7,6 +7,7 @@ import type { ImageGenMode, ImageGenSettings } from '@/context/ComicGenerationCo
 import CharacterLibraryModal from '@/components/CharacterLibraryModal';
 import GalleryModal from '@/components/GalleryModal';
 import Markdown from '@/components/Markdown';
+import { apiClient } from '@/services/api';
 
 // ── Design section definitions ────────────────────────────────────────────────
 
@@ -969,6 +970,7 @@ function VersionFilmstrip({
   onVersionChange,
   onAddVersion,
   disabled,
+  ratingByVersion,
 }: {
   versions:            Candidate[][];
   activeVersion:       number;
@@ -976,6 +978,7 @@ function VersionFilmstrip({
   onVersionChange:     (v: number) => void;
   onAddVersion:        () => void;
   disabled:            boolean;
+  ratingByVersion?:    Record<number, string>;
 }) {
   return (
     <div className="flex items-end gap-2 overflow-x-auto pb-1">
@@ -1015,8 +1018,13 @@ function VersionFilmstrip({
                 </div>
               )}
             </div>
-            <span className={`text-[10px] font-bold ${isActive ? 'text-on-surface' : 'text-on-surface-variant/50'}`}>
+            <span className={`text-[10px] font-bold flex items-center gap-0.5 ${isActive ? 'text-on-surface' : 'text-on-surface-variant/50'}`}>
               V{vIdx + 1}
+              {ratingByVersion?.[vIdx] && (
+                <span className="text-[11px] leading-none">
+                  {CHAR_REACTIONS.find((r) => r.id === ratingByVersion[vIdx])?.emoji}
+                </span>
+              )}
             </span>
           </button>
         );
@@ -1040,6 +1048,125 @@ function VersionFilmstrip({
   );
 }
 
+// ── Character rating constants ────────────────────────────────────────────────
+
+const CHAR_REACTIONS = [
+  { id: 'love',    emoji: '😍', label: 'Perfect', tooltip: 'nails the character exactly', bg: '#F0FDF4', border: '#86EFAC', color: '#166534' },
+  { id: 'good',    emoji: '👍', label: 'Close',   tooltip: 'mostly right, minor issues',  bg: '#EFF6FF', border: '#93C5FD', color: '#1E40AF' },
+  { id: 'neutral', emoji: '😐', label: 'Okay',    tooltip: 'acceptable but not ideal',    bg: '#FFFBEB', border: '#FCD34D', color: '#92400E' },
+  { id: 'bad',     emoji: '👎', label: 'Off',     tooltip: "doesn't match my vision",     bg: '#FEF2F2', border: '#FCA5A5', color: '#991B1B' },
+] as const;
+
+type CharReaction = typeof CHAR_REACTIONS[number]['id'];
+
+const CHAR_CHIPS = [
+  { id: 'age_wrong',       label: '👤 Wrong age'        },
+  { id: 'hair_wrong',      label: '💇 Hair is wrong'    },
+  { id: 'eyes_wrong',      label: '👁 Wrong eyes'       },
+  { id: 'outfit_wrong',    label: '👗 Outfit incorrect'  },
+  { id: 'personality_off', label: '🎭 Personality'      },
+  { id: 'build_wrong',     label: '📏 Wrong build'      },
+  { id: 'color_wrong',     label: '🎨 Color wrong'      },
+  { id: 'missing_details', label: '✨ Missing details'   },
+] as const;
+
+// ── Character rating widget ───────────────────────────────────────────────────
+
+function CharacterRatingWidget({
+  reaction,
+  chips,
+  feedback,
+  onRate,
+  onToggleChip,
+  onFeedbackChange,
+}: {
+  reaction:         CharReaction | null;
+  chips:            string[];
+  feedback:         string;
+  onRate:           (r: CharReaction) => void;
+  onToggleChip:     (chipId: string) => void;
+  onFeedbackChange: (text: string) => void;
+}) {
+  const showPositive = reaction === 'love' || reaction === 'good';
+  const showNegative = reaction === 'neutral' || reaction === 'bad';
+
+  return (
+    <div className="space-y-3 pt-3 border-t border-outline-variant/10">
+      <p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>
+        How well does this match your vision?
+      </p>
+
+      <div className="flex flex-wrap gap-2">
+        {CHAR_REACTIONS.map((r) => {
+          const sel = reaction === r.id;
+          return (
+            <button
+              key={r.id}
+              type="button"
+              title={r.tooltip}
+              onClick={() => onRate(r.id)}
+              className="flex items-center gap-1.5 h-9 rounded-[20px] text-sm font-medium transition-all"
+              style={{
+                padding:    '0 14px',
+                background: sel ? r.bg    : 'white',
+                border:     `1px solid ${sel ? r.border : '#E5E7EB'}`,
+                color:      sel ? r.color : '#374151',
+              }}
+            >
+              <span>{r.emoji}</span>
+              <span>{r.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {showPositive && (
+        <p className="text-[12px] text-emerald-600 font-medium leading-snug">
+          Great! This character will be used as reference for all panels they appear in.
+        </p>
+      )}
+
+      {showNegative && (
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>
+            What&apos;s off? (select all that apply)
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {CHAR_CHIPS.map((chip) => {
+              const chipSel = chips.includes(chip.id);
+              return (
+                <button
+                  key={chip.id}
+                  type="button"
+                  onClick={() => onToggleChip(chip.id)}
+                  className="px-3 py-1.5 rounded-full text-[11px] font-medium transition-all"
+                  style={{
+                    background: chipSel ? '#1e40af' : 'white',
+                    color:      chipSel ? 'white'   : '#374151',
+                    border:     `1px solid ${chipSel ? '#1e40af' : '#E5E7EB'}`,
+                  }}
+                >
+                  {chip.label}
+                </button>
+              );
+            })}
+          </div>
+          <div>
+            <p className="text-[11px] font-medium text-[#9CA3AF] mb-1">What&apos;s missing? (optional)</p>
+            <textarea
+              value={feedback}
+              onChange={(e) => onFeedbackChange(e.target.value)}
+              rows={2}
+              className="w-full bg-gray-50 rounded-xl px-3 py-2 text-sm text-gray-700 placeholder-gray-400 border border-gray-200 outline-none focus:ring-2 focus:ring-primary/20 resize-none leading-relaxed"
+              placeholder="Describe what's wrong or missing…"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Image generation panel (right column of accordion) ───────────────────────
 
 function ImageGenPanel({
@@ -1057,6 +1184,16 @@ function ImageGenPanel({
   onAspectRatioChange,
   onApprove,
   onRevoke,
+  charRating,
+  charChips,
+  charFeedback,
+  onCharRate,
+  onChipToggle,
+  onFeedbackChange,
+  approveWarning,
+  onApproveAnyway,
+  onRegenInstead,
+  ratingByVersion,
 }: {
   character: {
     characterId:         string;
@@ -1080,6 +1217,17 @@ function ImageGenPanel({
   onAspectRatioChange: (r: string) => void;
   onApprove:           () => void;
   onRevoke:            () => void;
+  // Rating widget
+  charRating:          CharReaction | null;
+  charChips:           string[];
+  charFeedback:        string;
+  onCharRate:          (r: CharReaction) => void;
+  onChipToggle:        (chipId: string) => void;
+  onFeedbackChange:    (text: string) => void;
+  approveWarning:      boolean;
+  onApproveAnyway:     () => void;
+  onRegenInstead:      () => void;
+  ratingByVersion:     Record<number, string>;
 }) {
   const isLoading        = character.status === 'loading';
   const isFailed         = character.status === 'error';
@@ -1094,9 +1242,10 @@ function ImageGenPanel({
           versions={versions}
           activeVersion={activeVersion}
           selectedCandidateId={character.selectedCandidateId}
-          onVersionChange={onVersionChange}
+          onVersionChange={(v) => { onVersionChange(v); }}
           onAddVersion={onRegenerate}
           disabled={isAnyGenerating}
+          ratingByVersion={ratingByVersion}
         />
       )}
 
@@ -1201,6 +1350,18 @@ function ImageGenPanel({
       {/* Generation mode */}
       <GenerationModePanel value={settings} onChange={onUpdateSettings} disabled={isAnyGenerating} />
 
+      {/* Rating widget — only after at least one image exists */}
+      {hasAnyImages && (
+        <CharacterRatingWidget
+          reaction={charRating}
+          chips={charChips}
+          feedback={charFeedback}
+          onRate={onCharRate}
+          onToggleChip={onChipToggle}
+          onFeedbackChange={onFeedbackChange}
+        />
+      )}
+
       {/* Action row */}
       <div className="flex items-center gap-2 pt-2 border-t border-outline-variant/10">
         <button
@@ -1234,6 +1395,34 @@ function ImageGenPanel({
           </button>
         )}
       </div>
+
+      {/* Approve warning — shown when user rated poorly and clicks Approve */}
+      {approveWarning && !isApproved && (
+        <div className="p-3 rounded-xl space-y-2" style={{ background: '#FFFBEB', border: '1px solid #FCD34D' }}>
+          <p className="text-sm font-semibold text-amber-900">
+            ⚠ You rated this design as &ldquo;{charRating === 'neutral' ? 'Okay' : 'Off'}&rdquo;
+          </p>
+          <p className="text-xs text-amber-800 leading-snug">
+            Approving will use this as the character reference in all panels.
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={onRegenInstead}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-amber-300 text-amber-800 hover:bg-amber-50 transition-colors"
+            >
+              Regenerate instead
+            </button>
+            <button
+              type="button"
+              onClick={onApproveAnyway}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+            >
+              Approve anyway →
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1272,6 +1461,8 @@ function CharacterAccordionCard({
   onApprove,
   onRevoke,
   designMarkdown,
+  projectId,
+  onReactionChange,
 }: {
   idx:                 number;
   character: {
@@ -1299,8 +1490,80 @@ function CharacterAccordionCard({
   onApprove:           () => void;
   onRevoke:            () => void;
   designMarkdown:      string | null;
+  projectId:           string;
+  onReactionChange:    (charId: string, version: number, reaction: CharReaction | null) => void;
 }) {
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
+  const [ratingByVersion, setRatingByVersion]   = useState<Record<number, CharReaction>>({});
+  const [chipsByVersion, setChipsByVersion]     = useState<Record<number, string[]>>({});
+  const [ratingFeedback, setRatingFeedback]     = useState('');
+  const [approveWarning, setApproveWarning]     = useState(false);
+
+  const currentRating = ratingByVersion[activeVersion] ?? null;
+  const currentChips  = chipsByVersion[activeVersion]  ?? [];
+
+  const handleRate = useCallback((r: CharReaction) => {
+    setRatingByVersion((prev) => ({ ...prev, [activeVersion]: r }));
+    setApproveWarning(false);
+    onReactionChange(character.characterId, activeVersion, r);
+    apiClient.post('/ratings/character', {
+      character_id:   character.characterId,
+      comic_id:       projectId,
+      version:        activeVersion,
+      reaction:       r,
+      chips_selected: chipsByVersion[activeVersion] ?? [],
+      feedback_text:  ratingFeedback,
+    }).catch(() => {/* fire-and-forget */});
+  }, [activeVersion, character.characterId, chipsByVersion, onReactionChange, projectId, ratingFeedback]);
+
+  const handleChipToggle = useCallback((chipId: string) => {
+    setChipsByVersion((prev) => {
+      const existing = prev[activeVersion] ?? [];
+      const next = existing.includes(chipId)
+        ? existing.filter((c) => c !== chipId)
+        : [...existing, chipId];
+      return { ...prev, [activeVersion]: next };
+    });
+    const chipLabel = CHAR_CHIPS.find((c) => c.id === chipId)?.label ?? chipId;
+    const cleanLabel = chipLabel.replace(/^\p{Emoji}+\s*/u, '');
+    setRatingFeedback((prev) => {
+      const trimmed = prev.trim();
+      if (trimmed.toLowerCase().includes(cleanLabel.toLowerCase())) return prev;
+      return trimmed ? `${trimmed}, ${cleanLabel}` : cleanLabel;
+    });
+  }, [activeVersion]);
+
+  const logCharApproved = useCallback(() => {
+    apiClient.post('/analytics/log', {
+      event: 'character_approved',
+      data: {
+        character_id: character.characterId,
+        comic_id:     projectId,
+        version:      activeVersion,
+        reaction:     currentRating ?? 'unrated',
+      },
+    }).catch(() => {/* fire-and-forget */});
+  }, [character.characterId, projectId, activeVersion, currentRating]);
+
+  const handleApproveWithCheck = useCallback(() => {
+    if (currentRating === 'neutral' || currentRating === 'bad') {
+      setApproveWarning(true);
+    } else {
+      logCharApproved();
+      onApprove();
+    }
+  }, [currentRating, onApprove, logCharApproved]);
+
+  const handleApproveAnyway = useCallback(() => {
+    setApproveWarning(false);
+    logCharApproved();
+    onApprove();
+  }, [onApprove, logCharApproved]);
+
+  const handleRegenInstead = useCallback(() => {
+    setApproveWarning(false);
+    onRegenerate();
+  }, [onRegenerate]);
 
   const selectedCandidate = character.candidates.find((c) => c.id === character.selectedCandidateId) ?? null;
   const isLoading = character.status === 'loading';
@@ -1360,6 +1623,11 @@ function CharacterAccordionCard({
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="text-[10px] font-bold text-on-surface-variant/30 flex-shrink-0">#{idx + 1}</span>
               <p className="font-semibold text-sm text-on-surface truncate">{character.name}</p>
+              {currentRating && (
+                <span className="text-sm leading-none flex-shrink-0" title={`Rated: ${CHAR_REACTIONS.find((r) => r.id === currentRating)?.label}`}>
+                  {CHAR_REACTIONS.find((r) => r.id === currentRating)?.emoji}
+                </span>
+              )}
             </div>
             {character.candidates.length > 0 && (
               <p className="text-[10px] text-on-surface-variant/50 mt-0.5 truncate">
@@ -1450,8 +1718,18 @@ function CharacterAccordionCard({
                   onSelectCandidate={onSelectCandidate}
                   onUpdateSettings={onUpdateSettings}
                   onAspectRatioChange={onAspectRatioChange}
-                  onApprove={onApprove}
+                  onApprove={handleApproveWithCheck}
                   onRevoke={onRevoke}
+                  charRating={currentRating}
+                  charChips={currentChips}
+                  charFeedback={ratingFeedback}
+                  onCharRate={handleRate}
+                  onChipToggle={handleChipToggle}
+                  onFeedbackChange={setRatingFeedback}
+                  approveWarning={approveWarning}
+                  onApproveAnyway={handleApproveAnyway}
+                  onRegenInstead={handleRegenInstead}
+                  ratingByVersion={ratingByVersion}
                 />
               </div>
             </div>
@@ -1505,6 +1783,7 @@ export default function Step2Characters() {
     getCooldownSeconds,
     injectLibraryCharacters,
     setActiveStep,
+    projectId,
   } = useComicGeneration();
 
   // ── Reference Images tab state ────────────────────────────────────────────
@@ -1521,6 +1800,9 @@ export default function Step2Characters() {
   const [versionBoundaries, setVersionBoundaries]     = useState<Record<string, number[]>>({});
   const [activeVersionTabs, setActiveVersionTabs]     = useState<Record<string, number>>({});
   const [charRegenModal, setCharRegenModal]           = useState<{ charId: string; charName: string; settings: ImageGenSettings } | null>(null);
+  const [allCharReactions, setAllCharReactions]       = useState<Record<string, Record<number, string>>>({});
+  const [showCharSetRating, setShowCharSetRating]     = useState(false);
+  const stepStartRef = useRef(Date.now());
 
   // ── Design Sheets accordion state ─────────────────────────────────────────
   const [openSections, setOpenSections]           = useState<Set<number>>(new Set([1]));
@@ -1693,17 +1975,28 @@ export default function Step2Characters() {
       const char = characters.find((c) => c.characterId === charId);
       if (!char) return;
       const currentCount = char.candidates.length;
+      const newVersionIdx = (versionBoundaries[charId]?.length ?? 1);
       revokeChar(charId);
       setVersionBoundaries((prev) => {
         const existing = prev[charId] ?? [0];
         const newBoundaries = [...existing, currentCount];
-        const newVersionIdx = newBoundaries.length - 1;
-        setActiveVersionTabs((prevTabs) => ({ ...prevTabs, [charId]: newVersionIdx }));
+        setActiveVersionTabs((prevTabs) => ({ ...prevTabs, [charId]: newBoundaries.length - 1 }));
         return { ...prev, [charId]: newBoundaries };
       });
       handleRegenerateCharacterImage(charId, settings, feedback);
+      if (projectId) {
+        apiClient.post('/analytics/log', {
+          event: 'character_generated',
+          data: {
+            character_id:     charId,
+            comic_id:         projectId,
+            version:          newVersionIdx,
+            generation_mode:  settings.mode,
+          },
+        }).catch(() => {/* fire-and-forget */});
+      }
     },
-    [characters, revokeChar, handleRegenerateCharacterImage],
+    [characters, versionBoundaries, revokeChar, handleRegenerateCharacterImage, projectId],
   );
 
   const handleConfirmRegen = useCallback(() => {
@@ -1745,12 +2038,59 @@ export default function Step2Characters() {
     return cleanContent(raw);
   }, [editedContent]);
 
+  const handleReactionChange = useCallback((charId: string, version: number, reaction: CharReaction | null) => {
+    setAllCharReactions((prev) => ({
+      ...prev,
+      [charId]: { ...(prev[charId] ?? {}), [version]: reaction ?? '' },
+    }));
+  }, []);
+
+  const proceedWithApproval = useCallback(() => {
+    if (!step2.isApproved) handleApprove(2);
+    handleApproveCharacterReferences();
+  }, [step2.isApproved, handleApprove, handleApproveCharacterReferences]);
+
   const handleApproveAndContinue = useCallback(() => {
     if (step2ImageReview.isApproved) { setActiveStep(3); return; }
     if (!allCharsHaveSelection) { setShowSelectionAlert(true); return; }
-    if (!step2.isApproved) handleApprove(2);
-    handleApproveCharacterReferences();
-  }, [step2.isApproved, step2ImageReview.isApproved, allCharsHaveSelection, handleApprove, handleApproveCharacterReferences, setActiveStep]); // eslint-disable-line react-hooks/exhaustive-deps
+    setShowCharSetRating(true);
+  }, [step2ImageReview.isApproved, allCharsHaveSelection, setActiveStep]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCharSetRatingSave = useCallback((stars: number | null, comment: string) => {
+    setShowCharSetRating(false);
+    if (projectId) {
+      const avgVersions = characters.length > 0
+        ? characters.reduce((s, c) => s + (versionBoundaries[c.characterId]?.length ?? 1), 0) / characters.length
+        : 1;
+      const timeSpent = Math.round((Date.now() - stepStartRef.current) / 1000);
+      apiClient.post('/ratings/character-set', {
+        comic_id:                    projectId,
+        stars,
+        comment,
+        total_characters:            characters.length,
+        characters_regenerated:      characters.filter((c) => (versionBoundaries[c.characterId]?.length ?? 1) > 1).length,
+        avg_versions_per_character:  avgVersions,
+        character_reactions:         allCharReactions,
+        time_spent_seconds:          timeSpent,
+      }).catch(() => {/* fire-and-forget */});
+      apiClient.post('/analytics/log', {
+        event: 'step3_completed',
+        data: {
+          comic_id:           projectId,
+          total_characters:   characters.length,
+          avg_versions:       Math.round(avgVersions * 10) / 10,
+          stars:              stars ?? null,
+          time_spent_seconds: timeSpent,
+        },
+      }).catch(() => {/* fire-and-forget */});
+    }
+    proceedWithApproval();
+  }, [projectId, characters, versionBoundaries, allCharReactions, proceedWithApproval]);
+
+  const handleCharSetRatingSkip = useCallback(() => {
+    setShowCharSetRating(false);
+    proceedWithApproval();
+  }, [proceedWithApproval]);
 
   const handleDesignApproveClick = useCallback(() => {
     if (state === 4) { setActiveStep(3); return; }
@@ -2126,6 +2466,8 @@ export default function Step2Characters() {
                     onApprove={() => approveChar(charId)}
                     onRevoke={() => revokeChar(charId)}
                     designMarkdown={step2.data?.designMarkdown ?? null}
+                    projectId={projectId ?? ''}
+                    onReactionChange={handleReactionChange}
                   />
                 );
               })}
@@ -2390,6 +2732,16 @@ export default function Step2Characters() {
           }}
         />
       )}
+
+      {showCharSetRating && (
+        <CharacterSetRatingModal
+          characters={characters}
+          allCharReactions={allCharReactions}
+          activeVersionTabs={activeVersionTabs}
+          onSkip={handleCharSetRatingSkip}
+          onSave={handleCharSetRatingSave}
+        />
+      )}
     </section>
   );
 }
@@ -2489,6 +2841,113 @@ function CharacterRegenModal({
               Regenerate
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Character set rating modal ────────────────────────────────────────────────
+function CharacterSetRatingModal({
+  characters,
+  allCharReactions,
+  activeVersionTabs,
+  onSkip,
+  onSave,
+}: {
+  characters:       { characterId: string; name: string }[];
+  allCharReactions: Record<string, Record<number, string>>;
+  activeVersionTabs: Record<string, number>;
+  onSkip:           () => void;
+  onSave:           (stars: number | null, comment: string) => void;
+}) {
+  const [stars, setStars]         = useState<number | null>(null);
+  const [hoverStar, setHoverStar] = useState<number | null>(null);
+  const [comment, setComment]     = useState('');
+
+  const REACTION_EMOJI: Record<string, string> = { love: '😍', good: '👍', neutral: '😐', bad: '👎' };
+
+  const charReactionSummary = characters
+    .map((c) => {
+      const version  = activeVersionTabs[c.characterId] ?? 0;
+      const reaction = allCharReactions[c.characterId]?.[version] ?? null;
+      return { name: c.name, reaction };
+    })
+    .filter((c) => c.reaction);
+
+  return (
+    <div className="fixed inset-0 z-[110] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-7 space-y-5">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">Characters approved!</p>
+          <h2 className="text-xl font-bold text-gray-900 mt-1">
+            How well did AI capture your characters?
+          </h2>
+        </div>
+
+        {/* Star rating */}
+        <div className="flex items-center gap-1">
+          {[1, 2, 3, 4, 5].map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStars(stars === s ? null : s)}
+              onMouseEnter={() => setHoverStar(s)}
+              onMouseLeave={() => setHoverStar(null)}
+              className="text-3xl leading-none transition-transform hover:scale-110 text-amber-400 select-none"
+            >
+              {(hoverStar ?? stars ?? 0) >= s ? '★' : '☆'}
+            </button>
+          ))}
+          {stars && <span className="text-sm text-gray-400 ml-2">{stars}/5</span>}
+        </div>
+
+        {/* Comment */}
+        <div>
+          <label className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-2 block">
+            Any notes? (optional)
+          </label>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            rows={3}
+            className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-700 border border-gray-200 outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+            placeholder="What worked well? What could be better?"
+          />
+        </div>
+
+        {/* Character reaction summary */}
+        {charReactionSummary.length > 0 && (
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-2">
+              Your character reactions:
+            </p>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              {charReactionSummary.map((c, i) => (
+                <span key={i} className="text-sm text-gray-600">
+                  {c.name}: {REACTION_EMOJI[c.reaction!] ?? c.reaction}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+          <button
+            type="button"
+            onClick={onSkip}
+            className="text-sm font-semibold text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            Skip →
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave(stars, comment)}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity"
+          >
+            Save &amp; Continue →
+          </button>
         </div>
       </div>
     </div>

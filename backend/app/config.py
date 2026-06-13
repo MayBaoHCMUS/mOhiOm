@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     SMTP_FROM: str = ""
     SMTP_USE_TLS: bool = True
 
+    # Admin dashboard
+    ADMIN_SECRET_KEY: str = "mohiom-admin-2024"
+
     class Config:
         env_file = ENV_FILE
         env_file_encoding = "utf-8"
