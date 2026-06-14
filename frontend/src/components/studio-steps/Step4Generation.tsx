@@ -1900,16 +1900,6 @@ export default function Step4Generation() {
         className="fixed bottom-0 right-0 z-40 bg-white shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
         style={{ left: 'var(--studio-sidebar-width)' }}
       >
-        {/* 4px progress line at very top of bar */}
-        <div className="h-[3px] bg-gray-100 overflow-hidden">
-          {step4Stats.total > 0 && (
-            <div
-              className="h-full rounded-r-full transition-all duration-500"
-              style={{ width: `${barPct}%`, background: barColor }}
-            />
-          )}
-        </div>
-
         <div className="border-t border-gray-200 px-10 py-4 max-w-6xl mx-auto flex items-center justify-between gap-4">
           {/* Left: ← Edit Script */}
           <button
