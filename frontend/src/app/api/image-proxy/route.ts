@@ -4,12 +4,16 @@ const REQUEST_TIMEOUT_MS = 120000;
 
 type ProxyRequestBody = {
   url?: string;
-  prompt?: string;
+  scene_prompt?: string;
   negative_prompt?: string;
-  reference_image_base64?: string;
-  control_image_base64?: string;
+  story_id?: string;
+  character_name?: string;
   ip_adapter_scale?: number;
+  style?: string;
+  control_image_b64?: string;
   controlnet_scale?: number;
+  width?: number;
+  height?: number;
   seed?: number;
 };
 
@@ -37,19 +41,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Only http/https URLs are allowed." }, { status: 400 });
   }
 
-  // Automatically append /generate if the path doesn't already end with it
-  if (!targetUrl.pathname.endsWith("/generate")) {
-    targetUrl.pathname = targetUrl.pathname.replace(/\/?$/, "/generate");
+  // Append /generate-page if the path doesn't already end with a known endpoint
+  if (!targetUrl.pathname.endsWith("/generate-page") && !targetUrl.pathname.endsWith("/generate")) {
+    targetUrl.pathname = targetUrl.pathname.replace(/\/?$/, "/generate-page");
   }
 
   const requestBody: Record<string, unknown> = {
-    prompt: body.prompt ?? "",
-    negative_prompt: body.negative_prompt ?? "lowres, bad anatomy",
+    scene_prompt: body.scene_prompt ?? "",
+    negative_prompt: body.negative_prompt ?? "lowres, bad anatomy, worst quality, blurry",
+    story_id: body.story_id ?? "default",
+    style: body.style ?? "manga",
+    ip_adapter_scale: body.ip_adapter_scale ?? 0.7,
   };
-  if (body.reference_image_base64) requestBody.reference_image_base64 = body.reference_image_base64;
-  if (body.control_image_base64) requestBody.control_image_base64 = body.control_image_base64;
-  if (body.ip_adapter_scale !== undefined) requestBody.ip_adapter_scale = body.ip_adapter_scale;
+  if (body.character_name) requestBody.character_name = body.character_name;
+  if (body.control_image_b64) requestBody.control_image_b64 = body.control_image_b64;
   if (body.controlnet_scale !== undefined) requestBody.controlnet_scale = body.controlnet_scale;
+  if (body.width !== undefined) requestBody.width = body.width;
+  if (body.height !== undefined) requestBody.height = body.height;
   if (body.seed !== undefined) requestBody.seed = body.seed;
 
   // ── Server-side debug ────────────────────────────────────────────────────

@@ -24,6 +24,9 @@ export interface ImageGenSettings {
   controlImageBase64: string;
   ipAdapterScale: number;
   controlnetScale: number;
+  characterName?: string;
+  storyId?: string;
+  style?: string;
 }
 
 export interface StepState<T> {
@@ -212,15 +215,17 @@ const fetchImageFromAI = async (
     const mode = settings?.mode ?? 1;
     const requestBody: Record<string, unknown> = {
       url: localImageApiUrl,
-      prompt: imagePrompt,
-      negative_prompt: 'lowres, bad anatomy',
+      scene_prompt: imagePrompt,
+      negative_prompt: 'lowres, bad anatomy, worst quality, blurry',
+      story_id: settings?.storyId ?? 'default',
+      style: settings?.style ?? 'manga',
+      ip_adapter_scale: settings?.ipAdapterScale ?? 0.7,
     };
-    if ((mode === 2 || mode === 4) && settings?.referenceImageBase64) {
-      requestBody.reference_image_base64 = settings.referenceImageBase64;
-      requestBody.ip_adapter_scale = settings.ipAdapterScale ?? 0.7;
+    if (settings?.characterName) {
+      requestBody.character_name = settings.characterName;
     }
     if ((mode === 3 || mode === 4) && settings?.controlImageBase64) {
-      requestBody.control_image_base64 = settings.controlImageBase64;
+      requestBody.control_image_b64 = settings.controlImageBase64;
       requestBody.controlnet_scale = settings.controlnetScale ?? 0.8;
     }
 
@@ -429,6 +434,7 @@ export interface ComicGenerationContextValue {
   specialRequests: string;
   localImageApiUrl: string;
   imageGenMode: ImageGenMode;
+  imageGenStyle: string;
   referenceImageBase64: string;
   controlImageBase64: string;
   ipAdapterScale: number;
@@ -463,6 +469,7 @@ export interface ComicGenerationContextValue {
   setSpecialRequests: (value: string) => void;
   setLocalImageApiUrl: (value: string) => void;
   setImageGenMode: (value: ImageGenMode) => void;
+  setImageGenStyle: (value: string) => void;
   setReferenceImageBase64: (value: string) => void;
   setControlImageBase64: (value: string) => void;
   setIpAdapterScale: (value: number) => void;
@@ -535,6 +542,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   const [specialRequests, setSpecialRequests] = useState('None');
   const [localImageApiUrl, setLocalImageApiUrl] = useState('');
   const [imageGenMode, setImageGenMode] = useState<ImageGenMode>(1);
+  const [imageGenStyle, setImageGenStyle] = useState<string>('manga');
   const [referenceImageBase64, setReferenceImageBase64] = useState('');
   const [controlImageBase64, setControlImageBase64] = useState('');
   const [ipAdapterScale, setIpAdapterScale] = useState(0.7);
@@ -768,6 +776,27 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         } => entry !== null
       );
   }, [step2ImageReview.data]);
+
+  const saveCharacterToServer = useCallback(async (
+    characterName: string,
+    imageDataUri: string
+  ): Promise<void> => {
+    if (!localImageApiUrl) return;
+    const b64 = imageDataUri.startsWith('data:')
+      ? imageDataUri.split(',')[1] ?? ''
+      : imageDataUri;
+    if (!b64) return;
+    fetch('/api/image-proxy/characters', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: localImageApiUrl,
+        story_id: projectId,
+        character_name: characterName.toLowerCase(),
+        reference_image_b64: b64,
+      }),
+    }).catch(() => {});
+  }, [localImageApiUrl, projectId]);
 
   const setStepState = (step: StepKey, updater: (prev: StepState<unknown>) => StepState<unknown>) => {
     if (step === 1) setStep1((prev) => updater(prev as StepState<unknown>) as StepState<Step1Result>);
@@ -1609,7 +1638,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     const generatedCharacters = await Promise.all(
       characters.map(async (character) => {
         try {
-          const charSettings = settingsMap?.[character.characterId] ?? { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale };
+          const charSettings = settingsMap?.[character.characterId] ?? { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale, storyId: projectId, style: imageGenStyle };
           const imageUrl = await fetchImageFromAI(character.prompt, localImageApiUrl || undefined, charSettings);
           const candidateId = `${character.characterId}-${Date.now()}`;
           return {
@@ -1667,7 +1696,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     });
 
     try {
-      const effectiveSettings = settings ?? { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale };
+      const effectiveSettings = settings ?? { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale, storyId: projectId, style: imageGenStyle };
       const prompt = feedback?.trim() ? `${target.prompt}\nUser revision request: ${feedback.trim()}` : target.prompt;
       const imageUrl = await fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings);
       const candidateId = `${target.characterId}-${Date.now()}`;
@@ -1763,6 +1792,13 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }));
     setStep3((prev) => ({ ...prev, locked: false }));
     setActiveStep(3);
+
+    if (localImageApiUrl && step2ImageReview.data) {
+      step2ImageReview.data.characters.forEach((char) => {
+        const sel = char.candidates.find((c) => c.id === char.selectedCandidateId);
+        if (sel?.imageUrl) saveCharacterToServer(char.name, sel.imageUrl);
+      });
+    }
   };
 
   const handleRetryCharacterReferences = () => {
@@ -1814,7 +1850,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       const results = await Promise.all(
         batch.map(async (panel) => {
           try {
-            const imageUrl = await fetchImageFromAI(panel.aiImagePrompt, localImageApiUrl || undefined, { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale });
+            const imageUrl = await fetchImageFromAI(panel.aiImagePrompt, localImageApiUrl || undefined, { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale, storyId: projectId, style: imageGenStyle });
             return {
               id: panel.id,
               status: 'success' as const,
@@ -1869,11 +1905,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     const batchSize = Math.max(1, options?.batchSize ?? 1);
     const delayMs = Math.max(0, options?.delayMs ?? 10000);
     const characterRefs = getSelectedCharacterReferences();
-    const firstRefImageUrl = characterRefs.find((c) => c.image_url)?.image_url || '';
-    const refBase64 =
-      firstRefImageUrl.startsWith('data:image/') && firstRefImageUrl.includes(',')
-        ? firstRefImageUrl.split(',')[1] || ''
-        : '';
+    const firstCharName = characterRefs[0]?.name?.toLowerCase() || '';
 
     for (let i = 0; i < pageEntries.length; i += batchSize) {
       const batch = pageEntries.slice(i, i + batchSize);
@@ -1906,11 +1938,14 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
               characterRefs.map((c) => ({ name: c.name, prompt: c.prompt }))
             );
             const effectiveSettings: ImageGenSettings = {
-              mode: refBase64 ? 2 : imageGenMode,
-              referenceImageBase64: refBase64 || referenceImageBase64,
+              mode: imageGenMode,
+              referenceImageBase64: '',
               controlImageBase64,
               ipAdapterScale,
               controlnetScale,
+              characterName: firstCharName || undefined,
+              storyId: projectId,
+              style: imageGenStyle,
             };
             const imageUrl = await fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings);
             return { pageId, status: 'success' as const, imageUrl, error: null };
@@ -2033,9 +2068,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
 
     try {
       const characterRefs = getSelectedCharacterReferences();
-      const firstRefImageUrl = characterRefs.find((c) => c.image_url)?.image_url || '';
-      const refBase64 = firstRefImageUrl.startsWith('data:image/') && firstRefImageUrl.includes(',')
-        ? firstRefImageUrl.split(',')[1] || '' : '';
+      const firstCharName = characterRefs[0]?.name?.toLowerCase() || '';
       let prompt = buildComicPagePrompt(
         panels, artStyle, mangaGenre,
         characterRefs.map((c) => ({ name: c.name, prompt: c.prompt }))
@@ -2044,11 +2077,14 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         prompt += `\nUser revision request: ${feedback.trim()}`;
       }
       const effectiveSettings: ImageGenSettings = {
-        mode: refBase64 ? 2 : imageGenMode,
-        referenceImageBase64: refBase64 || referenceImageBase64,
+        mode: imageGenMode,
+        referenceImageBase64: '',
         controlImageBase64,
         ipAdapterScale,
         controlnetScale,
+        characterName: firstCharName || undefined,
+        storyId: projectId,
+        style: imageGenStyle,
       };
       const newImageUrl = await fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings);
       setStep4((prev) => {
@@ -2766,6 +2802,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     specialRequests,
     localImageApiUrl,
     imageGenMode,
+    imageGenStyle,
     referenceImageBase64,
     controlImageBase64,
     ipAdapterScale,
@@ -2800,6 +2837,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     setSpecialRequests,
     setLocalImageApiUrl,
     setImageGenMode,
+    setImageGenStyle,
     setReferenceImageBase64,
     setControlImageBase64,
     setIpAdapterScale,

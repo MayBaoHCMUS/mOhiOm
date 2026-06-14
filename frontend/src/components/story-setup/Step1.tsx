@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import ProjectsDrawer from '@/components/ProjectsDrawer';
@@ -20,6 +20,142 @@ function validateProjectId(v: string) {
 function wordCount(text: string) {
   const t = text.trim();
   return t ? t.split(/\s+/).length : 0;
+}
+
+// ── Image Style Picker ────────────────────────────────────────────────────────
+
+const IMAGE_STYLES = [
+  {
+    value: 'manga',
+    label: 'Manga',
+    sub: 'B&W lineart · screentone shading',
+    emoji: '🖤',
+    accent: 'bg-gray-900',
+    ring: 'ring-gray-900',
+    badge: 'bg-gray-100 text-gray-700',
+  },
+  {
+    value: 'webtoon',
+    label: 'Webtoon',
+    sub: 'Korean manhwa · flat vivid colors',
+    emoji: '🎨',
+    accent: 'bg-violet-500',
+    ring: 'ring-violet-500',
+    badge: 'bg-violet-100 text-violet-700',
+  },
+  {
+    value: 'chibi',
+    label: 'Chibi',
+    sub: 'Super-deformed · pastel kawaii',
+    emoji: '🌸',
+    accent: 'bg-pink-400',
+    ring: 'ring-pink-400',
+    badge: 'bg-pink-100 text-pink-700',
+  },
+  {
+    value: 'watercolor',
+    label: 'Watercolor',
+    sub: 'Soft brushstrokes · painterly',
+    emoji: '💧',
+    accent: 'bg-sky-400',
+    ring: 'ring-sky-400',
+    badge: 'bg-sky-100 text-sky-700',
+  },
+] as const;
+
+function ImageStylePicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = IMAGE_STYLES.find((s) => s.value === value) ?? IMAGE_STYLES[0];
+
+  const close = useCallback(() => setOpen(false), []);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open, close]);
+
+  return (
+    <div className="space-y-1.5 relative" ref={ref}>
+      <label className="block text-xs font-bold uppercase tracking-widest text-gray-500">Image Style</label>
+
+      {/* Trigger */}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        className={`
+          w-full flex items-center gap-3 rounded-2xl bg-white px-4 py-3 text-sm
+          border transition-all duration-150 text-left
+          ${open ? 'border-blue-500 ring-2 ring-blue-100' : 'border-gray-300 hover:border-gray-400'}
+          ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+        `}
+      >
+        <span className={`w-7 h-7 rounded-xl ${selected.accent} flex items-center justify-center text-base flex-shrink-0 shadow-sm`}>
+          {selected.emoji}
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-800 text-sm leading-tight">{selected.label}</p>
+          <p className="text-[11px] text-gray-400 leading-tight mt-0.5 truncate">{selected.sub}</p>
+        </div>
+        <svg
+          className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Dropdown panel */}
+      {open && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-2xl border border-gray-200 bg-white shadow-xl overflow-hidden">
+          {IMAGE_STYLES.map((style) => {
+            const isActive = style.value === value;
+            return (
+              <button
+                key={style.value}
+                type="button"
+                onClick={() => { onChange(style.value); setOpen(false); }}
+                className={`
+                  w-full flex items-center gap-3 px-4 py-3 text-left transition-colors
+                  ${isActive ? 'bg-blue-50' : 'hover:bg-gray-50'}
+                `}
+              >
+                <span className={`w-8 h-8 rounded-xl ${style.accent} flex items-center justify-center text-base flex-shrink-0 shadow-sm`}>
+                  {style.emoji}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className={`font-semibold text-sm leading-tight ${isActive ? 'text-blue-700' : 'text-gray-800'}`}>
+                    {style.label}
+                  </p>
+                  <p className="text-[11px] text-gray-400 leading-tight mt-0.5">{style.sub}</p>
+                </div>
+                {isActive && (
+                  <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="text-xs text-gray-600">Controls the LoRA + trigger words on the image server.</p>
+    </div>
+  );
 }
 
 // ── Story Library modal ───────────────────────────────────────────────────────
@@ -97,6 +233,8 @@ export default function Step1() {
     setArtStyle,
     setSpecialRequests,
     setLocalImageApiUrl,
+    imageGenStyle,
+    setImageGenStyle,
     getCooldownSeconds,
     loadProjectJson,
     fromStorySetup,
@@ -581,6 +719,9 @@ export default function Step1() {
             />
             <p className="text-xs text-gray-600">Local image generation endpoint. Required for image generation.</p>
           </div>
+
+          {/* Image Style */}
+          <ImageStylePicker value={imageGenStyle} onChange={setImageGenStyle} disabled={isGenerating} />
 
           {/* Content Guardrails */}
           <div className="pt-2 border-t border-gray-200 flex flex-col gap-4 flex-grow">

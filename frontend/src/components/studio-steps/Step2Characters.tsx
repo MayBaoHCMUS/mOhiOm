@@ -834,7 +834,6 @@ function DesignSheetsRightPanel({
   onScrollTo,
   state,
   reviewedSections,
-  onSwitchToReferences,
 }: {
   sections:             ParsedSection[];
   isStreaming:          boolean;
@@ -844,7 +843,6 @@ function DesignSheetsRightPanel({
   onScrollTo:           (id: DesignSectionId) => void;
   state:                State;
   reviewedSections:     Set<number>;
-  onSwitchToReferences: () => void;
 }) {
   const reviewedCount = sections.filter((s) => reviewedSections.has(s.id)).length;
 
@@ -899,15 +897,6 @@ function DesignSheetsRightPanel({
           )}
         </div>
       )}
-
-      <button
-        type="button"
-        onClick={onSwitchToReferences}
-        className="flex items-center gap-1.5 text-[11px] font-semibold text-primary hover:underline"
-      >
-        <span className="material-symbols-outlined text-sm">image</span>
-        View in Reference Images
-      </button>
 
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -2092,16 +2081,25 @@ export default function Step2Characters() {
     proceedWithApproval();
   }, [proceedWithApproval]);
 
+  const switchToReferencesAndGenerate = useCallback(() => {
+    setActiveTab('references');
+    if (!step2ImageReview.data) {
+      handleGenerateCharacterReferences(charSettings);
+    }
+  }, [step2ImageReview.data, handleGenerateCharacterReferences, charSettings]);
+
   const handleDesignApproveClick = useCallback(() => {
-    if (state === 4) { setActiveStep(3); return; }
+    if (state === 4) { switchToReferencesAndGenerate(); return; }
     if (unreviewedSections.length > 0) { setShowReviewWarning(true); return; }
     handleApprove(2);
-  }, [state, unreviewedSections, handleApprove, setActiveStep]);
+    switchToReferencesAndGenerate();
+  }, [state, unreviewedSections, handleApprove, switchToReferencesAndGenerate]);
 
   const handleForceApprove = useCallback(() => {
     setShowReviewWarning(false);
     handleApprove(2);
-  }, [handleApprove]);
+    switchToReferencesAndGenerate();
+  }, [handleApprove, switchToReferencesAndGenerate]);
 
   const scrollToFirstUnreviewed = useCallback(() => {
     const first = unreviewedSections[0];
@@ -2297,7 +2295,6 @@ export default function Step2Characters() {
                   onScrollTo={scrollTo}
                   state={state}
                   reviewedSections={reviewedSections}
-                  onSwitchToReferences={() => setActiveTab('references')}
                 />
               </div>
             </div>
@@ -2622,15 +2619,25 @@ export default function Step2Characters() {
                   type="button"
                   onClick={activeTab === 'designs' ? handleDesignApproveClick : handleApproveAndContinue}
                   className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
-                    (activeTab === 'designs' ? state === 4 : step2ImageReview.isApproved)
-                      ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                      : 'bg-gray-900 text-white hover:opacity-90'
+                    activeTab === 'designs'
+                      ? state === 4
+                        ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                        : 'bg-gray-900 text-white hover:opacity-90'
+                      : step2ImageReview.isApproved
+                        ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                        : 'bg-gray-900 text-white hover:opacity-90'
                   }`}
                 >
-                  <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                  {(activeTab === 'designs' ? state === 4 : step2ImageReview.isApproved)
-                    ? 'Approved · Continue →'
-                    : 'Approve & Continue →'}
+                  <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
+                    {activeTab === 'designs' ? (state === 4 ? 'image' : 'check_circle') : 'check_circle'}
+                  </span>
+                  {activeTab === 'designs'
+                    ? state === 4
+                      ? 'View Reference Images →'
+                      : 'Approve & Generate Images →'
+                    : step2ImageReview.isApproved
+                      ? 'Approved · Continue →'
+                      : 'Approve & Continue →'}
                 </button>
               </div>
             </div>

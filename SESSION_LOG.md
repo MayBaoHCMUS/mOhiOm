@@ -1,3 +1,160 @@
+## SESSION: 2026-06-13
+
+### 🎯 CONTEXT — Feature 3 (Character Design Rating) + Feature 7 (Admin Analytics Dashboard + Characters Tab)
+
+---
+
+### ✅ COMPLETED
+
+#### Feature 3 — Per-character emoji rating widget (Step 2 Characters)
+
+**New constants in `Step2Characters.tsx`:**
+- `CHAR_REACTIONS` — 4 reactions (`love 😍 / good 👍 / neutral 😐 / bad 👎`) with per-reaction bg/border/color styles
+- `CHAR_CHIPS` — 8 feedback chips (`👤 Wrong age / 💇 Hair / 👁 Eyes / 👗 Outfit / 🎭 Personality / 📏 Build / 🎨 Color / ✨ Missing details`)
+
+**`CharacterRatingWidget` component:**
+- Emoji pill buttons (36px, `border-radius: 20px`) with inline selected-state colors
+- On `love`/`good`: success message "Great! This character will be used as reference…"
+- On `neutral`/`bad`: chips grid + feedback textarea fade in
+
+**`VersionFilmstrip` modifications:**
+- New prop `ratingByVersion?: Record<number, string>` — shows emoji on rated version tabs (e.g. `V2 😍`)
+
+**`ImageGenPanel` modifications:**
+- 9 new props: `charRating`, `charChips`, `charFeedback`, `onCharRate`, `onChipToggle`, `onFeedbackChange`, `approveWarning`, `onApproveAnyway`, `onRegenInstead`, `ratingByVersion`
+- `CharacterRatingWidget` rendered between generation mode panel and action row
+- Amber warning box shown when `approveWarning && !isApproved`
+
+**`CharacterAccordionCard` modifications:**
+- New props: `projectId: string`, `onReactionChange: (charId, version, reaction) => void`
+- New state: `ratingByVersion`, `chipsByVersion`, `ratingFeedback`, `approveWarning`
+- `handleRate(r)` — updates state, calls `onReactionChange`, fires `POST /api/ratings/character` (fire-and-forget)
+- `handleChipToggle(chipId)` — toggles chip, auto-appends label to textarea
+- `handleApproveWithCheck()` — intercepts; shows warning on `neutral`/`bad`
+- `handleApproveAnyway()` — dismisses warning, logs `character_approved` event, calls `onApprove()`
+- `logCharApproved()` — fires `POST /api/analytics/log` with `character_approved` event
+- Emoji badge shown in card header next to character name
+
+**`CharacterSetRatingModal` (new component at bottom of file):**
+- Props: `characters`, `allCharReactions`, `activeVersionTabs`, `onSkip`, `onSave`
+- Star rating (1-5, optional), comment textarea, character reactions summary row
+- "Skip →" (no countdown) and "Save & Continue →" buttons
+
+**Main `Step2Characters` additions:**
+- `allCharReactions: Record<string, Record<number, string>>` state
+- `showCharSetRating: boolean` state
+- `stepStartRef = useRef(Date.now())` for time-spent tracking
+- `handleApproveAndContinue()` now shows modal instead of calling `proceedWithApproval()` directly
+- `handleCharSetRatingSave()` — saves to `/ratings/character-set`, logs `step3_completed` event, calls `proceedWithApproval()`
+- `handleReactionChange()` — updates `allCharReactions`
+
+---
+
+#### Feature 7 — Admin Analytics Dashboard (`/admin`)
+
+**Backend: `backend/app/routers/admin_analytics.py`** (new file):
+- `GET /api/admin/overview` — KPIs (users, comics, images, avg rating, avg regens), funnel, comics-per-day sparkline, panel reaction distribution
+- `GET /api/admin/quality` — star distribution, panel reactions, regen impact by version, avg rating by art style, keyword frequency
+- `GET /api/admin/regeneration` — total regens, avg per comic, % users who regen'd, most-regenned pages, before/after reaction samples
+- `GET /api/admin/export` — raw data dump (panel_ratings/comic_ratings/projects) as JSON or CSV
+- `GET /api/admin/thesis-report` — auto-generated markdown evaluation summary
+- All protected via `X-Admin-Key` header against `settings.ADMIN_SECRET_KEY` ("mohiom-admin-2024")
+
+**Backend: `backend/app/routers/analytics.py`** (new file):
+- `POST /api/analytics/log` — fire-and-forget event logging; stores to `analytics_events` MongoDB collection
+- Never raises to caller; any DB error is silently swallowed
+
+**Backend: `backend/app/routers/ratings.py`** (modified):
+- Added `CharacterRatingRequest`, `CharacterSetRatingRequest` models
+- Added `POST /ratings/character`, `GET /ratings/characters/{comic_id}`
+- Added `POST /ratings/character-set`, `GET /ratings/character-set/{comic_id}`
+
+**Backend: `backend/app/main.py`** (modified):
+- Registered `ratings`, `admin_analytics`, `analytics` routers
+
+**Frontend: `frontend/src/app/admin/page.tsx`** (new file):
+- `AdminAuth` gate component (key validated against real API call)
+- 5 tabs: Overview, Characters, Quality, Regeneration, Export
+- Pure CSS/SVG chart components: `BarChart`, `DonutChart`, `LineChart`, `FunnelChart`, `ScoreBar`, `CharacterFunnel`
+- `KPICard`, `Section`, `Loading` shared components
+- `OverviewTab`, `CharactersTab`, `QualityTab`, `RegenerationTab`, `ExportTab`
+- Date range picker: Today / Last 7d / Last 30d / All time
+
+---
+
+#### Feature 7 — Characters Analytics Tab
+
+**Backend: `GET /api/admin/characters`** (added to `admin_analytics.py`):
+- **FIX 1 KPIs**: total generated/rated/approved, avg versions, avg stars, approval rate
+- **FIX 2 Version quality**: aggregates `character_ratings` by version (capped at V3+), computes avg score (love=4/good=3/neutral=2/bad=1), calculates V1→V2 improvement %
+- **FIX 3 Role + mode quality**: `$lookup` joins `analytics_events` with `character_ratings` via `character_id`, groups by `character_role` and `generation_mode`
+- **FIX 4 Chip analysis**: `Counter` on `chips_selected[]` for `neutral`/`bad` rated characters; returns sorted most-common
+- **FIX 5 Pearson r correlation**: per-comic avg char score vs avg panel score; computes Pearson r from Python; reaction table shows avg panel score per char reaction
+- **FIX 6 Character funnel**: generated → rated → regenerated → approved counts
+
+**Frontend: `CharactersTab` component** (in `admin/page.tsx`):
+- 4 KPI cards (Total Generated, Avg Versions/Char, Avg Stars, Approval Rate)
+- Version quality `ScoreBar` chart + finding callout (V1→V2 jump %)
+- Role quality + Generation mode quality side-by-side bar charts
+- Chip complaint horizontal bar chart with count + %
+- Pearson r badge + reaction-to-panel correlation table
+- Character design funnel (`CharacterFunnel` component)
+- "Export Characters CSV" download button
+
+**Analytics logging in `Step2Characters.tsx`**:
+- `character_generated` — fires in `handleCharacterVersionedRegenerate` with `generation_mode`, `version`, `character_id`, `comic_id`
+- `character_approved` — fires via `logCharApproved()` in both `handleApproveWithCheck` (direct) and `handleApproveAnyway` (warning bypass)
+- `step3_completed` — fires in `handleCharSetRatingSave` with `total_characters`, `avg_versions`, `stars`, `time_spent_seconds`
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+**Backend**
+- `backend/app/routers/admin_analytics.py` — **New** (5 endpoints + `GET /characters` with full aggregation pipeline)
+- `backend/app/routers/analytics.py` — **New** (fire-and-forget event logging)
+- `backend/app/routers/ratings.py` — Added character + character-set rating endpoints
+- `backend/app/main.py` — Registered 3 new routers
+
+**Frontend**
+- `frontend/src/app/admin/page.tsx` — **New** (full admin dashboard, 5 tabs, pure CSS/SVG charts)
+- `frontend/src/components/studio-steps/Step2Characters.tsx` — Character rating widget, chip feedback, approve intercept, set rating modal, analytics event logging
+
+---
+
+### 🔑 ADMIN KEY
+
+```
+mohiom-admin-2024
+```
+Access at: `http://localhost:3000/admin`
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **Rating per version**: `ratingByVersion: Record<number, CharReaction>` — key is version index (0=V1, 1=V2, etc.), enables before/after quality comparison in admin
+- **Chip auto-append**: chip label (emoji stripped) is appended to feedback textarea; duplicates are skipped
+- **Approve flow**: `handleApproveWithCheck` is a wrapper, not a direct `onApprove` pass-through. The collapsed header still uses plain `onApprove` since rating widget isn't visible there
+- **`CharacterSetRating` modal has NO countdown** — Skip button is instant, no auto-advance timer
+- **Analytics never block user flow** — all `apiClient.post('/analytics/log', ...)` calls have `.catch(() => {})` — DB errors are silently swallowed
+- **`character_generated` version index**: computed as `(versionBoundaries[charId]?.length ?? 1)` before the state update, so V1=0, V2=1, etc.
+- **Pearson r threshold**: r ≥ 0.7 = strong, 0.4–0.7 = moderate, 0.1–0.4 = weak, < 0.1 = no correlation; requires ≥ 3 comics with both char + panel ratings
+- **Pre-existing TS errors**: 13 `ConfettiCanvas` null-check errors in `Step4Generation.tsx` remain (pre-existing, not introduced this session). Zero new TS errors from this session's changes.
+
+---
+
+### 🎯 NEXT STEPS
+
+1. **Test character rating flow end-to-end** — generate a character, rate it 😍/👎, verify chips appear, verify emoji shows in version tab + card header, verify `/ratings/character` POST fires
+2. **Test CharacterSetRating modal** — click "Approve & Continue", verify modal intercepts, save stars + comment, verify `/ratings/character-set` POST fires
+3. **Test admin dashboard** — navigate to `localhost:3000/admin`, enter key `mohiom-admin-2024`, verify all 5 tabs load without errors
+4. **Seed analytics data** — run a full comic generation session so `analytics_events` collection has data for the Characters tab to display
+5. **Gallery page auth gate** — `/gallery` shows "Add to My Library" even for unauthenticated users; should check `localStorage['mohiom-user-id']` and prompt sign-in
+6. **Export error UX** — `exportStatus === 'error'` has no visible error message; should show a toast
+
+---
+
 ## SESSION: 2026-06-12
 
 ### 🎯 CONTEXT — Export feature (ZIP + PDF) + Community Gallery (characters + comics)

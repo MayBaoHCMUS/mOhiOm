@@ -1238,6 +1238,16 @@ export default function Step4Generation() {
     state = 3;
   }
 
+  // Auto-start image generation after panels finish building
+  const wasBuildingRef = useRef(false);
+  useEffect(() => {
+    if (state === 2) { wasBuildingRef.current = true; return; }
+    if (state === 3 && wasBuildingRef.current) {
+      wasBuildingRef.current = false;
+      handleStartFullGeneration();
+    }
+  }, [state, handleStartFullGeneration]);
+
   // All panels flat for grid/list views
   const allPanels = step4PanelsByPage.flatMap(([, panels]) => panels);
 
@@ -1592,7 +1602,7 @@ export default function Step4Generation() {
                 bg-gradient-to-r from-[#4F46E5] to-[#7C3AED]
                 hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              ⚡ Generate All Panels
+              ⚡ Generate All Images
             </button>
           </div>
         );
@@ -1610,9 +1620,6 @@ export default function Step4Generation() {
               loading={step4Stats.loading}
               error={step4Stats.error}
             />
-            {step4Stats.total > 0 && (
-              <SegmentedProgressBar total={step4Stats.total} success={step4Stats.success} error={step4Stats.error} loading={step4Stats.loading} height={8} />
-            )}
           </div>
 
           {/* Right — export */}
