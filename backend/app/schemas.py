@@ -197,3 +197,57 @@ class StatsResponse(BaseModel):
     character_count: int
     panel_count: int
 
+
+class ComposePanelInput(BaseModel):
+    """One panel's metadata + image for page composition."""
+
+    panel_number: int
+    page_number: int
+    shot_type: str = "medium shot"
+    dialogue: Optional[str] = None
+    image_data_url: str
+
+
+class ComposePageRequest(BaseModel):
+    """Request to compose a set of panel images into a single comic page."""
+
+    panels: List[ComposePanelInput]
+    style: str = "manga"
+
+
+class ComposePageResponse(BaseModel):
+    """Composed comic page returned as base64 PNG."""
+
+    status: str
+    page_base64: str
+    page_width: int
+    page_height: int
+    panel_count: int
+
+
+class AutoLayoutPanel(BaseModel):
+    """Metadata for one panel used in auto-layout (no image — comes from splitting)."""
+
+    panel_number: int
+    shot_type: str = "medium shot"
+    dialogue: Optional[str] = None
+
+
+class AutoLayoutRequest(BaseModel):
+    """Split a full AI-generated page into panels, then re-compose with intensity sizing."""
+
+    page_image_data_url: str
+    panels: List[AutoLayoutPanel]
+    style: str = "manga"
+
+
+class AutoLayoutResponse(BaseModel):
+    """Re-composed page after splitting and re-laying out panels."""
+
+    status: str
+    page_base64: str
+    page_width: int
+    page_height: int
+    panel_count: int
+    detected_panels: int
+

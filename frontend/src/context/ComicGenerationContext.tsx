@@ -216,13 +216,16 @@ const fetchImageFromAI = async (
     const requestBody: Record<string, unknown> = {
       url: localImageApiUrl,
       scene_prompt: imagePrompt,
-      negative_prompt: 'lowres, bad anatomy, worst quality, blurry',
+      negative_prompt: PANEL_NEGATIVE_PROMPT,
       story_id: settings?.storyId ?? 'default',
       style: settings?.style ?? 'manga',
       ip_adapter_scale: settings?.ipAdapterScale ?? 0.7,
     };
     if (settings?.characterName) {
       requestBody.character_name = settings.characterName;
+    }
+    if (settings?.referenceImageBase64) {
+      requestBody.reference_image_b64 = settings.referenceImageBase64;
     }
     if ((mode === 3 || mode === 4) && settings?.controlImageBase64) {
       requestBody.control_image_b64 = settings.controlImageBase64;
@@ -397,25 +400,85 @@ const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {
   return parsed.sort((a, b) => a.pageNumber - b.pageNumber || a.panelNumber - b.panelNumber);
 };
 
+// Keywords that cause SD to generate character sheets instead of scene panels
+const PANEL_STRIP_KEYWORDS = [
+  'character sheet', 'turnaround', 'character design', 'full body',
+  'reference sheet', 'character turnaround', 'multiple views',
+  'front view', 'side view', 'back view',
+  'panel 1', 'panel 2', 'panel 3', 'panel 4',
+  'panel 5', 'panel 6', 'panel 7', 'panel 8',
+];
+
+// Valid shot_type values from Step 3 RULE 5 — marks where scene description begins
+const SHOT_TYPE_MARKERS = [
+  'extreme close-up', 'close-up', 'close up', 'medium shot', 'medium-wide',
+  'medium wide', 'wide shot', 'establishing shot', 'establishing',
+  'overhead', 'low angle', 'dutch angle', 'over-the-shoulder', 'two-shot',
+  'two shot', 'full shot', 'insert', 'splash',
+];
+
+/**
+ * Strip character visual tags from an ai_image_prompt.
+ * Format is: "{art_style}, {character_tags}, {shot_type}, {action}, {mood}"
+ * We keep: art_style + everything from the first shot_type onward.
+ * Character appearance comes from IP-Adapter reference image instead.
+ */
+const buildCleanPanelPrompt = (aiImagePrompt: string, artStyle: string): string => {
+  let cleaned = aiImagePrompt;
+
+  // Strip panel-number and character-sheet keywords
+  for (const kw of PANEL_STRIP_KEYWORDS) {
+    cleaned = cleaned.replace(new RegExp(kw, 'gi'), '');
+  }
+
+  // Find the first shot_type marker — everything from there is scene description
+  const lower = cleaned.toLowerCase();
+  let shotIdx = -1;
+  for (const marker of SHOT_TYPE_MARKERS) {
+    const idx = lower.indexOf(marker);
+    if (idx !== -1 && (shotIdx === -1 || idx < shotIdx)) {
+      shotIdx = idx;
+    }
+  }
+
+  const stylePrefix = artStyle.trim().toLowerCase();
+  if (shotIdx > 0) {
+    // Keep art style + scene description (shot_type → end), drop character visual tags
+    const sceneDescription = cleaned.slice(shotIdx).trim().replace(/^,\s*/, '');
+    return `${stylePrefix}, ${sceneDescription}`;
+  }
+
+  // No shot_type found — strip keywords and collapse whitespace
+  cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
+  return `${stylePrefix}, ${cleaned}`;
+};
+
+const PANEL_NEGATIVE_PROMPT =
+  'multiple panels, split screen, panel border in image, character sheet, turnaround, ' +
+  'reference sheet, text in image, watermark, signature, ' +
+  'lowres, bad anatomy, worst quality, blurry, deformed';
+
 const buildComicPagePrompt = (
   panels: Step4Panel[],
   artStyle: string,
   mangaGenre: string,
-  characterRefs: Array<{ name: string; prompt: string }>
+  _characterRefs: Array<{ name: string; prompt: string }>,
+  includeSfx = false
 ): string => {
+  // Character appearance is handled by IP-Adapter reference image — not embedded in text prompt
   const parts: string[] = [
-    `Comic book page with ${panels.length} panel layout. ${artStyle}. ${mangaGenre}.`,
+    `Comic book page, ${panels.length} panels, ${artStyle}, ${mangaGenre}.`,
   ];
-  if (characterRefs.length > 0) {
-    parts.push(`Characters: ${characterRefs.map(c => `${c.name} — ${c.prompt}`).join('; ')}.`);
-  }
   panels.forEach((panel, i) => {
-    let panelLine = `Panel ${i + 1}: ${panel.aiImagePrompt}`;
-    const sfx = panel.dialogueSfx?.trim();
-    if (sfx && !/^(none|no dialogue\/sfx provided\.?)$/i.test(sfx)) {
-      panelLine += `. Dialogue/SFX: ${sfx}`;
+    const cleanPrompt = buildCleanPanelPrompt(panel.aiImagePrompt, artStyle);
+    let line = `Panel ${i + 1}: ${cleanPrompt}`;
+    if (includeSfx) {
+      const sfx = panel.dialogueSfx?.trim();
+      if (sfx && !/^(none|no dialogue\/sfx provided\.?)$/i.test(sfx)) {
+        line += `. Dialogue: ${sfx}`;
+      }
     }
-    parts.push(panelLine);
+    parts.push(line);
   });
   parts.push('Professional comic book artwork, panel borders, clear sequential storytelling.');
   return parts.join('\n');
@@ -440,6 +503,8 @@ export interface ComicGenerationContextValue {
   ipAdapterScale: number;
   controlnetScale: number;
   useStreaming: boolean;
+  sfxMode: 'auto' | 'manual';
+  setSfxMode: (v: 'auto' | 'manual') => void;
   step1: StepState<Step1Result>;
   step2: StepState<Step2Result>;
   step2ImageReview: StepState<CharacterImageReviewResult>;
@@ -489,6 +554,8 @@ export interface ComicGenerationContextValue {
   handleApproveCharacterReferences: () => void;
   handleRetryCharacterReferences: () => void;
   handleStartFullGeneration: () => Promise<void>;
+  handleStartPanelGeneration: () => Promise<void>;
+  handleRegenerateSinglePanel: (panel: Step4Panel) => Promise<void>;
   handleRegeneratePage: (pageNumber: number) => Promise<void>;
   handleRegenerateWithFeedback: (pageNumber: number, feedback: string) => Promise<void>;
   acceptPanelRegen: (pageNumber: number) => void;
@@ -548,6 +615,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   const [ipAdapterScale, setIpAdapterScale] = useState(0.7);
   const [controlnetScale, setControlnetScale] = useState(0.8);
   const [useStreaming, setUseStreaming] = useState(true);
+  const [sfxMode, setSfxMode] = useState<'auto' | 'manual'>('auto');
   const [setupValidation, setSetupValidation] = useState<SetupValidationState | null>(null);
   const [setupSubmitAttempted, setSetupSubmitAttempted] = useState(false);
   const [streamingText, setStreamingText] = useState('');
@@ -1819,6 +1887,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   ) => {
     const batchSize = Math.max(1, options?.batchSize ?? 2);
     const delayMs = Math.max(0, options?.delayMs ?? 10000);
+    const characterRefs = getSelectedCharacterReferences();
+    const firstCharName = characterRefs[0]?.name?.toLowerCase() || '';
 
     for (let i = 0; i < panelsArray.length; i += batchSize) {
       const batch = panelsArray.slice(i, i + batchSize);
@@ -1850,7 +1920,24 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       const results = await Promise.all(
         batch.map(async (panel) => {
           try {
-            const imageUrl = await fetchImageFromAI(panel.aiImagePrompt, localImageApiUrl || undefined, { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale, storyId: projectId, style: imageGenStyle });
+            let cleanPrompt = buildCleanPanelPrompt(panel.aiImagePrompt, artStyle);
+            if (sfxMode === 'auto') {
+              const sfx = panel.dialogueSfx?.trim();
+              if (sfx && !/^(none|no dialogue\/sfx provided\.?)$/i.test(sfx)) {
+                cleanPrompt += `. Dialogue: ${sfx}`;
+              }
+            }
+            const effectiveSettings: ImageGenSettings = {
+              mode: imageGenMode,
+              referenceImageBase64: characterRefs[0]?.image_url ?? referenceImageBase64,
+              controlImageBase64,
+              ipAdapterScale,
+              controlnetScale,
+              characterName: firstCharName || undefined,
+              storyId: projectId,
+              style: imageGenStyle,
+            };
+            const imageUrl = await fetchImageFromAI(cleanPrompt, localImageApiUrl || undefined, effectiveSettings);
             return {
               id: panel.id,
               status: 'success' as const,
@@ -1935,11 +2022,12 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
               panels,
               artStyle,
               mangaGenre,
-              characterRefs.map((c) => ({ name: c.name, prompt: c.prompt }))
+              characterRefs.map((c) => ({ name: c.name, prompt: c.prompt })),
+              sfxMode === 'auto'
             );
             const effectiveSettings: ImageGenSettings = {
               mode: imageGenMode,
-              referenceImageBase64: '',
+              referenceImageBase64: characterRefs[0]?.image_url ?? referenceImageBase64,
               controlImageBase64,
               ipAdapterScale,
               controlnetScale,
@@ -2003,6 +2091,34 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         return { ...prev, data: { ...prev.data, isGenerating: false } };
       });
     }
+  };
+
+  const handleStartPanelGeneration = async () => {
+    if (!step4.data || step4.data.isGenerating) return;
+
+    const pending = step4.data.panels.filter((p) => {
+      const state = step4.data?.panelStates?.[p.id];
+      return !state || state.status === 'idle' || state.status === 'error';
+    });
+    if (!pending.length) return;
+
+    setStep4((prev) => {
+      if (!prev.data) return prev;
+      return { ...prev, data: { ...prev.data, isGenerating: true }, error: null };
+    });
+    try {
+      await generatePanelImages(pending, { batchSize: 2, delayMs: 10000 });
+    } finally {
+      setStep4((prev) => {
+        if (!prev.data) return prev;
+        return { ...prev, data: { ...prev.data, isGenerating: false } };
+      });
+    }
+  };
+
+  const handleRegenerateSinglePanel = async (panel: Step4Panel) => {
+    if (!step4.data) return;
+    await generatePanelImages([panel], { batchSize: 1, delayMs: 0 });
   };
 
   const handleRegeneratePage = async (pageNumber: number) => {
@@ -2071,14 +2187,15 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       const firstCharName = characterRefs[0]?.name?.toLowerCase() || '';
       let prompt = buildComicPagePrompt(
         panels, artStyle, mangaGenre,
-        characterRefs.map((c) => ({ name: c.name, prompt: c.prompt }))
+        characterRefs.map((c) => ({ name: c.name, prompt: c.prompt })),
+        sfxMode === 'auto'
       );
       if (feedback.trim()) {
         prompt += `\nUser revision request: ${feedback.trim()}`;
       }
       const effectiveSettings: ImageGenSettings = {
         mode: imageGenMode,
-        referenceImageBase64: '',
+        referenceImageBase64: characterRefs[0]?.image_url ?? referenceImageBase64,
         controlImageBase64,
         ipAdapterScale,
         controlnetScale,
@@ -2808,6 +2925,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     ipAdapterScale,
     controlnetScale,
     useStreaming,
+    sfxMode,
+    setSfxMode,
     step1,
     step2,
     step2ImageReview,
@@ -2857,6 +2976,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     handleApproveCharacterReferences,
     handleRetryCharacterReferences,
     handleStartFullGeneration,
+    handleStartPanelGeneration,
+    handleRegenerateSinglePanel,
     handleRegeneratePage,
     handleRegenerateWithFeedback,
     acceptPanelRegen,

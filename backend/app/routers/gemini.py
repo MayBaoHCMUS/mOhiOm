@@ -1,4 +1,6 @@
 """API routes for Gemini-based text generation and analysis."""
+import base64
+import io
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -6,6 +8,7 @@ from datetime import datetime, timezone
 from app.config import settings
 from app.rate_limit import PerUserRateLimiter, QueueFullError, RateLimitExceededError
 from app.services import GeminiService, GeminiServiceError
+from app.schemas import ComposePageRequest, ComposePageResponse, AutoLayoutRequest, AutoLayoutResponse
 
 router = APIRouter(prefix="/gemini", tags=["gemini"])
 
@@ -746,4 +749,110 @@ async def health_check():
             "message": gemini_error_message,
         }
     return {"status": "configured"}
+
+
+@router.post("/compose-page", response_model=ComposePageResponse)
+async def compose_page(req: ComposePageRequest):
+    """
+    Compose panel images into a single comic page using Pillow layout engine.
+    Accepts base64 data URLs per panel; returns a 1200x1600 PNG as base64.
+    """
+    try:
+        from app.comic_composer import compose_page as _compose
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Pillow is not installed. Run: pip install Pillow>=10.0.0")
+
+    if not req.panels:
+        raise HTTPException(status_code=422, detail="At least one panel is required.")
+
+    panels_data = [
+        {
+            "panel_number": p.panel_number,
+            "shot_type": p.shot_type,
+            "dialogue": p.dialogue,
+            "image_data_url": p.image_data_url,
+        }
+        for p in req.panels
+    ]
+
+    try:
+        page_img = _compose(panels_data, style=req.style)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Composition failed: {e}")
+
+    buf = io.BytesIO()
+    page_img.save(buf, format="PNG", optimize=True)
+    page_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    return ComposePageResponse(
+        status="success",
+        page_base64=page_b64,
+        page_width=page_img.width,
+        page_height=page_img.height,
+        panel_count=len(req.panels),
+    )
+
+
+@router.post("/auto-layout", response_model=AutoLayoutResponse)
+async def auto_layout(req: AutoLayoutRequest):
+    """
+    Split a full AI-generated comic page into individual panels, then
+    re-compose them with intensity-based sizing derived from shot_type.
+
+    Flow: decode page image → detect gutter lines → crop panels →
+          re-compose with comic_composer using shot_type weights.
+    """
+    try:
+        from app.panel_splitter import split_panels
+        from app.comic_composer import compose_page as _compose, _decode_image
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Missing dependency: {e}")
+
+    if not req.panels:
+        raise HTTPException(status_code=422, detail="At least one panel is required.")
+
+    try:
+        page_img = _decode_image(req.page_image_data_url)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not decode page image: {e}")
+
+    n = len(req.panels)
+    try:
+        cropped = split_panels(page_img, n)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Panel splitting failed: {e}")
+
+    detected = len(cropped)
+
+    # Encode cropped panels back to data URLs and pair with metadata
+    panels_data: list[dict] = []
+    for i, panel_meta in enumerate(sorted(req.panels, key=lambda p: p.panel_number)):
+        panel_img = cropped[i] if i < len(cropped) else page_img
+        buf = io.BytesIO()
+        panel_img.save(buf, format="PNG")
+        data_url = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+        panels_data.append({
+            "panel_number": panel_meta.panel_number,
+            "shot_type": panel_meta.shot_type,
+            "dialogue": panel_meta.dialogue,
+            "image_data_url": data_url,
+        })
+
+    try:
+        composed = _compose(panels_data, style=req.style)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Composition failed: {e}")
+
+    out_buf = io.BytesIO()
+    composed.save(out_buf, format="PNG", optimize=True)
+    page_b64 = base64.b64encode(out_buf.getvalue()).decode()
+
+    return AutoLayoutResponse(
+        status="success",
+        page_base64=page_b64,
+        page_width=composed.width,
+        page_height=composed.height,
+        panel_count=n,
+        detected_panels=detected,
+    )
 

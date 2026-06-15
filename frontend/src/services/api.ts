@@ -187,6 +187,48 @@ export interface PanelImageResponse {
   image_data_url?: string;
 }
 
+export interface ComposePanelInput {
+  panel_number: number;
+  page_number: number;
+  shot_type?: string;
+  dialogue?: string | null;
+  image_data_url: string;
+}
+
+export interface ComposePageRequest {
+  panels: ComposePanelInput[];
+  style?: string;
+}
+
+export interface ComposePageResponse {
+  status: string;
+  page_base64: string;
+  page_width: number;
+  page_height: number;
+  panel_count: number;
+}
+
+export interface AutoLayoutPanel {
+  panel_number: number;
+  shot_type?: string;
+  dialogue?: string | null;
+}
+
+export interface AutoLayoutRequest {
+  page_image_data_url: string;
+  panels: AutoLayoutPanel[];
+  style?: string;
+}
+
+export interface AutoLayoutResponse {
+  status: string;
+  page_base64: string;
+  page_width: number;
+  page_height: number;
+  panel_count: number;
+  detected_panels: number;
+}
+
 export const toApiError = (error: unknown): ApiErrorInfo => {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status ?? 0;
@@ -774,18 +816,16 @@ export const geminiApi = {
               onComplete(structuredJson || {});
               return;
             }
-            if (data.startsWith("[STRUCTURED_JSON]")) {
-              try {
-                structuredJson = JSON.parse(data.slice(17));
-              } catch {
-                // ignore parse errors
-              }
-              continue;
-            }
             try {
               const parsed = JSON.parse(data);
-              if (parsed.error) {
-                onError(parsed.error);
+              if (parsed.type === "token" && typeof parsed.content === "string") {
+                onChunk(parsed.content);
+              } else if (parsed.type === "done") {
+                structuredJson = (parsed.structured_json as Record<string, unknown>) ?? {};
+                onComplete(structuredJson);
+                return;
+              } else if (parsed.type === "error" || parsed.error) {
+                onError(parsed.message || parsed.error || "Unknown error");
                 return;
               }
             } catch {
@@ -855,18 +895,16 @@ export const geminiApi = {
               onComplete(structuredJson || {});
               return;
             }
-            if (data.startsWith("[STRUCTURED_JSON]")) {
-              try {
-                structuredJson = JSON.parse(data.slice(17));
-              } catch {
-                // ignore parse errors
-              }
-              continue;
-            }
             try {
               const parsed = JSON.parse(data);
-              if (parsed.error) {
-                onError(parsed.error);
+              if (parsed.type === "token" && typeof parsed.content === "string") {
+                onChunk(parsed.content);
+              } else if (parsed.type === "done") {
+                structuredJson = (parsed.structured_json as Record<string, unknown>) ?? {};
+                onComplete(structuredJson);
+                return;
+              } else if (parsed.type === "error" || parsed.error) {
+                onError(parsed.message || parsed.error || "Unknown error");
                 return;
               }
             } catch {
@@ -936,18 +974,16 @@ export const geminiApi = {
               onComplete(structuredJson || {});
               return;
             }
-            if (data.startsWith("[STRUCTURED_JSON]")) {
-              try {
-                structuredJson = JSON.parse(data.slice(17));
-              } catch {
-                // ignore parse errors
-              }
-              continue;
-            }
             try {
               const parsed = JSON.parse(data);
-              if (parsed.error) {
-                onError(parsed.error);
+              if (parsed.type === "token" && typeof parsed.content === "string") {
+                onChunk(parsed.content);
+              } else if (parsed.type === "done") {
+                structuredJson = (parsed.structured_json as Record<string, unknown>) ?? {};
+                onComplete(structuredJson);
+                return;
+              } else if (parsed.type === "error" || parsed.error) {
+                onError(parsed.message || parsed.error || "Unknown error");
                 return;
               }
             } catch {
@@ -975,6 +1011,12 @@ export const geminiApi = {
 
   generatePanelImage: (payload: PanelImagePayload) =>
     apiClient.post<PanelImageResponse>("/gemini/generate-panel-image", payload),
+
+  composePage: (payload: ComposePageRequest) =>
+    apiClient.post<ComposePageResponse>("/gemini/compose-page", payload),
+
+  autoLayout: (payload: AutoLayoutRequest) =>
+    apiClient.post<AutoLayoutResponse>("/gemini/auto-layout", payload),
 
   health: () => apiClient.get("/gemini/health"),
 };

@@ -9,6 +9,7 @@ type ProxyRequestBody = {
   story_id?: string;
   character_name?: string;
   ip_adapter_scale?: number;
+  reference_image_b64?: string;
   style?: string;
   control_image_b64?: string;
   controlnet_scale?: number;
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
     ip_adapter_scale: body.ip_adapter_scale ?? 0.7,
   };
   if (body.character_name) requestBody.character_name = body.character_name;
+  if (body.reference_image_b64) requestBody.reference_image_b64 = body.reference_image_b64;
   if (body.control_image_b64) requestBody.control_image_b64 = body.control_image_b64;
   if (body.controlnet_scale !== undefined) requestBody.controlnet_scale = body.controlnet_scale;
   if (body.width !== undefined) requestBody.width = body.width;

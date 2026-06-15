@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import type { Step4Panel, Step4PanelState, PanelVersion } from '@/context/ComicGenerationContext';
-import { apiClient } from '@/services/api';
+import { apiClient, geminiApi } from '@/services/api';
 import ProjectsDrawer from '@/components/ProjectsDrawer';
 import Markdown from '@/components/Markdown';
 
@@ -196,11 +196,11 @@ function PanelImageArea({
 }
 
 // ── Progress stats bar ────────────────────────────────────────────────────────
-function StatsBar({ total, success, loading: load, error }: { total: number; success: number; loading: number; error: number }) {
+function StatsBar({ total, success, loading: load, error, totalLabel = 'Total' }: { total: number; success: number; loading: number; error: number; totalLabel?: string }) {
   return (
     <div className="grid grid-cols-4 gap-3">
       {[
-        { label: 'Pages', value: total, color: 'text-on-surface' },
+        { label: totalLabel, value: total, color: 'text-on-surface' },
         { label: 'Done', value: success, color: 'text-emerald-500' },
         { label: 'Generating', value: load, color: 'text-blue-500' },
         { label: 'Errors', value: error, color: 'text-red-500' },
@@ -1076,6 +1076,315 @@ function ComicRatingModal({
   );
 }
 
+// ── Generation progress bar ───────────────────────────────────────────────────
+function GenerationProgressBar({
+  total, done, generating, errors, pending, unit = 'panel',
+}: {
+  total: number; done: number; generating: number; errors: number; pending: number; unit?: 'panel' | 'page';
+}) {
+  const allDone = total > 0 && pending === 0 && errors === 0 && done === total;
+  const prevAllDoneRef = useRef(false);
+  const [celebrating, setCelebrating] = useState(false);
+
+  useEffect(() => {
+    if (allDone && !prevAllDoneRef.current) {
+      setCelebrating(true);
+      const t = setTimeout(() => setCelebrating(false), 400);
+      prevAllDoneRef.current = true;
+      return () => clearTimeout(t);
+    }
+    if (!allDone) prevAllDoneRef.current = false;
+  }, [allDone]);
+
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const greenW = total > 0 ? (done / total) * 100 : 0;
+  const yellowW = total > 0 ? (generating / total) * 100 : 0;
+  const redW = total > 0 ? (errors / total) * 100 : 0;
+
+  return (
+    <div className="space-y-2">
+      {/* Bar row */}
+      <div className="flex items-center gap-3">
+        <div
+          className="flex-1 overflow-hidden"
+          style={{ height: 8, borderRadius: 4, background: '#E5E7EB' }}
+        >
+          {/* Segments: no gap, inline-flex */}
+          <div className="flex h-full" style={{ borderRadius: 4, overflow: 'hidden' }}>
+            {greenW > 0 && (
+              <div
+                className="h-full transition-[width] duration-500"
+                style={{
+                  width: `${greenW}%`,
+                  background: '#22C55E',
+                  boxShadow: celebrating ? '0 0 10px #22C55E' : undefined,
+                  transition: celebrating ? 'box-shadow 0.15s ease-in-out, width 0.5s' : 'width 0.5s',
+                }}
+              />
+            )}
+            {yellowW > 0 && (
+              <div
+                className="h-full animate-pulse"
+                style={{ width: `${yellowW}%`, background: '#F59E0B' }}
+              />
+            )}
+            {redW > 0 && (
+              <div
+                className="h-full transition-[width] duration-500"
+                style={{ width: `${redW}%`, background: '#EF4444' }}
+              />
+            )}
+          </div>
+        </div>
+        <span
+          className="text-sm font-bold tabular-nums"
+          style={{ color: allDone ? '#22C55E' : '#111827', minWidth: 36, textAlign: 'right' }}
+        >
+          {pct}%
+        </span>
+      </div>
+
+      {/* Label row */}
+      <p className={`text-xs ${celebrating ? 'animate-[pulse_0.3s_ease-in-out_1]' : ''}`}>
+        {allDone ? (
+          <span className="font-semibold" style={{ color: '#22C55E' }}>
+            ✓ All {total} {unit}s generated!
+          </span>
+        ) : (
+          <>
+            <span style={{ color: '#22C55E', fontWeight: 600 }}>{done} generated</span>
+            <span style={{ color: '#9CA3AF' }}> · {pending} pending</span>
+            {errors > 0 && <span style={{ color: '#EF4444' }}> · {errors} errors</span>}
+            {generating > 0 && <span style={{ color: '#F59E0B' }}> · {generating} running</span>}
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
+// ── Individual panel card (panel-by-panel mode) ───────────────────────────────
+type PanelReaction = 'love' | 'good' | 'neutral' | 'bad';
+
+function PanelCard({
+  panel,
+  state,
+  reaction,
+  approved,
+  onGenerate,
+  onReaction,
+  onApprove,
+}: {
+  panel: Step4Panel;
+  state: { status: string; imageUrl: string | null; error: string | null } | null;
+  reaction: PanelReaction | null;
+  approved: boolean;
+  onGenerate: () => void;
+  onReaction: (r: PanelReaction) => void;
+  onApprove: () => void;
+}) {
+  const status = state?.status ?? 'idle';
+  const imageUrl = state?.imageUrl ?? null;
+  const hasImage = !!imageUrl;
+  const isLoading = status === 'loading';
+  const isError = status === 'error';
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+
+  const shotLabel = (panel.shotType ?? 'panel').toUpperCase();
+  const PANEL_REACTIONS: { value: PanelReaction; emoji: string; label: string }[] = [
+    { value: 'love', emoji: '😍', label: 'Love' },
+    { value: 'good', emoji: '👍', label: 'Good' },
+    { value: 'neutral', emoji: '😐', label: 'Okay' },
+    { value: 'bad', emoji: '👎', label: 'Poor' },
+  ];
+
+  return (
+    <>
+    <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-low overflow-hidden flex flex-col" style={{ height: 280 }}>
+
+      {/* ── Image area — flex:1 fills remaining height after 90px footer ── */}
+      <div className="relative flex-1 overflow-hidden bg-surface-container group">
+        {hasImage ? (
+          <>
+            <img src={imageUrl!} alt={`Panel ${panel.panelNumber}`} className="w-full h-full object-cover" />
+            {/* Hover overlay: "View full" lightbox trigger */}
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-colors duration-200 flex items-center justify-center pointer-events-none group-hover:pointer-events-auto">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
+                className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/60 text-white text-xs font-semibold backdrop-blur-sm hover:bg-black/80"
+              >
+                🔍 View full
+              </button>
+            </div>
+            {/* Status badge */}
+            <span className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/90 text-white">
+              <span className="material-symbols-outlined text-[10px]">check</span>
+              Generated
+            </span>
+            {approved && (
+              <span className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/90 text-white">
+                <span className="material-symbols-outlined text-[10px]">thumb_up</span>
+                Approved
+              </span>
+            )}
+          </>
+        ) : isLoading ? (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-on-surface-variant">
+            <span className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+            <span className="text-xs">Generating…</span>
+          </div>
+        ) : isError ? (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2 px-4 text-center">
+            <span className="material-symbols-outlined text-2xl text-red-400">error</span>
+            <p className="text-xs text-red-400 font-semibold">Generation failed</p>
+          </div>
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2 px-4 text-center">
+            <span className="material-symbols-outlined text-2xl opacity-20">crop_original</span>
+            <p className="text-xs text-on-surface-variant">Not generated yet</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Footer — 3 rows, always exactly 90px ── */}
+      <div className="flex-none flex flex-col justify-between px-3 py-2" style={{ height: 90 }}>
+
+        {/* Row 1 — Metadata */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-on-surface flex items-center gap-1">
+            Pg.{panel.pageNumber} · Panel {panel.panelNumber}
+            {approved && <span className="text-primary text-[10px]">✓</span>}
+          </span>
+          <span className="text-[10px] font-bold text-on-surface-variant tracking-wider uppercase">{shotLabel}</span>
+        </div>
+
+        {/* Row 2 — Feedback / status */}
+        <div className="flex items-center min-h-0">
+          {hasImage ? (
+            approved && reaction ? (
+              <span className="text-[11px] text-on-surface-variant flex items-center gap-1">
+                You rated:
+                <span className="text-base leading-none ml-0.5">
+                  {PANEL_REACTIONS.find((r) => r.value === reaction)?.emoji}
+                </span>
+              </span>
+            ) : (
+              <div className="flex items-center gap-1">
+                {PANEL_REACTIONS.map((r) => (
+                  <button
+                    key={r.value}
+                    type="button"
+                    title={r.label}
+                    onClick={() => onReaction(r.value)}
+                    className={`text-base leading-none transition-transform hover:scale-125 ${
+                      reaction === r.value
+                        ? 'scale-110 ring-1 ring-primary/40 rounded-full'
+                        : 'opacity-60 hover:opacity-100'
+                    }`}
+                  >
+                    {r.emoji}
+                  </button>
+                ))}
+              </div>
+            )
+          ) : isLoading ? (
+            <span className="text-[10px] text-on-surface-variant/60 flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full border border-primary/40 border-t-primary animate-spin" />
+              Generating…
+            </span>
+          ) : isError ? (
+            <span className="text-[10px] text-red-400 font-medium">⚠ Generation failed</span>
+          ) : (
+            <span className="text-[10px] text-on-surface-variant">○ Not generated yet</span>
+          )}
+        </div>
+
+        {/* Row 3 — Actions */}
+        <div className="flex items-center justify-between gap-2">
+          {hasImage ? (
+            <>
+              <button
+                type="button"
+                onClick={onGenerate}
+                disabled={isLoading}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border border-outline-variant/20 bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors disabled:opacity-40 whitespace-nowrap"
+              >
+                <span className="material-symbols-outlined text-[11px]">refresh</span>
+                {approved ? 'Regen (revokes)' : 'Regen'}
+              </button>
+              <button
+                type="button"
+                onClick={onApprove}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors whitespace-nowrap ${
+                  approved
+                    ? 'bg-primary text-on-primary'
+                    : 'border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[11px]">{approved ? 'check_circle' : 'check'}</span>
+                {approved ? 'Approved' : 'Approve'}
+              </button>
+            </>
+          ) : isError ? (
+            <>
+              <button
+                type="button"
+                onClick={onGenerate}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors flex-shrink-0"
+              >
+                <span className="material-symbols-outlined text-[11px]">refresh</span>
+                Retry
+              </button>
+              {state?.error && (
+                <span className="text-[10px] text-red-400 truncate text-right" title={state.error}>
+                  {state.error}
+                </span>
+              )}
+            </>
+          ) : !isLoading ? (
+            <button
+              type="button"
+              onClick={onGenerate}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+            >
+              <span className="material-symbols-outlined text-[11px]">bolt</span>
+              Generate this panel
+            </button>
+          ) : null}
+        </div>
+
+      </div>
+    </div>
+
+    {/* ── Lightbox: full uncropped image ── */}
+    {lightboxOpen && imageUrl && (
+      <div
+        className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4"
+        onClick={() => setLightboxOpen(false)}
+      >
+        <button
+          type="button"
+          onClick={() => setLightboxOpen(false)}
+          className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+        >
+          <span className="material-symbols-outlined text-white text-xl">close</span>
+        </button>
+        <img
+          src={imageUrl}
+          alt={`Panel ${panel.panelNumber} full view`}
+          className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        />
+        <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/60 text-sm whitespace-nowrap">
+          Pg.{panel.pageNumber} · Panel {panel.panelNumber} · {shotLabel}
+        </p>
+      </div>
+    )}
+    </>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function Step4Generation() {
   const {
@@ -1092,6 +1401,8 @@ export default function Step4Generation() {
     handleRevokeApproval,
     handleRetry,
     handleStartFullGeneration,
+    handleStartPanelGeneration,
+    handleRegenerateSinglePanel,
     handleRegeneratePage,
     handleRegenerateWithFeedback,
     acceptPanelRegen,
@@ -1109,6 +1420,8 @@ export default function Step4Generation() {
     projectId,
     getCooldownSeconds,
     setActiveStep,
+    sfxMode,
+    setSfxMode,
   } = useComicGeneration();
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -1131,6 +1444,77 @@ export default function Step4Generation() {
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [comicRating, setComicRating] = useState<{ stars: number; positive: string; negative: string } | null>(null);
   const sessionStartRef = useRef(Date.now());
+
+  // ── Generation mode ───────────────────────────────────────────────────────
+  type ComicPageMode = 'page' | 'panel';
+  const [comicPageMode, setComicPageMode] = useState<ComicPageMode>('page');
+  const [approvedPanelIds, setApprovedPanelIds] = useState<Set<string>>(new Set());
+  const [panelItemReactions, setPanelItemReactions] = useState<Record<string, PanelReaction>>({});
+
+  // ── Compose state ─────────────────────────────────────────────────────────
+  type ComposeStatus = 'idle' | 'composing' | 'done' | 'error';
+  const [composeStates, setComposeStates] = useState<Record<number, { status: ComposeStatus; imageUrl: string | null; error: string | null }>>({});
+
+  // ── Panel-level stats (panel mode) ────────────────────────────────────────
+  const panelStats = useMemo(() => {
+    const allPanels = step4.data?.panels ?? [];
+    const states = step4.data?.panelStates ?? {};
+    return {
+      total: allPanels.length,
+      done: allPanels.filter((p) => states[p.id]?.imageUrl != null).length,
+      generating: allPanels.filter((p) => states[p.id]?.status === 'loading').length,
+      errors: allPanels.filter((p) => states[p.id]?.status === 'error').length,
+      pending: allPanels.filter((p) => !states[p.id] || states[p.id]?.status === 'idle').length,
+    };
+  }, [step4.data]);
+
+  const handleComposePage = useCallback(async (pageNumber: number, panels: Step4Panel[]) => {
+    const style = artStyle.toLowerCase().includes('webtoon') ? 'webtoon' : 'manga';
+    setComposeStates((prev) => ({ ...prev, [pageNumber]: { status: 'composing', imageUrl: null, error: null } }));
+
+    try {
+      // Path A: individual panel images exist — compose directly, no split needed
+      const panelImages = panels.map((p) => ({
+        panel: p,
+        imageUrl: step4.data?.panelStates?.[p.id]?.imageUrl ?? null,
+      }));
+      const allPanelsHaveImages = panelImages.every((pi) => pi.imageUrl);
+
+      if (allPanelsHaveImages) {
+        const res = await geminiApi.composePage({
+          panels: panelImages.map((pi) => ({
+            panel_number: pi.panel.panelNumber,
+            page_number: pageNumber,
+            shot_type: pi.panel.shotType ?? 'medium shot',
+            image_data_url: pi.imageUrl!,
+          })),
+          style,
+        });
+        setComposeStates((prev) => ({ ...prev, [pageNumber]: { status: 'done', imageUrl: `data:image/png;base64,${res.data.page_base64}`, error: null } }));
+        return;
+      }
+
+      // Path B: only a full-page image exists — split it then re-compose
+      const pageImageUrl = step4.data?.pageStates?.[`page-${pageNumber}`]?.imageUrl;
+      if (!pageImageUrl) {
+        setComposeStates((prev) => ({ ...prev, [pageNumber]: { status: 'error', imageUrl: null, error: 'Generate panels or a page image first before using Auto Layout.' } }));
+        return;
+      }
+
+      const res = await geminiApi.autoLayout({
+        page_image_data_url: pageImageUrl,
+        panels: panels.map((p) => ({
+          panel_number: p.panelNumber,
+          shot_type: p.shotType ?? 'medium shot',
+        })),
+        style,
+      });
+      setComposeStates((prev) => ({ ...prev, [pageNumber]: { status: 'done', imageUrl: `data:image/png;base64,${res.data.page_base64}`, error: null } }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Auto layout failed';
+      setComposeStates((prev) => ({ ...prev, [pageNumber]: { status: 'error', imageUrl: null, error: msg } }));
+    }
+  }, [step4.data?.panelStates, step4.data?.pageStates, artStyle]);
 
   // Load saved ratings on mount
   useEffect(() => {
@@ -1322,15 +1706,26 @@ export default function Step4Generation() {
     setToasts((t) => t.filter((x) => x.id !== id));
   };
 
-  // Finish button state machine
+  // Active stats — switches source based on mode (panel or page)
+  const activeStats = useMemo(() =>
+    comicPageMode === 'panel'
+      ? { total: panelStats.total, success: panelStats.done, loading: panelStats.generating, error: panelStats.errors }
+      : { total: step4Stats.total, success: step4Stats.success, loading: step4Stats.loading, error: step4Stats.error },
+  [comicPageMode, panelStats, step4Stats]);
+
+  // Finish button state machine — use panel stats in panel mode
+  const activeStatsForBtn = comicPageMode === 'panel'
+    ? { total: panelStats.total, success: panelStats.done, error: panelStats.errors }
+    : { total: step4Stats.total, success: step4Stats.success, error: step4Stats.error };
+
   const finishBtnState = (() => {
     if (isImageGenerating) return 'in-progress' as const;
-    if (step4Stats.total > 0 && step4Stats.error === 0 && step4Stats.success === step4Stats.total) return 'all-complete' as const;
-    if (step4Stats.total > 0 && step4Stats.error > 0) return 'has-errors' as const;
+    if (activeStatsForBtn.total > 0 && activeStatsForBtn.error === 0 && activeStatsForBtn.success === activeStatsForBtn.total) return 'all-complete' as const;
+    if (activeStatsForBtn.total > 0 && activeStatsForBtn.error > 0) return 'has-errors' as const;
     return 'not-started' as const;
   })();
 
-  const barPct = step4Stats.total > 0 ? Math.round((step4Stats.success / step4Stats.total) * 100) : 0;
+  const barPct = activeStatsForBtn.total > 0 ? Math.round((activeStatsForBtn.success / activeStatsForBtn.total) * 100) : 0;
   const barColor = finishBtnState === 'all-complete' ? '#22C55E' : finishBtnState === 'has-errors' ? '#F59E0B' : '#4F46E5';
 
   const retryErrorPages = () => {
@@ -1359,31 +1754,31 @@ export default function Step4Generation() {
 
       {/* ── Generation Dashboard ── */}
       {(() => {
-        const pct = step4Stats.total > 0 ? Math.round((step4Stats.success / step4Stats.total) * 100) : 0;
-        const waiting = Math.max(0, step4Stats.total - step4Stats.success - step4Stats.loading - step4Stats.error);
-        const isAllImgDone = step4Stats.total > 0 && step4Stats.success + step4Stats.error >= step4Stats.total && !isImageGenerating;
-        const panelCount = allPanels.length || step4Stats.total;
+        // activeStats is defined outside this IIFE as a useMemo
+        const waiting = Math.max(0, activeStats.total - activeStats.success - activeStats.loading - activeStats.error);
+        const isAllImgDone = activeStats.total > 0 && activeStats.success + activeStats.error >= activeStats.total && !isImageGenerating;
+        const panelCount = allPanels.length || activeStats.total;
         const estMin = Math.max(1, Math.ceil(panelCount * 10 / 60));
 
         /* ── COMPLETE ── */
-        if (isAllImgDone && step4Stats.success > 0) {
-          const hasErrors = step4Stats.error > 0;
+        if (isAllImgDone && activeStats.success > 0) {
+          const hasErrors = activeStats.error > 0;
           const chapterCount = (step3.data as {chapters?: unknown[]})?.chapters?.length ?? 1;
           if (hasErrors) {
             return (
               <div className="rounded-[12px] border border-amber-200 p-6 space-y-4 animate-slide-down"
                 style={{ background: 'linear-gradient(135deg, #FFFBEB, #FEF9F0)' }}>
                 <div className="flex items-center justify-between text-sm font-semibold">
-                  <span className="text-amber-700">⚠ Completed with {step4Stats.error} error{step4Stats.error !== 1 ? 's' : ''}</span>
-                  <span className="text-amber-600 tabular-nums">{Math.round((step4Stats.success / step4Stats.total) * 100)}%</span>
+                  <span className="text-amber-700">⚠ Completed with {activeStats.error} error{activeStats.error !== 1 ? 's' : ''}</span>
+                  <span className="text-amber-600 tabular-nums">{Math.round((activeStats.success / activeStats.total) * 100)}%</span>
                 </div>
-                <SegmentedProgressBar total={step4Stats.total} success={step4Stats.success} error={step4Stats.error} loading={0} height={12} />
+                <SegmentedProgressBar total={activeStats.total} success={activeStats.success} error={activeStats.error} loading={0} height={12} />
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-sm text-emerald-600 font-semibold">✓ {step4Stats.success}/{step4Stats.total} complete</span>
-                  <span className="text-sm text-amber-500 font-semibold">⚠ {step4Stats.error} error{step4Stats.error !== 1 ? 's' : ''}</span>
+                  <span className="text-sm text-emerald-600 font-semibold">✓ {activeStats.success}/{activeStats.total} complete</span>
+                  <span className="text-sm text-amber-500 font-semibold">⚠ {activeStats.error} error{activeStats.error !== 1 ? 's' : ''}</span>
                   <button type="button" onClick={retryErrorPages}
                     className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition-colors">
-                    ↺ Retry {step4Stats.error} failed page{step4Stats.error !== 1 ? 's' : ''}
+                    ↺ Retry {activeStats.error} failed
                   </button>
                 </div>
               </div>
@@ -1407,7 +1802,7 @@ export default function Step4Generation() {
                   </button>
                 )}
               </div>
-              <SegmentedProgressBar total={step4Stats.total} success={step4Stats.success} error={0} loading={0} height={8} />
+              <SegmentedProgressBar total={activeStats.total} success={activeStats.success} error={0} loading={0} height={8} />
               <div className="flex gap-3 justify-center">
                 <button type="button" onClick={() => setShowPreview(true)}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
@@ -1429,58 +1824,20 @@ export default function Step4Generation() {
         if (isImageGenerating && !isPaused) {
           return (
             <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-lowest p-6 space-y-4">
-              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Generation Progress</p>
-
-              {/* Progress bar */}
-              <div>
-                <div className="flex items-center justify-between text-sm font-semibold mb-2">
-                  <span className="text-on-surface-variant">
-                    {step4Stats.error > 0
-                      ? <span>✓ {step4Stats.success} · <span className="text-amber-500">⚠ {step4Stats.error} error{step4Stats.error !== 1 ? 's' : ''}</span> · {step4Stats.loading} processing</span>
-                      : <>Processing {step4Stats.loading > 0 ? `${step4Stats.loading} panel${step4Stats.loading !== 1 ? 's' : ''}` : '…'}</>
-                    }
-                  </span>
-                  <span className="text-on-surface tabular-nums font-bold">{pct}%</span>
-                </div>
-                <SegmentedProgressBar
-                  total={step4Stats.total}
-                  success={step4Stats.success}
-                  error={step4Stats.error}
-                  loading={step4Stats.loading}
-                  height={12}
-                />
-              </div>
-
-              {/* Stats row */}
-              <div className="flex flex-wrap items-center gap-5 text-sm font-semibold">
-                {step4Stats.loading > 0 && (
-                  <span className="flex items-center gap-1.5 text-[#3B82F6]">
-                    <span className="w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse flex-shrink-0" />
-                    Processing: {step4Stats.loading}
-                  </span>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Generating Images</p>
+                {currentlyDrawing && (
+                  <span className="text-xs italic text-[#6B7280]">Drawing: {currentlyDrawing}…</span>
                 )}
-                <span className="flex items-center gap-1.5 text-[#22C55E]">
-                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                  Done: {step4Stats.success}
-                </span>
-                {step4Stats.error > 0 && (
-                  <span className="flex items-center gap-1.5 text-[#EF4444]">
-                    <span className="material-symbols-outlined text-sm">error</span>
-                    Errors: {step4Stats.error}
-                  </span>
-                )}
-                <span className="flex items-center gap-1.5 text-[#9CA3AF]">
-                  <span className="w-2 h-2 rounded-full border-2 border-[#9CA3AF] flex-shrink-0" />
-                  Waiting: {waiting}
-                </span>
               </div>
-
-              {/* Currently drawing */}
-              {currentlyDrawing && (
-                <p className="text-sm italic text-[#6B7280]">Drawing: {currentlyDrawing}…</p>
-              )}
-
-              {/* Pause / Cancel */}
+              <GenerationProgressBar
+                total={activeStats.total}
+                done={activeStats.success}
+                generating={activeStats.loading}
+                errors={activeStats.error}
+                pending={waiting}
+                unit={comicPageMode === 'panel' ? 'panel' : 'page'}
+              />
               <div className="flex gap-3 pt-1">
                 <button
                   type="button"
@@ -1507,19 +1864,18 @@ export default function Step4Generation() {
         if (isPaused) {
           return (
             <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-6 space-y-4">
-              <div className="flex items-center justify-between text-sm font-semibold mb-1">
-                <span className="text-amber-700 flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>pause_circle</span>
-                  Paused — {step4Stats.success}/{step4Stats.total} completed
-                </span>
-                <span className="text-amber-600 tabular-nums">{pct}%</span>
-              </div>
-              <div className="h-3 rounded-full bg-amber-100 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-500"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
+              <p className="text-sm font-semibold text-amber-700 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>pause_circle</span>
+                Paused — {activeStats.success}/{activeStats.total} completed
+              </p>
+              <GenerationProgressBar
+                total={activeStats.total}
+                done={activeStats.success}
+                generating={0}
+                errors={activeStats.error}
+                pending={waiting}
+                unit={comicPageMode === 'panel' ? 'panel' : 'page'}
+              />
               <div className="flex gap-3 pt-1">
                 <button
                   type="button"
@@ -1544,27 +1900,116 @@ export default function Step4Generation() {
 
         /* ── PANELS BUILT — ready to start image gen ── */
         if (state >= 3 && !isGenerating) {
+          const cleanImages = sfxMode === 'manual';
           return (
-            <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-lowest p-6 flex flex-col items-center text-center gap-5">
+            <div className="rounded-2xl border border-outline-variant/10 bg-white p-5 space-y-4">
+              {/* Header */}
               <div>
-                <p className="text-lg font-bold text-on-surface">
-                  ✦ Panels ready — generate your images
-                </p>
-                <p className="text-sm text-on-surface-variant mt-1">
-                  {panelCount} panels · Est. ~{estMin} min
-                </p>
+                <p className="text-sm font-bold text-on-surface">Generation Mode</p>
+                <p className="text-xs text-[#6B7280] mt-0.5">{panelCount} panels · Est. ~{estMin} min</p>
               </div>
+
+              {/* Mode cards */}
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  {
+                    mode: 'page' as ComicPageMode,
+                    icon: 'auto_awesome_mosaic',
+                    title: 'Full Page',
+                    desc1: 'One image per page',
+                    desc2: 'Faster · Less precise',
+                  },
+                  {
+                    mode: 'panel' as ComicPageMode,
+                    icon: 'dashboard',
+                    title: 'Panel by Panel',
+                    desc1: 'One image per panel',
+                    desc2: 'Slower · More precise',
+                  },
+                ] as const).map(({ mode, icon, title, desc1, desc2 }) => {
+                  const active = comicPageMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setComicPageMode(mode)}
+                      style={{
+                        height: 108,
+                        border: `2px solid ${active ? '#4F46E5' : '#E5E7EB'}`,
+                        background: active ? '#EEF2FF' : '#FFFFFF',
+                      }}
+                      className="relative rounded-xl p-3 text-left transition-all hover:border-[#4F46E5]/50 focus:outline-none"
+                    >
+                      <span
+                        className="material-symbols-outlined"
+                        style={{ fontSize: 24, color: active ? '#4F46E5' : '#6B7280', display: 'block', marginBottom: 6 }}
+                      >
+                        {icon}
+                      </span>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: active ? '#4F46E5' : '#111827', lineHeight: 1.2 }}>
+                        {title}
+                      </p>
+                      <p style={{ fontSize: 12, color: '#6B7280', lineHeight: 1.4, marginTop: 2 }}>
+                        {desc1}
+                      </p>
+                      <p style={{ fontSize: 12, color: '#6B7280', lineHeight: 1.4 }}>
+                        {desc2}
+                      </p>
+                      {active && (
+                        <span
+                          className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
+                          style={{ background: '#4F46E5' }}
+                        >
+                          <span className="material-symbols-outlined text-white" style={{ fontSize: 12 }}>check</span>
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Clean images checkbox */}
+              <label className="flex items-start gap-3 cursor-pointer select-none group">
+                <div className="flex-none mt-0.5">
+                  <input
+                    type="checkbox"
+                    checked={cleanImages}
+                    onChange={(e) => setSfxMode(e.target.checked ? 'manual' : 'auto')}
+                    className="sr-only"
+                  />
+                  <div
+                    className="w-4 h-4 rounded border-2 flex items-center justify-center transition-colors"
+                    style={{
+                      borderColor: cleanImages ? '#4F46E5' : '#D1D5DB',
+                      background: cleanImages ? '#4F46E5' : '#FFFFFF',
+                    }}
+                  >
+                    {cleanImages && (
+                      <span className="material-symbols-outlined text-white" style={{ fontSize: 11 }}>check</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-on-surface leading-snug">
+                    Clean images (no dialogue/SFX text embedded)
+                  </p>
+                  <p className="text-xs text-[#6B7280] mt-0.5">
+                    Add text manually in Comic Editor after export
+                  </p>
+                </div>
+              </label>
+
               {step4.error && <p className="text-sm text-red-500">{step4.error}</p>}
               <button
                 type="button"
-                onClick={handleStartFullGeneration}
+                onClick={comicPageMode === 'page' ? handleStartFullGeneration : handleStartPanelGeneration}
                 disabled={isImageGenerating}
                 style={{ boxShadow: '0 4px 20px rgba(79,70,229,0.4)' }}
                 className="w-full h-[52px] rounded-full text-base font-bold text-white
                   bg-gradient-to-r from-[#4F46E5] to-[#7C3AED]
                   hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                ⚡ Generate All Images
+                ⚡ {comicPageMode === 'page' ? 'Generate All Pages' : 'Generate All Panels'}
               </button>
             </div>
           );
@@ -1608,6 +2053,20 @@ export default function Step4Generation() {
         );
       })()}
 
+      {/* ── Generation progress bar — shown only when dashboard doesn't already contain one ── */}
+      {state >= 3 && activeStats.total > 0 && !isImageGenerating && !isPaused && (
+        <div className="rounded-2xl border border-outline-variant/10 bg-white px-5 py-4">
+          <GenerationProgressBar
+            total={activeStats.total}
+            done={activeStats.success}
+            generating={activeStats.loading}
+            errors={activeStats.error}
+            pending={Math.max(0, activeStats.total - activeStats.success - activeStats.loading - activeStats.error)}
+            unit={comicPageMode === 'panel' ? 'panel' : 'page'}
+          />
+        </div>
+      )}
+
       {/* ── Progress + Export ── */}
       {(state === 2 || state === 3 || state === 4 || state === 5) && (
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6">
@@ -1615,10 +2074,11 @@ export default function Step4Generation() {
           <div className="rounded-3xl bg-surface-container-low border border-outline-variant/10 p-6 space-y-4">
             <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Generation Progress</p>
             <StatsBar
-              total={step4Stats.total}
-              success={step4Stats.success}
-              loading={step4Stats.loading}
-              error={step4Stats.error}
+              total={activeStats.total}
+              success={activeStats.success}
+              loading={activeStats.loading}
+              error={activeStats.error}
+              totalLabel={comicPageMode === 'panel' ? 'Panels' : 'Pages'}
             />
           </div>
 
@@ -1675,7 +2135,17 @@ export default function Step4Generation() {
           <div className="space-y-6">
               {displayPages.map(([pageNumber, panels]) => {
                 const pageState = step4.data?.pageStates?.[`page-${pageNumber}`];
-                const pageStatus = pageState?.status ?? 'idle';
+
+                // In panel mode, derive page-level status from individual panel states
+                const panelStatesForPage = panels.map((p) => step4.data?.panelStates?.[p.id]);
+                const panelModeStatus = (() => {
+                  if (panelStatesForPage.some((s) => s?.status === 'loading')) return 'loading';
+                  if (panelStatesForPage.every((s) => s?.status === 'success')) return 'success';
+                  if (panelStatesForPage.some((s) => s?.status === 'error')) return 'error';
+                  return 'idle';
+                })();
+
+                const pageStatus = comicPageMode === 'panel' ? panelModeStatus : (pageState?.status ?? 'idle');
                 return (
                   <div key={`page-${pageNumber}`} className="rounded-3xl bg-surface-container-low border border-outline-variant/10 p-6 space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1686,79 +2156,182 @@ export default function Step4Generation() {
                           {pageStatus === 'loading' ? 'Generating…' : pageStatus === 'success' ? 'Done' : pageStatus === 'comparing' ? 'Comparing…' : pageStatus === 'error' ? 'Error' : 'Pending'}
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const pState = step4.data?.pageStates?.[`page-${pageNumber}`];
-                          setRegenModal({
-                            pageNumber,
-                            contextLabel: `Page ${pageNumber}`,
-                            currentImageUrl: pState?.imageUrl ?? null,
-                            prevFeedback: pState?.pendingFeedback ?? '',
-                          });
-                        }}
-                        disabled={!step4.data || pageStatus === 'loading'}
-                        className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all ${
-                          !step4.data || pageStatus === 'loading'
-                            ? 'bg-surface-container text-on-surface-variant cursor-not-allowed opacity-50'
-                            : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'
-                        }`}
-                      >
-                        <span className="material-symbols-outlined text-sm">
-                          {pageStatus === 'loading' ? 'hourglass_empty' : pageStatus === 'error' ? 'replay' : 'refresh'}
-                        </span>
-                        {pageStatus === 'loading' ? 'Generating…' : pageStatus === 'error' ? 'Retry page' : 'Regenerate'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {comicPageMode === 'page' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const pState = step4.data?.pageStates?.[`page-${pageNumber}`];
+                              setRegenModal({
+                                pageNumber,
+                                contextLabel: `Page ${pageNumber}`,
+                                currentImageUrl: pState?.imageUrl ?? null,
+                                prevFeedback: pState?.pendingFeedback ?? '',
+                              });
+                            }}
+                            disabled={!step4.data || pageStatus === 'loading'}
+                            className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all ${
+                              !step4.data || pageStatus === 'loading'
+                                ? 'bg-surface-container text-on-surface-variant cursor-not-allowed opacity-50'
+                                : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'
+                            }`}
+                          >
+                            <span className="material-symbols-outlined text-sm">
+                              {pageStatus === 'loading' ? 'hourglass_empty' : pageStatus === 'error' ? 'replay' : 'refresh'}
+                            </span>
+                            {pageStatus === 'loading' ? 'Generating…' : pageStatus === 'error' ? 'Retry page' : 'Regenerate'}
+                          </button>
+                        )}
+
+                        {/* Auto Layout / Compose Page button */}
+                        {(() => {
+                          const cs = composeStates[pageNumber];
+                          const isComposing = cs?.status === 'composing';
+                          const hasPanelImages = panels.every((p) => step4.data?.panelStates?.[p.id]?.imageUrl);
+                          const hasPageImage = !!(step4.data?.pageStates?.[`page-${pageNumber}`]?.imageUrl);
+                          const canCompose = hasPanelImages || hasPageImage;
+                          const baseLabel = hasPanelImages ? 'Compose Page' : 'Auto Layout';
+                          const label = isComposing ? 'Composing…' : cs?.status === 'done' ? `Re-${baseLabel}` : baseLabel;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleComposePage(pageNumber, panels)}
+                              disabled={isComposing || !step4.data || !canCompose}
+                              title={hasPanelImages ? 'Compose individual panel images into a page layout' : 'Split full-page image and re-compose with intensity sizing'}
+                              className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all ${
+                                isComposing || !step4.data || !canCompose
+                                  ? 'bg-primary/10 text-primary/40 cursor-not-allowed'
+                                  : 'bg-primary/10 text-primary hover:bg-primary/20'
+                              }`}
+                            >
+                              <span className="material-symbols-outlined text-sm">
+                                {isComposing ? 'hourglass_empty' : hasPanelImages ? 'dashboard' : 'grid_view'}
+                              </span>
+                              {label}
+                            </button>
+                          );
+                        })()}
+                      </div>
                     </div>
 
-                    {/* Full-page image / comparison view */}
-                    {pageState?.error && <p className="text-sm text-red-500">{pageState.error}</p>}
-                    {pageStatus === 'comparing' && pageState?.pendingUrl ? (
-                      <ComparisonView
-                        pageNumber={pageNumber}
-                        prevImageUrl={pageState.imageUrl ?? null}
-                        newImageUrl={pageState.pendingUrl}
-                        feedback={pageState.pendingFeedback ?? ''}
-                        versions={pageState.versions ?? []}
-                        onAccept={() => acceptPanelRegen(pageNumber)}
-                        onReject={() => rejectPanelRegen(pageNumber)}
-                        onTryAgain={() => setRegenModal({
-                          pageNumber,
-                          contextLabel: `Page ${pageNumber}`,
-                          currentImageUrl: pageState?.pendingUrl ?? pageState?.imageUrl ?? null,
-                          prevFeedback: pageState?.pendingFeedback ?? '',
-                        })}
-                      />
-                    ) : pageState?.imageUrl ? (
-                      <div className="rounded-2xl bg-surface-container overflow-hidden border border-outline-variant/10">
-                        <Image
-                          src={pageState.imageUrl}
-                          alt={`Page ${pageNumber} comic render`}
-                          width={720}
-                          height={960}
-                          className="h-auto w-full object-cover"
-                          unoptimized
-                        />
-                        <EmojiReactionBar
-                          pageId={`page-${pageNumber}`}
-                          panels={panels}
-                          comicId={projectId}
-                          reaction={panelReactions[`page-${pageNumber}`] ?? null}
-                          onReaction={(id, r) => setPanelReactions((prev) => ({ ...prev, [id]: r }))}
-                          onError={addRatingErrorToast}
-                        />
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl bg-surface-container py-12 text-center">
-                        {pageStatus === 'loading' ? (
-                          <span className="flex items-center justify-center gap-2 text-sm text-on-surface-variant">
-                            <span className="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                            Generating comic page…
-                          </span>
+                    {/* Page Mode: full-page image / comparison view */}
+                    {comicPageMode === 'page' && (
+                      <>
+                        {pageState?.error && <p className="text-sm text-red-500">{pageState.error}</p>}
+                        {pageStatus === 'comparing' && pageState?.pendingUrl ? (
+                          <ComparisonView
+                            pageNumber={pageNumber}
+                            prevImageUrl={pageState.imageUrl ?? null}
+                            newImageUrl={pageState.pendingUrl}
+                            feedback={pageState.pendingFeedback ?? ''}
+                            versions={pageState.versions ?? []}
+                            onAccept={() => acceptPanelRegen(pageNumber)}
+                            onReject={() => rejectPanelRegen(pageNumber)}
+                            onTryAgain={() => setRegenModal({
+                              pageNumber,
+                              contextLabel: `Page ${pageNumber}`,
+                              currentImageUrl: pageState?.pendingUrl ?? pageState?.imageUrl ?? null,
+                              prevFeedback: pageState?.pendingFeedback ?? '',
+                            })}
+                          />
+                        ) : pageState?.imageUrl ? (
+                          <div className="rounded-2xl bg-surface-container overflow-hidden border border-outline-variant/10">
+                            <Image
+                              src={pageState.imageUrl}
+                              alt={`Page ${pageNumber} comic render`}
+                              width={720}
+                              height={960}
+                              className="h-auto w-full object-cover"
+                              unoptimized
+                            />
+                            <EmojiReactionBar
+                              pageId={`page-${pageNumber}`}
+                              panels={panels}
+                              comicId={projectId}
+                              reaction={panelReactions[`page-${pageNumber}`] ?? null}
+                              onReaction={(id, r) => setPanelReactions((prev) => ({ ...prev, [id]: r }))}
+                              onError={addRatingErrorToast}
+                            />
+                          </div>
                         ) : (
-                          <span className="text-sm text-on-surface-variant">
-                            No image yet — click &ldquo;↺ Regenerate&rdquo; above.
-                          </span>
+                          <div className="rounded-2xl bg-surface-container py-12 text-center">
+                            {pageStatus === 'loading' ? (
+                              <span className="flex items-center justify-center gap-2 text-sm text-on-surface-variant">
+                                <span className="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                                Generating comic page…
+                              </span>
+                            ) : (
+                              <span className="text-sm text-on-surface-variant">
+                                No image yet — click &ldquo;↺ Regenerate&rdquo; above.
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* Panel Mode: consistent 2-col grid, odd last panel centered at 50% */}
+                    {comicPageMode === 'panel' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        {panels.map((panel, idx) => {
+                          const isLastOdd = panels.length % 2 === 1 && idx === panels.length - 1;
+                          const panelCard = (
+                            <PanelCard
+                              panel={panel}
+                              state={step4.data?.panelStates?.[panel.id] ?? null}
+                              reaction={panelItemReactions[panel.id] ?? null}
+                              approved={approvedPanelIds.has(panel.id)}
+                              onGenerate={() => handleRegenerateSinglePanel(panel)}
+                              onReaction={(r) => setPanelItemReactions((prev) => ({ ...prev, [panel.id]: r }))}
+                              onApprove={() => setApprovedPanelIds((prev) => {
+                                const next = new Set(prev);
+                                next.has(panel.id) ? next.delete(panel.id) : next.add(panel.id);
+                                return next;
+                              })}
+                            />
+                          );
+                          return isLastOdd ? (
+                            <div key={panel.id} style={{ gridColumn: 'span 2', maxWidth: '50%', margin: '0 auto', width: '100%' }}>
+                              {panelCard}
+                            </div>
+                          ) : (
+                            <React.Fragment key={panel.id}>{panelCard}</React.Fragment>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Auto Layout composed result */}
+                    {composeStates[pageNumber] && composeStates[pageNumber].status !== 'idle' && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-sm text-primary">grid_view</span>
+                          <span className="text-xs font-bold text-primary uppercase tracking-wide">Auto Layout</span>
+                          {composeStates[pageNumber].status === 'composing' && (
+                            <span className="w-3 h-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                          )}
+                        </div>
+                        {composeStates[pageNumber].status === 'error' && (
+                          <p className="text-xs text-red-500">{composeStates[pageNumber].error}</p>
+                        )}
+                        {composeStates[pageNumber].status === 'done' && composeStates[pageNumber].imageUrl && (
+                          <div className="rounded-2xl overflow-hidden border border-primary/20">
+                            <img
+                              src={composeStates[pageNumber].imageUrl!}
+                              alt={`Page ${pageNumber} auto layout`}
+                              className="w-full h-auto"
+                            />
+                            <div className="flex justify-end p-2 bg-surface-container-low">
+                              <a
+                                href={composeStates[pageNumber].imageUrl!}
+                                download={`page-${pageNumber}-layout.png`}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-all"
+                              >
+                                <span className="material-symbols-outlined text-sm">download</span>
+                                Download
+                              </a>
+                            </div>
+                          </div>
                         )}
                       </div>
                     )}

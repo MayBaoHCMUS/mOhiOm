@@ -1,3 +1,212 @@
+## SESSION: 2026-06-16
+
+### 🎯 CONTEXT — Step 4 panel grid polish, progress bar, and footer standardization
+
+All work this session is in:
+- `frontend/src/components/studio-steps/Step4Generation.tsx`
+
+---
+
+### ✅ COMPLETED
+
+#### 1. Consistent 2-column panel grid with odd-panel centering and lightbox
+
+**`PanelCard` image area refactor:**
+- Changed image area from `flex-none` + `style={{ height: 190 }}` → `flex-1 overflow-hidden` — fills remaining space after 90px footer, total card stays 280px via parent `style={{ height: 280 }}`
+- All states (success/loading/error/pending) use `w-full h-full` — no per-state height overrides
+
+**Hover overlay + lightbox (`🔍 View full`):**
+- Added `group` class to image container; overlay div uses `group-hover:bg-black/25` + `group-hover:pointer-events-auto`
+- "🔍 View full" button appears on hover, opens a fullscreen lightbox (`z-[100]`, `bg-black/90`)
+- Lightbox: closes on backdrop click or ✕ button; clicking the image itself does NOT close it
+- Caption at bottom: `Pg.N · Panel N · SHOT TYPE`
+- Implemented via `useState(false)` local to `PanelCard`; lightbox rendered inside `<>` fragment sibling to the card
+
+**Odd-panel centering:**
+- Panel grid: `grid grid-cols-2 gap-3` (2-column, consistent across all pages)
+- When `panels.length % 2 === 1`, last panel gets a wrapper `<div style={{ gridColumn: 'span 2', maxWidth: '50%', margin: '0 auto' }}>` — sits centered at half-width rather than stretching full row
+- Even panels use `<React.Fragment key={panel.id}>` for key without extra DOM nodes
+
+**Image area for error/pending:** Removed duplicate action buttons (Retry/Generate) from the image area — actions are now exclusively in the footer.
+
+---
+
+#### 2. `GenerationProgressBar` — enhanced segmented progress bar
+
+**New component** (inserted before `PanelCard`):
+- 8px bar, `border-radius: 4px`, segments stacked inline-flex with no gap
+- Green (`#22C55E`) = done panels, yellow (`#F59E0B`, animate-pulse) = currently generating, red (`#EF4444`) = errors, gray track (`#E5E7EB`) = pending
+- Percentage label right-aligned on same row as bar
+- Label row below: `"15 generated · 5 pending · 3 errors · 0 running"` (each value colored to match segment; 0-count values hidden except pending)
+- **Completion state**: when all done (`pending=0, errors=0`), label becomes `"✓ All X panels generated!"` in green
+- **Confetti animation (300ms, one-time)**: detects `allDone` transition via `useRef` + `useEffect`; fires `box-shadow` glow on green bar + `animate-[pulse_0.3s_ease-in-out_1]` on label text; `celebrating` state resets after 400ms
+- Accepts `unit: 'panel' | 'page'` prop for label pluralization
+
+**Placement — `activeStats` hoisted out of IIFE:**
+- `activeStats` previously computed inside the dashboard IIFE; moved to `useMemo` in component body so it's accessible both inside the IIFE and to the persistent bar element
+- Formula: panel mode → `panelStats.*`; page mode → `step4Stats.*`
+
+**Three locations where `GenerationProgressBar` now renders:**
+1. **GENERATING IMAGES section** (inside dashboard IIFE): replaces old `SegmentedProgressBar` + inline stats row. Keeps heading + "Drawing: Page X…" + Pause/Cancel
+2. **PAUSED section** (inside dashboard IIFE): replaces old amber gradient bar. Keeps "Paused" heading + Resume/Cancel
+3. **Persistent element** (between dashboard IIFE and stats grid): shows when `state >= 3 && activeStats.total > 0 && !isImageGenerating && !isPaused` — guards against duplicate rendering when dashboard sections already show the bar
+
+**Duplicate bar fix:** Persistent bar hidden via `&& !isImageGenerating && !isPaused` condition — resolves the visual where two identical "✓ All 1 pages generated!" bars appeared simultaneously.
+
+**`StatsBar` update:**
+- Added `totalLabel?: string` prop (default `'Total'`)
+- Stats card now passes `totalLabel={comicPageMode === 'panel' ? 'Panels' : 'Pages'}` so the first card doesn't say "Pages" in panel mode
+
+---
+
+#### 3. Standardized `PanelCard` footer — universal 3-row template
+
+**Footer dimensions:** `flex-none flex flex-col justify-between px-3 py-2` `style={{ height: 90 }}` — 3 rows share height via `justify-between`
+
+**Row 1 — Metadata (always):**
+- Left: `Pg.N · Panel N` + `✓` (primary color, 10px) when approved
+- Right: shot type in `text-[10px] font-bold uppercase tracking-wider`
+
+**Row 2 — Feedback/status (state-dependent):**
+- Generated (has image, not approved, or approved with no reaction): emoji rating buttons `😍 👍 😐 👎` (no "Rate:" label)
+- Approved + has reaction: `"You rated: 😍"` — shows emoji of the selected reaction
+- Loading: tiny spinner + `"Generating…"` (10px, muted)
+- Error: `"⚠ Generation failed"` (10px, red)
+- Pending: `"○ Not generated yet"` (10px, muted)
+
+**Row 3 — Actions (state-dependent):**
+- Generated: `[↺ Regen]` (left) · `[✓ Approve]` (right) — both `whitespace-nowrap`
+- Approved: `[↺ Regen (revokes)]` (left, revoke language) · `[✓ Approved]` (right, filled primary bg)
+- Error: `[↺ Retry]` (left, red) · truncated error text (right, `title` tooltip for full message)
+- Pending: `[⚡ Generate this panel]` (full-width via `w-full`)
+- Loading: nothing (null)
+
+**Image area cleanup:** duplicate Retry/Generate buttons removed from error/pending image placeholders — actions exclusively in footer.
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/components/studio-steps/Step4Generation.tsx` — `PanelCard` image area (`flex-1`), hover lightbox, odd-panel grid wrapper, `GenerationProgressBar` component, `activeStats` useMemo hoisted, GENERATING/PAUSED sections simplified, persistent progress bar placement, `StatsBar` `totalLabel` prop, standardized 3-row footer
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **Lightbox z-index `z-[100]`**: above all existing modals (`z-[55]` export, `z-[60]` toasts, `z-[70]` regen modal, `z-[80]` comic rating, `z-[9999]` preview slideshow). The panel lightbox at 100 sits below the preview slideshow — intentional.
+- **Odd-panel wrapper vs prop**: used a wrapper `<div>` for the odd-last-panel grid spanning rather than passing an `isLastOdd` prop to `PanelCard`. Keeps the card component unaware of grid layout concerns.
+- **`activeStats` useMemo deps**: `[comicPageMode, panelStats, step4Stats]` — `panelStats` itself is a useMemo (depends on `step4.data`), so the chain is reactive without over-triggering.
+- **Persistent bar guard (`!isImageGenerating && !isPaused`)**: prevents showing two `GenerationProgressBar` instances simultaneously. The dashboard IIFE's GENERATING and PAUSED branches each render their own bar internally.
+- **"You rated" in approved state**: only shows if `reaction` is non-null. If the user approved without rating, the emoji buttons still show so they can rate later.
+- **Pre-existing TS warnings**: `panelPageMap` unused (declared but never read) and `barColor` unused remain — pre-existing from previous sessions, not introduced this session.
+
+---
+
+### 🎯 NEXT STEPS
+
+1. **Test lightbox with portrait panels** — verify "🔍 View full" renders correctly for 9:16 generated panel images; image should display at full resolution without cropping
+2. **Test odd-panel centering** — generate a page with 3 or 5 panels; verify last panel is centered at 50% width, not stretched
+3. **Test footer states** — cycle through all 4 states (pending → generating → error → generated → approved) and verify 3-row footer renders correctly for each
+4. **Panel mode stats accuracy** — verify `panelStats.done`, `panelStats.generating`, `panelStats.errors`, `panelStats.pending` update reactively as panels transition states during generation
+
+---
+
+## SESSION: 2026-06-15
+
+### 🎯 CONTEXT — SD Server API v2, Step 2 flow, Step 4 UX polish
+
+---
+
+### ✅ COMPLETED
+
+#### New Image Generation Server API (SD 1.5 + IP-Adapter Plus v2)
+
+Server API contract changed — characters are now saved server-side by name and referenced in generate calls (no more `reference_image_base64` on every request).
+
+**`frontend/src/app/api/image-proxy/route.ts`** (updated):
+- `ProxyRequestBody` updated: `scene_prompt` (was `prompt`), `control_image_b64` (was `control_image_base64`), new fields `story_id`, `character_name`, `style`
+- Proxy target: `{url}/generate-page`
+
+**`frontend/src/app/api/image-proxy/characters/route.ts`** (new file):
+- `POST` proxy to `{url}/characters/save`
+- Body: `{ story_id, character_name, reference_image_b64 }`
+- Fire-and-forget character registration before image generation
+
+**`frontend/src/context/ComicGenerationContext.tsx`** (updated):
+- `ImageGenSettings` interface: added `characterName?`, `storyId?`, `style?`
+- Added `imageGenStyle` state (default `'manga'`), exported via context
+- `fetchImageFromAI`: request body now uses `scene_prompt`, `story_id`, `style`, `character_name`; removed `reference_image_base64` from all modes
+- Added `saveCharacterToServer(characterName, imageDataUri)` — fire-and-forget POST to `/api/image-proxy/characters`
+- `handleApproveCharacterReferences`: saves each approved character to SD server via `saveCharacterToServer`
+- `generatePageImages` + `handleRegenerateWithFeedback`: now pass `characterName` (first character name, lowercased) and `storyId` instead of `referenceImageBase64`
+
+**`frontend/src/components/story-setup/Step1.tsx`** (updated):
+- New `ImageStylePicker` custom dropdown component (replaces native `<select>`)
+- 4 styles: Manga (B&W lineart), Webtoon (flat vivid), Chibi (pastel kawaii), Watercolor (painterly)
+- Visual style cards: colored emoji badge, bold label, muted subtitle, checkmark when selected
+- Click-outside close via `useRef` + `mousedown` handler
+- Placed below "Image API URL" input in Step 1 sidebar
+
+---
+
+#### Step 2 Flow Change — Design Sheets → References auto-flow
+
+**`frontend/src/components/studio-steps/Step2Characters.tsx`** (updated):
+- Approving the Design Sheet tab now automatically switches to the References tab AND triggers character reference image generation (if not already generated)
+- Button labels updated: "Approve & Generate Images →" (not yet approved) / "View Reference Images →" (already approved)
+- `switchToReferencesAndGenerate()` helper encapsulates tab switch + conditional auto-generate
+- Removed `onSwitchToReferences` prop from `DesignSheetsRightPanel` and the "View in Reference Images" inline link button
+
+---
+
+#### Step 4 — One-click Generate (no double-click)
+
+**`frontend/src/components/studio-steps/Step4Generation.tsx`** (updated):
+- Added `wasBuildingRef` + `useEffect` that watches for state 2→3 transition (panels done building) and auto-calls `handleStartFullGeneration()`
+- Only auto-fires if the panel build was triggered in this session (ref is `false` on page load — no surprise auto-generation on returning to an already-built step)
+- State-1 button renamed from "⚡ Generate All Panels" → "⚡ Generate All Images" to match user expectation
+
+---
+
+#### Step 4 — Progress Bar Cleanup
+
+**`frontend/src/components/studio-steps/Step4Generation.tsx`** (updated):
+- Removed `SegmentedProgressBar` from the "Generation Progress" sidebar panel — `StatsBar` (4-number grid) alone is sufficient; no information lost
+- Removed the 3px indigo progress line at the very top of the fixed bottom bar (`barColor: #4F46E5` during generation looked like a thick blue stripe)
+- Result: during active generation, only 2 visual progress bars visible (main dashboard card A + bottom bar C) instead of 3–4
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/app/api/image-proxy/route.ts` — updated API contract
+- `frontend/src/app/api/image-proxy/characters/route.ts` — **New** (character save proxy)
+- `frontend/src/context/ComicGenerationContext.tsx` — new API fields, `imageGenStyle`, `saveCharacterToServer`, character-name-based generation
+- `frontend/src/components/story-setup/Step1.tsx` — custom `ImageStylePicker` dropdown
+- `frontend/src/components/studio-steps/Step2Characters.tsx` — Design Sheet approval auto-triggers References generation
+- `frontend/src/components/studio-steps/Step4Generation.tsx` — one-click generate, removed duplicate progress bars, removed top-of-bar indigo line
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **`imageGenStyle` vs `artStyle`**: `artStyle` ("Japanese manga style, detailed") is embedded in text prompts by `buildComicPagePrompt()`. `imageGenStyle` ("manga") selects LoRA + trigger words on the SD server. Both coexist; default "manga" for both.
+- **Character name convention**: character names are lowercased before saving to SD server (`character.name.toLowerCase()`). Generation calls use the same lowercased name.
+- **`wasBuildingRef` pattern**: using a `useRef` (not state) to track the 2→3 transition avoids extra re-renders and prevents stale closure issues. The ref is reset to `false` after auto-triggering so it doesn't fire again on subsequent re-renders at state 3.
+- **Pre-existing TS errors**: 13 canvas null-check errors in `Step4Generation.tsx` remain (pre-existing). Zero new TS errors from this session.
+
+---
+
+### 🎯 NEXT STEPS
+
+1. **Test SD server integration end-to-end** — configure `localImageApiUrl`, approve characters in Step 2, verify `/api/image-proxy/characters` fires for each character; generate panels and verify `character_name` is present in proxy requests
+2. **Test one-click generate flow** — click "⚡ Generate All Images" in Step 4, verify panel building starts then image generation auto-begins without a second click
+3. **`story_id` per project**: currently defaults to `projectId` state (default `'three_little_pigs_manga_001'`). Consider letting users set a custom `story_id` or deriving it from the project title
+4. **Character gallery search backend**: current search in `/gallery` is frontend-only; add backend search when gallery grows
+5. **Gallery page auth gate**: "Add to My Library" visible to unauthenticated users — should check `localStorage['mohiom-user-id']`
+
+---
+
 ## SESSION: 2026-06-13
 
 ### 🎯 CONTEXT — Feature 3 (Character Design Rating) + Feature 7 (Admin Analytics Dashboard + Characters Tab)
