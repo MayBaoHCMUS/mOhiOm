@@ -31,11 +31,11 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-async function callImageProxy(apiUrl: string, prompt: string): Promise<string> {
+async function callImageProxy(apiUrl: string, prompt: string, style?: string): Promise<string> {
   const res = await fetch('/api/image-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: apiUrl, prompt, negative_prompt: 'lowres, bad anatomy, deformed' }),
+    body: JSON.stringify({ url: apiUrl, scene_prompt: prompt, negative_prompt: 'lowres, bad anatomy, deformed', ...(style && { style: style.toLowerCase() }) }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
@@ -168,10 +168,11 @@ interface BuildPanelProps {
   ethnicity: string; onEthnicity: (v: string) => void;
   age: string; onAge: (v: string) => void;
   build: string; onBuild: (v: string) => void;
+  style: string; onStyle: (v: string) => void;
   extra: string; onExtra: (v: string) => void;
 }
 
-function BuildPanel({ vibe, onVibe, gender, onGender, ethnicity, onEthnicity, age, onAge, build, onBuild, extra, onExtra }: BuildPanelProps) {
+function BuildPanel({ vibe, onVibe, gender, onGender, ethnicity, onEthnicity, age, onAge, build, onBuild, style, onStyle, extra, onExtra }: BuildPanelProps) {
   return (
     <div className="space-y-4">
       {[
@@ -186,6 +187,10 @@ function BuildPanel({ vibe, onVibe, gender, onGender, ethnicity, onEthnicity, ag
           <div className="mt-1.5"><Chips options={opts} value={val} onChange={set} /></div>
         </div>
       ))}
+      <div>
+        <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">LoRA Style</label>
+        <div className="mt-1.5"><Chips options={STYLES} value={style} onChange={onStyle} /></div>
+      </div>
       <div>
         <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">Additional Description <span className="text-outline normal-case font-normal">(optional)</span></label>
         <textarea
@@ -287,7 +292,7 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
   const handleGenerate = async () => {
     if (!canGenerate) { setError('Fill in a description and Image API URL first.'); return; }
     setError(null); setGenerating(true);
-    try { setPreviewUrl(await callImageProxy(apiUrl.trim(), effectivePrompt)); }
+    try { setPreviewUrl(await callImageProxy(apiUrl.trim(), effectivePrompt, style || undefined)); }
     catch (e) { setError(e instanceof Error ? e.message : 'Generation failed.'); }
     finally { setGenerating(false); }
   };
@@ -383,6 +388,7 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
                 ethnicity={ethnicity} onEthnicity={setEthnicity}
                 age={age} onAge={setAge}
                 build={buildType} onBuild={setBuildType}
+                style={style} onStyle={setStyle}
                 extra={extra} onExtra={setExtra}
               />
             )}
