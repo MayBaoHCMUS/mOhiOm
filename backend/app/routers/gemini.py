@@ -751,14 +751,65 @@ async def health_check():
     return {"status": "configured"}
 
 
+async def _suggest_layout(panels_data: list[dict]) -> tuple[list[list[int]], str]:
+    """
+    Use Gemini to pick the best layout template for this set of panels.
+    Falls back to rule-based selection on any error.
+    Returns (layout, template_name).
+    """
+    from app.comic_composer import LAYOUT_TEMPLATES, LAYOUT_DISPLAY_NAMES, rule_based_layout
+
+    n = len(panels_data)
+    templates = LAYOUT_TEMPLATES.get(n)
+    if not templates or gemini_service is None:
+        return rule_based_layout(panels_data)
+
+    panel_desc = "\n".join(
+        f"  Panel {p['panel_number']}: {p.get('shot_type', 'medium shot')}"
+        + (f" — \"{p['dialogue'][:60]}\"" if p.get("dialogue") else "")
+        for p in panels_data
+    )
+    options = "\n".join(
+        f"  \"{name}\": {LAYOUT_DISPLAY_NAMES.get(name, name)}"
+        for name in templates
+    )
+
+    prompt = (
+        f"You are a manga layout artist. Arrange {n} panels into the most dynamic page.\n\n"
+        f"Panels:\n{panel_desc}\n\n"
+        f"Available layouts:\n{options}\n\n"
+        "Rules:\n"
+        "- Splash/wide shots deserve full-width rows\n"
+        "- Close-ups and inserts can share a row side-by-side\n"
+        "- Vary the layout to create visual rhythm\n"
+        "- Action climaxes benefit from larger panels\n\n"
+        'Respond ONLY with valid JSON: {"template": "<template_name>", "rationale": "<one sentence>"}'
+    )
+
+    try:
+        result = await gemini_service.generate_text(prompt, stream=False)
+        import json, re
+        match = re.search(r'\{[^}]+\}', result, re.DOTALL)
+        if match:
+            data = json.loads(match.group())
+            chosen = data.get("template", "").strip()
+            if chosen in templates:
+                return templates[chosen], chosen
+    except Exception:
+        pass
+
+    return rule_based_layout(panels_data)
+
+
 @router.post("/compose-page", response_model=ComposePageResponse)
 async def compose_page(req: ComposePageRequest):
     """
     Compose panel images into a single comic page using Pillow layout engine.
-    Accepts base64 data URLs per panel; returns a 1200x1600 PNG as base64.
+    Accepts base64 data URLs per panel; returns a 1200×1600 PNG as base64.
+    Set use_smart_layout=true to let Gemini pick the best layout template.
     """
     try:
-        from app.comic_composer import compose_page as _compose
+        from app.comic_composer import compose_page as _compose, LAYOUT_DISPLAY_NAMES
     except ImportError:
         raise HTTPException(status_code=500, detail="Pillow is not installed. Run: pip install Pillow>=10.0.0")
 
@@ -775,8 +826,15 @@ async def compose_page(req: ComposePageRequest):
         for p in req.panels
     ]
 
+    if req.use_smart_layout:
+        layout, layout_name = await _suggest_layout(panels_data)
+    elif req.layout is not None:
+        layout, layout_name = req.layout, "custom"
+    else:
+        layout, layout_name = None, "stacked"
+
     try:
-        page_img = _compose(panels_data, style=req.style)
+        page_img = _compose(panels_data, style=req.style, layout=layout)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Composition failed: {e}")
 
@@ -790,6 +848,7 @@ async def compose_page(req: ComposePageRequest):
         page_width=page_img.width,
         page_height=page_img.height,
         panel_count=len(req.panels),
+        layout_name=LAYOUT_DISPLAY_NAMES.get(layout_name, layout_name),
     )
 
 
@@ -797,10 +856,10 @@ async def compose_page(req: ComposePageRequest):
 async def auto_layout(req: AutoLayoutRequest):
     """
     Split a full AI-generated comic page into individual panels, then
-    re-compose them with intensity-based sizing derived from shot_type.
+    re-compose them with smart intensity-based layout derived from shot_type.
 
     Flow: decode page image → detect gutter lines → crop panels →
-          re-compose with comic_composer using shot_type weights.
+          suggest layout via Gemini → re-compose with comic_composer.
     """
     try:
         from app.panel_splitter import split_panels
@@ -838,8 +897,10 @@ async def auto_layout(req: AutoLayoutRequest):
             "image_data_url": data_url,
         })
 
+    layout, _layout_name = await _suggest_layout(panels_data)
+
     try:
-        composed = _compose(panels_data, style=req.style)
+        composed = _compose(panels_data, style=req.style, layout=layout)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Composition failed: {e}")
 

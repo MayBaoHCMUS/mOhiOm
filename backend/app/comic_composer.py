@@ -39,6 +39,57 @@ SHOT_INTENSITY: dict[str, int] = {
 
 DEFAULT_INTENSITY = 3
 
+# ── Layout templates by panel count ───────────────────────────────────────────
+# Each template: list of rows; each row: list of panel indices (0-based)
+
+LAYOUT_TEMPLATES: dict[int, dict[str, list[list[int]]]] = {
+    1: {
+        "splash":         [[0]],
+    },
+    2: {
+        "stacked":        [[0], [1]],
+        "side_by_side":   [[0, 1]],
+    },
+    3: {
+        "three_rows":     [[0], [1], [2]],
+        "top_wide":       [[0], [1, 2]],
+        "bottom_wide":    [[0, 1], [2]],
+    },
+    4: {
+        "grid_2x2":       [[0, 1], [2, 3]],
+        "top_wide_3":     [[0], [1, 2, 3]],
+        "bottom_wide_3":  [[0, 1, 2], [3]],
+        "four_rows":      [[0], [1], [2], [3]],
+    },
+    5: {
+        "wide_2x2":       [[0], [1, 2], [3, 4]],
+        "2x2_wide":       [[0, 1], [2, 3], [4]],
+    },
+    6: {
+        "grid_3x2":       [[0, 1, 2], [3, 4, 5]],
+        "grid_2x3":       [[0, 1], [2, 3], [4, 5]],
+    },
+}
+
+LAYOUT_DISPLAY_NAMES: dict[str, str] = {
+    "splash":        "Full Splash",
+    "stacked":       "Stacked Rows",
+    "side_by_side":  "Side by Side",
+    "three_rows":    "Three Rows",
+    "top_wide":      "Wide Top",
+    "bottom_wide":   "Wide Bottom",
+    "grid_2x2":      "2×2 Grid",
+    "top_wide_3":    "Wide + Three",
+    "bottom_wide_3": "Three + Wide",
+    "four_rows":     "Four Rows",
+    "wide_2x2":      "Wide + 2×2",
+    "2x2_wide":      "2×2 + Wide",
+    "grid_3x2":      "3-Column Grid",
+    "grid_2x3":      "2-Column Grid",
+    "stacked_n":     "Stacked Rows",
+    "custom":        "Custom Layout",
+}
+
 
 def _shot_intensity(shot_type: str) -> int:
     return SHOT_INTENSITY.get(shot_type.lower().strip(), DEFAULT_INTENSITY)
@@ -57,6 +108,17 @@ def _fit_image(img: Image.Image, target_w: int, target_h: int) -> Image.Image:
     new_w = max(1, int(img.width * ratio))
     new_h = max(1, int(img.height * ratio))
     return img.resize((new_w, new_h), Image.LANCZOS)
+
+
+def _cover_image(img: Image.Image, target_w: int, target_h: int) -> Image.Image:
+    """Scale and center-crop image to exactly fill target_w × target_h (no white bars)."""
+    ratio = max(target_w / img.width, target_h / img.height)
+    new_w = max(1, int(img.width * ratio))
+    new_h = max(1, int(img.height * ratio))
+    resized = img.resize((new_w, new_h), Image.LANCZOS)
+    x = (new_w - target_w) // 2
+    y = (new_h - target_h) // 2
+    return resized.crop((x, y, x + target_w, y + target_h))
 
 
 def _draw_speech_bubble(
@@ -106,7 +168,60 @@ def _draw_speech_bubble(
         draw.text((bx + pad, by + pad + j * line_h), l, fill=BORDER_COLOR)
 
 
-def compose_page(panels: list[dict], style: str = "manga") -> Image.Image:
+def rule_based_layout(panels: list[dict]) -> tuple[list[list[int]], str]:
+    """
+    Choose a layout template based on panel shot types without calling LLM.
+    Returns (layout, template_name).
+    """
+    n = len(panels)
+    shots = [p.get("shot_type", "").lower().strip() for p in panels]
+
+    def is_wide(s: str) -> bool:
+        return any(k in s for k in ("wide", "establishing", "splash", "full"))
+
+    def is_close(s: str) -> bool:
+        return any(k in s for k in ("close", "insert", "detail"))
+
+    templates = LAYOUT_TEMPLATES.get(n)
+    if not templates:
+        # For n > 6, fall back to stacked rows
+        return [[i] for i in range(n)], "stacked_n"
+
+    if n == 1:
+        return templates["splash"], "splash"
+
+    if n == 2:
+        if all(is_close(s) for s in shots):
+            return templates["side_by_side"], "side_by_side"
+        return templates["stacked"], "stacked"
+
+    if n == 3:
+        if is_wide(shots[0]):
+            return templates["top_wide"], "top_wide"
+        if is_wide(shots[-1]):
+            return templates["bottom_wide"], "bottom_wide"
+        return templates["three_rows"], "three_rows"
+
+    if n == 4:
+        has_splash = any(is_wide(s) and "splash" in s for s in shots)
+        if has_splash:
+            return templates["four_rows"], "four_rows"
+        return templates["grid_2x2"], "grid_2x2"
+
+    if n == 5:
+        if is_wide(shots[0]):
+            return templates["wide_2x2"], "wide_2x2"
+        return templates["2x2_wide"], "2x2_wide"
+
+    # n == 6
+    return templates["grid_2x3"], "grid_2x3"
+
+
+def compose_page(
+    panels: list[dict],
+    style: str = "manga",
+    layout: list[list[int]] | None = None,
+) -> Image.Image:
     """
     Compose panel images into a 1200×1600 comic page.
 
@@ -116,7 +231,11 @@ def compose_page(panels: list[dict], style: str = "manga") -> Image.Image:
       - dialogue: str | None  optional speech bubble text
       - panel_number: int     sort order
 
-    style: "manga" (borders + gutter) | "webtoon" (no border, no gutter)
+    style:  "manga" (borders + gutter) | "webtoon" (no border, no gutter)
+    layout: list of rows; each row is a list of panel indices (0-based).
+            e.g. [[0, 1], [2], [3, 4]] → row 0 has panels 0 & 1 side-by-side,
+            row 1 has panel 2 full-width, row 2 has panels 3 & 4 side-by-side.
+            None → one row per panel (original stacked behaviour).
     """
     is_manga = style.lower() != "webtoon"
     gutter = GUTTER_MANGA if is_manga else GUTTER_WEBTOON
@@ -126,51 +245,72 @@ def compose_page(panels: list[dict], style: str = "manga") -> Image.Image:
     if n == 0:
         return Image.new("RGB", (PAGE_W, PAGE_H), BG_COLOR)
 
+    # Default layout: one panel per row
+    if layout is None:
+        layout = [[i] for i in range(n)]
+
+    # Clamp panel indices to valid range
+    layout = [[idx for idx in row if idx < n] for row in layout]
+    layout = [row for row in layout if row]
+
     # Decode all images
     images = [_decode_image(p["image_data_url"]) for p in panels_sorted]
 
-    # Compute row heights proportional to intensity weights
-    weights = [_shot_intensity(p.get("shot_type", "")) for p in panels_sorted]
-    total_weight = sum(weights)
-    usable_h = PAGE_H - 2 * MARGIN - (n - 1) * gutter
-    row_heights = [max(1, int(usable_h * w / total_weight)) for w in weights]
+    num_rows = len(layout)
+    usable_h = PAGE_H - 2 * MARGIN - max(0, num_rows - 1) * gutter
+    usable_w = PAGE_W - 2 * MARGIN
 
+    # Row heights proportional to max shot intensity in each row
+    row_weights = [
+        max(_shot_intensity(panels_sorted[idx].get("shot_type", "")) for idx in row)
+        for row in layout
+    ]
+    total_weight = sum(row_weights) or 1
+    row_heights = [max(1, int(usable_h * w / total_weight)) for w in row_weights]
     # Fix rounding drift on last row
-    row_heights[-1] = PAGE_H - 2 * MARGIN - (n - 1) * gutter - sum(row_heights[:-1])
-    row_heights[-1] = max(1, row_heights[-1])
+    row_heights[-1] = max(1, usable_h - sum(row_heights[:-1]))
 
     page = Image.new("RGB", (PAGE_W, PAGE_H), BG_COLOR)
     draw = ImageDraw.Draw(page)
-    pw = PAGE_W - 2 * MARGIN
 
     y = MARGIN
-    for panel, img, row_h in zip(panels_sorted, images, row_heights):
+    for row_idx, (row_panels, row_h) in enumerate(zip(layout, row_heights)):
+        num_cols = len(row_panels)
+        col_gutter = gutter if is_manga else 0
+        total_col_gutter = max(0, num_cols - 1) * col_gutter
+        cell_w = max(1, (usable_w - total_col_gutter) // num_cols)
+
         x = MARGIN
+        for col_idx, panel_idx in enumerate(row_panels):
+            # Last column absorbs rounding remainder
+            if col_idx == num_cols - 1:
+                cell_w = max(1, MARGIN + usable_w - x)
 
-        # Fit and center image in panel cell
-        canvas = Image.new("RGB", (pw, row_h), BG_COLOR)
-        resized = _fit_image(img, pw, row_h)
-        off_x = (pw - resized.width) // 2
-        off_y = (row_h - resized.height) // 2
-        canvas.paste(resized, (off_x, off_y))
-        page.paste(canvas, (x, y))
+            panel = panels_sorted[panel_idx]
+            img = images[panel_idx]
 
-        if is_manga:
-            draw.rectangle(
-                [x, y, x + pw - 1, y + row_h - 1],
-                outline=BORDER_COLOR,
-                width=BORDER_W_MANGA,
-            )
+            # Cover-crop image to exactly fill the cell
+            filled = _cover_image(img, cell_w, row_h)
+            page.paste(filled, (x, y))
 
-        dialogue = panel.get("dialogue") or ""
-        if dialogue.strip():
-            _draw_speech_bubble(
-                draw,
-                dialogue.strip(),
-                bubble_x=x + pw // 2,
-                bubble_y=y + 20,
-                max_width=pw - 32,
-            )
+            if is_manga:
+                draw.rectangle(
+                    [x, y, x + cell_w - 1, y + row_h - 1],
+                    outline=BORDER_COLOR,
+                    width=BORDER_W_MANGA,
+                )
+
+            dialogue = panel.get("dialogue") or ""
+            if dialogue.strip():
+                _draw_speech_bubble(
+                    draw,
+                    dialogue.strip(),
+                    bubble_x=x + cell_w // 2,
+                    bubble_y=y + 20,
+                    max_width=cell_w - 32,
+                )
+
+            x += cell_w + col_gutter
 
         y += row_h + gutter
 

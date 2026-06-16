@@ -1,3 +1,28 @@
+## SESSION: 2026-06-16 (continued)
+
+### ✅ COMPLETED — Tab-Based Layout Redesign (Step4Generation.tsx)
+
+**What changed:**
+- Replaced single-page Step 4 with a 4-tab progressive workflow: Generate → Layout → Dialogue → Export
+- Tab bar: 44px tabs with badge counters, lock rules, `sessionStorage` persistence
+- Tab 1 (Generate): all existing generation dashboard + panel grids; completion nudge banner
+- Tab 2 (Layout): "AI Layout All Pages" button + per-page composed views + panel mini-card approval grid
+- Tab 3 (Dialogue): optional dialogue editing, auto-import from script, inline textarea edit
+- Tab 4 (Export): inline star rating (non-blocking), PDF/ZIP/cloud/JSON export options, page preview strip
+- Simple bottom bar: prev/next nav per tab, replaces complex 190-line state machine
+- Removed `ExportModal` and `ComicRatingModal` popup components (moved inline to Tab 4)
+- New handlers: `handleComposeAllPages`, `handleApproveAllOnPage`, `autoImportDialogue`
+- New state: `activeStep4Tab`, `dialogueEdits`, `dialogueEditOpen`, `dialogueEditValue`, `composingAll`, `showCompletionNudge`, `exportStars`, `exportHovered`, `exportPositive`, `exportNegative`, `includeMetadata`
+- File went from 2688 → 2099 lines (net -589 lines)
+- TypeScript: zero new errors; ESLint: went from 8 → 2 pre-existing errors
+
+**Also completed (same session):**
+- Smart panel layout (`comic_composer.py`): LLM-driven layout selection, cover-crop image fill, `LAYOUT_TEMPLATES` dict, `rule_based_layout()`, `_suggest_layout()` in `gemini.py`
+- `schemas.py`: `ComposePageRequest.use_smart_layout`, `ComposePageResponse.layout_name`
+- `api.ts`: updated interfaces for compose page
+
+---
+
 ## SESSION: 2026-06-16
 
 ### 🎯 CONTEXT — Step 4 panel grid polish, progress bar, and footer standardization

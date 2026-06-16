@@ -198,6 +198,8 @@ export interface ComposePanelInput {
 export interface ComposePageRequest {
   panels: ComposePanelInput[];
   style?: string;
+  layout?: number[][];          // explicit panel-index rows, e.g. [[0,1],[2]]
+  use_smart_layout?: boolean;   // let Gemini pick the best layout template
 }
 
 export interface ComposePageResponse {
@@ -206,6 +208,7 @@ export interface ComposePageResponse {
   page_width: number;
   page_height: number;
   panel_count: number;
+  layout_name?: string;         // e.g. "2×2 Grid"
 }
 
 export interface AutoLayoutPanel {

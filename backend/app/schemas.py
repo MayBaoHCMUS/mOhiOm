@@ -213,6 +213,8 @@ class ComposePageRequest(BaseModel):
 
     panels: List[ComposePanelInput]
     style: str = "manga"
+    layout: Optional[List[List[int]]] = None  # explicit panel-index rows, e.g. [[0,1],[2]]
+    use_smart_layout: bool = False             # trigger LLM layout selection
 
 
 class ComposePageResponse(BaseModel):
@@ -223,6 +225,7 @@ class ComposePageResponse(BaseModel):
     page_width: int
     page_height: int
     panel_count: int
+    layout_name: Optional[str] = None  # e.g. "grid_2x2" or display name
 
 
 class AutoLayoutPanel(BaseModel):
