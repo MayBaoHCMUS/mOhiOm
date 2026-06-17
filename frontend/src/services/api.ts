@@ -232,6 +232,33 @@ export interface AutoLayoutResponse {
   detected_panels: number;
 }
 
+export interface LayoutDimensionsPanel {
+  panel_number: number;
+  shot_type?: string;
+}
+
+export interface LayoutDimensionsRequest {
+  panels: LayoutDimensionsPanel[];
+  layout_name: string;
+  style?: string;
+}
+
+export interface PanelCellDimension {
+  panel_index: number;
+  panel_number: number;
+  width: number;
+  height: number;
+}
+
+export interface LayoutDimensionsResponse {
+  status: string;
+  layout_name: string;
+  layout: number[][];
+  dimensions: PanelCellDimension[];
+  page_width: number;
+  page_height: number;
+}
+
 export const toApiError = (error: unknown): ApiErrorInfo => {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status ?? 0;
@@ -1020,6 +1047,9 @@ export const geminiApi = {
 
   autoLayout: (payload: AutoLayoutRequest) =>
     apiClient.post<AutoLayoutResponse>("/gemini/auto-layout", payload),
+
+  getLayoutDimensions: (payload: LayoutDimensionsRequest) =>
+    apiClient.post<LayoutDimensionsResponse>("/gemini/layout-dimensions", payload),
 
   health: () => apiClient.get("/gemini/health"),
 };

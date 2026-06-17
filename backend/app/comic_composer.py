@@ -217,6 +217,54 @@ def rule_based_layout(panels: list[dict]) -> tuple[list[list[int]], str]:
     return templates["grid_2x3"], "grid_2x3"
 
 
+def compute_layout_cell_dimensions(
+    layout: list[list[int]],
+    panel_shot_types: list[str],
+    style: str = "manga",
+) -> list[dict]:
+    """
+    Compute exact pixel dimensions for each panel cell in the given layout.
+    Mirrors compose_page() row/column geometry so images generated at these sizes
+    fill their cells without cropping.
+
+    Returns [{"panel_index": int, "width": int, "height": int}, ...] sorted by panel_index.
+    """
+    is_manga = style.lower() != "webtoon"
+    gutter = GUTTER_MANGA if is_manga else GUTTER_WEBTOON
+
+    num_rows = len(layout)
+    usable_h = PAGE_H - 2 * MARGIN - max(0, num_rows - 1) * gutter
+    usable_w = PAGE_W - 2 * MARGIN
+
+    row_weights = [
+        max(
+            _shot_intensity(panel_shot_types[idx])
+            if idx < len(panel_shot_types) else DEFAULT_INTENSITY
+            for idx in row
+        )
+        for row in layout
+    ]
+    total_weight = sum(row_weights) or 1
+    row_heights = [max(1, int(usable_h * w / total_weight)) for w in row_weights]
+    row_heights[-1] = max(1, usable_h - sum(row_heights[:-1]))
+
+    result: list[dict] = []
+    for row_panels, row_h in zip(layout, row_heights):
+        num_cols = len(row_panels)
+        col_gutter = gutter if is_manga else 0
+        total_col_gutter = max(0, num_cols - 1) * col_gutter
+        base_cell_w = max(1, (usable_w - total_col_gutter) // num_cols)
+
+        x = MARGIN  # track running x to compute last-column remainder (mirrors compose_page)
+        for col_idx, panel_idx in enumerate(row_panels):
+            cell_w = max(1, MARGIN + usable_w - x) if col_idx == num_cols - 1 else base_cell_w
+            result.append({"panel_index": panel_idx, "width": cell_w, "height": row_h})
+            x += cell_w + col_gutter
+
+    result.sort(key=lambda d: d["panel_index"])
+    return result
+
+
 def compose_page(
     panels: list[dict],
     style: str = "manga",

@@ -27,6 +27,8 @@ export interface ImageGenSettings {
   characterName?: string;
   storyId?: string;
   style?: string;
+  width?: number;
+  height?: number;
 }
 
 export interface StepState<T> {
@@ -231,6 +233,8 @@ const fetchImageFromAI = async (
       requestBody.control_image_b64 = settings.controlImageBase64;
       requestBody.controlnet_scale = settings.controlnetScale ?? 0.8;
     }
+    if (settings?.width !== undefined)  requestBody.width  = settings.width;
+    if (settings?.height !== undefined) requestBody.height = settings.height;
 
     console.group('[fetchImageFromAI] Image generation request');
     console.log('Proxy URL   :', '/api/image-proxy');
@@ -553,6 +557,9 @@ export interface ComicGenerationContextValue {
   handleSelectCharacterCandidate: (characterId: string, candidateId: string) => void;
   handleApproveCharacterReferences: () => void;
   handleRetryCharacterReferences: () => void;
+  pageLayoutNames: Record<number, string>;
+  pagePanelDimensions: Record<number, Record<string, { width: number; height: number }>>;
+  setPageLayout: (pageNumber: number, layoutName: string, panelsOnPage: Step4Panel[]) => Promise<void>;
   handleStartFullGeneration: () => Promise<void>;
   handleStartPanelGeneration: () => Promise<void>;
   handleRegenerateSinglePanel: (panel: Step4Panel) => Promise<void>;
@@ -616,6 +623,10 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   const [controlnetScale, setControlnetScale] = useState(0.8);
   const [useStreaming, setUseStreaming] = useState(true);
   const [sfxMode, setSfxMode] = useState<'auto' | 'manual'>('auto');
+  const [pageLayoutNames, setPageLayoutNames] = useState<Record<number, string>>({});
+  const [pagePanelDimensions, setPagePanelDimensions] = useState<
+    Record<number, Record<string, { width: number; height: number }>>
+  >({});
   const [setupValidation, setSetupValidation] = useState<SetupValidationState | null>(null);
   const [setupSubmitAttempted, setSetupSubmitAttempted] = useState(false);
   const [streamingText, setStreamingText] = useState('');
@@ -1611,6 +1622,10 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
 
     // ── Step 4: build panel list from step 3 markdown (no LLM call) ──────────
+    if (step === 4) {
+      setPageLayoutNames({});
+      setPagePanelDimensions({});
+    }
     try {
       const data = await buildStepPayload(step);
       setStepState(step, (prev) => ({
@@ -1881,6 +1896,36 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     setStep3((prev) => ({ ...prev, locked: true }));
   };
 
+  const setPageLayout = async (
+    pageNumber: number,
+    layoutName: string,
+    panelsOnPage: Step4Panel[],
+  ): Promise<void> => {
+    const style = imageGenStyle?.toLowerCase().includes('webtoon') ? 'webtoon' : 'manga';
+    setPageLayoutNames((prev) => ({ ...prev, [pageNumber]: layoutName }));
+
+    try {
+      const sorted = [...panelsOnPage].sort((a, b) => a.panelNumber - b.panelNumber);
+      const res = await geminiApi.getLayoutDimensions({
+        panels: sorted.map((p) => ({
+          panel_number: p.panelNumber,
+          shot_type: p.shotType ?? 'medium shot',
+        })),
+        layout_name: layoutName,
+        style,
+      });
+      const dimMap: Record<string, { width: number; height: number }> = {};
+      for (const dim of res.data.dimensions) {
+        const panel = sorted.find((p) => p.panelNumber === dim.panel_number);
+        if (panel) dimMap[panel.id] = { width: dim.width, height: dim.height };
+      }
+      setPagePanelDimensions((prev) => ({ ...prev, [pageNumber]: dimMap }));
+      setPageLayoutNames((prev) => ({ ...prev, [pageNumber]: res.data.layout_name }));
+    } catch {
+      console.warn(`[setPageLayout] Failed to fetch dimensions for page ${pageNumber}`);
+    }
+  };
+
   const generatePanelImages = async (
     panelsArray: Step4Panel[],
     options?: { batchSize?: number; delayMs?: number }
@@ -1927,6 +1972,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
                 cleanPrompt += `. Dialogue: ${sfx}`;
               }
             }
+            const panelDimensions = pagePanelDimensions[panel.pageNumber]?.[panel.id];
             const effectiveSettings: ImageGenSettings = {
               mode: imageGenMode,
               referenceImageBase64: characterRefs[0]?.image_url ?? referenceImageBase64,
@@ -1936,6 +1982,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
               characterName: firstCharName || undefined,
               storyId: projectId,
               style: imageGenStyle,
+              width: panelDimensions?.width,
+              height: panelDimensions?.height,
             };
             const imageUrl = await fetchImageFromAI(cleanPrompt, localImageApiUrl || undefined, effectiveSettings);
             return {
@@ -2975,6 +3023,9 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     handleSelectCharacterCandidate,
     handleApproveCharacterReferences,
     handleRetryCharacterReferences,
+    pageLayoutNames,
+    pagePanelDimensions,
+    setPageLayout,
     handleStartFullGeneration,
     handleStartPanelGeneration,
     handleRegenerateSinglePanel,

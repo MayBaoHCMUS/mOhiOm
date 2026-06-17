@@ -254,3 +254,31 @@ class AutoLayoutResponse(BaseModel):
     panel_count: int
     detected_panels: int
 
+
+class LayoutDimensionsRequest(BaseModel):
+    """Request to compute panel cell pixel dimensions for a chosen layout template."""
+
+    panels: List[AutoLayoutPanel]  # panel_number + shot_type per panel
+    layout_name: str               # e.g. "grid_2x2"; "auto" triggers rule-based selection
+    style: str = "manga"
+
+
+class PanelCellDimensions(BaseModel):
+    """Exact pixel dimensions for one panel cell in the chosen layout."""
+
+    panel_index: int   # 0-based position in the sorted panels list
+    panel_number: int  # 1-based panel number from the script
+    width: int
+    height: int
+
+
+class LayoutDimensionsResponse(BaseModel):
+    """Computed cell dimensions for every panel in the chosen layout."""
+
+    status: str
+    layout_name: str
+    layout: List[List[int]]               # resolved row-of-indices structure
+    dimensions: List[PanelCellDimensions]
+    page_width: int = 1200
+    page_height: int = 1600
+

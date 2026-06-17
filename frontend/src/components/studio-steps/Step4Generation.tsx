@@ -822,6 +822,88 @@ function PanelCard({
   );
 }
 
+// ── Layout template constants (mirrors backend LAYOUT_TEMPLATES) ──────────────
+
+const TEMPLATES_BY_COUNT: Record<number, string[]> = {
+  1: ['splash'],
+  2: ['stacked', 'side_by_side'],
+  3: ['three_rows', 'top_wide', 'bottom_wide'],
+  4: ['grid_2x2', 'top_wide_3', 'bottom_wide_3', 'four_rows'],
+  5: ['wide_2x2', '2x2_wide'],
+  6: ['grid_3x2', 'grid_2x3'],
+};
+
+const LAYOUT_DISPLAY_NAMES_MAP: Record<string, string> = {
+  splash: 'Full Splash', stacked: 'Stacked', side_by_side: 'Side by Side',
+  three_rows: 'Three Rows', top_wide: 'Wide Top', bottom_wide: 'Wide Bottom',
+  grid_2x2: '2×2 Grid', top_wide_3: 'Wide + Three', bottom_wide_3: 'Three + Wide',
+  four_rows: 'Four Rows', wide_2x2: 'Wide + 2×2', '2x2_wide': '2×2 + Wide',
+  grid_3x2: '3-Col Grid', grid_2x3: '2-Col Grid',
+};
+
+// Row-of-indices for each template (needed for compose-page explicit layout)
+const LAYOUT_ROW_STRUCTURES: Record<string, number[][]> = {
+  splash: [[0]], stacked: [[0],[1]], side_by_side: [[0,1]],
+  three_rows: [[0],[1],[2]], top_wide: [[0],[1,2]], bottom_wide: [[0,1],[2]],
+  grid_2x2: [[0,1],[2,3]], top_wide_3: [[0],[1,2,3]], bottom_wide_3: [[0,1,2],[3]],
+  four_rows: [[0],[1],[2],[3]], wide_2x2: [[0],[1,2],[3,4]], '2x2_wide': [[0,1],[2,3],[4]],
+  grid_3x2: [[0,1,2],[3,4,5]], grid_2x3: [[0,1],[2,3],[4,5]],
+};
+
+// SVG panel rects for each template (48×64 viewport)
+const LAYOUT_SVGS: Record<string, React.ReactNode> = {
+  splash:        <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>,
+  stacked:       <><rect x="2" y="2"  width="44" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="44" height="28" rx="1" fill="currentColor"/></>,
+  side_by_side:  <><rect x="2"  y="2" width="20" height="60" rx="1" fill="currentColor"/><rect x="26" y="2" width="20" height="60" rx="1" fill="currentColor"/></>,
+  three_rows:    <><rect x="2" y="2"  width="44" height="17" rx="1" fill="currentColor"/><rect x="2" y="23" width="44" height="17" rx="1" fill="currentColor"/><rect x="2" y="44" width="44" height="18" rx="1" fill="currentColor"/></>,
+  top_wide:      <><rect x="2" y="2"  width="44" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="34" width="20" height="28" rx="1" fill="currentColor"/></>,
+  bottom_wide:   <><rect x="2" y="2"  width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="2" width="20" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="44" height="28" rx="1" fill="currentColor"/></>,
+  grid_2x2:      <><rect x="2"  y="2"  width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="2"  width="20" height="28" rx="1" fill="currentColor"/><rect x="2"  y="34" width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="34" width="20" height="28" rx="1" fill="currentColor"/></>,
+  top_wide_3:    <><rect x="2" y="2"  width="44" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="12" height="28" rx="1" fill="currentColor"/><rect x="18" y="34" width="12" height="28" rx="1" fill="currentColor"/><rect x="34" y="34" width="12" height="28" rx="1" fill="currentColor"/></>,
+  bottom_wide_3: <><rect x="2" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="18" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="34" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="44" height="28" rx="1" fill="currentColor"/></>,
+  four_rows:     <><rect x="2" y="2"  width="44" height="12" rx="1" fill="currentColor"/><rect x="2" y="18" width="44" height="12" rx="1" fill="currentColor"/><rect x="2" y="34" width="44" height="12" rx="1" fill="currentColor"/><rect x="2" y="50" width="44" height="12" rx="1" fill="currentColor"/></>,
+  wide_2x2:      <><rect x="2" y="2"  width="44" height="17" rx="1" fill="currentColor"/><rect x="2" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="2" y="44" width="20" height="18" rx="1" fill="currentColor"/><rect x="26" y="44" width="20" height="18" rx="1" fill="currentColor"/></>,
+  '2x2_wide':    <><rect x="2" y="2"  width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="2"  width="20" height="17" rx="1" fill="currentColor"/><rect x="2" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="2" y="44" width="44" height="18" rx="1" fill="currentColor"/></>,
+  grid_3x2:      <><rect x="2"  y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="18" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="34" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="2"  y="34" width="12" height="28" rx="1" fill="currentColor"/><rect x="18" y="34" width="12" height="28" rx="1" fill="currentColor"/><rect x="34" y="34" width="12" height="28" rx="1" fill="currentColor"/></>,
+  grid_2x3:      <><rect x="2"  y="2"  width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="2"  width="20" height="17" rx="1" fill="currentColor"/><rect x="2"  y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="2"  y="44" width="20" height="18" rx="1" fill="currentColor"/><rect x="26" y="44" width="20" height="18" rx="1" fill="currentColor"/></>,
+};
+
+function LayoutTemplatePicker({
+  panelCount,
+  selectedLayout,
+  onSelect,
+}: {
+  panelCount: number;
+  selectedLayout: string;
+  onSelect: (name: string) => void;
+}) {
+  const options = TEMPLATES_BY_COUNT[panelCount] ?? [];
+  if (options.length <= 1) return null;
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      <span className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider mr-1">Layout</span>
+      {options.map((name) => (
+        <button
+          key={name}
+          type="button"
+          title={LAYOUT_DISPLAY_NAMES_MAP[name] ?? name}
+          onClick={() => onSelect(name)}
+          className={`w-8 h-[42px] rounded-lg border-2 flex items-center justify-center transition-all ${
+            selectedLayout === name
+              ? 'border-primary text-primary bg-primary/10'
+              : 'border-outline-variant/30 text-on-surface-variant/40 hover:border-primary/40 hover:text-primary/60'
+          }`}
+        >
+          <svg viewBox="0 0 48 64" className="w-5 h-[27px]" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {LAYOUT_SVGS[name] ?? <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>}
+          </svg>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function Step4Generation() {
   const {
@@ -854,6 +936,9 @@ export default function Step4Generation() {
     setActiveStep,
     sfxMode,
     setSfxMode,
+    pageLayoutNames,
+    pagePanelDimensions,
+    setPageLayout,
   } = useComicGeneration();
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -931,6 +1016,8 @@ export default function Step4Generation() {
       const allPanelsHaveImages = panelImages.every((pi) => pi.imageUrl);
 
       if (allPanelsHaveImages) {
+        const chosenLayoutName = pageLayoutNames[pageNumber];
+        const chosenLayout = chosenLayoutName ? LAYOUT_ROW_STRUCTURES[chosenLayoutName] : undefined;
         const res = await geminiApi.composePage({
           panels: panelImages.map((pi) => ({
             panel_number: pi.panel.panelNumber,
@@ -939,7 +1026,8 @@ export default function Step4Generation() {
             image_data_url: pi.imageUrl!,
           })),
           style,
-          use_smart_layout: true,
+          layout: chosenLayout,
+          use_smart_layout: !chosenLayout,
         });
         setComposeStates((prev) => ({
           ...prev,
@@ -980,7 +1068,7 @@ export default function Step4Generation() {
       const msg = err instanceof Error ? err.message : 'Auto layout failed';
       setComposeStates((prev) => ({ ...prev, [pageNumber]: { status: 'error', imageUrl: null, error: msg } }));
     }
-  }, [step4.data?.panelStates, step4.data?.pageStates, artStyle]);
+  }, [step4.data?.panelStates, step4.data?.pageStates, artStyle, pageLayoutNames]);
 
   const handleComposeAllPages = useCallback(async () => {
     setComposingAll(true);
@@ -1009,6 +1097,26 @@ export default function Step4Generation() {
     }
     setDialogueEdits(edits);
   }, [step4PanelsByPage]);
+
+  // Auto-initialize layout selection for each page when panels first become available
+  const hasInitializedLayoutsRef = useRef(false);
+  useEffect(() => {
+    if (!step4.data?.panels.length || hasInitializedLayoutsRef.current) return;
+    hasInitializedLayoutsRef.current = true;
+    for (const [pageNumber, panels] of step4PanelsByPage) {
+      if (!pageLayoutNames[pageNumber]) {
+        const defaultLayout = TEMPLATES_BY_COUNT[panels.length]?.[0] ?? 'stacked';
+        setPageLayout(pageNumber, defaultLayout, panels);
+      }
+    }
+  }, [step4.data?.panels.length, step4PanelsByPage, pageLayoutNames, setPageLayout]);
+
+  // Reset layout init flag when step4 panels are rebuilt
+  useEffect(() => {
+    if (!step4.data?.panels.length) {
+      hasInitializedLayoutsRef.current = false;
+    }
+  }, [step4.data?.panels.length]);
 
   // Load saved ratings on mount
   useEffect(() => {
@@ -1520,9 +1628,27 @@ export default function Step4Generation() {
           {/* Panel mode: per-page panel grids */}
           {comicPageMode === 'panel' && (state === 3 || state === 4 || state === 5) && step4PanelsByPage.length > 0 && (
             <div className="space-y-4">
-              {step4PanelsByPage.map(([pageNumber, panels]) => (
+              {step4PanelsByPage.map(([pageNumber, panels]) => {
+                const chosenLayout = pageLayoutNames[pageNumber] ?? TEMPLATES_BY_COUNT[panels.length]?.[0] ?? 'stacked';
+                const hasDimensions = !!pagePanelDimensions[pageNumber];
+                return (
                 <div key={`page-${pageNumber}`} className="space-y-2">
-                  <p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Page {pageNumber}</p>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Page {pageNumber}</p>
+                    <div className="flex items-center gap-2">
+                      <LayoutTemplatePicker
+                        panelCount={panels.length}
+                        selectedLayout={chosenLayout}
+                        onSelect={(name) => setPageLayout(pageNumber, name, panels)}
+                      />
+                      {chosenLayout && !hasDimensions && (
+                        <span className="text-[10px] text-on-surface-variant animate-pulse">setting…</span>
+                      )}
+                      {hasDimensions && (
+                        <span className="text-[10px] text-emerald-600 font-semibold">✓ sizes set</span>
+                      )}
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     {panels.map((panel, idx) => {
                       const isLastOdd = panels.length % 2 === 1 && idx === panels.length - 1;
@@ -1549,7 +1675,8 @@ export default function Step4Generation() {
                     })}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 

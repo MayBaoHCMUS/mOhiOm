@@ -8,7 +8,11 @@ from datetime import datetime, timezone
 from app.config import settings
 from app.rate_limit import PerUserRateLimiter, QueueFullError, RateLimitExceededError
 from app.services import GeminiService, GeminiServiceError
-from app.schemas import ComposePageRequest, ComposePageResponse, AutoLayoutRequest, AutoLayoutResponse
+from app.schemas import (
+    ComposePageRequest, ComposePageResponse,
+    AutoLayoutRequest, AutoLayoutResponse,
+    LayoutDimensionsRequest, LayoutDimensionsResponse, PanelCellDimensions,
+)
 
 router = APIRouter(prefix="/gemini", tags=["gemini"])
 
@@ -749,6 +753,52 @@ async def health_check():
             "message": gemini_error_message,
         }
     return {"status": "configured"}
+
+
+@router.post("/layout-dimensions", response_model=LayoutDimensionsResponse)
+async def get_layout_dimensions(req: LayoutDimensionsRequest):
+    """
+    Compute exact pixel cell dimensions for each panel in the chosen layout template.
+    Pure arithmetic — no Gemini call, no rate limiting. Use before image generation so
+    each panel image is generated at its exact cell size (eliminates content cropping).
+    """
+    from app.comic_composer import (
+        LAYOUT_TEMPLATES,
+        compute_layout_cell_dimensions,
+        rule_based_layout,
+    )
+
+    panels_dicts = [
+        {"panel_number": p.panel_number, "shot_type": p.shot_type}
+        for p in req.panels
+    ]
+    n = len(panels_dicts)
+    templates = LAYOUT_TEMPLATES.get(n)
+
+    if not templates or req.layout_name == "auto":
+        layout, layout_name = rule_based_layout(panels_dicts)
+    elif req.layout_name in templates:
+        layout, layout_name = templates[req.layout_name], req.layout_name
+    else:
+        layout, layout_name = rule_based_layout(panels_dicts)
+
+    shot_types = [p.shot_type for p in req.panels]
+    raw_dims = compute_layout_cell_dimensions(layout, shot_types, req.style)
+
+    return LayoutDimensionsResponse(
+        status="success",
+        layout_name=layout_name,
+        layout=layout,
+        dimensions=[
+            PanelCellDimensions(
+                panel_index=d["panel_index"],
+                panel_number=req.panels[d["panel_index"]].panel_number,
+                width=d["width"],
+                height=d["height"],
+            )
+            for d in raw_dims
+        ],
+    )
 
 
 async def _suggest_layout(panels_data: list[dict]) -> tuple[list[list[int]], str]:
