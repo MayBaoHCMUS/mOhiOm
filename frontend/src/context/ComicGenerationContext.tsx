@@ -2672,6 +2672,15 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       if (imageGenSettings.mode) setImageGenMode(Number(imageGenSettings.mode) as ImageGenMode);
       if (imageGenSettings.ip_adapter_scale != null) setIpAdapterScale(Number(imageGenSettings.ip_adapter_scale));
       if (imageGenSettings.controlnet_scale != null) setControlnetScale(Number(imageGenSettings.controlnet_scale));
+      if (imageGenSettings.page_layout_names && typeof imageGenSettings.page_layout_names === 'object') {
+        // JSON keys are always strings — convert back to number keys
+        const restored: Record<number, string> = {};
+        for (const [k, v] of Object.entries(imageGenSettings.page_layout_names as Record<string, unknown>)) {
+          const pageNum = Number(k);
+          if (!isNaN(pageNum) && typeof v === 'string') restored[pageNum] = v;
+        }
+        setPageLayoutNames(restored);
+      }
 
       const s1Data = toRecord(s1.data);
       setStep1({
@@ -2883,6 +2892,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         mode: imageGenMode,
         ip_adapter_scale: ipAdapterScale,
         controlnet_scale: controlnetScale,
+        page_layout_names: pageLayoutNames,
       },
       steps: {
         step1: { data: step1.data, isApproved: step1.isApproved, lastUpdated: step1.lastUpdated },

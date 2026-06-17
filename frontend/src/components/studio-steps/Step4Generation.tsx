@@ -1098,18 +1098,21 @@ export default function Step4Generation() {
     setDialogueEdits(edits);
   }, [step4PanelsByPage]);
 
-  // Auto-initialize layout selection for each page when panels first become available
+  // Auto-initialize layout selection for each page when panels first become available.
+  // Also re-fetches dimensions for pages whose layout was restored from a saved project
+  // (pageLayoutNames set, but pagePanelDimensions not yet computed).
   const hasInitializedLayoutsRef = useRef(false);
   useEffect(() => {
     if (!step4.data?.panels.length || hasInitializedLayoutsRef.current) return;
     hasInitializedLayoutsRef.current = true;
     for (const [pageNumber, panels] of step4PanelsByPage) {
-      if (!pageLayoutNames[pageNumber]) {
-        const defaultLayout = TEMPLATES_BY_COUNT[panels.length]?.[0] ?? 'stacked';
-        setPageLayout(pageNumber, defaultLayout, panels);
+      if (!pagePanelDimensions[pageNumber]) {
+        // Use saved layout name if available; otherwise pick the first template as default
+        const layout = pageLayoutNames[pageNumber] ?? TEMPLATES_BY_COUNT[panels.length]?.[0] ?? 'stacked';
+        setPageLayout(pageNumber, layout, panels);
       }
     }
-  }, [step4.data?.panels.length, step4PanelsByPage, pageLayoutNames, setPageLayout]);
+  }, [step4.data?.panels.length, step4PanelsByPage, pageLayoutNames, pagePanelDimensions, setPageLayout]);
 
   // Reset layout init flag when step4 panels are rebuilt
   useEffect(() => {
