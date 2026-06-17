@@ -1024,6 +1024,9 @@ export default function Step4Generation() {
             page_number: pageNumber,
             shot_type: pi.panel.shotType ?? 'medium shot',
             image_data_url: pi.imageUrl!,
+            dialogue: pi.panel.dialogueSfx && pi.panel.dialogueSfx !== 'No dialogue/SFX provided.'
+              ? pi.panel.dialogueSfx
+              : undefined,
           })),
           style,
           layout: chosenLayout,

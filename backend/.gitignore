@@ -2,6 +2,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Font files (downloaded separately, not committed)
+fonts/*.ttf
+
 # C extensions
 *.so
 

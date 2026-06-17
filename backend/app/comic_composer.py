@@ -5,7 +5,10 @@ Pure image processing — no FastAPI, no DB, no LLM.
 
 import base64
 import io
-from PIL import Image, ImageDraw
+import os
+from PIL import Image, ImageDraw, ImageFont
+
+_FONT_DIR = os.path.join(os.path.dirname(__file__), "..", "fonts")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -121,51 +124,176 @@ def _cover_image(img: Image.Image, target_w: int, target_h: int) -> Image.Image:
     return resized.crop((x, y, x + target_w, y + target_h))
 
 
+class BubbleFont:
+    """Load NotoSans TTF once; fallback to PIL default if file is missing."""
+    _regular = _bold = _italic = None
+    FONT_SIZE = 22
+
+    @classmethod
+    def regular(cls) -> ImageFont.FreeTypeFont:
+        if cls._regular is None:
+            cls._regular = cls._load("NotoSans-Regular.ttf")
+        return cls._regular
+
+    @classmethod
+    def bold(cls) -> ImageFont.FreeTypeFont:
+        if cls._bold is None:
+            cls._bold = cls._load("NotoSans-Bold.ttf")
+        return cls._bold
+
+    @classmethod
+    def italic(cls) -> ImageFont.FreeTypeFont:
+        if cls._italic is None:
+            cls._italic = cls._load("NotoSans-Italic.ttf")
+        return cls._italic
+
+    @classmethod
+    def _load(cls, filename: str) -> ImageFont.FreeTypeFont:
+        path = os.path.join(_FONT_DIR, filename)
+        try:
+            return ImageFont.truetype(path, cls.FONT_SIZE)
+        except (OSError, IOError):
+            return ImageFont.load_default()
+
+
+def classify_bubble(text: str) -> str:
+    """Return "speech" | "thought" | "shout" | "sfx" | "narration"."""
+    if not text:
+        return "speech"
+    t = text.strip()
+    if (t.startswith("[") and t.endswith("]")) or (t.startswith("<") and t.endswith(">")):
+        return "narration"
+    if t.startswith("*") or (t.startswith("(") and t.endswith(")")):
+        return "thought"
+    stripped = t.strip("!.~")
+    if stripped == stripped.upper() and len(stripped) <= 12 and stripped.isalpha():
+        return "sfx"
+    if t.endswith("!") or t.endswith("!!") or t.endswith("!?"):
+        return "shout"
+    return "speech"
+
+
+# (fill_rgb, outline_rgb, outline_width, corner_radius)
+BUBBLE_STYLES: dict[str, tuple] = {
+    "speech":    ((255, 255, 255), (10,  10,  10), 2, 10),
+    "thought":   ((245, 245, 240), (60,  60,  60), 2, 14),
+    "shout":     ((255, 255, 255), (10,  10,  10), 4,  4),
+    "sfx":       ((10,  10,  10),  (10,  10,  10), 2,  2),
+    "narration": ((240, 240, 255), (80,  80, 180), 1,  6),
+}
+
+BUBBLE_TEXT_COLORS: dict[str, tuple] = {
+    "speech":    (10,  10,  10),
+    "thought":   (60,  60,  60),
+    "shout":     (10,  10,  10),
+    "sfx":       (255, 255, 255),
+    "narration": (30,  30, 140),
+}
+
+BUBBLE_FONTS: dict = {
+    "speech":    lambda: BubbleFont.regular(),
+    "thought":   lambda: BubbleFont.italic(),
+    "shout":     lambda: BubbleFont.bold(),
+    "sfx":       lambda: BubbleFont.bold(),
+    "narration": lambda: BubbleFont.regular(),
+}
+
+
+def _wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
+    """Word-wrap text to fit within max_width pixels."""
+    words = text.split()
+    lines: list[str] = []
+    current: list[str] = []
+    for word in words:
+        test = " ".join(current + [word])
+        try:
+            w = font.getlength(test)
+        except AttributeError:
+            w = len(test) * 10
+        if w <= max_width:
+            current.append(word)
+        else:
+            if current:
+                lines.append(" ".join(current))
+            current = [word]
+    if current:
+        lines.append(" ".join(current))
+    return lines or [text]
+
+
+def _compute_bubble_size(
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    max_panel_w: int,
+) -> tuple[int, int]:
+    """Compute (width, height) for a bubble wrapping the given text."""
+    pad = 12
+    max_bw = int(max_panel_w * 0.85)
+    lines = _wrap_text(text.strip().strip("*()[]<>"), font, max_bw - 2 * pad)
+    try:
+        _, _, _, lh = font.getbbox("A")
+        lh += 6
+        bw = min(max_bw, max(int(font.getlength(l)) for l in lines) + 2 * pad)
+    except AttributeError:
+        lh = 20
+        bw = min(max_bw, max(len(l) * 10 for l in lines) + 2 * pad)
+    bh = len(lines) * lh + 2 * pad
+    return max(bw, 60), max(bh, 36)
+
+
 def _draw_speech_bubble(
     draw: ImageDraw.ImageDraw,
     text: str,
     bubble_x: int,
     bubble_y: int,
     max_width: int = 200,
+    bubble_type: str = "speech",
 ) -> None:
-    """Draw a simple speech bubble centered at bubble_x, top of panel."""
-    pad = 10
-    char_w = 7   # approximate pixel width per char with default font
-    words = text.split()
-    lines: list[str] = []
-    line: list[str] = []
-    for w in words:
-        line.append(w)
-        if len(" ".join(line)) * char_w > max_width - 2 * pad:
-            if len(line) > 1:
-                lines.append(" ".join(line[:-1]))
-                line = [w]
-            else:
-                lines.append(" ".join(line))
-                line = []
-    if line:
-        lines.append(" ".join(line))
-    if not lines:
+    """Draw a typed speech bubble. bubble_x is the horizontal center; bubble_y is the top edge."""
+    if not text:
         return
 
-    line_h = 16
-    bw = max(len(l) for l in lines) * char_w + 2 * pad
-    bw = min(bw, max_width)
-    bh = len(lines) * line_h + 2 * pad
+    fill, outline, outline_w, radius = BUBBLE_STYLES.get(bubble_type, BUBBLE_STYLES["speech"])
+    font       = BUBBLE_FONTS.get(bubble_type, BUBBLE_FONTS["speech"])()
+    text_color = BUBBLE_TEXT_COLORS.get(bubble_type, (10, 10, 10))
+    pad        = 12
+
+    bw, bh = _compute_bubble_size(text, font, max_width)
     bx = bubble_x - bw // 2
     by = bubble_y
 
+    # Body
     draw.rounded_rectangle(
         [bx, by, bx + bw, by + bh],
-        radius=8,
-        fill=(255, 255, 255),
-        outline=BORDER_COLOR,
-        width=2,
+        radius=radius, fill=fill, outline=outline, width=outline_w,
     )
-    tail = [(bx + 20, by + bh), (bx + 35, by + bh), (bx + 18, by + bh + 12)]
-    draw.polygon(tail, fill=(255, 255, 255), outline=BORDER_COLOR)
-    for j, l in enumerate(lines):
-        draw.text((bx + pad, by + pad + j * line_h), l, fill=BORDER_COLOR)
+
+    # Tail (triangle for speech/shout, 3 dots for thought; none for sfx/narration)
+    if bubble_type not in ("sfx", "narration"):
+        tail = [(bx + 16, by + bh), (bx + 30, by + bh), (bx + 12, by + bh + 16)]
+        draw.polygon(tail, fill=fill)
+        draw.line([tail[0], tail[2]], fill=outline, width=outline_w)
+        draw.line([tail[1], tail[2]], fill=outline, width=outline_w)
+        if bubble_type == "thought":
+            for cx, cy, r in [(bx + 22, by + bh + 5, 5), (bx + 16, by + bh + 12, 4), (bx + 11, by + bh + 18, 3)]:
+                draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=fill, outline=outline, width=1)
+
+    # Text
+    clean = text.strip().strip("*()[]<>")
+    lines = _wrap_text(clean, font, bw - 2 * pad)
+    try:
+        _, _, _, lh = font.getbbox("A")
+        lh += 6
+    except AttributeError:
+        lh = 20
+    total_h = len(lines) * lh
+    y_start = by + (bh - total_h) // 2
+    for i, line in enumerate(lines):
+        try:
+            lw = int(font.getlength(line))
+        except AttributeError:
+            lw = len(line) * 10
+        draw.text((bx + (bw - lw) // 2, y_start + i * lh), line, fill=text_color, font=font)
 
 
 def rule_based_layout(panels: list[dict]) -> tuple[list[list[int]], str]:
@@ -350,12 +478,14 @@ def compose_page(
 
             dialogue = panel.get("dialogue") or ""
             if dialogue.strip():
+                btype = classify_bubble(dialogue.strip())
                 _draw_speech_bubble(
                     draw,
                     dialogue.strip(),
                     bubble_x=x + cell_w // 2,
                     bubble_y=y + 20,
                     max_width=cell_w - 32,
+                    bubble_type=btype,
                 )
 
             x += cell_w + col_gutter
