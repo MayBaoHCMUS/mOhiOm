@@ -1,3 +1,211 @@
+## SESSION: 2026-06-20
+
+### ✅ COMPLETED — DialogueEditor.tsx — Full Canvas Dialogue System
+
+All work in: `frontend/src/components/studio-steps/DialogueEditor.tsx` (~1591 lines) and `frontend/src/components/studio-steps/Step4Generation.tsx`.
+
+---
+
+#### What was built this session
+
+**MangaBubbleSVG — native SVG rendering**
+- `SvgText` helper: `<text>/<tspan>` word-wrap via `wrapTextToLines()` (no `<foreignObject>`)
+- `MangaBubbleSVG`: 6 bubble types — speech (oval + triangle tail), thought (cloud circles + dot trail), shout (spiky star polygon), sfx (outline text, no shape), narration (rectangle), none (hidden)
+- viewBox fixed to `0 0 w h` (1:1 with display) + `overflow: 'visible'` for tails — was previously padded, making text 75% too small
+- Tail shapes: `tailPts()` generates triangle polygon; `thoughtTrail()` generates 3 shrinking circles
+- SFX: `paintOrder="stroke fill"` for manga-style outline text with `Bangers` font
+
+**Drag + resize — pointer events + local override**
+- `startDrag` → `setPointerCapture` on the drag element
+- `onDragMove` → `setDragOverride(patch)` (local PanelCell state only — no parent re-render during drag)
+- `onDragEnd` → `onBubbleUpdate(...)` commits position + calls `onDragCommit()` for immediate flush
+- Zero re-renders in parent tree while dragging — only PanelCell re-renders
+
+**Save architecture (30s/Ctrl+S + immediate on drag end)**
+- `triggerSave(panelId, bubbles)` → calls `onSaveBubbles` immediately (parent state update, no snap-back) + stores `pendingSaveRef.current`
+- 30s `setInterval` auto-flushes `pendingSaveRef` if changes are pending
+- Ctrl+S / Cmd+S: keyboard `useEffect` calls `flushSaveRef.current()` immediately
+- `onDragCommit` prop on `PanelCell` → `flushSave()` fires right after drag ends
+- Status indicator: `idle` (gray) / `unsaved` (amber "● Unsaved · Ctrl+S to save") / `saving` (muted) / `saved` (green "✓ Saved") / `error` (red + Retry)
+
+**Tail direction compass**
+- 3×3 grid of 36×36px cells (8 directions + center no-op)
+- Auto-detect button: `autoDetectTailDir()` uses `atan2` from bubble center to panel center → nearest compass direction
+
+**Page navigation + counters**
+- `panelHasDialogue(panelId)`: single canonical definition — `bubbles.length > 0 && some(b => text not empty and not NONE)`
+- Tab badge, page dots, sidebar summary all use the same predicate
+- Page dots: green (all panels done), orange (partial), gray (none)
+
+**Bubble opacity fix**
+- Non-selected bubbles: `dimmed={!!selectedBubbleId}` (only dim when a bubble is actively selected in that panel, not always)
+- Dimmed opacity: `0.55 → 0.8` so bubbles remain legible on dark manga backgrounds
+
+**Key types (canonical)**
+```typescript
+export type BubbleType = 'speech' | 'thought' | 'shout' | 'sfx' | 'narration' | 'none';
+export type TailDir = 'up-left'|'up'|'up-right'|'left'|'right'|'down-left'|'down'|'down-right'|'none';
+export interface SingleBubble {
+  id: string;
+  dialogue: string | null;
+  bubbleType: BubbleType;
+  tailDir: TailDir;
+  bubblePosition: { x: number; y: number };  // normalized 0–1 relative to panel
+  bubbleSize: { w: number; h: number };       // logical pixels (zoom-independent)
+  fontSize: number;
+  rotation: number;  // degrees, SFX only; 0 for others
+  character?: string;
+  zIndex: number;
+}
+```
+
+**BUBBLE_TYPE_DEFAULTS**
+```typescript
+speech:    { fontSize: 13, minFont: 8,  maxFont: 20 }
+thought:   { fontSize: 12, minFont: 8,  maxFont: 20 }
+shout:     { fontSize: 18, minFont: 16, maxFont: 48 }
+sfx:       { fontSize: 24, minFont: 16, maxFont: 48 }
+narration: { fontSize: 11, minFont: 8,  maxFont: 20 }
+none:      { fontSize: 14, minFont: 8,  maxFont: 20 }
+```
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/components/studio-steps/DialogueEditor.tsx` — **All changes** (1591 lines; all bubble types, drag, save, compass, counters, opacity fix)
+- `frontend/src/components/studio-steps/Step4Generation.tsx` — `onSaveBubbles` wires to `setPanelBubbles`; `autoImportDialogue` creates `SingleBubble` objects; `panelsWithDialogue` counter uses same predicate
+- `frontend/src/styles/globals.css` — Bangers font import + `--font-bangers` CSS custom property
+
+---
+
+### 🎯 NEXT SESSION PLAN — Dialogue System Enhancements
+
+**CONTEXT**: The following spec was provided for the next implementation phase. Priority: Phase 1 (more types), Phase 2 (MongoDB persistence), Phase 3 (PNG export). Do NOT adopt the spec's file structure — keep everything in `DialogueEditor.tsx`. Do NOT use ComicalJS — SVG rendering is working. Keep normalized 0–1 coordinate system (not the spec's 0–100 percentage).
+
+---
+
+#### Phase 1 — Expand bubble types (in `DialogueEditor.tsx`)
+
+The spec defines 15 types. We currently have 6. Add these 9:
+
+| Type | Render | Notes |
+|---|---|---|
+| `whisper` | oval with `strokeDasharray="6,3"` | italic font, opacity 0.9 fill |
+| `double` | two concentric ovals (inner = outer − 8px) | same tail as speech |
+| `electric` | oval with `strokeDasharray="4,2"`, gold stroke (`#DAA520`) | yellow-tinted fill |
+| `round` | ellipse forced to circle (`rx = ry = min(w,h)/2`) | same tail as speech |
+| `square` | `<rect>` with `rx={2}` sharp corners | no tail rounding; monospace font |
+| `scream` | spiky polygon with 18 spikes (shout has 12) | red stroke, larger font |
+| `heart` | SVG heart path, no tail | pink stroke `#FF6B9D`, pink fill |
+| `burst` | 16-point starburst polygon | no tail; Bangers font |
+| `wobbly` | sinusoidal ellipse path (approximate with cubic beziers) | blue stroke `#6699CC` |
+
+**Steps:**
+1. Add all 9 to `BubbleType` union
+2. Add all 9 to `BUBBLE_TYPE_DEFAULTS` (font sizes, slider ranges)
+3. Add rendering cases to `MangaBubbleSVG` switch
+4. Add all 9 to the bubble type selector in `BubbleSidebar` (currently 5 visible types + none)
+5. `autoImportDialogue` in Step4Generation: map `*text*` → `whisper`, `!TEXT!` → `scream`
+
+**Heart SVG path formula** (for reference):
+```
+// cx=w/2, cy=h/2, scale to fit bubble
+const scale = Math.min(w, h) * 0.45;
+// standard heart: M0,-1 C0.5,-1 1,-0.5 1,0 C1,0.5 0.5,1 0,1.5 C-0.5,1 -1,0.5 -1,0 C-1,-0.5 -0.5,-1 0,-1
+// apply scale and translate to cx,cy
+```
+
+---
+
+#### Phase 2 — MongoDB persistence for bubble data
+
+**Backend** — new router: `backend/app/routers/bubbles.py`
+
+```python
+# Schema to add to backend/app/schemas.py:
+class BubbleData(BaseModel):
+    id: str
+    dialogue: Optional[str]
+    bubbleType: str
+    tailDir: str
+    bubblePosition: dict  # {x: float, y: float}
+    bubbleSize: dict      # {w: float, h: float}
+    fontSize: float
+    rotation: float
+    character: Optional[str]
+    zIndex: int
+
+class PanelBubblesUpsert(BaseModel):
+    panelId: str
+    comicId: str
+    bubbles: List[BubbleData]
+
+# Collection: panel_bubbles
+# Index: { panelId: 1 } unique
+```
+
+```python
+# Endpoints:
+GET  /api/bubbles?comicId=xxx          # load all bubble data for a comic
+PUT  /api/bubbles/{panelId}            # upsert bubbles for one panel
+DELETE /api/bubbles/{panelId}          # clear bubbles for panel
+```
+
+**Frontend** — wire in Step4Generation.tsx:
+- On `DialogueEditor` mount: fetch `GET /api/bubbles?comicId={projectId}` → init `panelBubbles`
+- `onSaveBubbles` currently only calls `setPanelBubbles` (in-memory) → also call `PUT /api/bubbles/{panelId}`
+- Add `bubblesApi` to `frontend/src/services/api.ts`
+
+**Key constraint**: keep `panelBubbles` React state as source of truth for rendering; MongoDB is persistence layer only. Fetch on mount, write on save.
+
+---
+
+#### Phase 3 — Composite PNG export per panel
+
+**Library**: `npm install html2canvas` (already in spec; check if installed first)
+
+**Approach** (in `frontend/src/lib/bubbles/exportComposite.ts` — new file):
+```typescript
+export async function exportPanelWithBubbles(panelElement: HTMLElement): Promise<Blob>
+export async function exportPageWithBubbles(pageElement: HTMLElement): Promise<Blob>
+```
+
+**Wire into Step4Generation Export tab**: "Export with Dialogue" button — captures each page's panel div (with SVG overlay) using html2canvas and bundles as ZIP.
+
+**Important**: `foreignObjectRendering: true` is NOT reliable across browsers. Since we switched to native SVG `<text>/<tspan>` (no `<foreignObject>`), html2canvas should work without that flag.
+
+---
+
+### 🐛 KNOWN ISSUES / DECISIONS
+
+- **`BubbleType = 'none'`**: panels imported with "NONE" dialogue get `bubbleType: 'none'` — these render as invisible and are filtered out of `panelHasDialogue`. Do not remove this type.
+- **Coordinate system**: `bubblePosition` is normalized 0–1 (not 0–100 percentage as in the spec). Do not change — changing would break all saved bubbles.
+- **`onSaveBubbles` dual purpose**: currently updates both in-memory state (immediately) and queues persistence (deferred). When Phase 2 is added, the immediate `onSaveBubbles` call in `triggerSave` updates React state; the deferred `flushSave` makes the API call.
+- **No ComicalJS**: the spec mentions ComicalJS but we implemented custom SVG. DO NOT add ComicalJS — it has SSR conflicts with Next.js 14 App Router and our custom rendering works correctly.
+- **Bangers font**: loaded via Google Fonts in `globals.css`. Used for shout/sfx/burst bubble types.
+- **`panelHasDialogue` predicate** (single canonical definition — use everywhere):
+  ```typescript
+  const bs = panelBubbles[panelId] ?? [];
+  return bs.length > 0 && bs.some(b => {
+    const t = b.dialogue?.trim() ?? '';
+    return t !== '' && t.toUpperCase() !== 'NONE';
+  });
+  ```
+
+---
+
+### 📦 PACKAGES TO INSTALL BEFORE PHASE 2/3
+
+```bash
+cd frontend
+npm install html2canvas   # Phase 3 PNG export
+# NOTE: do NOT install comicaljs — not needed
+# NOTE: do NOT install lodash.debounce — we use setInterval instead
+```
+
+---
+
 ## SESSION: 2026-06-16 (continued)
 
 ### ✅ COMPLETED — Tab-Based Layout Redesign (Step4Generation.tsx)

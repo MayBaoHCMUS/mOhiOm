@@ -5,7 +5,10 @@ import type { Step4Panel, Step4PanelState } from '@/context/ComicGenerationConte
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type BubbleType = 'speech' | 'thought' | 'shout' | 'sfx' | 'narration' | 'none';
+export type BubbleType =
+  | 'speech' | 'thought' | 'shout' | 'sfx' | 'narration' | 'none'
+  | 'whisper' | 'double' | 'electric' | 'round' | 'square'
+  | 'scream' | 'heart' | 'burst' | 'wobbly';
 export type TailDir =
   | 'up-left' | 'up' | 'up-right'
   | 'left'             | 'right'
@@ -23,8 +26,12 @@ export interface SingleBubble {
   bubbleSize: BubbleSize;
   fontSize: number;
   rotation: number;  // degrees, used by SFX; 0 for all other types
+  opacity: number;   // 0–1; 1 = fully opaque
+  fillColor?: string; // bubble background; defaults to white
+  textColor?: string; // text color; defaults to #111111
   character?: string;
   zIndex: number;
+  crossPanel?: boolean; // when true: hidden in panel, rendered on the page overlay
 }
 export type PanelBubbles = SingleBubble[];
 
@@ -82,7 +89,8 @@ function isNoneText(text: string | null | undefined): boolean {
 }
 
 function hasTailSupport(type: BubbleType): boolean {
-  return type === 'speech' || type === 'thought' || type === 'shout';
+  return ['speech', 'thought', 'shout', 'whisper', 'double', 'electric',
+          'round', 'square', 'scream', 'wobbly'].includes(type);
 }
 
 function tailDirForType(type: BubbleType, current: TailDir): TailDir {
@@ -150,7 +158,56 @@ const BUBBLE_TYPE_DEFAULTS: Record<BubbleType, { fontSize: number; minFont: numb
   sfx:       { fontSize: 24, minFont: 16, maxFont: 48 },
   narration: { fontSize: 11, minFont: 8,  maxFont: 20 },
   none:      { fontSize: 14, minFont: 8,  maxFont: 20 },
+  whisper:   { fontSize: 11, minFont: 8,  maxFont: 18 },
+  double:    { fontSize: 13, minFont: 8,  maxFont: 20 },
+  electric:  { fontSize: 13, minFont: 8,  maxFont: 22 },
+  round:     { fontSize: 12, minFont: 8,  maxFont: 20 },
+  square:    { fontSize: 12, minFont: 8,  maxFont: 18 },
+  scream:    { fontSize: 20, minFont: 16, maxFont: 48 },
+  heart:     { fontSize: 12, minFont: 8,  maxFont: 18 },
+  burst:     { fontSize: 14, minFont: 10, maxFont: 32 },
+  wobbly:    { fontSize: 12, minFont: 8,  maxFont: 20 },
 };
+
+// Starburst/spike polygon — shared by shout, scream, burst
+function spikyPts(cx: number, cy: number, outerRX: number, outerRY: number, spikes: number, innerRatio = 0.82): string {
+  const innerRX = outerRX * innerRatio;
+  const innerRY = outerRY * innerRatio;
+  const pts: string[] = [];
+  for (let i = 0; i < spikes * 2; i++) {
+    const angle = (i * Math.PI) / spikes - Math.PI / 2;
+    const erx = i % 2 === 0 ? outerRX : innerRX;
+    const ery = i % 2 === 0 ? outerRY : innerRY;
+    pts.push(`${cx + Math.cos(angle) * erx},${cy + Math.sin(angle) * ery}`);
+  }
+  return pts.join(' ');
+}
+
+// Wobbly blob path — 4 cubic beziers with offset control points
+function wobblyPath(cx: number, cy: number, rx: number, ry: number): string {
+  const wx = rx * 0.14;
+  const wy = ry * 0.12;
+  return [
+    `M ${cx + rx},${cy}`,
+    `C ${cx + rx},${cy - ry * 0.55 + wy} ${cx + rx * 0.55 + wx},${cy - ry} ${cx},${cy - ry}`,
+    `C ${cx - rx * 0.55 - wx},${cy - ry} ${cx - rx},${cy - ry * 0.55 - wy} ${cx - rx},${cy}`,
+    `C ${cx - rx},${cy + ry * 0.55 + wy} ${cx - rx * 0.55 + wx},${cy + ry} ${cx},${cy + ry}`,
+    `C ${cx + rx * 0.55 - wx},${cy + ry} ${cx + rx},${cy + ry * 0.55 - wy} ${cx + rx},${cy}`,
+    'Z',
+  ].join(' ');
+}
+
+// Heart SVG path centered at (cx,cy) within rx × ry bounds
+function heartPath(cx: number, cy: number, rx: number, ry: number): string {
+  return [
+    `M ${cx},${cy - ry * 0.2}`,
+    `C ${cx + rx * 0.5},${cy - ry} ${cx + rx},${cy - ry * 0.5} ${cx + rx},${cy}`,
+    `C ${cx + rx},${cy + ry * 0.5} ${cx},${cy + ry * 0.75} ${cx},${cy + ry}`,
+    `C ${cx},${cy + ry * 0.75} ${cx - rx},${cy + ry * 0.5} ${cx - rx},${cy}`,
+    `C ${cx - rx},${cy - ry * 0.5} ${cx - rx * 0.5},${cy - ry} ${cx},${cy - ry * 0.2}`,
+    'Z',
+  ].join(' ');
+}
 
 // Simple word-wrap: splits text into lines that fit within maxWidth
 function wrapTextToLines(text: string, maxWidth: number, fontSize: number, isBangers: boolean): string[] {
@@ -226,15 +283,20 @@ function SvgText({ lines, cx, cy, fontSize, fontFamily, fontWeight, fill, stroke
   );
 }
 
+function buildCloudPath(w: number, h: number): string {
+  return `M ${w*0.18} ${h*0.75} C ${w*0.04} ${h*0.75},${w*0.02} ${h*0.55},${w*0.10} ${h*0.48} C ${w*0.06} ${h*0.28},${w*0.22} ${h*0.18},${w*0.32} ${h*0.26} C ${w*0.33} ${h*0.10},${w*0.47} ${h*0.04},${w*0.50} ${h*0.08} C ${w*0.53} ${h*0.04},${w*0.67} ${h*0.10},${w*0.68} ${h*0.26} C ${w*0.78} ${h*0.18},${w*0.94} ${h*0.28},${w*0.90} ${h*0.48} C ${w*0.98} ${h*0.55},${w*0.96} ${h*0.75},${w*0.82} ${h*0.75} C ${w*0.80} ${h*0.88},${w*0.62} ${h*0.94},${w*0.50} ${h*0.90} C ${w*0.38} ${h*0.94},${w*0.20} ${h*0.88},${w*0.18} ${h*0.75} Z`;
+}
+
 function MangaBubbleSVG({ bubble, w, h, dimmed }: BubbleSVGProps) {
   const { bubbleType: type, tailDir, dialogue, fontSize, rotation } = bubble;
 
   if (type === 'none' || (isNoneText(dialogue) && type !== 'sfx')) return null;
 
   const text = dialogue ?? '';
-  const fill = '#ffffff';
+  const fill = bubble.fillColor ?? '#ffffff';
   const stroke = '#1a1a1a';
-  const opacity = dimmed ? 0.8 : 1;
+  const opacity = (bubble.opacity ?? 1) * (dimmed ? 0.8 : 1);
+  const userTextColor = bubble.textColor;
   const TAIL = 22;
 
   // ── SFX: pure text, no container ──────────────────────────────────────────
@@ -254,7 +316,7 @@ function MangaBubbleSVG({ bubble, w, h, dimmed }: BubbleSVGProps) {
             fontSize={sfxSize}
             fontFamily="Bangers, Impact, sans-serif"
             fontWeight="normal"
-            fill="white"
+            fill={userTextColor ?? 'white'}
             stroke="#1a1a1a"
             strokeWidth={3}
             letterSpacing="0.06em"
@@ -272,35 +334,20 @@ function MangaBubbleSVG({ bubble, w, h, dimmed }: BubbleSVGProps) {
   const ry = h / 2 - 2;
 
   // Tail polygon points (in viewBox space, body centered at cx,cy)
-  function tailPts(): string {
+  function tailPts(erx = rx, ery = ry): string {
     if (!hasTailSupport(type) || tailDir === 'none') return '';
     const TW = 7; // half-width of tail base on body edge
     switch (tailDir) {
-      case 'down-left':  return `${cx-rx*0.25-TW},${cy+ry-2} ${cx-rx*0.6},${cy+ry+TAIL} ${cx-rx*0.25+TW},${cy+ry-2}`;
-      case 'down':       return `${cx-TW},${cy+ry-2} ${cx},${cy+ry+TAIL} ${cx+TW},${cy+ry-2}`;
-      case 'down-right': return `${cx+rx*0.25-TW},${cy+ry-2} ${cx+rx*0.6},${cy+ry+TAIL} ${cx+rx*0.25+TW},${cy+ry-2}`;
-      case 'up-left':    return `${cx-rx*0.25-TW},${cy-ry+2} ${cx-rx*0.6},${cy-ry-TAIL} ${cx-rx*0.25+TW},${cy-ry+2}`;
-      case 'up':         return `${cx-TW},${cy-ry+2} ${cx},${cy-ry-TAIL} ${cx+TW},${cy-ry+2}`;
-      case 'up-right':   return `${cx+rx*0.25-TW},${cy-ry+2} ${cx+rx*0.6},${cy-ry-TAIL} ${cx+rx*0.25+TW},${cy-ry+2}`;
-      case 'left':       return `${cx-rx+2},${cy-TW} ${cx-rx-TAIL},${cy} ${cx-rx+2},${cy+TW}`;
-      case 'right':      return `${cx+rx-2},${cy-TW} ${cx+rx+TAIL},${cy} ${cx+rx-2},${cy+TW}`;
+      case 'down-left':  return `${cx-erx*0.25-TW},${cy+ery-2} ${cx-erx*0.6},${cy+ery+TAIL} ${cx-erx*0.25+TW},${cy+ery-2}`;
+      case 'down':       return `${cx-TW},${cy+ery-2} ${cx},${cy+ery+TAIL} ${cx+TW},${cy+ery-2}`;
+      case 'down-right': return `${cx+erx*0.25-TW},${cy+ery-2} ${cx+erx*0.6},${cy+ery+TAIL} ${cx+erx*0.25+TW},${cy+ery-2}`;
+      case 'up-left':    return `${cx-erx*0.25-TW},${cy-ery+2} ${cx-erx*0.6},${cy-ery-TAIL} ${cx-erx*0.25+TW},${cy-ery+2}`;
+      case 'up':         return `${cx-TW},${cy-ery+2} ${cx},${cy-ery-TAIL} ${cx+TW},${cy-ery+2}`;
+      case 'up-right':   return `${cx+erx*0.25-TW},${cy-ery+2} ${cx+erx*0.6},${cy-ery-TAIL} ${cx+erx*0.25+TW},${cy-ery+2}`;
+      case 'left':       return `${cx-erx+2},${cy-TW} ${cx-erx-TAIL},${cy} ${cx-erx+2},${cy+TW}`;
+      case 'right':      return `${cx+erx-2},${cy-TW} ${cx+erx+TAIL},${cy} ${cx+erx-2},${cy+TW}`;
       default:           return '';
     }
-  }
-
-  // Shout spike polygon in viewBox coords
-  function shoutPts(): string {
-    const spikes = 8;
-    const outerRX = rx, outerRY = ry;
-    const innerRX = rx * 0.82, innerRY = ry * 0.82;
-    const pts: string[] = [];
-    for (let i = 0; i < spikes * 2; i++) {
-      const angle = (i * Math.PI) / spikes - Math.PI / 2;
-      const erx = i % 2 === 0 ? outerRX : innerRX;
-      const ery = i % 2 === 0 ? outerRY : innerRY;
-      pts.push(`${cx + Math.cos(angle) * erx},${cy + Math.sin(angle) * ery}`);
-    }
-    return pts.join(' ');
   }
 
   // Thought trail circles in viewBox coords
@@ -327,21 +374,58 @@ function MangaBubbleSVG({ bubble, w, h, dimmed }: BubbleSVGProps) {
     ];
   }
 
-  const tailPoints = tailPts();
-  const strokeW = type === 'shout' ? 2.5 : 2;
+  // Per-type visual properties
+  const isSpiky   = type === 'shout' || type === 'scream' || type === 'burst';
+  const isRound   = type === 'round';
+  const circR     = Math.min(rx, ry);  // for round type
+  const strokeW   = type === 'shout' || type === 'scream' ? 2.5 : 2;
+  const bodyFillDefault = type === 'electric'  ? 'rgba(255,255,200,0.95)'
+                        : type === 'narration' ? '#fffef0'
+                        : type === 'whisper'   ? 'rgba(255,255,255,0.88)'
+                        : type === 'heart'     ? '#FFE0E0'
+                        : type === 'burst'     ? '#FFFACD'
+                        : type === 'wobbly'    ? 'rgba(240,248,255,0.95)'
+                        : type === 'scream'    ? '#FFF0F0'
+                        : fill;
+  const bodyFill = bubble.fillColor ? fill : bodyFillDefault;
+  const bodyStroke = type === 'electric'  ? '#DAA520'
+                   : type === 'heart'     ? '#FF6B9D'
+                   : type === 'wobbly'    ? '#6699CC'
+                   : type === 'scream'    ? '#CC0000'
+                   : stroke;
+
+  const tailPoints = tailPts(isRound ? circR : rx, isRound ? circR : ry);
 
   // Text area: inset within body shape
-  const textInset = type === 'thought' ? 0.25 : type === 'narration' ? 0.06 : 0.16;
+  const textInset = type === 'thought' ? 0.25 : type === 'narration' || type === 'square' ? 0.06 : isSpiky ? 0.22 : 0.16;
   const textW = w * (1 - textInset * 2);
-  const isBangers = false;
+  const isBangers = type === 'shout' || type === 'scream' || type === 'burst';
   const lines = wrapTextToLines(text, textW, fontSize, isBangers);
 
-  const fontFamily = "'Comic Neue', 'Comic Sans MS', cursive";
-  const fontWeight = type === 'shout' ? 700 : 400;
-  const fontStyle = type === 'narration' ? 'italic' : 'normal';
-  const textFill = type === 'narration' ? '#22224a' : '#111111';
-  const textAnchor = type === 'narration' ? 'start' as const : 'middle' as const;
-  const textCX = type === 'narration' ? cx - rx + fontSize * 0.5 : cx;
+  const fontFamily = isBangers
+    ? 'Bangers, Impact, sans-serif'
+    : type === 'square'
+    ? 'monospace'
+    : type === 'whisper' || type === 'wobbly'
+    ? "'Comic Neue', 'Comic Sans MS', cursive"
+    : "'Comic Neue', 'Comic Sans MS', cursive";
+  const fontWeight  = type === 'shout' || type === 'scream' ? 700 : 400;
+  const fontStyle   = type === 'narration' || type === 'whisper' || type === 'wobbly' ? 'italic' : 'normal';
+  const textFill    = userTextColor ?? (type === 'narration' ? '#22224a' : type === 'scream' ? '#660000' : '#111111');
+  const textAnchor  = type === 'narration' || type === 'square' ? 'start' as const : 'middle' as const;
+  const textCX      = type === 'narration' || type === 'square' ? cx - rx + fontSize * 0.5 : cx;
+  const textCY      = type === 'narration' || type === 'square'
+    ? (cy - ry + fontSize * 1.1)  // top-anchored in boxes
+    : cy;
+
+  // Narration/square: top-anchored tspan rendering
+  const renderBoxText = () => (
+    <text fontFamily={fontFamily} fontSize={fontSize} fontStyle={fontStyle} fill={textFill} textAnchor={textAnchor} style={{ userSelect: 'none' }}>
+      {lines.map((line, i) => (
+        <tspan key={i} x={textCX} y={(cy - ry) + fontSize * 1.1 + i * fontSize * 1.35}>{line}</tspan>
+      ))}
+    </text>
+  );
 
   return (
     <svg
@@ -352,57 +436,131 @@ function MangaBubbleSVG({ bubble, w, h, dimmed }: BubbleSVGProps) {
       {/* ── SPEECH ── */}
       {type === 'speech' && (
         <>
-          {tailPoints && <polygon points={tailPoints} fill={fill} stroke={stroke} strokeWidth={strokeW} strokeLinejoin="round" />}
-          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={fill} stroke={stroke} strokeWidth={strokeW} />
-          <SvgText lines={lines} cx={textCX} cy={cy} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={textFill} textAnchor={textAnchor} />
+          {tailPoints && <polygon points={tailPoints} fill={bodyFill} stroke={bodyStroke} strokeWidth={strokeW} strokeLinejoin="round" />}
+          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={bodyFill} stroke={bodyStroke} strokeWidth={strokeW} />
+          <SvgText lines={lines} cx={textCX} cy={textCY} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={textFill} textAnchor={textAnchor} />
         </>
       )}
 
-      {/* ── THOUGHT ── */}
-      {type === 'thought' && (
+      {/* ── WHISPER — dashed oval, italic ── */}
+      {type === 'whisper' && (
         <>
-          {hasTailSupport(type) && tailDir !== 'none' && thoughtTrail().map((c, i) => (
-            <circle key={i} cx={c.cx} cy={c.cy} r={c.r} fill={fill} stroke={stroke} strokeWidth={1.5} />
-          ))}
-          {/* Cloud: 5 overlapping ellipses, drawn fill-first then stroke-only pass to unify outline */}
-          {[
-            { ox: 0,          oy: 0,           ex: rx*0.80, ey: ry*0.80 },
-            { ox: -rx*0.42,   oy: -ry*0.18,    ex: rx*0.52, ey: ry*0.60 },
-            { ox:  rx*0.42,   oy: -ry*0.18,    ex: rx*0.52, ey: ry*0.60 },
-            { ox: -rx*0.60,   oy:  ry*0.18,    ex: rx*0.42, ey: ry*0.48 },
-            { ox:  rx*0.60,   oy:  ry*0.18,    ex: rx*0.42, ey: ry*0.48 },
-          ].map((e, i) => (
-            <ellipse key={i} cx={cx+e.ox} cy={cy+e.oy} rx={e.ex} ry={e.ey} fill={fill} stroke={stroke} strokeWidth={1.5} />
-          ))}
-          <SvgText lines={lines} cx={textCX} cy={cy} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={textFill} textAnchor={textAnchor} />
+          {tailPoints && <polygon points={tailPoints} fill={bodyFill} stroke={bodyStroke} strokeWidth={1.5} strokeDasharray="6,3" strokeLinejoin="round" />}
+          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={bodyFill} stroke={bodyStroke} strokeWidth={1.5} strokeDasharray="6,3" />
+          <SvgText lines={lines} cx={cx} cy={cy} fontSize={fontSize} fontFamily={fontFamily} fontWeight={400} fill={textFill} />
         </>
       )}
 
-      {/* ── SHOUT ── */}
+      {/* ── DOUBLE — two concentric ovals ── */}
+      {type === 'double' && (
+        <>
+          {tailPoints && <polygon points={tailPoints} fill={bodyFill} stroke={stroke} strokeWidth={strokeW} strokeLinejoin="round" />}
+          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={bodyFill} stroke={stroke} strokeWidth={strokeW} />
+          <ellipse cx={cx} cy={cy} rx={Math.max(rx - 7, 4)} ry={Math.max(ry - 7, 4)} fill="none" stroke={stroke} strokeWidth={1.5} />
+          <SvgText lines={lines} cx={cx} cy={cy} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={textFill} />
+        </>
+      )}
+
+      {/* ── ELECTRIC — gold dashed oval ── */}
+      {type === 'electric' && (
+        <>
+          {tailPoints && <polygon points={tailPoints} fill={bodyFill} stroke={bodyStroke} strokeWidth={strokeW} strokeLinejoin="round" />}
+          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={bodyFill} stroke={bodyStroke} strokeWidth={strokeW} strokeDasharray="4,2" />
+          <SvgText lines={lines} cx={cx} cy={cy} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={textFill} />
+        </>
+      )}
+
+      {/* ── ROUND — perfect circle ── */}
+      {type === 'round' && (
+        <>
+          {tailPoints && <polygon points={tailPoints} fill={bodyFill} stroke={stroke} strokeWidth={strokeW} strokeLinejoin="round" />}
+          <circle cx={cx} cy={cy} r={circR} fill={bodyFill} stroke={stroke} strokeWidth={strokeW} />
+          <SvgText lines={lines} cx={cx} cy={cy} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={textFill} />
+        </>
+      )}
+
+      {/* ── SQUARE — sharp rectangle, monospace ── */}
+      {type === 'square' && (
+        <>
+          {tailPoints && <polygon points={tailPoints} fill={bodyFill} stroke={stroke} strokeWidth={strokeW} strokeLinejoin="round" />}
+          <rect x={cx - rx} y={cy - ry} width={rx * 2} height={ry * 2} fill={bodyFill} stroke={stroke} strokeWidth={strokeW} rx={2} />
+          {renderBoxText()}
+        </>
+      )}
+
+      {/* ── SHOUT — spiky star (8 spikes) ── */}
       {type === 'shout' && (
         <>
-          {tailPoints && <polygon points={tailPoints} fill={fill} stroke={stroke} strokeWidth={strokeW} strokeLinejoin="round" />}
-          <polygon points={shoutPts()} fill={fill} stroke={stroke} strokeWidth={strokeW} strokeLinejoin="miter" />
-          <SvgText lines={lines} cx={textCX} cy={cy} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={textFill} textAnchor={textAnchor} />
+          {tailPoints && <polygon points={tailPoints} fill={bodyFill} stroke={bodyStroke} strokeWidth={strokeW} strokeLinejoin="round" />}
+          <polygon points={spikyPts(cx, cy, rx, ry, 8)} fill={bodyFill} stroke={bodyStroke} strokeWidth={strokeW} strokeLinejoin="miter" />
+          <SvgText lines={lines} cx={cx} cy={cy} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={textFill} />
         </>
       )}
+
+      {/* ── SCREAM — denser spike star (14 spikes), red ── */}
+      {type === 'scream' && (
+        <>
+          {tailPoints && <polygon points={tailPoints} fill={bodyFill} stroke={bodyStroke} strokeWidth={strokeW} strokeLinejoin="round" />}
+          <polygon points={spikyPts(cx, cy, rx, ry, 14, 0.78)} fill={bodyFill} stroke={bodyStroke} strokeWidth={strokeW} strokeLinejoin="miter" />
+          <SvgText lines={lines} cx={cx} cy={cy} fontSize={fontSize} fontFamily={fontFamily} fontWeight={700} fill={textFill} />
+        </>
+      )}
+
+      {/* ── THOUGHT — arc-based cloud path, works at all sizes ── */}
+      {type === 'thought' && (() => {
+        const minDim = Math.min(w, h);
+        const sw = Math.max(1.5, minDim * 0.022);
+        const dotR1 = Math.max(3.5, minDim * 0.048);
+        const dotR2 = Math.max(2.5, minDim * 0.034);
+        const dotR3 = Math.max(1.5, minDim * 0.021);
+        const trail = tailDir !== 'none' ? thoughtTrail() : [];
+        return (
+          <>
+            <path d={buildCloudPath(w, h)} fill={fill} stroke={stroke} strokeWidth={sw} strokeLinejoin="round" />
+            {trail.map((c, i) => {
+              const r = i === 0 ? dotR1 : i === 1 ? dotR2 : dotR3;
+              return (
+                <g key={`tt${i}`}>
+                  <circle cx={c.cx} cy={c.cy} r={r} fill={fill} />
+                  <circle cx={c.cx} cy={c.cy} r={r} fill="none" stroke={stroke} strokeWidth={Math.max(0.8, sw * (0.8 - i * 0.1))} />
+                </g>
+              );
+            })}
+            <SvgText lines={lines} cx={cx} cy={cy} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={textFill} />
+          </>
+        );
+      })()}
 
       {/* ── NARRATION ── */}
       {type === 'narration' && (
         <>
-          <rect x={cx-rx} y={cy-ry} width={rx*2} height={ry*2} fill="#fffef0" stroke={stroke} strokeWidth={2} rx={0} />
-          <text
-            fontFamily={fontFamily}
-            fontSize={fontSize}
-            fontStyle={fontStyle}
-            fill={textFill}
-            textAnchor={textAnchor}
-            style={{ userSelect: 'none' }}
-          >
-            {lines.map((line, i) => (
-              <tspan key={i} x={textCX} y={(cy - ry) + fontSize * 1.1 + i * fontSize * 1.35}>{line}</tspan>
-            ))}
-          </text>
+          <rect x={cx-rx} y={cy-ry} width={rx*2} height={ry*2} fill={bodyFill} stroke={stroke} strokeWidth={2} rx={0} />
+          {renderBoxText()}
+        </>
+      )}
+
+      {/* ── HEART — no tail ── */}
+      {type === 'heart' && (
+        <>
+          <path d={heartPath(cx, cy, rx, ry)} fill={bodyFill} stroke={bodyStroke} strokeWidth={2} strokeLinejoin="round" />
+          <SvgText lines={lines} cx={cx} cy={cy + ry * 0.15} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={userTextColor ?? '#880033'} />
+        </>
+      )}
+
+      {/* ── BURST — starburst, no tail, Bangers ── */}
+      {type === 'burst' && (
+        <>
+          <polygon points={spikyPts(cx, cy, rx, ry, 10, 0.65)} fill={bodyFill} stroke={stroke} strokeWidth={strokeW} strokeLinejoin="miter" />
+          <SvgText lines={lines} cx={cx} cy={cy} fontSize={fontSize} fontFamily={fontFamily} fontWeight={700} fill={textFill} />
+        </>
+      )}
+
+      {/* ── WOBBLY — organic blob, blue stroke ── */}
+      {type === 'wobbly' && (
+        <>
+          {tailPoints && <polygon points={tailPoints} fill={bodyFill} stroke={bodyStroke} strokeWidth={2} strokeLinejoin="round" />}
+          <path d={wobblyPath(cx, cy, rx, ry)} fill={bodyFill} stroke={bodyStroke} strokeWidth={2} />
+          <SvgText lines={lines} cx={cx} cy={cy} fontSize={fontSize} fontFamily={fontFamily} fontWeight={fontWeight} fill={userTextColor ?? '#334466'} />
         </>
       )}
     </svg>
@@ -420,19 +578,23 @@ interface PanelCellProps {
   bubbles: PanelBubbles;
   layoutRows: number[][];
   selectedBubbleId: string | null;
+  editingBubbleId: string | null;
   zoom: number;
   onBubbleSelect: (panelId: string, bubbleId: string) => void;
   onBubbleDeselect: () => void;
-  onBubbleAdd: (panelId: string, normX: number, normY: number) => void;
+  onBubbleAdd: (panelId: string, normX: number, normY: number, bubbleType?: BubbleType) => void;
   onBubbleUpdate: (panelId: string, bubbleId: string, patch: Partial<SingleBubble>) => void;
   onDragCommit: () => void;
   onContextMenu: (panelId: string, bubbleId: string, x: number, y: number) => void;
+  onEditStart: (panelId: string, bubbleId: string) => void;
+  onEditEnd: () => void;
 }
 
 function PanelCell({
   panel, panelIndex, imageUrl, bubbles, layoutRows,
-  selectedBubbleId, zoom,
+  selectedBubbleId, editingBubbleId, zoom,
   onBubbleSelect, onBubbleDeselect, onBubbleAdd, onBubbleUpdate, onDragCommit, onContextMenu,
+  onEditStart, onEditEnd,
 }: PanelCellProps) {
   const cellRef = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -440,8 +602,8 @@ function PanelCell({
   const [dragOverride, setDragOverride] = useState<Partial<SingleBubble> | null>(null);
 
   const gridPlacement = getPanelGridPlacement(layoutRows, panelIndex);
-  const sortedBubbles = [...bubbles].sort((a, b) => a.zIndex - b.zIndex);
-  const selectedBubble = bubbles.find(b => b.id === selectedBubbleId) ?? null;
+  const sortedBubbles = [...bubbles].filter(b => !b.crossPanel).sort((a, b) => a.zIndex - b.zIndex);
+  const selectedBubble = bubbles.find(b => b.id === selectedBubbleId && !b.crossPanel) ?? null;
 
   // Drag state
   const dragRef = useRef<{
@@ -452,6 +614,7 @@ function PanelCell({
     cellLeft: number; cellTop: number;
   } | null>(null);
   const isDraggingRef = useRef(false);
+  const dragActiveRef = useRef(false); // true only once pointer moves past 3px threshold
 
   // Compute patch from current pointer event — shared by onPointerMove and onPointerUp
   const computePatch = useCallback((e: React.PointerEvent): Partial<SingleBubble> | null => {
@@ -522,20 +685,31 @@ function PanelCell({
 
   const onDragMove = useCallback((e: React.PointerEvent) => {
     if (!isDraggingRef.current || !dragRef.current) return;
+    if (!dragActiveRef.current) {
+      const dx = e.clientX - dragRef.current.startMX;
+      const dy = e.clientY - dragRef.current.startMY;
+      if (Math.hypot(dx, dy) < 3) return;
+      dragActiveRef.current = true;
+    }
     const patch = computePatch(e);
-    if (patch) setDragOverride(patch); // local state only — no parent re-render
+    if (patch) setDragOverride(patch);
   }, [computePatch]);
 
   const onDragEnd = useCallback((e: React.PointerEvent) => {
     if (!isDraggingRef.current || !dragRef.current) return;
-    (e.currentTarget as Element).releasePointerCapture(e.pointerId);
-    const patch = computePatch(e);
-    if (patch) onBubbleUpdate(panel.id, dragRef.current.startBubble.id, patch);
+    const wasActive = dragActiveRef.current;
+    const bubbleId = dragRef.current.startBubble.id;
+    // Compute patch BEFORE clearing dragRef — computePatch reads from it
+    const patch = wasActive ? computePatch(e) : null;
     dragRef.current = null;
     isDraggingRef.current = false;
+    dragActiveRef.current = false;
     setDragOverride(null);
     if (cellRef.current) cellRef.current.style.cursor = '';
-    onDragCommit(); // flush save immediately after drag
+    if (wasActive && patch) {
+      onBubbleUpdate(panel.id, bubbleId, patch);
+      onDragCommit();
+    }
   }, [computePatch, panel.id, onBubbleUpdate, onDragCommit]);
 
   const handleCellClick = useCallback((e: React.MouseEvent) => {
@@ -569,10 +743,20 @@ function PanelCell({
       onMouseLeave={() => setIsHovered(false)}
       onClick={handleCellClick}
       onMouseDown={(e) => {
-        // deselect if clicking on panel background (not a bubble)
         if (e.target === cellRef.current || (e.target as HTMLElement).tagName === 'IMG') {
           onBubbleDeselect();
         }
+      }}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+      onDrop={(e) => {
+        e.preventDefault();
+        const type = e.dataTransfer.getData('bubbleType') as BubbleType | '';
+        if (!type) return;
+        const rect = cellRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const normX = clamp((e.clientX - rect.left) / rect.width, 0.05, 0.95);
+        const normY = clamp((e.clientY - rect.top) / rect.height, 0.05, 0.95);
+        onBubbleAdd(panel.id, normX, normY, type);
       }}
     >
       {/* Panel image */}
@@ -601,8 +785,15 @@ function PanelCell({
           const top = b.bubblePosition.y * cellH - b.bubbleSize.h / 2;
           return (
             <div key={b.id}
-              style={{ position: 'absolute', left, top, width: b.bubbleSize.w, height: b.bubbleSize.h, zIndex: b.zIndex, pointerEvents: 'auto', cursor: 'pointer' }}
-              onClick={(e) => { e.stopPropagation(); onBubbleSelect(panel.id, b.id); }}
+              style={{ position: 'absolute', left, top, width: b.bubbleSize.w, height: b.bubbleSize.h, zIndex: b.zIndex, pointerEvents: 'auto', cursor: 'grab' }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                onBubbleSelect(panel.id, b.id);
+                startDrag(e, 'move', b);
+              }}
+              onPointerMove={onDragMove}
+              onPointerUp={onDragEnd}
+              onDoubleClick={(e) => { e.stopPropagation(); onEditStart(panel.id, b.id); }}
               onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(panel.id, b.id, e.clientX, e.clientY); }}
             >
               <MangaBubbleSVG bubble={b} w={b.bubbleSize.w} h={b.bubbleSize.h} dimmed={!!selectedBubbleId} />
@@ -636,11 +827,12 @@ function PanelCell({
 
         return (
           <div
-            style={{ position: 'absolute', left, top, width: bw, height: bh, zIndex: selectedBubble.zIndex + 1 }}
+            style={{ position: 'absolute', left, top, width: bw, height: bh, zIndex: selectedBubble.zIndex + 1, cursor: 'grab' }}
             onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => { e.stopPropagation(); startDrag(e, 'move', displayBubble); }}
             onPointerMove={onDragMove}
             onPointerUp={onDragEnd}
+            onDoubleClick={(e) => { e.stopPropagation(); onEditStart(panel.id, selectedBubble.id); }}
             onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(panel.id, selectedBubble.id, e.clientX, e.clientY); }}
           >
             <MangaBubbleSVG bubble={displayBubble} w={bw} h={bh} />
@@ -653,29 +845,15 @@ function PanelCell({
               pointerEvents: 'none',
             }} />
 
-            {/* Move handle (top center) */}
-            <div
-              style={{
-                position: 'absolute', top: -20, left: '50%', transform: 'translateX(-50%)',
-                width: 20, height: 14,
-                background: '#6366f1', borderRadius: 3,
-                cursor: 'grab', zIndex: 30,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-              onPointerDown={(e) => startDrag(e, 'move', displayBubble)}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: 10, color: 'white' }}>drag_indicator</span>
-            </div>
-
             {/* Corner resize handles */}
             <div style={{ ...handleStyle, top: -HANDLE_SIZE/2-1, left: -HANDLE_SIZE/2-1, cursor: 'nwse-resize' }}
-              onPointerDown={(e) => startDrag(e, 'tl', displayBubble)} />
+              onPointerDown={(e) => { e.stopPropagation(); startDrag(e, 'tl', displayBubble); }} />
             <div style={{ ...handleStyle, top: -HANDLE_SIZE/2-1, right: -HANDLE_SIZE/2-1, cursor: 'nesw-resize' }}
-              onPointerDown={(e) => startDrag(e, 'tr', displayBubble)} />
+              onPointerDown={(e) => { e.stopPropagation(); startDrag(e, 'tr', displayBubble); }} />
             <div style={{ ...handleStyle, bottom: -HANDLE_SIZE/2-1, left: -HANDLE_SIZE/2-1, cursor: 'nesw-resize' }}
-              onPointerDown={(e) => startDrag(e, 'bl', displayBubble)} />
+              onPointerDown={(e) => { e.stopPropagation(); startDrag(e, 'bl', displayBubble); }} />
             <div style={{ ...handleStyle, bottom: -HANDLE_SIZE/2-1, right: -HANDLE_SIZE/2-1, cursor: 'nwse-resize' }}
-              onPointerDown={(e) => startDrag(e, 'br', displayBubble)} />
+              onPointerDown={(e) => { e.stopPropagation(); startDrag(e, 'br', displayBubble); }} />
 
             {/* Tail handle */}
             {tip && (
@@ -689,9 +867,33 @@ function PanelCell({
                   border: '2px solid white',
                   cursor: 'crosshair', zIndex: 30,
                 }}
-                onPointerDown={(e) => startDrag(e, 'tail', displayBubble)}
+                onPointerDown={(e) => { e.stopPropagation(); startDrag(e, 'tail', displayBubble); }}
               />
             )}
+
+            {/* Inline text editor — double-click or auto on new bubble */}
+            {editingBubbleId === selectedBubble.id && selectedBubble.bubbleType !== 'none' && selectedBubble.bubbleType !== 'sfx' && (
+              <textarea
+                // eslint-disable-next-line jsx-a11y/no-autofocus
+                autoFocus
+                value={selectedBubble.dialogue ?? ''}
+                onChange={(e) => onBubbleUpdate(panel.id, selectedBubble.id, { dialogue: e.target.value })}
+                onBlur={onEditEnd}
+                onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onEditEnd(); } }}
+                onPointerDown={(e) => e.stopPropagation()}
+                style={{
+                  position: 'absolute', inset: '12% 10%',
+                  background: 'transparent', border: 'none', outline: 'none',
+                  resize: 'none', textAlign: 'center',
+                  fontSize: selectedBubble.fontSize / zoom,
+                  color: 'transparent', caretColor: selectedBubble.textColor ?? '#111111',
+                  fontFamily: 'Bangers, sans-serif',
+                  lineHeight: 1.3, zIndex: 25,
+                  cursor: 'text', overflow: 'hidden',
+                }}
+              />
+            )}
+
           </div>
         );
       })()}
@@ -745,6 +947,199 @@ function PanelCell({
   );
 }
 
+// ── PageBubbleLayer ───────────────────────────────────────────────────────────
+// Renders bubbles with crossPanel:true in an absolute overlay covering the full page.
+// Bubble positions (0-1) are treated as page-relative (×BASE_PAGE_W / ×BASE_PAGE_H).
+
+export const PAGE_PANEL_PREFIX = '__page__'; // kept for backward-compat with MongoDB records
+
+interface PageBubbleLayerProps {
+  panels: Step4Panel[];
+  panelBubbles: Record<string, PanelBubbles>;
+  selectedBubble: { panelId: string; bubbleId: string } | null;
+  zoom: number;
+  onBubbleSelect: (panelId: string, bubbleId: string) => void;
+  onBubbleDeselect: () => void;
+  onBubbleUpdate: (panelId: string, bubbleId: string, patch: Partial<SingleBubble>) => void;
+  onDragCommit: () => void;
+  onContextMenu: (panelId: string, bubbleId: string, x: number, y: number) => void;
+}
+
+function PageBubbleLayer({
+  panels, panelBubbles, selectedBubble, zoom,
+  onBubbleSelect, onBubbleDeselect, onBubbleUpdate, onDragCommit, onContextMenu,
+}: PageBubbleLayerProps) {
+  const layerRef = useRef<HTMLDivElement>(null);
+  const [dragOverride, setDragOverride] = useState<Partial<SingleBubble> | null>(null);
+  const dragRef = useRef<{
+    handle: DragHandle;
+    startMX: number; startMY: number;
+    startBubble: SingleBubble;
+    sourcePanelId: string;
+    cellW: number; cellH: number;
+    cellLeft: number; cellTop: number;
+  } | null>(null);
+  const isDraggingRef = useRef(false);
+
+  // Collect cross-panel bubbles from all panels, keeping track of source panel
+  const crossItems = useMemo(() =>
+    panels.flatMap(p =>
+      (panelBubbles[p.id] ?? [])
+        .filter(b => b.crossPanel)
+        .map(b => ({ bubble: b, panelId: p.id }))
+    ).sort((a, b) => a.bubble.zIndex - b.bubble.zIndex),
+    [panels, panelBubbles]
+  );
+
+  const selectedItem = selectedBubble
+    ? crossItems.find(x => x.panelId === selectedBubble.panelId && x.bubble.id === selectedBubble.bubbleId) ?? null
+    : null;
+
+  const computePatch = useCallback((e: React.PointerEvent): Partial<SingleBubble> | null => {
+    const d = dragRef.current;
+    if (!d) return null;
+    const logDx = (e.clientX - d.startMX) / zoom;
+    const logDy = (e.clientY - d.startMY) / zoom;
+    const sb = d.startBubble;
+
+    if (d.handle === 'tail') {
+      const mouseX = (e.clientX - d.cellLeft) / zoom;
+      const mouseY = (e.clientY - d.cellTop) / zoom;
+      return { tailDir: dirFromVector(mouseX - sb.bubblePosition.x * d.cellW, mouseY - sb.bubblePosition.y * d.cellH) };
+    }
+    if (d.handle === 'move') {
+      return {
+        bubblePosition: {
+          x: clamp(sb.bubblePosition.x + logDx / d.cellW, 0.02, 0.98),
+          y: clamp(sb.bubblePosition.y + logDy / d.cellH, 0.02, 0.98),
+        },
+      };
+    }
+    let newW = sb.bubbleSize.w, newH = sb.bubbleSize.h;
+    let newX = sb.bubblePosition.x, newY = sb.bubblePosition.y;
+    switch (d.handle) {
+      case 'tl': newW = Math.max(MIN_BUBBLE_W, sb.bubbleSize.w - logDx); newH = Math.max(MIN_BUBBLE_H, sb.bubbleSize.h - logDy);
+        newX = sb.bubblePosition.x + logDx / d.cellW / 2; newY = sb.bubblePosition.y + logDy / d.cellH / 2; break;
+      case 'tr': newW = Math.max(MIN_BUBBLE_W, sb.bubbleSize.w + logDx); newH = Math.max(MIN_BUBBLE_H, sb.bubbleSize.h - logDy);
+        newY = sb.bubblePosition.y + logDy / d.cellH / 2; break;
+      case 'bl': newW = Math.max(MIN_BUBBLE_W, sb.bubbleSize.w - logDx); newH = Math.max(MIN_BUBBLE_H, sb.bubbleSize.h + logDy);
+        newX = sb.bubblePosition.x + logDx / d.cellW / 2; break;
+      case 'br': newW = Math.max(MIN_BUBBLE_W, sb.bubbleSize.w + logDx); newH = Math.max(MIN_BUBBLE_H, sb.bubbleSize.h + logDy); break;
+    }
+    return { bubbleSize: { w: newW, h: newH }, bubblePosition: { x: clamp(newX, 0.02, 0.98), y: clamp(newY, 0.02, 0.98) } };
+  }, [zoom]);
+
+  const startDrag = useCallback((e: React.PointerEvent, handle: DragHandle, bubble: SingleBubble, srcPanelId: string) => {
+    e.preventDefault(); e.stopPropagation();
+    if (!layerRef.current) return;
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    const rect = layerRef.current.getBoundingClientRect();
+    dragRef.current = {
+      handle, startMX: e.clientX, startMY: e.clientY,
+      startBubble: { ...bubble },
+      sourcePanelId: srcPanelId,
+      cellW: rect.width / zoom, cellH: rect.height / zoom,
+      cellLeft: rect.left, cellTop: rect.top,
+    };
+    isDraggingRef.current = true;
+  }, [zoom]);
+
+  const onDragMove = useCallback((e: React.PointerEvent) => {
+    if (!isDraggingRef.current || !dragRef.current) return;
+    const patch = computePatch(e);
+    if (patch) setDragOverride(patch);
+  }, [computePatch]);
+
+  const onDragEnd = useCallback((e: React.PointerEvent) => {
+    if (!isDraggingRef.current || !dragRef.current) return;
+    (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+    const patch = computePatch(e);
+    if (patch) onBubbleUpdate(dragRef.current.sourcePanelId, dragRef.current.startBubble.id, patch);
+    dragRef.current = null; isDraggingRef.current = false; setDragOverride(null);
+    onDragCommit();
+  }, [computePatch, onBubbleUpdate, onDragCommit]);
+
+  const HANDLE_SIZE = 10;
+  const handleStyle: React.CSSProperties = {
+    position: 'absolute', width: HANDLE_SIZE, height: HANDLE_SIZE,
+    background: 'white', border: '2px solid #10b981',
+    borderRadius: 2, transform: 'rotate(45deg)', cursor: 'nwse-resize', zIndex: 30,
+  };
+
+  return (
+    <div
+      ref={layerRef}
+      style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none' }}
+      onClick={() => onBubbleDeselect()}
+    >
+      {/* Non-selected cross-panel bubbles */}
+      {crossItems.filter(x => x.bubble.id !== selectedItem?.bubble.id).map(({ bubble: b, panelId: srcId }) => {
+        const left = b.bubblePosition.x * BASE_PAGE_W - b.bubbleSize.w / 2;
+        const top  = b.bubblePosition.y * BASE_PAGE_H - b.bubbleSize.h / 2;
+        return (
+          <div key={b.id}
+            style={{ position: 'absolute', left, top, width: b.bubbleSize.w, height: b.bubbleSize.h, zIndex: b.zIndex, pointerEvents: 'auto', cursor: 'pointer' }}
+            onClick={(e) => { e.stopPropagation(); onBubbleSelect(srcId, b.id); }}
+            onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(srcId, b.id, e.clientX, e.clientY); }}
+          >
+            <MangaBubbleSVG bubble={b} w={b.bubbleSize.w} h={b.bubbleSize.h} dimmed={!!selectedItem} />
+          </div>
+        );
+      })}
+
+      {/* Selected cross-panel bubble with handles */}
+      {selectedItem && (() => {
+        const { bubble: selB, panelId: selPanelId } = selectedItem;
+        const displayBubble = dragOverride ? { ...selB, ...dragOverride } : selB;
+        const left = displayBubble.bubblePosition.x * BASE_PAGE_W - displayBubble.bubbleSize.w / 2;
+        const top  = displayBubble.bubblePosition.y * BASE_PAGE_H - displayBubble.bubbleSize.h / 2;
+        const bw = displayBubble.bubbleSize.w, bh = displayBubble.bubbleSize.h;
+        const tip = hasTailSupport(displayBubble.bubbleType) && displayBubble.tailDir !== 'none'
+          ? tailTipOffset(displayBubble.tailDir, bw, bh) : null;
+        return (
+          <div
+            style={{ position: 'absolute', left, top, width: bw, height: bh, zIndex: selB.zIndex + 1, pointerEvents: 'auto' }}
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerMove={onDragMove}
+            onPointerUp={onDragEnd}
+            onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(selPanelId, selB.id, e.clientX, e.clientY); }}
+          >
+            <MangaBubbleSVG bubble={displayBubble} w={bw} h={bh} dimmed={false} />
+            {/* Move handle */}
+            <div style={{ position: 'absolute', inset: 0, cursor: 'grab', zIndex: 10 }}
+              onPointerDown={(e) => startDrag(e, 'move', selB, selPanelId)} />
+            {/* Corner resize handles — green tint to distinguish from panel bubbles */}
+            {(['tl','tr','bl','br'] as DragHandle[]).map(h => (
+              <div key={h} style={{
+                ...handleStyle, borderColor: '#10b981',
+                top: h.includes('t') ? -HANDLE_SIZE/2 : undefined,
+                bottom: h.includes('b') ? -HANDLE_SIZE/2 : undefined,
+                left: h.includes('l') ? -HANDLE_SIZE/2 : undefined,
+                right: h.includes('r') ? -HANDLE_SIZE/2 : undefined,
+                cursor: (h === 'tl' || h === 'br') ? 'nwse-resize' : 'nesw-resize',
+              }}
+                onPointerDown={(e) => startDrag(e, h, selB, selPanelId)} />
+            ))}
+            {/* Tail direction handle */}
+            {tip && (
+              <div style={{
+                position: 'absolute', width: 12, height: 12, borderRadius: '50%',
+                background: '#10b981', border: '2px solid white',
+                left: bw / 2 + tip.dx - 6, top: bh / 2 + tip.dy - 6,
+                cursor: 'crosshair', zIndex: 31,
+              }}
+                onPointerDown={(e) => startDrag(e, 'tail', selB, selPanelId)} />
+            )}
+            {/* Selection outline */}
+            <div style={{ position: 'absolute', inset: -2, border: '2px dashed #10b981', borderRadius: 3, pointerEvents: 'none', zIndex: 5 }} />
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
 // Computes tail direction pointing from bubble toward panel center (character approximation)
 function autoDetectTailDir(bubblePos: BubblePosition): TailDir {
   const dx = 0.5 - bubblePos.x;
@@ -780,8 +1175,17 @@ const BUBBLE_TYPE_OPTIONS: { type: BubbleType; label: string; icon: string }[] =
   { type: 'speech',    label: 'Speech',    icon: 'chat_bubble' },
   { type: 'thought',   label: 'Thought',   icon: 'cloud' },
   { type: 'shout',     label: 'Shout',     icon: 'campaign' },
+  { type: 'scream',    label: 'Scream',    icon: 'warning' },
+  { type: 'whisper',   label: 'Whisper',   icon: 'hearing' },
+  { type: 'double',    label: 'Double',    icon: 'adjust' },
+  { type: 'electric',  label: 'Electric',  icon: 'bolt' },
+  { type: 'round',     label: 'Round',     icon: 'circle' },
+  { type: 'square',    label: 'Square',    icon: 'crop_square' },
+  { type: 'wobbly',    label: 'Wobbly',    icon: 'water' },
+  { type: 'burst',     label: 'Burst',     icon: 'stars' },
+  { type: 'heart',     label: 'Heart',     icon: 'favorite' },
   { type: 'sfx',       label: 'SFX',       icon: 'electric_bolt' },
-  { type: 'narration', label: 'Narration', icon: 'article' },
+  { type: 'narration', label: 'Caption',   icon: 'article' },
   { type: 'none',      label: 'None',      icon: 'block' },
 ];
 
@@ -820,25 +1224,68 @@ function BubbleSidebar({
   const primaryColor = 'var(--color-primary)';
   const mutedColor = 'var(--color-on-surface-variant)';
 
+  // Bubble palette — always shown at top (drag tiles onto panels to create)
+  const palette = (
+    <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--color-outline)', flexShrink: 0 }}>
+      <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: mutedColor, marginBottom: 6 }}>
+        Drag to add bubble
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+        {BUBBLE_TYPE_OPTIONS.map(({ type, label, icon }) => (
+          <div
+            key={type}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('bubbleType', type);
+              e.dataTransfer.effectAllowed = 'copy';
+            }}
+            style={{
+              padding: '6px 4px', borderRadius: 7,
+              border: '1.5px solid var(--color-outline)',
+              background: selectedBubble?.bubbleType === type
+                ? 'rgba(0,88,190,0.09)'
+                : 'var(--color-surface-container-low)',
+              color: selectedBubble?.bubbleType === type ? primaryColor : mutedColor,
+              cursor: 'grab', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+              fontSize: 10, fontWeight: 500, userSelect: 'none',
+            }}
+            onClick={() => selectedBubble && onBubbleChange({
+              bubbleType: type,
+              tailDir: tailDirForType(type, selectedBubble.tailDir),
+              fontSize: BUBBLE_TYPE_DEFAULTS[type].fontSize,
+            })}
+            title={`Drag to panel to add ${label} bubble`}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{icon}</span>
+            {label}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   if (!selectedBubble || !selectedPanelId) {
     return (
       <div style={{ width: 280, borderLeft: '1px solid var(--color-outline)', display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto', background: 'var(--color-surface-container-lowest)' }}>
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--color-outline)' }}>
-          <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: mutedColor, marginBottom: 10 }}>
-            Bubble Editor
-          </p>
-          <div style={{ background: 'var(--color-surface-container-low)', borderRadius: 8, padding: '10px 12px' }}>
-            <p style={{ fontSize: 12, color: mutedColor, lineHeight: 1.5, marginBottom: 0 }}>
-              Click a bubble on the canvas to edit it, or click inside any panel to add a new speech bubble.
-            </p>
-          </div>
+        {palette}
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--color-outline)' }}>
+          <button type="button" onClick={onAutoImport}
+            style={{
+              width: '100%', padding: '7px 12px', borderRadius: 8,
+              border: `1px solid ${primaryColor}`,
+              background: 'rgba(0,88,190,0.06)',
+              color: primaryColor, fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>bolt</span>
+            Auto-import from script
+          </button>
         </div>
-
-        <div style={{ padding: '12px 14px', flex: 1 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: mutedColor, marginBottom: 8 }}>
+        <div style={{ padding: '10px 12px', flex: 1 }}>
+          <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: mutedColor, marginBottom: 6 }}>
             Page Summary
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {currentPanels.map((panel) => {
               const bubbles = panelBubbles[panel.id] ?? [];
               const hasBubbles = bubbles.length > 0 && bubbles.some(b => !isNoneText(b.dialogue));
@@ -850,50 +1297,34 @@ function BubbleSidebar({
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '5px 8px', borderRadius: 6, border: 'none',
-                    background: selectedPanelId === panel.id ? 'rgba(99,102,241,0.08)' : 'transparent',
-                    cursor: 'pointer', textAlign: 'left',
+                    background: 'transparent', cursor: 'pointer', textAlign: 'left',
                   }}>
-                  <span style={{
-                    width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-                    background: hasBubbles ? '#1D9E75' : 'var(--color-outline)',
-                  }} />
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: hasBubbles ? '#1D9E75' : 'var(--color-outline)' }} />
                   <span style={{ fontSize: 12, color: hasBubbles ? 'var(--color-on-surface)' : mutedColor, fontStyle: hasBubbles ? 'normal' : 'italic', flex: 1 }}>
-                    Panel {panel.panelNumber}
-                    {hasBubbles ? ` — ${firstType}${count > 1 ? ` ×${count}` : ''}` : ' — No dialogue'}
+                    Panel {panel.panelNumber}{hasBubbles ? ` — ${firstType}${count > 1 ? ` ×${count}` : ''}` : ' — No dialogue'}
                   </span>
                 </button>
               );
             })}
           </div>
         </div>
-
-        <div style={{ padding: '10px 14px', borderTop: '1px solid var(--color-outline)' }}>
-          <button type="button" onClick={onAutoImport}
-            style={{
-              width: '100%', padding: '8px 12px', borderRadius: 8,
-              border: `1px solid ${primaryColor}`,
-              background: 'rgba(0,88,190,0.06)',
-              color: primaryColor, fontSize: 12, fontWeight: 600,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>bolt</span>
-            Auto-import from script
-          </button>
-        </div>
       </div>
     );
   }
 
   // Bubble selected
+  const isPageBubble = selectedBubble.crossPanel === true;
   const selectedPanel = currentPanels.find(p => p.id === selectedPanelId);
-  const bubbleIndex = (panelBubbles[selectedPanelId] ?? []).findIndex(b => b.id === selectedBubble.id) + 1;
+  const bubbleIndex = (panelBubbles[selectedPanelId ?? ''] ?? []).findIndex(b => b.id === selectedBubble.id) + 1;
 
   return (
     <div style={{ width: 280, borderLeft: '1px solid var(--color-outline)', display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto', background: 'var(--color-surface-container-lowest)' }}>
-      {/* Header */}
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--color-outline)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-on-surface)' }}>
-          Panel {selectedPanel?.panelNumber} · Bubble {bubbleIndex}
+      {palette}
+
+      {/* Selected bubble header */}
+      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--color-outline)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: isPageBubble ? '#10b981' : 'var(--color-on-surface)' }}>
+          {isPageBubble ? `Cross-panel · Bubble ${bubbleIndex}` : `Panel ${selectedPanel?.panelNumber} · Bubble ${bubbleIndex}`}
         </span>
         <button type="button" onClick={onBubbleDelete}
           style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 13, fontWeight: 600, padding: '2px 6px', borderRadius: 4 }}
@@ -902,51 +1333,22 @@ function BubbleSidebar({
         </button>
       </div>
 
-      <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {/* Text */}
+      <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
+        {/* Text — still in sidebar as secondary edit path */}
         <div>
-          <label style={{ fontSize: 11, fontWeight: 600, color: mutedColor, textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 5 }}>Text</label>
+          <label style={{ fontSize: 10, fontWeight: 700, color: mutedColor, textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 4 }}>Text</label>
           <textarea
             value={localText}
             onChange={(e) => handleTextChange(e.target.value)}
             rows={3}
             style={{
-              width: '100%', padding: '7px 9px', borderRadius: 7, resize: 'vertical', minHeight: 64,
+              width: '100%', padding: '7px 9px', borderRadius: 7, resize: 'vertical', minHeight: 60,
               border: '1px solid var(--color-outline)', background: 'var(--color-surface-container-low)',
               fontSize: 13, color: 'var(--color-on-surface)', fontFamily: 'inherit',
               outline: 'none', boxSizing: 'border-box',
             }}
-            placeholder="Enter dialogue..."
-          />
-        </div>
-
-        {/* Bubble type grid */}
-        <div>
-          <label style={{ fontSize: 11, fontWeight: 600, color: mutedColor, textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 6 }}>Bubble Type</label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
-            {BUBBLE_TYPE_OPTIONS.map(({ type, label, icon }) => {
-              const active = selectedBubble.bubbleType === type;
-              return (
-                <button key={type} type="button"
-                  onClick={() => onBubbleChange({
-                    bubbleType: type,
-                    tailDir: tailDirForType(type, selectedBubble.tailDir),
-                    fontSize: BUBBLE_TYPE_DEFAULTS[type].fontSize,
-                  })}
-                  style={{
-                    padding: '7px 4px', borderRadius: 7, border: `1.5px solid ${active ? primaryColor : 'var(--color-outline)'}`,
-                    background: active ? 'rgba(0,88,190,0.09)' : 'transparent',
-                    color: active ? primaryColor : mutedColor,
-                    cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-                    fontSize: 10, fontWeight: active ? 600 : 400,
-                  }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{icon}</span>
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+            placeholder="Type dialogue here or double-click bubble on canvas..."
+          /></div>
 
         {/* Font size */}
         {selectedBubble.bubbleType !== 'none' && (() => {
@@ -983,6 +1385,77 @@ function BubbleSidebar({
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
               <span style={{ fontSize: 10, color: mutedColor }}>−20°</span>
               <span style={{ fontSize: 10, color: mutedColor }}>+20°</span>
+            </div>
+          </div>
+        )}
+
+        {/* Opacity */}
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: mutedColor, textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 6 }}>
+            Opacity — {Math.round((selectedBubble.opacity ?? 1) * 100)}%
+          </label>
+          <input type="range" min={10} max={100} step={5}
+            value={Math.round((selectedBubble.opacity ?? 1) * 100)}
+            onChange={(e) => onBubbleChange({ opacity: Number(e.target.value) / 100 })}
+            style={{ width: '100%' }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+            <span style={{ fontSize: 10, color: mutedColor }}>10%</span>
+            <span style={{ fontSize: 10, color: mutedColor }}>100%</span>
+          </div>
+        </div>
+
+        {/* Colors */}
+        {selectedBubble.bubbleType !== 'none' && (
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: mutedColor, textTransform: 'uppercase', letterSpacing: '0.07em', display: 'block', marginBottom: 8 }}>
+              Colors
+            </label>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: mutedColor, marginBottom: 4 }}>Background</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input type="color"
+                    value={selectedBubble.fillColor ?? '#ffffff'}
+                    onChange={(e) => onBubbleChange({ fillColor: e.target.value })}
+                    style={{ width: 32, height: 28, padding: 1, border: `1px solid ${primaryColor}33`, borderRadius: 6, cursor: 'pointer', background: 'none' }}
+                  />
+                  <span style={{ fontSize: 10, color: mutedColor, fontFamily: 'monospace' }}>
+                    {selectedBubble.fillColor ?? '#ffffff'}
+                  </span>
+                  {selectedBubble.fillColor && (
+                    <button type="button"
+                      onClick={() => onBubbleChange({ fillColor: undefined })}
+                      title="Reset to default"
+                      style={{ fontSize: 11, color: mutedColor, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}>
+                      ↺
+                    </button>
+                  )}
+                </div>
+              </div>
+              {selectedBubble.bubbleType !== 'sfx' && (
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: mutedColor, marginBottom: 4 }}>Text</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input type="color"
+                      value={selectedBubble.textColor ?? '#111111'}
+                      onChange={(e) => onBubbleChange({ textColor: e.target.value })}
+                      style={{ width: 32, height: 28, padding: 1, border: `1px solid ${primaryColor}33`, borderRadius: 6, cursor: 'pointer', background: 'none' }}
+                    />
+                    <span style={{ fontSize: 10, color: mutedColor, fontFamily: 'monospace' }}>
+                      {selectedBubble.textColor ?? '#111111'}
+                    </span>
+                    {selectedBubble.textColor && (
+                      <button type="button"
+                        onClick={() => onBubbleChange({ textColor: undefined })}
+                        title="Reset to default"
+                        style={{ fontSize: 11, color: mutedColor, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}>
+                        ↺
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1107,6 +1580,7 @@ function BubbleSidebar({
 
 interface CtxMenuProps {
   x: number; y: number;
+  isCrossPanel: boolean;
   onBringFront: () => void;
   onSendBack: () => void;
   onDuplicate: () => void;
@@ -1114,46 +1588,51 @@ interface CtxMenuProps {
   onClose: () => void;
 }
 
-function ContextMenu({ x, y, onBringFront, onSendBack, onDuplicate, onDelete, onClose }: CtxMenuProps) {
-  useEffect(() => {
-    const close = () => onClose();
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [onClose]);
-
+function ContextMenu({ x, y, isCrossPanel, onBringFront, onSendBack, onDuplicate, onDelete, onClose }: CtxMenuProps) {
+  // Use a backdrop div instead of document mousedown listener.
+  // The document listener fires before click, causing a re-render that clears contextMenu
+  // before handleContextMenuAction can read it. The backdrop approach avoids this: the menu
+  // div's onMouseDown stops propagation so the backdrop never fires on item clicks.
   return (
-    <div
-      style={{
-        position: 'fixed', left: x, top: y, zIndex: 200,
-        background: 'white', border: '1px solid var(--color-outline)',
-        borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-        minWidth: 160, padding: '4px 0',
-      }}
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      {[
-        { label: 'Bring to Front', icon: 'flip_to_front', action: onBringFront, danger: false },
-        { label: 'Send to Back',   icon: 'flip_to_back',  action: onSendBack,  danger: false },
-        { label: 'Duplicate',      icon: 'content_copy',  action: onDuplicate, danger: false },
-        null,
-        { label: 'Delete',         icon: 'delete',        action: onDelete,    danger: true  },
-      ].map((item, i) => {
-        if (!item) return <div key={i} style={{ height: 1, background: 'var(--color-outline)', margin: '3px 0' }} />;
-        return (
-          <button key={item.label} type="button"
-            onClick={() => { item.action(); onClose(); }}
-            style={{
-              width: '100%', padding: '7px 14px', border: 'none', background: 'none',
-              display: 'flex', alignItems: 'center', gap: 8,
-              fontSize: 13, color: item.danger ? '#ef4444' : 'var(--color-on-surface)',
-              cursor: 'pointer', textAlign: 'left',
-            }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 15 }}>{item.icon}</span>
-            {item.label}
-          </button>
-        );
-      })}
-    </div>
+    <>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 199 }} onMouseDown={() => onClose()} />
+      <div
+        style={{
+          position: 'fixed', left: x, top: y, zIndex: 200,
+          background: 'white', border: '1px solid var(--color-outline)',
+          borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+          minWidth: 160, padding: '4px 0',
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {[
+          {
+            label: isCrossPanel ? 'Send to Back' : 'Bring to Front',
+            icon: isCrossPanel ? 'flip_to_back' : 'flip_to_front',
+            action: isCrossPanel ? onSendBack : onBringFront,
+            danger: false,
+          },
+          { label: 'Duplicate', icon: 'content_copy', action: onDuplicate, danger: false },
+          null,
+          { label: 'Delete', icon: 'delete', action: onDelete, danger: true },
+        ].map((item, i) => {
+          if (!item) return <div key={i} style={{ height: 1, background: 'var(--color-outline)', margin: '3px 0' }} />;
+          return (
+            <button key={item.label} type="button"
+              onClick={() => { item.action(); onClose(); }}
+              style={{
+                width: '100%', padding: '7px 14px', border: 'none', background: 'none',
+                display: 'flex', alignItems: 'center', gap: 8,
+                fontSize: 13, color: item.danger ? '#ef4444' : 'var(--color-on-surface)',
+                cursor: 'pointer', textAlign: 'left',
+              }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 15 }}>{item.icon}</span>
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -1168,6 +1647,7 @@ export default function DialogueEditor({
 
   const [currentPage, setCurrentPage] = useState<number>(pageIds[0] ?? 1);
   const [selectedBubble, setSelectedBubble] = useState<{ panelId: string; bubbleId: string } | null>(null);
+  const [editingBubbleId, setEditingBubbleId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'unsaved' | 'saving' | 'saved' | 'error'>('idle');
   const [zoom, setZoom] = useState<number>(0.75);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
@@ -1283,23 +1763,25 @@ export default function DialogueEditor({
     setSelectedBubble(null);
   }, [flushSave]);
 
-  const addBubble = useCallback((panelId: string, normX: number, normY: number) => {
+  const addBubble = useCallback((panelId: string, normX: number, normY: number, bubbleType: BubbleType = 'speech') => {
     const existing = panelBubbles[panelId] ?? [];
     const maxZ = existing.length ? Math.max(...existing.map(b => b.zIndex)) : 0;
     const newBubble: SingleBubble = {
       id: genId(),
       dialogue: null,
-      bubbleType: 'speech',
-      tailDir: 'down-left',
+      bubbleType,
+      tailDir: tailDirForType(bubbleType, 'down-left'),
       bubblePosition: { x: normX, y: normY },
       bubbleSize: { w: 160, h: 80 },
-      fontSize: BUBBLE_TYPE_DEFAULTS.speech.fontSize,
+      fontSize: BUBBLE_TYPE_DEFAULTS[bubbleType].fontSize,
       rotation: 0,
+      opacity: 1,
       zIndex: maxZ + 1,
     };
     const updated = [...existing, newBubble];
     triggerSave(panelId, updated);
     setSelectedBubble({ panelId, bubbleId: newBubble.id });
+    setEditingBubbleId(newBubble.id);
   }, [panelBubbles, triggerSave]);
 
   // Update + save — called on drag end and sidebar changes
@@ -1326,29 +1808,32 @@ export default function DialogueEditor({
     const { panelId, bubbleId } = contextMenu;
     const existing = panelBubbles[panelId] ?? [];
     const bubble = existing.find(b => b.id === bubbleId);
+    console.log('[ctx]', action, { panelId, bubbleId, found: !!bubble, existingLen: existing.length, panelKeys: Object.keys(panelBubbles) });
     if (!bubble) return;
 
-    if (action === 'del') { deleteBubble(panelId, bubbleId); return; }
     if (action === 'front') {
-      const maxZ = Math.max(...existing.map(b => b.zIndex));
-      const updated = existing.map(b => b.id === bubbleId ? { ...b, zIndex: maxZ + 1 } : b);
-      triggerSave(panelId, updated);
-    } else if (action === 'back') {
-      const minZ = Math.min(...existing.map(b => b.zIndex));
-      const updated = existing.map(b => b.id === bubbleId ? { ...b, zIndex: minZ - 1 } : b);
-      triggerSave(panelId, updated);
-    } else if (action === 'dup') {
+      // Mark cross-panel: bubble stays in its panel array, page overlay renders it
+      updateBubble(panelId, bubbleId, { crossPanel: true });
+      return;
+    }
+    if (action === 'back') {
+      updateBubble(panelId, bubbleId, { crossPanel: false });
+      return;
+    }
+    if (action === 'del') { deleteBubble(panelId, bubbleId); return; }
+    if (action === 'dup') {
       const maxZ = Math.max(...existing.map(b => b.zIndex));
       const newBubble: SingleBubble = {
         ...bubble,
         id: genId(),
+        crossPanel: false,
         bubblePosition: { x: clamp(bubble.bubblePosition.x + 0.05, 0, 0.95), y: clamp(bubble.bubblePosition.y + 0.05, 0, 0.95) },
         zIndex: maxZ + 1,
       };
       triggerSave(panelId, [...existing, newBubble]);
       setSelectedBubble({ panelId, bubbleId: newBubble.id });
     }
-  }, [contextMenu, panelBubbles, deleteBubble, triggerSave]);
+  }, [contextMenu, panelBubbles, updateBubble, deleteBubble, triggerSave]);
 
   // Single canonical definition: panel has dialogue when it has ≥1 bubble with non-empty, non-NONE text
   const panelHasDialogue = (panelId: string) => {
@@ -1490,7 +1975,8 @@ export default function DialogueEditor({
             flexShrink: 0,
           }}>
             {/* Page (white comic page with panel grid) */}
-            <div style={buildGridStyle(layoutRows)}>
+            <div style={{ position: 'relative' }}>
+              <div style={buildGridStyle(layoutRows)}>
               {currentPanels.map((panel, idx) => (
                 <PanelCell
                   key={panel.id}
@@ -1500,15 +1986,31 @@ export default function DialogueEditor({
                   bubbles={panelBubbles[panel.id] ?? []}
                   layoutRows={layoutRows}
                   selectedBubbleId={selectedBubble?.panelId === panel.id ? selectedBubble.bubbleId : null}
+                  editingBubbleId={selectedBubble?.panelId === panel.id ? editingBubbleId : null}
                   zoom={zoom}
-                  onBubbleSelect={(pId, bId) => setSelectedBubble({ panelId: pId, bubbleId: bId })}
-                  onBubbleDeselect={() => setSelectedBubble(null)}
+                  onBubbleSelect={(pId, bId) => { setSelectedBubble({ panelId: pId, bubbleId: bId }); setEditingBubbleId(null); }}
+                  onBubbleDeselect={() => { setSelectedBubble(null); setEditingBubbleId(null); }}
                   onBubbleAdd={addBubble}
                   onBubbleUpdate={updateBubble}
                   onDragCommit={flushSave}
                   onContextMenu={(pId, bId, x, y) => { setContextMenu({ panelId: pId, bubbleId: bId, x, y }); }}
+                  onEditStart={(_, bId) => setEditingBubbleId(bId)}
+                  onEditEnd={() => setEditingBubbleId(null)}
                 />
               ))}
+              </div>
+              {/* Cross-panel bubble overlay — sits above all panels */}
+              <PageBubbleLayer
+                panels={currentPanels}
+                panelBubbles={panelBubbles}
+                selectedBubble={selectedBubble}
+                zoom={zoom}
+                onBubbleSelect={(pId, bId) => setSelectedBubble({ panelId: pId, bubbleId: bId })}
+                onBubbleDeselect={() => setSelectedBubble(null)}
+                onBubbleUpdate={updateBubble}
+                onDragCommit={flushSave}
+                onContextMenu={(pId, bId, x, y) => setContextMenu({ panelId: pId, bubbleId: bId, x, y })}
+              />
             </div>
           </div>
         </div>
@@ -1579,6 +2081,7 @@ export default function DialogueEditor({
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x} y={contextMenu.y}
+          isCrossPanel={(panelBubbles[contextMenu.panelId] ?? []).find(b => b.id === contextMenu.bubbleId)?.crossPanel === true}
           onBringFront={() => handleContextMenuAction('front')}
           onSendBack={() => handleContextMenuAction('back')}
           onDuplicate={() => handleContextMenuAction('dup')}

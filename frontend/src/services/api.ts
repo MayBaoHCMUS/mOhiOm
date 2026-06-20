@@ -1182,6 +1182,46 @@ export const galleryApi = {
     apiClient.get<GalleryComicDetail>(`/gallery/comics/${encodeURIComponent(projectId)}`),
 };
 
+// ─── Bubble data types ───────────────────────────────────────────────────────
+
+export interface BubbleDataPayload {
+  id: string;
+  dialogue: string | null;
+  bubbleType: string;
+  tailDir: string;
+  bubblePosition: { x: number; y: number };
+  bubbleSize: { w: number; h: number };
+  fontSize: number;
+  rotation: number;
+  opacity?: number;
+  fillColor?: string;
+  textColor?: string;
+  character?: string;
+  zIndex: number;
+  crossPanel?: boolean;
+}
+
+export interface PanelBubblesDoc {
+  panelId: string;
+  comicId: string;
+  bubbles: BubbleDataPayload[];
+}
+
+export const bubblesApi = {
+  getForComic: (comicId: string) =>
+    apiClient.get<PanelBubblesDoc[]>("/bubbles", { params: { comicId } }),
+  upsert: (panelId: string, comicId: string, bubbles: BubbleDataPayload[]) =>
+    apiClient.put<{ ok: boolean; panelId: string }>(`/bubbles/${encodeURIComponent(panelId)}`, {
+      panelId,
+      comicId,
+      bubbles,
+    }),
+  delete: (panelId: string, comicId: string) =>
+    apiClient.delete<{ ok: boolean; panelId: string }>(`/bubbles/${encodeURIComponent(panelId)}`, {
+      params: { comicId },
+    }),
+};
+
 export const authApi = {
   register: (payload: { first_name: string; last_name: string; email: string; password: string }) =>
     apiClient.post("/auth/register", payload),

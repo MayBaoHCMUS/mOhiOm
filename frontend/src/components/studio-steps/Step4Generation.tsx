@@ -4,7 +4,10 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import type { Step4Panel, Step4PanelState, PanelVersion } from '@/context/ComicGenerationContext';
-import { apiClient, geminiApi } from '@/services/api';
+import { apiClient, geminiApi, bubblesApi } from '@/services/api';
+import type { BubbleDataPayload } from '@/services/api';
+import { exportWithDialogueAsZip } from '@/lib/bubbles/exportComposite';
+import type { CompositePanel } from '@/lib/bubbles/exportComposite';
 import ProjectsDrawer from '@/components/ProjectsDrawer';
 import Markdown from '@/components/Markdown';
 import DialogueEditor, { type BubbleType, type SingleBubble, type PanelBubbles } from '@/components/studio-steps/DialogueEditor';
@@ -975,6 +978,7 @@ export default function Step4Generation() {
     return 'generate';
   });
   const [panelBubbles, setPanelBubbles] = useState<Record<string, PanelBubbles>>({});
+  const bubblesLoadedRef = useRef(false);
   const [composingAll, setComposingAll] = useState(false);
   const [showCompletionNudge, setShowCompletionNudge] = useState(false);
   const prevAllImgDoneRef = useRef(false);
@@ -984,6 +988,8 @@ export default function Step4Generation() {
   const [exportPositive, setExportPositive] = useState('');
   const [exportNegative, setExportNegative] = useState('');
   const [includeMetadata, setIncludeMetadata] = useState(false);
+  const [exportingDialogue, setExportingDialogue] = useState(false);
+  const [dialogueExportProgress, setDialogueExportProgress] = useState<{ done: number; total: number } | null>(null);
 
   // ── Compose state ─────────────────────────────────────────────────────────
   type ComposeStatus = 'idle' | 'composing' | 'done' | 'error';
@@ -1115,6 +1121,7 @@ export default function Step4Generation() {
             bubbleSize: { w: isSfx ? 180 : 160, h: isSfx ? 90 : 80 },
             fontSize: defaultFontSize,
             rotation: sfxRotation,
+            opacity: 1,
             zIndex: 0,
           };
           bubbles[p.id] = [newBubble];
@@ -1161,6 +1168,21 @@ export default function Step4Generation() {
     }).catch(() => {});
   }, [projectId]);
 
+  // Load saved bubble data from MongoDB on first dialogue-tab visit
+  useEffect(() => {
+    if (!projectId || bubblesLoadedRef.current) return;
+    bubblesLoadedRef.current = true;
+    bubblesApi.getForComic(projectId).then((res) => {
+      const map: Record<string, PanelBubbles> = {};
+      for (const doc of res.data) {
+        map[doc.panelId] = doc.bubbles as PanelBubbles;
+      }
+      if (Object.keys(map).length > 0) {
+        setPanelBubbles((prev) => ({ ...map, ...prev }));
+      }
+    }).catch(() => {});
+  }, [projectId]);
+
   const addRatingErrorToast = useCallback(() => {
     const id = `rating-err-${Date.now()}`;
     setToasts((prev) => [...prev, { id, label: "Couldn't save rating", pageNumber: 0, panelId: '' }]);
@@ -1198,6 +1220,32 @@ export default function Step4Generation() {
       });
     } catch { /* fire-and-forget */ }
   }, [panelReactions, step4.data, projectId, artStyle, mangaGenre]);
+
+  const handleExportWithDialogue = useCallback(async () => {
+    const panels: CompositePanel[] = [];
+    for (const [pageNum, pagePanels] of step4PanelsByPage) {
+      for (const panel of pagePanels) {
+        const state = (step4.data?.panelStates ?? {})[panel.id];
+        if (!state?.imageUrl) continue;
+        panels.push({
+          label: `page-${pageNum}-panel-${panel.panelNumber}`,
+          imageUrl: state.imageUrl,
+          bubbles: panelBubbles[panel.id] ?? [],
+        });
+      }
+    }
+    if (panels.length === 0) return;
+    setExportingDialogue(true);
+    setDialogueExportProgress({ done: 0, total: panels.length });
+    try {
+      await exportWithDialogueAsZip(panels, projectId, (done, total) => {
+        setDialogueExportProgress({ done, total });
+      });
+    } finally {
+      setExportingDialogue(false);
+      setDialogueExportProgress(null);
+    }
+  }, [step4PanelsByPage, step4.data, panelBubbles, projectId]);
 
   const cooldown = getCooldownSeconds(4);
   const isGenerating = step4.isLoading;
@@ -1957,6 +2005,9 @@ export default function Step4Generation() {
           pageLayoutNames={pageLayoutNames}
           onSaveBubbles={(panelId, bubbles) => {
             setPanelBubbles((prev) => ({ ...prev, [panelId]: bubbles }));
+            if (projectId) {
+              bubblesApi.upsert(panelId, projectId, bubbles as BubbleDataPayload[]).catch(() => {});
+            }
           }}
           onExport={() => handleTabChange('export')}
           onAutoImport={autoImportDialogue}
@@ -2044,6 +2095,44 @@ export default function Step4Generation() {
                 <input type="checkbox" checked={includeMetadata} onChange={(e) => setIncludeMetadata(e.target.checked)} className="w-4 h-4 rounded accent-indigo-600" />
                 <span className="text-sm text-gray-700">Include panel script (dialogue, shot types, prompts)</span>
               </label>
+
+              {/* Export with Dialogue */}
+              {(() => {
+                const hasPanelsWithImages = step4PanelsByPage.some(([, panels]) =>
+                  panels.some(p => !!(step4.data?.panelStates ?? {})[p.id]?.imageUrl)
+                );
+                const hasBubbles = Object.values(panelBubbles).some(bs =>
+                  bs.some(b => b.bubbleType !== 'none' && (b.dialogue?.trim() ?? '') !== '' && b.dialogue?.toUpperCase().trim() !== 'NONE')
+                );
+                const disabled = !hasPanelsWithImages || exportingDialogue;
+                return (
+                  <button
+                    type="button"
+                    onClick={handleExportWithDialogue}
+                    disabled={disabled}
+                    className={`col-span-2 flex items-start gap-3 p-4 rounded-2xl border-2 transition-all text-left ${
+                      disabled
+                        ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
+                        : 'border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50/50 cursor-pointer'
+                    }`}
+                  >
+                    <span className="text-2xl mt-0.5">💬</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-900">Export with Dialogue</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {exportingDialogue && dialogueExportProgress
+                          ? `Compositing panel ${dialogueExportProgress.done} / ${dialogueExportProgress.total}…`
+                          : hasBubbles
+                          ? 'Panels + speech bubbles composited as PNG ZIP'
+                          : 'Panels as PNG ZIP (add bubbles in Dialogue tab)'}
+                      </p>
+                    </div>
+                    {exportingDialogue && (
+                      <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin mt-0.5 flex-none" />
+                    )}
+                  </button>
+                );
+              })()}
             </div>
 
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant pt-2">Save &amp; Share</p>
