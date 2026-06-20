@@ -7,7 +7,7 @@ import type { Step4Panel, Step4PanelState, PanelVersion } from '@/context/ComicG
 import { apiClient, geminiApi } from '@/services/api';
 import ProjectsDrawer from '@/components/ProjectsDrawer';
 import Markdown from '@/components/Markdown';
-import DialogueEditor, { type BubbleType, type DialoguePanelData } from '@/components/studio-steps/DialogueEditor';
+import DialogueEditor, { type BubbleType, type SingleBubble, type PanelBubbles } from '@/components/studio-steps/DialogueEditor';
 
 type State = 1 | 2 | 3 | 4 | 5;
 
@@ -974,8 +974,7 @@ export default function Step4Generation() {
     }
     return 'generate';
   });
-  const [dialogueEdits, setDialogueEdits] = useState<Record<string, string>>({});
-  const [dialogueData, setDialogueData] = useState<Record<string, DialoguePanelData>>({});
+  const [panelBubbles, setPanelBubbles] = useState<Record<string, PanelBubbles>>({});
   const [composingAll, setComposingAll] = useState(false);
   const [showCompletionNudge, setShowCompletionNudge] = useState(false);
   const prevAllImgDoneRef = useRef(false);
@@ -1090,31 +1089,39 @@ export default function Step4Generation() {
     });
   }, [step4PanelsByPage]);
 
+  function genBubbleId(): string {
+    if (typeof window !== 'undefined' && 'randomUUID' in window.crypto) {
+      return window.crypto.randomUUID();
+    }
+    return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+
   const autoImportDialogue = useCallback(() => {
-    const edits: Record<string, string> = {};
-    const data: Record<string, DialoguePanelData> = {};
+    const bubbles: Record<string, PanelBubbles> = {};
     for (const [, panels] of step4PanelsByPage) {
       for (const p of panels) {
         const text = stripBold(p.dialogueSfx ?? '');
         if (text && text !== 'No dialogue/SFX provided.') {
-          edits[p.id] = text;
-          // Heuristic: angle brackets → SFX, asterisk prefix → thought, else speech
           const isSfx = /^<.+>$/.test(text.trim());
           const isThought = text.startsWith('*');
           const bubbleType: BubbleType = isSfx ? 'sfx' : isThought ? 'thought' : 'speech';
-          data[p.id] = {
-            dialogue: text,
-            bubbleType,
-            tailDir: bubbleType === 'sfx' ? 'none' : 'down-left',
+          const tailDir = bubbleType === 'sfx' ? 'none' as const : 'down-left' as const;
+          const sfxRotation = isSfx ? Math.round((Math.random() * 20 - 10)) : 0;
+          const defaultFontSize = isSfx ? 24 : isThought ? 12 : 13;
+          const newBubble: SingleBubble = {
+            id: genBubbleId(),
+            dialogue: text, bubbleType, tailDir,
             bubblePosition: { x: 0.5, y: 0.3 },
-            bubbleSize: { w: 160, h: 80 },
-            fontSize: 14,
+            bubbleSize: { w: isSfx ? 180 : 160, h: isSfx ? 90 : 80 },
+            fontSize: defaultFontSize,
+            rotation: sfxRotation,
+            zIndex: 0,
           };
+          bubbles[p.id] = [newBubble];
         }
       }
     }
-    setDialogueEdits(edits);
-    setDialogueData((prev) => ({ ...prev, ...data }));
+    setPanelBubbles((prev) => ({ ...prev, ...bubbles }));
   }, [step4PanelsByPage]);
 
   // Auto-initialize layout selection for each page when panels first become available.
@@ -1375,8 +1382,11 @@ export default function Step4Generation() {
 
   const pagesComposed = Object.values(composeStates).filter((cs) => cs.status === 'done').length;
   const panelsWithDialogue = allPanels.filter((p) => {
-    const text = dialogueEdits[p.id] ?? (p.dialogueSfx ? stripBold(p.dialogueSfx) : '');
-    return text.trim().length > 0 && text !== 'No dialogue/SFX provided.';
+    const bs = panelBubbles[p.id] ?? [];
+    return bs.length > 0 && bs.some((b) => {
+      const t = b.dialogue?.trim() ?? '';
+      return t !== '' && t.toUpperCase() !== 'NONE';
+    });
   }).length;
 
   return (
@@ -1943,14 +1953,10 @@ export default function Step4Generation() {
         <DialogueEditor
           panelsByPage={step4PanelsByPage}
           panelStates={step4.data?.panelStates ?? {}}
-          dialogueData={dialogueData}
-          onSave={(panelId, data) => {
-            setDialogueData((prev) => ({ ...prev, [panelId]: data }));
-            if (data.dialogue) {
-              setDialogueEdits((prev) => ({ ...prev, [panelId]: data.dialogue! }));
-            } else {
-              setDialogueEdits((prev) => { const next = { ...prev }; delete next[panelId]; return next; });
-            }
+          panelBubbles={panelBubbles}
+          pageLayoutNames={pageLayoutNames}
+          onSaveBubbles={(panelId, bubbles) => {
+            setPanelBubbles((prev) => ({ ...prev, [panelId]: bubbles }));
           }}
           onExport={() => handleTabChange('export')}
           onAutoImport={autoImportDialogue}
