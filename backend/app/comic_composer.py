@@ -248,8 +248,13 @@ def _draw_speech_bubble(
     bubble_y: int,
     max_width: int = 200,
     bubble_type: str = "speech",
+    no_tail: bool = False,
 ) -> None:
-    """Draw a typed speech bubble. bubble_x is the horizontal center; bubble_y is the top edge."""
+    """Draw a typed speech bubble. bubble_x is the horizontal center; bubble_y is the top edge.
+
+    no_tail=True suppresses the pointer triangle/dots (used for cross-panel bubbles that
+    span two characters and don't point at either one specifically).
+    """
     if not text:
         return
 
@@ -268,8 +273,8 @@ def _draw_speech_bubble(
         radius=radius, fill=fill, outline=outline, width=outline_w,
     )
 
-    # Tail (triangle for speech/shout, 3 dots for thought; none for sfx/narration)
-    if bubble_type not in ("sfx", "narration"):
+    # Tail (triangle for speech/shout, 3 dots for thought; none for sfx/narration/no_tail)
+    if not no_tail and bubble_type not in ("sfx", "narration"):
         tail = [(bx + 16, by + bh), (bx + 30, by + bh), (bx + 12, by + bh + 16)]
         draw.polygon(tail, fill=fill)
         draw.line([tail[0], tail[2]], fill=outline, width=outline_w)
@@ -393,10 +398,62 @@ def compute_layout_cell_dimensions(
     return result
 
 
+def compute_cross_panel_bbox(
+    panel_a_bbox: tuple[int, int, int, int],
+    panel_b_bbox: tuple[int, int, int, int],
+    bubble_width_ratio: float = 0.6,
+    bubble_height: int = 60,
+    y_offset: int = 20,
+) -> tuple[int, int, int, int]:
+    """
+    Compute (bx, by, bw, bh) for a bubble spanning the gutter between two adjacent panels.
+
+    Each bbox is (x, y, w, h) — the page-level bounding box of a panel cell as produced by
+    compose_page()'s layout engine.  The bubble is centered horizontally over the union of
+    both panels and placed near their shared top edge.
+
+    bubble_width_ratio: bubble occupies this fraction of the union width (default 60 %).
+    bubble_height:      placeholder height; callers should override via
+                        resolve_bubble_size_for_cross_panel() after this call.
+    y_offset:           pixels below the topmost panel top-edge where the bubble starts.
+    """
+    ax, ay, aw, _ = panel_a_bbox
+    bx_, by_, bw_, _ = panel_b_bbox
+
+    union_x0 = min(ax, bx_)
+    union_x1 = max(ax + aw, bx_ + bw_)
+    union_y0 = min(ay, by_)
+    union_w  = union_x1 - union_x0
+
+    bw = int(union_w * bubble_width_ratio)
+    bx = union_x0 + (union_w - bw) // 2
+    by = union_y0 + y_offset
+
+    return bx, by, bw, bubble_height
+
+
+def resolve_bubble_size_for_cross_panel(
+    text: str,
+    bubble_type: str,
+    union_width: int,
+) -> tuple[int, int]:
+    """
+    Compute (bw, bh) for a cross-panel bubble using up to 70 % of union_width.
+
+    Cross-panel bubbles are allowed to be wider than single-panel bubbles
+    (70 % of union vs 85 % of a single panel), giving long dialogue lines more room.
+    Delegates word-wrap logic to _compute_bubble_size().
+    """
+    font  = BUBBLE_FONTS.get(bubble_type, BUBBLE_FONTS["speech"])()
+    max_w = int(union_width * 0.7)
+    return _compute_bubble_size(text, font, max_w)
+
+
 def compose_page(
     panels: list[dict],
     style: str = "manga",
     layout: list[list[int]] | None = None,
+    cross_panel_bubbles: list[dict] | None = None,
 ) -> Image.Image:
     """
     Compose panel images into a 1200×1600 comic page.
@@ -412,6 +469,12 @@ def compose_page(
             e.g. [[0, 1], [2], [3, 4]] → row 0 has panels 0 & 1 side-by-side,
             row 1 has panel 2 full-width, row 2 has panels 3 & 4 side-by-side.
             None → one row per panel (original stacked behaviour).
+    cross_panel_bubbles: optional list of bubble dicts drawn AFTER all panels:
+            [{"text": str, "bubble_type": str, "panel_indices": [int, int]}, ...]
+            panel_indices are 0-based indices into the sorted panel list.
+            Bubbles span the union bbox of the two referenced panels; no tail is drawn.
+            Future enhancement: compute a tail direction pointing toward one of the two
+            characters once face-detection or character-region data is available.
     """
     is_manga = style.lower() != "webtoon"
     gutter = GUTTER_MANGA if is_manga else GUTTER_WEBTOON
@@ -449,6 +512,11 @@ def compose_page(
     page = Image.new("RGB", (PAGE_W, PAGE_H), BG_COLOR)
     draw = ImageDraw.Draw(page)
 
+    # ── Layer 1: all panels (image + border + single-panel dialogue) ────────────
+    # panel_bboxes maps sorted panel index → (page_x, page_y, cell_w, row_h)
+    # so that cross-panel bubbles can reference absolute page coordinates later.
+    panel_bboxes: dict[int, tuple[int, int, int, int]] = {}
+
     y = MARGIN
     for row_idx, (row_panels, row_h) in enumerate(zip(layout, row_heights)):
         num_cols = len(row_panels)
@@ -476,6 +544,9 @@ def compose_page(
                     width=BORDER_W_MANGA,
                 )
 
+            # Record bbox for cross-panel bubble pass below
+            panel_bboxes[panel_idx] = (x, y, cell_w, row_h)
+
             dialogue = panel.get("dialogue") or ""
             if dialogue.strip():
                 btype = classify_bubble(dialogue.strip())
@@ -491,5 +562,40 @@ def compose_page(
             x += cell_w + col_gutter
 
         y += row_h + gutter
+
+    # ── Layer 2: cross-panel bubbles (drawn AFTER all panels, absolute coords) ──
+    # These bypass the per-panel polygon clip so they can visually span the gutter.
+    # Tail is suppressed (no_tail=True) because the bubble bridges two characters
+    # and cannot meaningfully point at one over the other.
+    for bubble in (cross_panel_bubbles or []):
+        idx_a, idx_b = bubble.get("panel_indices", [])[:2]
+        if idx_a >= len(panels_sorted) or idx_b >= len(panels_sorted):
+            continue  # guard against out-of-range indices
+        if idx_a not in panel_bboxes or idx_b not in panel_bboxes:
+            continue
+
+        bbox_a = panel_bboxes[idx_a]
+        bbox_b = panel_bboxes[idx_b]
+
+        union_x0 = min(bbox_a[0], bbox_b[0])
+        union_x1 = max(bbox_a[0] + bbox_a[2], bbox_b[0] + bbox_b[2])
+        union_width = union_x1 - union_x0
+
+        btype = bubble.get("bubble_type") or classify_bubble(bubble.get("text", ""))
+        bw, bh = resolve_bubble_size_for_cross_panel(bubble["text"], btype, union_width)
+
+        # Compute position from union bbox, then re-center with the resolved bw
+        bx, by, _, _ = compute_cross_panel_bbox(bbox_a, bbox_b, bubble_height=bh)
+        bx = union_x0 + (union_width - bw) // 2
+
+        _draw_speech_bubble(
+            draw,
+            bubble["text"],
+            bubble_x=bx + bw // 2,
+            bubble_y=by,
+            max_width=bw,
+            bubble_type=btype,
+            no_tail=True,
+        )
 
     return page

@@ -44,9 +44,14 @@ const DEFAULT_DATA: DialoguePanelData = {
 };
 
 const MIN_W = 60, MIN_H = 40;
+const CANVAS_H = 220;
 
 function getDefaultData(panel: Step4Panel, data: Record<string, DialoguePanelData>): DialoguePanelData {
-  return data[panel.id] ?? DEFAULT_DATA;
+  const d = data[panel.id];
+  if (!d) return DEFAULT_DATA;
+  // State C: stored "NONE" is treated identically to no dialogue (State B)
+  if (isNoneText(d.dialogue)) return { ...d, dialogue: null, bubbleType: 'none' };
+  return d;
 }
 
 function tailDirForType(type: BubbleType, current: TailDir): TailDir {
@@ -57,6 +62,13 @@ function hasTailSupport(type: BubbleType) {
   return type !== 'none' && type !== 'sfx' && type !== 'narration';
 }
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
+
+// Treat null, empty string, and the literal "NONE" (any case) as "no dialogue"
+function isNoneText(text: string | null | undefined): boolean {
+  if (!text) return true;
+  const t = text.trim();
+  return t === '' || t.toUpperCase() === 'NONE';
+}
 
 // ── SVG bubble rendering ──────────────────────────────────────────────────────
 
@@ -187,18 +199,14 @@ function BubbleSVG({
 
 // ── Drag / resize handles on the image canvas ─────────────────────────────────
 
-type HandleId = 'tl' | 'tm' | 'tr' | 'ml' | 'mr' | 'bl' | 'bm' | 'br';
-type DragType = 'move' | HandleId;
+type HandleId = 'tl' | 'tr' | 'bl' | 'br';
+type DragType = 'move' | HandleId | 'tail';
 
-const HANDLES: Array<{ id: HandleId; style: React.CSSProperties; cursor: string }> = [
-  { id: 'tl', cursor: 'nwse-resize', style: { top: -5,   left:  -5  } },
-  { id: 'tm', cursor: 'ns-resize',   style: { top: -5,   left:  '50%', transform: 'translateX(-50%)' } },
-  { id: 'tr', cursor: 'nesw-resize', style: { top: -5,   right: -5  } },
-  { id: 'ml', cursor: 'ew-resize',   style: { top: '50%', left:  -5, transform: 'translateY(-50%)' } },
-  { id: 'mr', cursor: 'ew-resize',   style: { top: '50%', right: -5, transform: 'translateY(-50%)' } },
-  { id: 'bl', cursor: 'nesw-resize', style: { bottom: -5, left:  -5  } },
-  { id: 'bm', cursor: 'ns-resize',   style: { bottom: -5, left:  '50%', transform: 'translateX(-50%)' } },
-  { id: 'br', cursor: 'nwse-resize', style: { bottom: -5, right: -5  } },
+const DIAMOND_HANDLES: Array<{ id: HandleId; cursor: string; style: React.CSSProperties }> = [
+  { id: 'tl', cursor: 'nwse-resize', style: { top: -5, left:  -5 } },
+  { id: 'tr', cursor: 'nesw-resize', style: { top: -5, right: -5 } },
+  { id: 'bl', cursor: 'nesw-resize', style: { bottom: -5, left: -5 } },
+  { id: 'br', cursor: 'nwse-resize', style: { bottom: -5, right: -5 } },
 ];
 
 function applyResize(
@@ -208,18 +216,42 @@ function applyResize(
   const r = startCX + startW / 2, l = startCX - startW / 2;
   const b = startCY + startH / 2, t = startCY - startH / 2;
   let w = startW, h = startH, cx = startCX, cy = startCY;
-
   switch (handle) {
     case 'br': w = Math.max(MIN_W, startW+dx); h = Math.max(MIN_H, startH+dy); cx=l+w/2; cy=t+h/2; break;
     case 'tl': w = Math.max(MIN_W, startW-dx); h = Math.max(MIN_H, startH-dy); cx=r-w/2; cy=b-h/2; break;
     case 'tr': w = Math.max(MIN_W, startW+dx); h = Math.max(MIN_H, startH-dy); cx=l+w/2; cy=b-h/2; break;
     case 'bl': w = Math.max(MIN_W, startW-dx); h = Math.max(MIN_H, startH+dy); cx=r-w/2; cy=t+h/2; break;
-    case 'bm': h = Math.max(MIN_H, startH+dy); cy=t+h/2; break;
-    case 'tm': h = Math.max(MIN_H, startH-dy); cy=b-h/2; break;
-    case 'mr': w = Math.max(MIN_W, startW+dx); cx=l+w/2; break;
-    case 'ml': w = Math.max(MIN_W, startW-dx); cx=r-w/2; break;
   }
   return { cx, cy, w, h };
+}
+
+// Tail tip offset in bubble-local px (for the ● drag handle)
+function tailTipOffset(dir: TailDir, w: number, h: number): { x: number; y: number } | null {
+  const S = TAIL_LEN, p = PAD;
+  switch (dir) {
+    case 'down-left':  return { x: w * 0.04, y: h - p + S };
+    case 'down':       return { x: w * 0.5,  y: h - p + S };
+    case 'down-right': return { x: w * 0.96, y: h - p + S };
+    case 'up-left':    return { x: w * 0.04, y: p - S };
+    case 'up':         return { x: w * 0.5,  y: p - S };
+    case 'up-right':   return { x: w * 0.96, y: p - S };
+    case 'left':       return { x: p - S,     y: h * 0.5 };
+    case 'right':      return { x: w - p + S, y: h * 0.5 };
+    case 'none':       return null;
+  }
+}
+
+// Map a vector from bubble center → cursor to the nearest TailDir
+function dirFromVector(dx: number, dy: number): TailDir {
+  const a = ((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360;
+  if (a < 22.5 || a >= 337.5) return 'right';
+  if (a < 67.5)  return 'down-right';
+  if (a < 112.5) return 'down';
+  if (a < 157.5) return 'down-left';
+  if (a < 202.5) return 'left';
+  if (a < 247.5) return 'up-left';
+  if (a < 292.5) return 'up';
+  return 'up-right';
 }
 
 interface ImageCanvasProps {
@@ -232,34 +264,41 @@ interface ImageCanvasProps {
   size: BubbleSize;
   onPositionChange: (p: BubblePosition) => void;
   onSizeChange: (s: BubbleSize) => void;
+  onTailChange: (d: TailDir) => void;
+  onDelete: () => void;
 }
 
 function ImageCanvas({
   imageUrl, text, type, tailDir, fontSize,
-  position, size, onPositionChange, onSizeChange,
+  position, size, onPositionChange, onSizeChange, onTailChange, onDelete,
 }: ImageCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [selected, setSelected] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
 
-  // Ref-based drag state to avoid stale closures
   const dragRef = useRef<{
     type: DragType;
     startMX: number; startMY: number;
-    startCX: number; startCY: number; // bubble center in px
-    startW: number;  startH: number;
+    startCX: number; startCY: number;
+    startW: number; startH: number;
     canvasW: number; canvasH: number;
+    containerLeft: number; containerTop: number;
   } | null>(null);
 
-  const posRef = useRef(position);
-  posRef.current = position;
-  const sizeRef = useRef(size);
-  sizeRef.current = size;
-  const onPosRef = useRef(onPositionChange);
-  onPosRef.current = onPositionChange;
-  const onSzRef = useRef(onSizeChange);
-  onSzRef.current = onSizeChange;
+  const posRef   = useRef(position);        posRef.current   = position;
+  const sizeRef  = useRef(size);            sizeRef.current  = size;
+  const onPosRef = useRef(onPositionChange); onPosRef.current = onPositionChange;
+  const onSzRef  = useRef(onSizeChange);    onSzRef.current  = onSizeChange;
+  const onTailRef = useRef(onTailChange);   onTailRef.current = onTailChange;
 
   const [isDragging, setIsDragging] = useState(false);
-  const [dragCursor, setDragCursor] = useState('grab');
+  const [dragCursor, setDragCursor] = useState('default');
+
+  // Reset selection when the displayed panel image changes
+  useEffect(() => {
+    setSelected(false);
+    setCtxMenu(null);
+  }, [imageUrl]);
 
   const startDrag = useCallback((e: React.MouseEvent, dtype: DragType) => {
     e.preventDefault();
@@ -275,9 +314,14 @@ function ImageCanvas({
       startCY: p.y * rect.height,
       startW: s.w, startH: s.h,
       canvasW: rect.width, canvasH: rect.height,
+      containerLeft: rect.left, containerTop: rect.top,
     };
     setIsDragging(true);
-    setDragCursor(dtype === 'move' ? 'grabbing' : (HANDLES.find(h => h.id === dtype)?.cursor ?? 'nwse-resize'));
+    setDragCursor(
+      dtype === 'move'                         ? 'grabbing' :
+      dtype === 'tail'                         ? 'crosshair' :
+      (dtype === 'tl' || dtype === 'br')       ? 'nwse-resize' : 'nesw-resize',
+    );
   }, []);
 
   useEffect(() => {
@@ -286,6 +330,15 @@ function ImageCanvas({
     const onMove = (e: MouseEvent) => {
       const d = dragRef.current;
       if (!d) return;
+
+      if (d.type === 'tail') {
+        // Compute direction from bubble center → mouse in canvas space
+        const mouseX = e.clientX - d.containerLeft;
+        const mouseY = e.clientY - d.containerTop;
+        onTailRef.current(dirFromVector(mouseX - d.startCX, mouseY - d.startCY));
+        return;
+      }
+
       const dx = e.clientX - d.startMX;
       const dy = e.clientY - d.startMY;
 
@@ -309,7 +362,7 @@ function ImageCanvas({
     const onUp = () => {
       dragRef.current = null;
       setIsDragging(false);
-      setDragCursor('grab');
+      setDragCursor('default');
     };
 
     document.addEventListener('mousemove', onMove);
@@ -320,7 +373,7 @@ function ImageCanvas({
     };
   }, [isDragging]);
 
-  // Re-render on container resize
+  // Re-render on container width change
   const [, forceUpdate] = useState(0);
   useEffect(() => {
     if (!containerRef.current) return;
@@ -329,25 +382,44 @@ function ImageCanvas({
     return () => obs.disconnect();
   }, []);
 
-  const canvasW = containerRef.current?.clientWidth ?? 400;
-  const left = position.x * canvasW - size.w / 2;
-  const top  = position.y * 280 - size.h / 2;
-  const showBubble = type !== 'none';
+  const canvasW  = containerRef.current?.clientWidth ?? 400;
+  const left     = position.x * canvasW - size.w / 2;
+  const top      = position.y * CANVAS_H - size.h / 2;
+  const showBubble = !isNoneText(text) && type !== 'none';
+
+  // Tail tip in container space (for the ● handle)
+  const tip = showBubble && hasTailSupport(type) && tailDir !== 'none'
+    ? tailTipOffset(tailDir, size.w, size.h) : null;
+
+  // Context menu smart position: never overflow the canvas
+  const MENU_W = 168, MENU_H = 140;
+  const menuX = ctxMenu ? Math.min(ctxMenu.x, canvasW - MENU_W - 4) : 0;
+  const menuY = ctxMenu
+    ? (ctxMenu.y + MENU_H > CANVAS_H ? Math.max(0, ctxMenu.y - MENU_H) : ctxMenu.y)
+    : 0;
+
+  const CTX_ITEMS = [
+    { label: 'Bring to Front', icon: 'flip_to_front', disabled: true,  danger: false },
+    { label: 'Send to Back',   icon: 'flip_to_back',  disabled: true,  danger: false },
+    { label: 'Duplicate',      icon: 'content_copy',  disabled: true,  danger: false },
+    { label: 'Delete bubble',  icon: 'delete',        disabled: false, danger: true  },
+  ];
 
   return (
     <div
       ref={containerRef}
       style={{
         position: 'relative',
-        height: 280,
+        height: CANVAS_H,
         background: '#000',
         borderRadius: 10,
         overflow: 'hidden',
         flexShrink: 0,
         touchAction: 'none',
         userSelect: 'none',
-        cursor: showBubble && !isDragging ? 'default' : 'default',
+        cursor: isDragging ? dragCursor : 'default',
       }}
+      onMouseDown={() => { setSelected(false); setCtxMenu(null); }}
     >
       {/* Panel image */}
       {imageUrl ? (
@@ -368,45 +440,133 @@ function ImageCanvas({
         <div
           style={{
             position: 'absolute',
-            left: left,
-            top: top,
-            width: size.w,
-            height: size.h,
-            cursor: dragCursor,
+            left, top,
+            width: size.w, height: size.h,
+            opacity: selected ? 1 : 0.6,
+            transition: isDragging ? 'none' : 'opacity 0.15s',
+            cursor: selected ? 'default' : 'pointer',
             zIndex: 10,
           }}
-          onMouseDown={(e) => startDrag(e, 'move')}
+          onMouseDown={(e) => { e.stopPropagation(); setSelected(true); setCtxMenu(null); }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!containerRef.current) return;
+            const rect = containerRef.current.getBoundingClientRect();
+            setSelected(true);
+            setCtxMenu({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+          }}
         >
-          {/* SVG bubble (overflows for tail) */}
+          {/* SVG bubble */}
           <BubbleSVG
             text={text} type={type} tailDir={tailDir} fontSize={fontSize}
             w={size.w} h={size.h}
           />
 
-          {/* Dashed bounding box */}
-          <div style={{
-            position: 'absolute', inset: -2,
-            border: '1.5px dashed rgba(110,140,255,0.75)',
-            borderRadius: 3,
-            pointerEvents: 'none',
-          }} />
+          {selected && (
+            <>
+              {/* Dashed selection border */}
+              <div style={{
+                position: 'absolute', inset: -2,
+                border: '1.5px dashed rgba(0,88,190,0.65)',
+                borderRadius: 4,
+                pointerEvents: 'none',
+              }} />
 
-          {/* 8 resize handles */}
-          {HANDLES.map((h) => (
-            <div
-              key={h.id}
-              onMouseDown={(e) => startDrag(e, h.id)}
+              {/* Move handle — tab above center-top */}
+              <div
+                onMouseDown={(e) => startDrag(e, 'move')}
+                title="Drag to move"
+                style={{
+                  position: 'absolute',
+                  top: -18, left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: 24, height: 16,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'var(--color-primary)',
+                  borderRadius: 4,
+                  cursor: 'grab',
+                  zIndex: 25,
+                }}
+              >
+                <span className="material-symbols-outlined"
+                  style={{ fontSize: 13, color: '#fff', lineHeight: 1 }}>
+                  drag_indicator
+                </span>
+              </div>
+
+              {/* 4 diamond corner handles */}
+              {DIAMOND_HANDLES.map((h) => (
+                <div
+                  key={h.id}
+                  onMouseDown={(e) => startDrag(e, h.id)}
+                  style={{
+                    position: 'absolute',
+                    width: 10, height: 10,
+                    background: '#ffffff',
+                    border: '1.5px solid var(--color-primary)',
+                    transform: 'rotate(45deg)',
+                    zIndex: 20,
+                    cursor: h.cursor,
+                    ...h.style,
+                  }}
+                />
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Tail endpoint handle — in container space so it's visible outside bubble bounds */}
+      {showBubble && selected && tip && (
+        <div
+          onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'tail'); }}
+          title="Drag to change tail direction"
+          style={{
+            position: 'absolute',
+            left: left + tip.x - 6,
+            top:  top  + tip.y - 6,
+            width: 12, height: 12,
+            borderRadius: '50%',
+            background: 'var(--color-primary)',
+            border: '2px solid #fff',
+            cursor: 'crosshair',
+            zIndex: 30,
+          }}
+        />
+      )}
+
+      {/* Context menu */}
+      {ctxMenu && (
+        <div
+          style={{
+            position: 'absolute',
+            left: menuX, top: menuY,
+            zIndex: 100,
+            background: '#fff',
+            border: '0.5px solid var(--color-outline)',
+            borderRadius: 8,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.18)',
+            minWidth: MENU_W,
+            overflow: 'hidden',
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {CTX_ITEMS.map(({ label, icon, disabled, danger }, i) => (
+            <button
+              key={label}
+              type="button"
+              disabled={disabled}
+              onClick={disabled ? undefined : () => { onDelete(); setCtxMenu(null); setSelected(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors hover:bg-gray-50 disabled:opacity-35 disabled:cursor-default"
               style={{
-                position: 'absolute',
-                width: 9, height: 9,
-                background: '#7B9BF0',
-                border: '1.5px solid #fff',
-                borderRadius: 2,
-                zIndex: 20,
-                cursor: h.cursor,
-                ...h.style,
+                color: danger ? '#EF4444' : 'var(--color-on-surface)',
+                borderBottom: i < CTX_ITEMS.length - 1 ? '0.5px solid var(--color-outline)' : undefined,
               }}
-            />
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{icon}</span>
+              {label}
+            </button>
           ))}
         </div>
       )}
@@ -416,12 +576,14 @@ function ImageCanvas({
         <div style={{
           position: 'absolute', bottom: 0, left: 0, right: 0,
           padding: '6px 0 4px',
-          background: 'linear-gradient(transparent, rgba(0,0,0,0.5))',
+          background: 'linear-gradient(transparent, rgba(0,0,0,0.45))',
           textAlign: 'center',
           pointerEvents: 'none',
         }}>
-          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.65)' }}>
-            Drag to move · Drag corners to resize
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)' }}>
+            {selected
+              ? 'Drag ⠿ to move · ◆ corners to resize · ● tail to redirect'
+              : 'Click bubble to select'}
           </span>
         </div>
       )}
@@ -462,23 +624,38 @@ const TYPE_OPTS: { type: BubbleType; label: string; icon: string }[] = [
 ];
 
 function TypeGrid({ selected, onChange }: { selected: BubbleType; onChange: (t: BubbleType) => void }) {
+  const selectedLabel = TYPE_OPTS.find(o => o.type === selected)?.label ?? '';
   return (
-    <div className="grid grid-cols-3 gap-1.5">
-      {TYPE_OPTS.map(({ type, label, icon }) => {
-        const active = selected === type;
-        return (
-          <button key={type} type="button" onClick={() => onChange(type)}
-            className="flex flex-col items-center gap-1 py-2 px-1 rounded-lg text-[11px] font-medium transition-all"
-            style={{
-              border: active ? '1.5px solid var(--color-primary)' : '0.5px solid var(--color-outline)',
-              background: active ? 'rgba(0,88,190,0.06)' : 'transparent',
-              color: active ? 'var(--color-primary)' : 'var(--color-on-surface-variant)',
-            }}>
-            <span className="material-symbols-outlined text-base">{icon}</span>
-            {label}
-          </button>
-        );
-      })}
+    <div>
+      {/* Header: section label + selected type name */}
+      <div className="flex items-center justify-between mb-1.5">
+        <p className="text-[10px] font-semibold uppercase tracking-widest"
+          style={{ color: 'var(--color-on-surface-variant)' }}>
+          Bubble type
+        </p>
+        <span className="text-[10px] font-semibold" style={{ color: 'var(--color-primary)' }}>
+          {selectedLabel}
+        </span>
+      </div>
+      {/* Compact single-row: icon + tiny label */}
+      <div className="flex gap-1">
+        {TYPE_OPTS.map(({ type, label, icon }) => {
+          const active = selected === type;
+          return (
+            <button key={type} type="button" onClick={() => onChange(type)} title={label}
+              className="flex-1 flex flex-col items-center rounded-lg transition-all"
+              style={{
+                paddingTop: 5, paddingBottom: 5, gap: 2,
+                border: active ? '1.5px solid var(--color-primary)' : '0.5px solid var(--color-outline)',
+                background: active ? 'rgba(0,88,190,0.08)' : 'transparent',
+                color: active ? 'var(--color-primary)' : 'var(--color-on-surface-variant)',
+              }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18, lineHeight: 1 }}>{icon}</span>
+              <span style={{ fontSize: 8, lineHeight: 1.2 }}>{label.slice(0, 5)}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -497,50 +674,56 @@ const COMPASS_ARROWS: Record<TailDir, string> = {
 };
 
 function CompassGrid({ selected, onChange }: { selected: TailDir; onChange: (d: TailDir) => void }) {
+  const CELL = 24; // px per compass cell
+  const GAP  = 4;  // px gap — 3×CELL + 2×GAP = 80px total grid height
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-widest mb-2"
-        style={{ color: 'var(--color-on-surface-variant)' }}>
-        Tail direction
-      </p>
-      <div className="flex items-center gap-3">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 28px)', gap: 3 }}>
-          {COMPASS.flat().map((dir, i) => {
-            if (dir === null) {
-              return (
-                <div key="center"
-                  className="flex items-center justify-center rounded text-base"
-                  style={{ width: 28, height: 28, background: 'var(--color-surface-container)',
-                    border: '0.5px solid var(--color-outline)', color: 'var(--color-on-surface-variant)' }}>
-                  ·
-                </div>
-              );
-            }
-            const active = selected === dir;
-            return (
-              <button key={`${dir}-${i}`} type="button" onClick={() => onChange(dir)}
-                className="flex items-center justify-center rounded font-bold transition-all"
-                style={{
-                  width: 28, height: 28, fontSize: 14,
-                  border: active ? '1.5px solid var(--color-primary)' : '0.5px solid var(--color-outline)',
-                  background: active ? 'rgba(0,88,190,0.1)' : 'transparent',
-                  color: active ? 'var(--color-primary)' : 'var(--color-on-surface)',
-                }}>
-                {COMPASS_ARROWS[dir]}
-              </button>
-            );
-          })}
-        </div>
+      {/* Header row: label + "No tail" toggle inline */}
+      <div className="flex items-center justify-between mb-1.5">
+        <p className="text-[10px] font-semibold uppercase tracking-widest"
+          style={{ color: 'var(--color-on-surface-variant)' }}>
+          Tail direction
+        </p>
         <button type="button" onClick={() => onChange('none')}
-          className="flex flex-col items-center gap-0.5 py-1.5 px-2.5 rounded-lg text-[11px] font-medium transition-all"
+          className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-all"
           style={{
             border: selected === 'none' ? '1.5px solid var(--color-primary)' : '0.5px solid var(--color-outline)',
             background: selected === 'none' ? 'rgba(0,88,190,0.08)' : 'transparent',
             color: selected === 'none' ? 'var(--color-primary)' : 'var(--color-on-surface-variant)',
           }}>
-          <span className="material-symbols-outlined text-sm">remove</span>
+          <span className="material-symbols-outlined" style={{ fontSize: 12 }}>remove</span>
           No tail
         </button>
+      </div>
+      {/* 3×3 compass grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(3, ${CELL}px)`, gap: GAP }}>
+        {COMPASS.flat().map((dir, i) => {
+          if (dir === null) {
+            return (
+              <div key="center"
+                className="flex items-center justify-center rounded"
+                style={{ width: CELL, height: CELL, fontSize: 10,
+                  background: 'var(--color-surface-container)',
+                  border: '0.5px solid var(--color-outline)',
+                  color: 'var(--color-on-surface-variant)' }}>
+                ·
+              </div>
+            );
+          }
+          const active = selected === dir;
+          return (
+            <button key={`${dir}-${i}`} type="button" onClick={() => onChange(dir)}
+              className="flex items-center justify-center rounded font-bold transition-all"
+              style={{
+                width: CELL, height: CELL, fontSize: 13,
+                border: active ? '1.5px solid var(--color-primary)' : '0.5px solid var(--color-outline)',
+                background: active ? 'rgba(0,88,190,0.1)' : 'transparent',
+                color: active ? 'var(--color-primary)' : 'var(--color-on-surface)',
+              }}>
+              {COMPASS_ARROWS[dir]}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -574,6 +757,52 @@ function EditorPane({
   onSave, onPrev, onNext,
 }: EditorPaneProps) {
   const text = editState.dialogue ?? '';
+  const isEmpty = isNoneText(text); // State B or C
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const savedTextRef = useRef('');
+
+  // Detect short viewports to show scroll hint
+  const [shortVp, setShortVp] = useState(() => typeof window !== 'undefined' && window.innerHeight < 700);
+  useEffect(() => {
+    const update = () => setShortVp(window.innerHeight < 700);
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  // Reset per-panel interaction state when the active panel changes
+  useEffect(() => {
+    setBannerDismissed(false);
+    setShowClearConfirm(false);
+  }, [panel.id]);
+
+  // "+ Add dialogue manually" — dismiss banner, switch to speech type, focus the textarea
+  const handleAddManually = () => {
+    setBannerDismissed(true);
+    if (editState.bubbleType === 'none') onTypeChange('speech');
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  // ✕ button on textarea — save current text then show State D confirmation
+  const handleClearRequest = () => {
+    savedTextRef.current = text;
+    setShowClearConfirm(true);
+  };
+
+  // State D resolution
+  const handleClearConfirm = (action: 'remove' | 'keep-empty' | 'cancel') => {
+    setShowClearConfirm(false);
+    if (action === 'cancel') {
+      onDialogueChange(savedTextRef.current); // restore
+    } else if (action === 'remove') {
+      onDialogueChange('');
+      onTypeChange('none'); // bubble disappears from preview
+    } else {
+      onDialogueChange(''); // keep-empty: clear field, banner will re-appear on re-select
+    }
+  };
 
   return (
     <div className="flex flex-col overflow-y-auto"
@@ -599,8 +828,10 @@ function EditorPane({
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 p-4 overflow-y-auto flex-1">
-        {/* Image canvas with draggable bubble */}
+      {/* Scrollable content — fits without scroll on ≥700px viewports */}
+      <div className="flex flex-col gap-3 p-3 overflow-y-auto flex-1 relative">
+
+        {/* Image canvas */}
         <ImageCanvas
           imageUrl={imageUrl}
           text={text}
@@ -611,53 +842,118 @@ function EditorPane({
           size={editState.bubbleSize}
           onPositionChange={onPositionChange}
           onSizeChange={onSizeChange}
+          onTailChange={onTailChange}
+          onDelete={() => { onDialogueChange(''); onTypeChange('none'); }}
         />
 
-        {/* Dialogue textarea + font size */}
+        {/* State B / C — no dialogue in script */}
+        {isEmpty && !bannerDismissed && (
+          <div className="rounded-xl p-2.5"
+            style={{ background: '#F3F4F6', border: '0.5px solid var(--color-outline)' }}>
+            <p className="text-[11px] mb-2" style={{ color: 'var(--color-on-surface-variant)' }}>
+              No dialogue in script for this panel.
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button type="button" onClick={handleAddManually}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold text-white"
+                style={{ background: 'var(--color-primary)' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 11 }}>add</span>
+                Add dialogue manually
+              </button>
+              <button type="button" onClick={() => setBannerDismissed(true)}
+                className="px-2.5 py-1 rounded-full text-[11px] font-medium"
+                style={{ border: '0.5px solid var(--color-outline)', color: 'var(--color-on-surface-variant)' }}>
+                Keep empty
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Dialogue textarea */}
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5"
+          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1"
             style={{ color: 'var(--color-on-surface-variant)' }}>
             Dialogue text
           </p>
-          <textarea
-            value={text}
-            onChange={(e) => onDialogueChange(e.target.value)}
-            placeholder="Enter dialogue, SFX, or narration…"
-            rows={3}
-            className="w-full rounded-xl px-3 py-2.5 resize-none outline-none transition-all"
-            style={{
-              background: 'var(--color-surface-container-lowest)',
-              border: '0.5px solid var(--color-outline)',
-              color: 'var(--color-on-surface)',
-              fontSize: 13,
-            }}
-          />
-          <div className="flex items-center gap-3 mt-2">
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => onDialogueChange(e.target.value)}
+              onFocus={() => {
+                if (!bannerDismissed) {
+                  setBannerDismissed(true);
+                  if (editState.bubbleType === 'none') onTypeChange('speech');
+                }
+              }}
+              placeholder="Type dialogue..."
+              rows={2}
+              className="w-full rounded-xl px-3 py-2 resize-none outline-none transition-all"
+              style={{
+                paddingRight: !isEmpty ? 26 : undefined,
+                background: 'var(--color-surface-container-lowest)',
+                border: '0.5px solid var(--color-outline)',
+                color: 'var(--color-on-surface)',
+                fontSize: 13,
+              }}
+            />
+            {!isEmpty && (
+              <button type="button" onClick={handleClearRequest} title="Clear dialogue"
+                className="absolute right-2 top-2 w-5 h-5 flex items-center justify-center rounded-full hover:bg-gray-200 transition-colors"
+                style={{ color: '#9CA3AF', fontSize: 11 }}>
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* State D — confirmation */}
+          {showClearConfirm && (
+            <div className="mt-1.5 rounded-xl p-2.5"
+              style={{ background: '#FFF7ED', border: '0.5px solid #FED7AA' }}>
+              <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#92400E' }}>
+                Remove dialogue from this panel?
+              </p>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => handleClearConfirm('remove')}
+                  className="px-2.5 py-1 rounded-full text-[11px] font-bold text-white"
+                  style={{ background: '#EF4444' }}>
+                  Remove
+                </button>
+                <button type="button" onClick={() => handleClearConfirm('keep-empty')}
+                  className="px-2.5 py-1 rounded-full text-[11px] font-medium"
+                  style={{ border: '0.5px solid var(--color-outline)', color: 'var(--color-on-surface-variant)' }}>
+                  Keep empty
+                </button>
+                <button type="button" onClick={() => handleClearConfirm('cancel')}
+                  className="px-2.5 py-1 rounded-full text-[11px] font-medium"
+                  style={{ color: 'var(--color-on-surface-variant)' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Font size — single inline row */}
+          <div className="flex items-center gap-2 mt-1.5">
             <span className="text-[10px] font-medium flex-shrink-0"
               style={{ color: 'var(--color-on-surface-variant)' }}>
-              Font size
+              Font
             </span>
             <input type="range" min={10} max={22} step={1}
               value={editState.fontSize}
               onChange={(e) => onFontSizeChange(Number(e.target.value))}
               className="flex-1 h-1 accent-blue-600" />
-            <span className="text-[11px] font-semibold w-8 text-right flex-shrink-0"
+            <span className="text-[11px] font-semibold w-7 text-right flex-shrink-0 tabular-nums"
               style={{ color: 'var(--color-on-surface)' }}>
               {editState.fontSize}px
             </span>
           </div>
         </div>
 
-        {/* Bubble type */}
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5"
-            style={{ color: 'var(--color-on-surface-variant)' }}>
-            Bubble type
-          </p>
-          <TypeGrid selected={editState.bubbleType} onChange={onTypeChange} />
-        </div>
+        {/* Bubble type — compact horizontal row (label inside) */}
+        <TypeGrid selected={editState.bubbleType} onChange={onTypeChange} />
 
-        {/* Tail direction */}
+        {/* Tail direction — compact (label inside) */}
         {hasTailSupport(editState.bubbleType) && (
           <CompassGrid selected={editState.tailDir} onChange={onTailChange} />
         )}
@@ -668,6 +964,14 @@ function EditorPane({
           style={{ background: saveStatus === 'saved' ? '#1D9E75' : 'var(--color-primary)' }}>
           {saveStatus === 'saved' ? 'Saved ✓' : 'Save panel'}
         </button>
+
+        {/* Scroll hint for short viewports */}
+        {shortVp && (
+          <div className="flex items-center justify-center gap-1 pb-1 pointer-events-none"
+            style={{ color: 'var(--color-on-surface-variant)', opacity: 0.5 }}>
+            <span className="text-[10px]">↓ More settings below</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -692,10 +996,7 @@ export default function DialogueEditor({
   );
   const selectedPanel = currentPanels.find((p) => p.id === selectedPanelId) ?? null;
 
-  const filledCount = allPanels.filter((p) => {
-    const d = dialogueData[p.id];
-    return d?.dialogue && d.dialogue.trim().length > 0;
-  }).length;
+  const filledCount = allPanels.filter((p) => !isNoneText(dialogueData[p.id]?.dialogue)).length;
 
   const savePanel = useCallback((id: string, data: DialoguePanelData) => {
     onSave(id, { ...data, dialogue: data.dialogue?.trim() || null });
@@ -775,7 +1076,7 @@ export default function DialogueEditor({
       <div className="flex items-center overflow-x-auto flex-shrink-0"
         style={{ borderBottom: '0.5px solid var(--color-outline)' }}>
         {panelsByPage.map(([pageNum, panels]) => {
-          const filled = panels.filter((p) => { const d = dialogueData[p.id]; return d?.dialogue?.trim(); }).length;
+          const filled = panels.filter((p) => !isNoneText(dialogueData[p.id]?.dialogue)).length;
           const dotColor = filled === panels.length ? '#1D9E75' : filled > 0 ? '#EF9F27' : 'var(--color-outline)';
           const active = currentPage === pageNum;
           return (
@@ -807,7 +1108,7 @@ export default function DialogueEditor({
           )}
           {currentPanels.map((panel) => {
             const data = dialogueData[panel.id];
-            const hasDialogue = !!(data?.dialogue?.trim());
+            const hasDialogue = !isNoneText(data?.dialogue);
             const isActive = panel.id === selectedPanelId;
             const imgUrl = panelStates[panel.id]?.imageUrl ?? null;
             return (

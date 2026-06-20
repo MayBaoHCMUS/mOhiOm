@@ -208,6 +208,18 @@ class ComposePanelInput(BaseModel):
     image_data_url: str
 
 
+class CrossPanelBubble(BaseModel):
+    """A speech bubble that visually spans two adjacent panels across the gutter."""
+
+    text: str
+    bubble_type: str = "speech"
+    panel_indices: List[int] = Field(
+        ...,
+        min_length=2, max_length=2,
+        description="Two 0-based indices (sorted panel order) of the adjacent panels this bubble bridges.",
+    )
+
+
 class ComposePageRequest(BaseModel):
     """Request to compose a set of panel images into a single comic page."""
 
@@ -215,6 +227,7 @@ class ComposePageRequest(BaseModel):
     style: str = "manga"
     layout: Optional[List[List[int]]] = None  # explicit panel-index rows, e.g. [[0,1],[2]]
     use_smart_layout: bool = False             # trigger LLM layout selection
+    cross_panel_bubbles: Optional[List[CrossPanelBubble]] = None  # bubbles spanning two panels
 
 
 class ComposePageResponse(BaseModel):

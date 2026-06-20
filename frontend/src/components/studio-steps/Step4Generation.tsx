@@ -1322,6 +1322,18 @@ export default function Step4Generation() {
     sessionStorage.setItem('mohiom-step4-tab', activeStep4Tab);
   }, [activeStep4Tab]);
 
+  // If user switches to Full Page mode while on Layout tab, kick back to Generate
+  useEffect(() => {
+    if (comicPageMode === 'page' && activeStep4Tab === 'layout') {
+      setActiveStep4Tab('generate');
+    }
+  }, [comicPageMode, activeStep4Tab]);
+
+  // Panel mode always uses clean images — force it on so panel images stay clean for Dialogue tab
+  useEffect(() => {
+    if (comicPageMode === 'panel') setSfxMode('manual');
+  }, [comicPageMode, setSfxMode]);
+
   // Sync export rating fields when comicRating loads
   useEffect(() => {
     if (comicRating) {
@@ -1341,10 +1353,19 @@ export default function Step4Generation() {
   // Tab helpers
   const isTabLocked = useCallback((tab: Step4Tab) => {
     if (tab === 'generate') return false;
-    if (tab === 'layout' || tab === 'dialogue') return activeStats.success === 0;
+    if (tab === 'layout') {
+      if (comicPageMode === 'page') return true; // layout is embedded in full-page images
+      return activeStats.success === 0;
+    }
+    if (tab === 'dialogue') {
+      if (activeStats.success === 0) return true;
+      // Full Page mode: dialogue overlay only makes sense on clean images
+      if (comicPageMode === 'page') return sfxMode !== 'manual';
+      return false;
+    }
     if (tab === 'export') return activeStats.success < activeStats.total;
     return false;
-  }, [activeStats.success, activeStats.total]);
+  }, [activeStats.success, activeStats.total, comicPageMode, sfxMode]);
 
   const handleTabChange = useCallback((tab: Step4Tab) => {
     if (isTabLocked(tab)) return;
@@ -1382,7 +1403,8 @@ export default function Step4Generation() {
               { id: 'dialogue' as Step4Tab, label: '💬 Dialogue' },
               { id: 'export' as Step4Tab, label: '⬇ Export' },
             ] as const
-          ).map((tab) => {
+          ).filter((tab) => !(tab.id === 'layout' && comicPageMode === 'page'))
+           .map((tab) => {
             const locked = isTabLocked(tab.id);
             const active = activeStep4Tab === tab.id;
 
@@ -1420,7 +1442,13 @@ export default function Step4Generation() {
                 type="button"
                 onClick={() => handleTabChange(tab.id)}
                 disabled={locked}
-                title={locked ? 'Complete image generation to unlock' : undefined}
+                title={
+                  locked
+                    ? tab.id === 'dialogue' && comicPageMode === 'page' && activeStats.success > 0
+                      ? 'Enable "Clean images" to add speech bubbles'
+                      : 'Complete image generation to unlock'
+                    : undefined
+                }
                 className={[
                   'flex items-center gap-2 pb-3 pt-1 -mb-px border-b-[3px] transition-colors whitespace-nowrap text-[13px]',
                   active
@@ -1575,19 +1603,23 @@ export default function Step4Generation() {
                       );
                     })}
                   </div>
-                  <label className="flex items-start gap-3 cursor-pointer select-none group">
-                    <div className="flex-none mt-0.5">
-                      <input type="checkbox" checked={sfxMode === 'manual'} onChange={(e) => setSfxMode(e.target.checked ? 'manual' : 'auto')} className="sr-only" />
-                      <div className="w-4 h-4 rounded border-2 flex items-center justify-center transition-colors"
-                        style={{ borderColor: sfxMode === 'manual' ? '#4F46E5' : '#D1D5DB', background: sfxMode === 'manual' ? '#4F46E5' : '#FFFFFF' }}>
-                        {sfxMode === 'manual' && <span className="material-symbols-outlined text-white" style={{ fontSize: 11 }}>check</span>}
+                  {comicPageMode === 'page' && (
+                    <label className="flex items-start gap-3 cursor-pointer select-none group">
+                      <div className="flex-none mt-0.5">
+                        <input type="checkbox" checked={sfxMode === 'manual'} onChange={(e) => setSfxMode(e.target.checked ? 'manual' : 'auto')} className="sr-only" />
+                        <div className="w-4 h-4 rounded border-2 flex items-center justify-center transition-colors"
+                          style={{ borderColor: sfxMode === 'manual' ? '#4F46E5' : '#D1D5DB', background: sfxMode === 'manual' ? '#4F46E5' : '#FFFFFF' }}>
+                          {sfxMode === 'manual' && <span className="material-symbols-outlined text-white" style={{ fontSize: 11 }}>check</span>}
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-on-surface leading-snug">Clean images (no dialogue/SFX text embedded)</p>
-                      <p className="text-xs text-[#6B7280] mt-0.5">Add text manually in Comic Editor after export</p>
-                    </div>
-                  </label>
+                      <div>
+                        <p className="text-sm font-medium text-on-surface leading-snug">Clean images (no dialogue/SFX text embedded)</p>
+                        <p className="text-xs text-[#6B7280] mt-0.5">
+                          Required for the Dialogue tab — add speech bubbles over the generated page
+                        </p>
+                      </div>
+                    </label>
+                  )}
                   {step4.error && <p className="text-sm text-red-500">{step4.error}</p>}
                   <button type="button"
                     onClick={comicPageMode === 'page' ? handleStartFullGeneration : handleStartPanelGeneration}
@@ -1637,12 +1669,25 @@ export default function Step4Generation() {
             <div className="rounded-xl border border-[#86EFAC] px-5 py-4 flex items-center justify-between gap-4"
               style={{ background: '#F0FDF4' }}>
               <div>
-                <p className="text-sm font-semibold text-emerald-700">✓ All {activeStats.total} panels generated!</p>
-                <p className="text-xs text-emerald-600 mt-0.5">Next: Arrange your comic page layout</p>
+                <p className="text-sm font-semibold text-emerald-700">
+                  ✓ All {activeStats.total} {comicPageMode === 'panel' ? 'panels' : 'pages'} generated!
+                </p>
+                <p className="text-xs text-emerald-600 mt-0.5">
+                  {comicPageMode === 'panel'
+                    ? 'Next: Arrange your comic page layout'
+                    : sfxMode === 'manual'
+                      ? 'Clean images ready — add speech bubbles in Dialogue'
+                      : 'Ready to export, or enable Clean images to add speech bubbles'}
+                </p>
               </div>
-              <button type="button" onClick={() => handleTabChange('layout')}
+              <button type="button"
+                onClick={() => handleTabChange(
+                  comicPageMode === 'panel' ? 'layout' :
+                  sfxMode === 'manual' ? 'dialogue' : 'export'
+                )}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors whitespace-nowrap">
-                Go to Layout →
+                {comicPageMode === 'panel' ? 'Go to Layout →' :
+                 sfxMode === 'manual' ? 'Go to Dialogue →' : 'Go to Export →'}
               </button>
             </div>
           )}
@@ -2147,7 +2192,7 @@ export default function Step4Generation() {
             onClick={() => {
               if (activeStep4Tab === 'generate') setActiveStep(3);
               else if (activeStep4Tab === 'layout') handleTabChange('generate');
-              else if (activeStep4Tab === 'dialogue') handleTabChange('layout');
+              else if (activeStep4Tab === 'dialogue') handleTabChange(comicPageMode === 'page' ? 'generate' : 'layout');
               else handleTabChange('dialogue');
             }}
             className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors flex-shrink-0">
@@ -2155,19 +2200,19 @@ export default function Step4Generation() {
             <span className="hidden sm:inline">
               {activeStep4Tab === 'generate' ? 'Edit Script' :
                activeStep4Tab === 'layout' ? 'Generate' :
-               activeStep4Tab === 'dialogue' ? 'Layout' : 'Dialogue'}
+               activeStep4Tab === 'dialogue' ? (comicPageMode === 'page' ? 'Generate' : 'Layout') : 'Dialogue'}
             </span>
           </button>
 
           <button type="button"
             onClick={() => {
-              if (activeStep4Tab === 'generate') handleTabChange('layout');
+              if (activeStep4Tab === 'generate') handleTabChange(comicPageMode === 'page' ? 'dialogue' : 'layout');
               else if (activeStep4Tab === 'layout') handleTabChange('dialogue');
               else if (activeStep4Tab === 'dialogue') handleTabChange('export');
               else handleApprove(4);
             }}
             disabled={
-              (activeStep4Tab === 'generate' && isTabLocked('layout')) ||
+              (activeStep4Tab === 'generate' && isTabLocked(comicPageMode === 'page' ? 'dialogue' : 'layout')) ||
               (activeStep4Tab === 'export' && finishBtnState !== 'all-complete')
             }
             className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
@@ -2183,7 +2228,7 @@ export default function Step4Generation() {
                 : 'bg-primary text-on-primary hover:opacity-90'
             }`}>
             {activeStep4Tab === 'export' ? '✓ Finish & Export' :
-             activeStep4Tab === 'generate' ? 'Go to Layout →' :
+             activeStep4Tab === 'generate' ? (comicPageMode === 'panel' ? 'Go to Layout →' : 'Go to Dialogue →') :
              activeStep4Tab === 'layout' ? 'Go to Dialogue →' : 'Go to Export →'}
           </button>
         </div>

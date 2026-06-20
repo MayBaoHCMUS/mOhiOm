@@ -883,8 +883,20 @@ async def compose_page(req: ComposePageRequest):
     else:
         layout, layout_name = None, "stacked"
 
+    # Convert cross_panel_bubbles from Pydantic models to plain dicts
+    cross_bubbles = (
+        [b.model_dump() for b in req.cross_panel_bubbles]
+        if req.cross_panel_bubbles
+        else None
+    )
+
     try:
-        page_img = _compose(panels_data, style=req.style, layout=layout)
+        page_img = _compose(
+            panels_data,
+            style=req.style,
+            layout=layout,
+            cross_panel_bubbles=cross_bubbles,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Composition failed: {e}")
 
