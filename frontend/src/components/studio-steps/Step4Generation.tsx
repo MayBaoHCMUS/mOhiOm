@@ -7,6 +7,7 @@ import type { Step4Panel, Step4PanelState, PanelVersion } from '@/context/ComicG
 import { apiClient, geminiApi } from '@/services/api';
 import ProjectsDrawer from '@/components/ProjectsDrawer';
 import Markdown from '@/components/Markdown';
+import DialogueEditor, { type BubbleType, type DialoguePanelData } from '@/components/studio-steps/DialogueEditor';
 
 type State = 1 | 2 | 3 | 4 | 5;
 
@@ -974,8 +975,7 @@ export default function Step4Generation() {
     return 'generate';
   });
   const [dialogueEdits, setDialogueEdits] = useState<Record<string, string>>({});
-  const [dialogueEditOpen, setDialogueEditOpen] = useState<string | null>(null);
-  const [dialogueEditValue, setDialogueEditValue] = useState('');
+  const [dialogueData, setDialogueData] = useState<Record<string, DialoguePanelData>>({});
   const [composingAll, setComposingAll] = useState(false);
   const [showCompletionNudge, setShowCompletionNudge] = useState(false);
   const prevAllImgDoneRef = useRef(false);
@@ -1092,13 +1092,29 @@ export default function Step4Generation() {
 
   const autoImportDialogue = useCallback(() => {
     const edits: Record<string, string> = {};
+    const data: Record<string, DialoguePanelData> = {};
     for (const [, panels] of step4PanelsByPage) {
       for (const p of panels) {
         const text = stripBold(p.dialogueSfx ?? '');
-        if (text && text !== 'No dialogue/SFX provided.') edits[p.id] = text;
+        if (text && text !== 'No dialogue/SFX provided.') {
+          edits[p.id] = text;
+          // Heuristic: angle brackets → SFX, asterisk prefix → thought, else speech
+          const isSfx = /^<.+>$/.test(text.trim());
+          const isThought = text.startsWith('*');
+          const bubbleType: BubbleType = isSfx ? 'sfx' : isThought ? 'thought' : 'speech';
+          data[p.id] = {
+            dialogue: text,
+            bubbleType,
+            tailDir: bubbleType === 'sfx' ? 'none' : 'down-left',
+            bubblePosition: { x: 0.5, y: 0.3 },
+            bubbleSize: { w: 160, h: 80 },
+            fontSize: 14,
+          };
+        }
       }
     }
     setDialogueEdits(edits);
+    setDialogueData((prev) => ({ ...prev, ...data }));
   }, [step4PanelsByPage]);
 
   // Auto-initialize layout selection for each page when panels first become available.
@@ -1879,82 +1895,21 @@ export default function Step4Generation() {
 
       {/* ═══════════ TAB 3 — DIALOGUE ═══════════ */}
       {activeStep4Tab === 'dialogue' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-xs text-on-surface-variant">Optional · {panelsWithDialogue}/{allPanels.length} panels have dialogue</p>
-            <button type="button" onClick={autoImportDialogue}
-              className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 transition-colors whitespace-nowrap">
-              ⚡ Auto-import all dialogue
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            {allPanels.map((panel) => {
-              const rawDialogue = dialogueEdits[panel.id] ?? (panel.dialogueSfx ? stripBold(panel.dialogueSfx) : '');
-              const hasDialogue = rawDialogue.trim().length > 0 && rawDialogue !== 'No dialogue/SFX provided.';
-              const isEditing = dialogueEditOpen === panel.id;
-              const imageUrl = step4.data?.panelStates?.[panel.id]?.imageUrl ?? null;
-              return (
-                <div key={panel.id} className="rounded-xl bg-surface-container-low border border-outline-variant/10 overflow-hidden">
-                  <div className="flex items-start gap-3 p-3">
-                    <div className="w-16 h-16 rounded-lg overflow-hidden border border-outline-variant/20 bg-surface-container flex-shrink-0">
-                      {imageUrl ? (
-                        <img src={imageUrl} alt={`P${panel.panelNumber}`} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <span className="material-symbols-outlined text-lg opacity-20">crop_original</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-on-surface">Pg.{panel.pageNumber} · Panel {panel.panelNumber}</p>
-                      {!isEditing ? (
-                        <>
-                          <p className={`text-xs mt-1 leading-relaxed ${hasDialogue ? 'text-on-surface' : 'text-outline italic'}`}>
-                            {hasDialogue ? rawDialogue : '○ No dialogue'}
-                          </p>
-                          <button type="button"
-                            onClick={() => { setDialogueEditOpen(panel.id); setDialogueEditValue(rawDialogue); }}
-                            className="flex items-center gap-1 mt-2 text-[11px] font-semibold text-primary hover:opacity-80 transition-opacity">
-                            {hasDialogue ? '✎ Edit' : '+ Add Dialogue'}
-                          </button>
-                        </>
-                      ) : (
-                        <div className="mt-1 space-y-2">
-                          <textarea
-                            autoFocus
-                            value={dialogueEditValue}
-                            onChange={(e) => setDialogueEditValue(e.target.value)}
-                            rows={3}
-                            className="w-full bg-surface rounded-lg px-2 py-1.5 text-xs text-on-surface border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/20 resize-none"
-                          />
-                          <div className="flex items-center gap-2">
-                            <button type="button"
-                              onClick={() => { setDialogueEdits((prev) => ({ ...prev, [panel.id]: dialogueEditValue })); setDialogueEditOpen(null); }}
-                              className="px-3 py-1 rounded-full text-[11px] font-bold bg-primary text-on-primary hover:opacity-90">
-                              Save
-                            </button>
-                            <button type="button" onClick={() => setDialogueEditOpen(null)}
-                              className="px-3 py-1 rounded-full text-[11px] font-semibold text-on-surface-variant hover:text-on-surface">
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <button type="button" onClick={() => handleTabChange('export')}
-              className="text-sm text-on-surface-variant hover:text-primary transition-colors">
-              Skip to Export →
-            </button>
-          </div>
-        </div>
+        <DialogueEditor
+          panelsByPage={step4PanelsByPage}
+          panelStates={step4.data?.panelStates ?? {}}
+          dialogueData={dialogueData}
+          onSave={(panelId, data) => {
+            setDialogueData((prev) => ({ ...prev, [panelId]: data }));
+            if (data.dialogue) {
+              setDialogueEdits((prev) => ({ ...prev, [panelId]: data.dialogue! }));
+            } else {
+              setDialogueEdits((prev) => { const next = { ...prev }; delete next[panelId]; return next; });
+            }
+          }}
+          onExport={() => handleTabChange('export')}
+          onAutoImport={autoImportDialogue}
+        />
       )}
 
       {/* ═══════════ TAB 4 — EXPORT ═══════════ */}
