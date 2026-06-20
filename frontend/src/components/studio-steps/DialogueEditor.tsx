@@ -741,7 +741,6 @@ function PanelCell({
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onClick={handleCellClick}
       onMouseDown={(e) => {
         if (e.target === cellRef.current || (e.target as HTMLElement).tagName === 'IMG') {
           onBubbleDeselect();
@@ -924,25 +923,6 @@ function PanelCell({
         </div>
       )}
 
-      {/* Add bubble [+] button on hover */}
-      {isHovered && (
-        <button
-          type="button"
-          onClick={handleAddClick}
-          style={{
-            position: 'absolute', top: 4, right: 4, zIndex: 25,
-            width: 22, height: 22,
-            background: 'rgba(99,102,241,0.9)',
-            border: 'none', borderRadius: '50%',
-            color: 'white', fontSize: 14, fontWeight: 700,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            lineHeight: 1,
-          }}
-          title="Add speech bubble"
-        >
-          +
-        </button>
-      )}
     </div>
   );
 }
@@ -1995,7 +1975,16 @@ export default function DialogueEditor({
                   onDragCommit={flushSave}
                   onContextMenu={(pId, bId, x, y) => { setContextMenu({ panelId: pId, bubbleId: bId, x, y }); }}
                   onEditStart={(_, bId) => setEditingBubbleId(bId)}
-                  onEditEnd={() => setEditingBubbleId(null)}
+                  onEditEnd={() => {
+                    if (editingBubbleId && selectedBubble) {
+                      const b = (panelBubbles[selectedBubble.panelId] ?? []).find(x => x.id === editingBubbleId);
+                      if (b && !b.dialogue?.trim()) {
+                        deleteBubble(selectedBubble.panelId, editingBubbleId);
+                        setSelectedBubble(null);
+                      }
+                    }
+                    setEditingBubbleId(null);
+                  }}
                 />
               ))}
               </div>
