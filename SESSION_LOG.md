@@ -1,3 +1,123 @@
+## SESSION: 2026-06-21 (continued — layout-first system)
+
+### ✅ COMPLETED — Layout-First Manga Panel System
+
+Implemented the full layout-first spec. Layout tab now comes BEFORE Generate tab.
+
+**Backend:**
+- `backend/comic/layout/mask_renderer.py` — Fixed stretch bug: `_cover_crop()` + `_expand_polygon()`. Images now fill polygon bbox without distortion. Cover-crop preserves aspect ratio; expand closes hairline gaps between panels.
+- `backend/comic/layout/layout_selector.py` — Added `suggest_layout()` with scene inference from shot types, reasons, and alternatives. `select_layout()` kept for backward compat.
+- `backend/comic/layout/composition_hints.py` — New file. `get_composition_hint(panel)` + `inject_composition(prompt, panel)` for framing keywords based on panel shape.
+- `backend/app/routers/comic_generation.py` — Added `POST /api/comic-layout/suggest` (AI layout suggestion + alternatives) and `POST /api/comic-layout/confirm` (returns panel slots with `sd_width`/`sd_height` for exact-dimension generation).
+
+**Frontend:**
+- `frontend/src/services/api.ts` — Added `SuggestLayoutRequest/Response`, `ConfirmLayoutRequest/Response`, `ConfirmedPanelDefinition` types. Added `comicLayoutApi.suggest()` and `comicLayoutApi.confirm()`.
+- `frontend/src/context/ComicGenerationContext.tsx` — Added `setRawPanelDimensions(pageNumber, dimMap)` to context (exposes direct dim override without calling Gemini endpoint).
+- `frontend/src/components/studio-steps/Step4Generation.tsx`:
+  - Tab order: **Layout → Generate → Dialogue → Export** (layout first)
+  - Default tab: `layout`
+  - `isTabLocked`: layout=never, generate=locked until `anyLayoutConfirmed` (panel mode only), others unchanged
+  - New state: `confirmedLayouts`, `layoutSuggestions`, `suggestionLoading`, `confirmingLayout`
+  - New handlers: `handleGetSuggestion()`, `handleConfirmLayout()` (calls `/confirm`, maps slots → panel IDs, updates `pagePanelDimensions`)
+  - Layout tab redesigned: AI suggestion banner, template picker, wireframe SVG preview, "Confirm Layout" button, post-confirm shows dimensions + compose section when images exist
+  - Bottom bar navigation updated for new tab order
+
+**Key flow:** Layout tab → pick template → Confirm → `pagePanelDimensions` updated → Generate tab unlocks → generate at exact dimensions → Layout tab compose section appears → Apply Manga Layout → polygon-masked page image.
+
+**Tests:** 14/14 templates + 8/8 procedural pass.
+
+---
+
+## SESSION: 2026-06-21
+
+### ✅ COMPLETED — DialogueEditor.tsx — Bubble UX Overhaul
+
+All work in: `frontend/src/components/studio-steps/DialogueEditor.tsx`
+
+---
+
+#### Cross-panel bubbles (`crossPanel` flag)
+
+- Added `crossPanel?: boolean` to `SingleBubble` interface
+- `PanelCell` filters out `crossPanel: true` bubbles from its render (`sortedBubbles.filter(b => !b.crossPanel)`)
+- `PageBubbleLayer` collects all `crossPanel: true` bubbles via `useMemo` across all panels and renders them in an absolute overlay at `zIndex: 20` covering the full page grid
+- Right-click → context menu: "Bring to Front" sets `crossPanel: true`; "Send to Back" sets `crossPanel: false`
+- Context menu bug root cause & fix: `document.addEventListener('mousedown', close)` fired before `click`, clearing `contextMenu` state before action ran. Fixed with **backdrop pattern**: transparent `<div style={{ position:'fixed', inset:0, zIndex:199 }}>` fires `onClose` on outside clicks; menu's `onMouseDown={e.stopPropagation()}` prevents backdrop from firing on menu-internal clicks
+- Backend: added `crossPanel: Optional[bool] = False` to `BubbleData` Pydantic model in `backend/app/routers/bubbles.py`
+- Frontend API: added `crossPanel?: boolean` to `BubbleDataPayload` in `frontend/src/services/api.ts`
+
+---
+
+#### Inline text editing
+
+- New `editingBubbleId: string | null` state in `DialogueEditor`
+- `addBubble` auto-sets `setEditingBubbleId(newBubble.id)` — new bubbles immediately enter edit mode
+- Transparent `<textarea autoFocus>` overlay rendered inside selected bubble when `editingBubbleId === bubble.id`:
+  - `color: transparent`, `caretColor: textColor` — SVG text renders through, textarea captures input
+  - `onBlur` / Escape → `onEditEnd()`
+- Double-click on any bubble → `onEditStart(panelId, bubbleId)` → inline edit
+- `onEditEnd` auto-deletes the bubble if `dialogue` is empty/null (no ghost bubbles)
+- `PanelCellProps` new props: `editingBubbleId`, `onEditStart`, `onEditEnd`
+
+---
+
+#### Drag-to-create bubbles (sidebar palette)
+
+- `BubbleSidebar` restructured: always shows a "Drag to add bubble" palette grid at the top (all 15 `BUBBLE_TYPE_OPTIONS` as draggable tiles)
+- Palette tiles: `draggable={true}`, `onDragStart` sets `dataTransfer.setData('bubbleType', type)` with `effectAllowed: 'copy'`
+- Clicking a palette tile when a bubble is selected changes that bubble's type (replaces old bubble-type grid in selected state)
+- `PanelCell` root div: `onDragOver` + `onDrop` handlers compute normalized drop position from `clientX/Y` relative to cell rect, call `onBubbleAdd(panelId, normX, normY, type)`
+- `addBubble` extended: accepts `bubbleType: BubbleType = 'speech'` parameter; new bubble uses dropped type
+- `onBubbleAdd` prop signature updated: `(panelId, normX, normY, bubbleType?: BubbleType) => void`
+
+---
+
+#### Hover grab cursor + drag-to-move
+
+- All bubbles (selected and non-selected) have `cursor: grab`
+- **Non-selected bubbles**: `onPointerDown` → select + `startDrag(e, 'move', b)`; `onPointerMove` / `onPointerUp` run shared `onDragMove` / `onDragEnd`; `onDoubleClick` → `onEditStart`
+- **Selected bubble**: whole body is draggable — `onPointerDown` on outer div starts move drag; `onDoubleClick` enters inline edit
+- Removed the separate purple move-handle bar at the top of selected bubbles
+- Corner/tail handles: all add `e.stopPropagation()` to prevent triggering the body's `onPointerDown`
+- `dragActiveRef = useRef(false)`: only set `true` after pointer moves ≥ 3px from start; `onDragEnd` only saves + commits if `dragActiveRef.current` — prevents position save on simple clicks
+- Bug fix: `computePatch(e)` called **before** `dragRef.current = null` in `onDragEnd` — previously the ref was cleared first causing `computePatch` to return `null` and the bubble snapping back
+
+---
+
+#### Click-to-create removed
+
+- `onClick={handleCellClick}` removed from panel cell div — clicking empty panel no longer creates a bubble
+- Hover `+` button removed entirely
+- Only creation paths: drag from sidebar palette, or "Auto-import from script" button
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/components/studio-steps/DialogueEditor.tsx` — all bubble UX changes (~2100 lines)
+- `frontend/src/services/api.ts` — `crossPanel?: boolean` on `BubbleDataPayload`
+- `backend/app/routers/bubbles.py` — `crossPanel: Optional[bool] = False` on `BubbleData`
+
+---
+
+### 🐛 KNOWN ISSUES / DECISIONS
+
+- **`crossPanel` flag vs separate panel**: cross-panel bubbles stay in their original `panelBubbles[panelId]` array; only rendered differently. All save/load/delete mechanics are unchanged.
+- **`PAGE_PANEL_PREFIX = '__page__'`**: exported constant kept for backward-compat with MongoDB records but not used in active logic.
+- **Inline edit not available for `bubbleType: 'none'` and `'sfx'`**: `none` is invisible; `sfx` uses direct SVG text styling that doesn't need inline edit. Both still editable via sidebar textarea.
+- **`dragActiveRef` threshold = 3px**: prevents spurious saves on single clicks. Does NOT block `dblclick` — double-click fires `onDoubleClick` independently, not via drag logic.
+- **`onEditEnd` auto-delete**: only fires when the bubble exiting edit has `dialogue === null` or `dialogue.trim() === ''`. Bubbles with text are always preserved on blur.
+
+---
+
+### 🎯 NEXT SESSION PLAN
+
+1. **Expand bubble types to 15** — add `whisper`, `double`, `electric`, `round`, `square`, `scream`, `heart`, `burst`, `wobbly` to `BubbleType` union, `BUBBLE_TYPE_DEFAULTS`, `MangaBubbleSVG` switch, and palette (see Phase 1 spec in SESSION: 2026-06-20 below)
+2. **MongoDB persistence** — wire `PUT /api/bubbles/{panelId}` on save (Phase 2 spec below)
+3. **PNG composite export** — html2canvas per panel (Phase 3 spec below)
+
+---
+
 ## SESSION: 2026-06-20
 
 ### ✅ COMPLETED — DialogueEditor.tsx — Full Canvas Dialogue System

@@ -13,8 +13,12 @@ import type { FullProjectSave, CloudProjectListItem, CharacterSummary } from '@/
 import { exportAsZip, exportAsPdf } from '@/lib/export';
 import type { ExportPage } from '@/lib/export';
 
-export type StepKey = 1 | 2 | 3 | 4;
+export type StepKey = 1 | 2 | 3 | 4 | 5;
 export type WizardStepKey = 0 | StepKey;
+
+export interface Step5Result {
+  exportedAt: string | null;
+}
 
 export type ImageGenMode = 1 | 2 | 3 | 4;
 
@@ -509,11 +513,15 @@ export interface ComicGenerationContextValue {
   useStreaming: boolean;
   sfxMode: 'auto' | 'manual';
   setSfxMode: (v: 'auto' | 'manual') => void;
+  comicPageMode: 'page' | 'panel' | null;
+  setComicPageMode: (mode: 'page' | 'panel') => void;
+  resetComicPageMode: () => void;
   step1: StepState<Step1Result>;
   step2: StepState<Step2Result>;
   step2ImageReview: StepState<CharacterImageReviewResult>;
   step3: StepState<Step3Result>;
   step4: StepState<Step4Result>;
+  step5: StepState<Step5Result>;
   activeStep: WizardStepKey;
   globalError: string | null;
   jsonCopied: boolean;
@@ -560,6 +568,7 @@ export interface ComicGenerationContextValue {
   pageLayoutNames: Record<number, string>;
   pagePanelDimensions: Record<number, Record<string, { width: number; height: number }>>;
   setPageLayout: (pageNumber: number, layoutName: string, panelsOnPage: Step4Panel[]) => Promise<void>;
+  setRawPanelDimensions: (pageNumber: number, dimMap: Record<string, { width: number; height: number }>) => void;
   handleStartFullGeneration: () => Promise<void>;
   handleStartPanelGeneration: () => Promise<void>;
   handleRegenerateSinglePanel: (panel: Step4Panel) => Promise<void>;
@@ -623,6 +632,9 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   const [controlnetScale, setControlnetScale] = useState(0.8);
   const [useStreaming, setUseStreaming] = useState(true);
   const [sfxMode, setSfxMode] = useState<'auto' | 'manual'>('auto');
+  const [comicPageMode, setComicPageModeState] = useState<'page' | 'panel' | null>(null);
+  const setComicPageMode = (mode: 'page' | 'panel') => setComicPageModeState(mode);
+  const resetComicPageMode = () => setComicPageModeState(null);
   const [pageLayoutNames, setPageLayoutNames] = useState<Record<number, string>>({});
   const [pagePanelDimensions, setPagePanelDimensions] = useState<
     Record<number, Record<string, { width: number; height: number }>>
@@ -648,6 +660,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   );
   const [step3, setStep3] = useState<StepState<Step3Result>>(emptyStepState(true));
   const [step4, setStep4] = useState<StepState<Step4Result>>(emptyStepState(true));
+  const [step5, setStep5] = useState<StepState<Step5Result>>(emptyStepState(true));
   const [activeStep, setActiveStep] = useState<WizardStepKey>(0);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [jsonCopied, setJsonCopied] = useState(false);
@@ -658,6 +671,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     2: 0,
     3: 0,
     4: 0,
+    5: 0,
   });
   const [nowMs, setNowMs] = useState<number>(Date.now());
   const approvedCacheRef = useRef<Partial<Record<StepKey, ApprovedCacheEntry>>>({});
@@ -754,8 +768,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   }, [localImageApiUrl]);
 
   const stepMap: Record<StepKey, StepState<unknown>> = useMemo(
-    () => ({ 1: step1, 2: step2, 3: step3, 4: step4 }),
-    [step1, step2, step3, step4]
+    () => ({ 1: step1, 2: step2, 3: step3, 4: step4, 5: step5 }),
+    [step1, step2, step3, step4, step5]
   );
 
   const extractStep2Characters = (): CharacterImageItem[] => {
@@ -882,6 +896,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     if (step === 2) setStep2((prev) => updater(prev as StepState<unknown>) as StepState<Step2Result>);
     if (step === 3) setStep3((prev) => updater(prev as StepState<unknown>) as StepState<Step3Result>);
     if (step === 4) setStep4((prev) => updater(prev as StepState<unknown>) as StepState<Step4Result>);
+    if (step === 5) setStep5((prev) => updater(prev as StepState<unknown>) as StepState<Step5Result>);
   };
 
   const parseLines = (text: string, limit: number) =>
@@ -1449,6 +1464,12 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       setStep2ImageReview(emptyStepState<CharacterImageReviewResult>(true));
       setStep3((prev) => ({ ...prev, locked: true, isApproved: false }));
       setStep4((prev) => ({ ...prev, locked: true, isApproved: false }));
+      setStep5((prev) => ({ ...prev, locked: true, isApproved: false }));
+    }
+    if (step === 3) {
+      setStep4((prev) => ({ ...prev, locked: true, isApproved: false }));
+      setStep5((prev) => ({ ...prev, locked: true, isApproved: false }));
+      setComicPageModeState(null);
     }
 
     const wasApproved = stepMap[step].isApproved;
@@ -1670,9 +1691,9 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
 
     const nextStep = (step + 1) as StepKey;
-    if (nextStep <= 4) {
+    if (nextStep <= 5) {
       setStepState(nextStep, (prev) => ({ ...prev, locked: false }));
-      setActiveStep(nextStep);
+      setActiveStep(nextStep as WizardStepKey);
     }
   };
 
@@ -1683,6 +1704,9 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       regeneratedAfterApproval: false,
       approvedAt: null,
     }));
+    if (step === 4) {
+      setStep5((prev) => ({ ...prev, locked: true, isApproved: false }));
+    }
   };
 
   const handleRetry = (step: StepKey) => {
@@ -3033,9 +3057,15 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     handleSelectCharacterCandidate,
     handleApproveCharacterReferences,
     handleRetryCharacterReferences,
+    comicPageMode,
+    setComicPageMode,
+    resetComicPageMode,
+    step5,
     pageLayoutNames,
     pagePanelDimensions,
     setPageLayout,
+    setRawPanelDimensions: (pageNumber, dimMap) =>
+      setPagePanelDimensions((prev) => ({ ...prev, [pageNumber]: dimMap })),
     handleStartFullGeneration,
     handleStartPanelGeneration,
     handleRegenerateSinglePanel,

@@ -1244,4 +1244,87 @@ export const authApi = {
     apiClient.get<{ url: string }>(`/auth/oauth/${provider}/start`, { params: { mode } }),
 };
 
+export interface MangaComposePageRequest {
+  panel_images: Record<string, string>;  // 'p1' | 'p2' | … → base64 PNG
+  panel_count: number;
+  layout_name?: string;   // template name | 'auto' | 'procedural'
+  style?: string;         // 'balanced' | 'feature' | 'dynamic' | 'cinematic'
+  scene_type?: string;    // 'action' | 'dialogue' | 'emotional' | 'establishing' | 'climax' | 'default'
+  mood?: string;          // 'tense' | 'calm' | 'dramatic' | 'neutral'
+  add_diagonals?: boolean;
+  seed?: number | null;
+  page_width?: number;
+  page_height?: number;
+}
+
+export interface MangaComposePageResponse {
+  success: boolean;
+  page_image_b64: string;
+  layout_used: string;
+  panels: Array<{
+    id: string;
+    bbox: [number, number, number, number];
+    polygon: [number, number][];
+    recommended_shot: string;
+    has_diagonal: boolean;
+    is_splash: boolean;
+    sd_width: number;
+    sd_height: number;
+  }>;
+}
+
+export interface SuggestLayoutRequest {
+  panel_count: number;
+  scene_type?: string;
+  panels?: Array<{ shot_type?: string; scene_type?: string }>;
+}
+
+export interface SuggestLayoutResponse {
+  suggested: string;
+  reason: string;
+  alternatives: string[];
+  panel_count: number;
+  scene_type_detected: string;
+}
+
+export interface ConfirmLayoutRequest {
+  panel_count: number;
+  layout_name: string;
+  page_width?: number;
+  page_height?: number;
+}
+
+export interface ConfirmedPanelDefinition {
+  id: string;
+  bbox: [number, number, number, number];
+  polygon: [number, number][];
+  recommended_shot: string;
+  has_diagonal: boolean;
+  is_splash: boolean;
+  sd_width: number;
+  sd_height: number;
+}
+
+export interface ConfirmLayoutResponse {
+  layout_name: string;
+  panel_count: number;
+  page_width: number;
+  page_height: number;
+  panels: ConfirmedPanelDefinition[];
+}
+
+export const comicLayoutApi = {
+  composePage: (payload: MangaComposePageRequest) =>
+    apiClient.post<MangaComposePageResponse>('/comic-layout/compose-page', payload),
+
+  suggest: (payload: SuggestLayoutRequest) =>
+    apiClient.post<SuggestLayoutResponse>('/comic-layout/suggest', payload),
+
+  confirm: (payload: ConfirmLayoutRequest) =>
+    apiClient.post<ConfirmLayoutResponse>('/comic-layout/confirm', payload),
+
+  getLayouts: () =>
+    apiClient.get<{ layouts: Record<string, { panel_count: number; has_diagonal: boolean; has_splash: boolean }> }>('/comic-layout/layouts'),
+};
+
 export default apiClient;
