@@ -1,3 +1,97 @@
+## SESSION: 2026-06-21 (continued — wizard restructure + canvas editor spec)
+
+### ✅ COMPLETED — Wizard Restructure: Steps 4 + 5 Split + Mode Modal
+
+Restructured the wizard from 5 steps to 6 steps (keys 0–5):
+- **Step 4** = "Generate" — Layout + Generate tabs (panel-by-panel flow)
+- **Step 5** = "Export" — Dialogue + Export tabs
+
+**New files:**
+- `frontend/src/components/GenerationModeModal.tsx` — full-screen modal (no dismiss) shown when entering Step 4 for the first time; user chooses "Full Page" or "Panel by Panel"; choice stored in context as `comicPageMode`
+- `frontend/src/components/studio-steps/Step5Export.tsx` (469 lines) — dialogue tab + export tab; ported dialogue/bubble/export logic from old Step4Generation
+
+**Context changes (`ComicGenerationContext.tsx`):**
+- `StepKey` extended: `1 | 2 | 3 | 4` → `1 | 2 | 3 | 4 | 5`
+- `Step5Result = { exportedAt: string | null }`
+- `comicPageMode: 'page' | 'panel' | null` state (null = modal not dismissed)
+- `setComicPageMode(mode)` — sets mode, hides modal
+- `resetComicPageMode()` — sets to null, re-triggers modal
+- `step5` StepState added; `stepMap` includes step 5; `cooldownUntil` includes `5: 0`
+- `handleApprove` guard: `nextStep <= 5`; `handleRevokeApproval(4)` cascades to lock step 5
+- Step 3 regeneration resets `comicPageMode` to null + re-locks steps 4 & 5
+
+**Step4Generation.tsx refactor (2318 lines):**
+- `Step4Tab` narrowed from `'generate'|'layout'|'dialogue'|'export'` → `'layout'|'generate'`
+- Removed: dialogue tab, export tab, all bubble/compose/export handlers and state
+- Removed: inline mode picker cards (Generate tab) — mode is set upfront via modal
+- Removed: per-page layout picker icons from the Generate tab panel grid
+- Added: `comicPageMode` + `resetComicPageMode` from context
+- **Layout tab additions:**
+  - Mode chip + "Change mode →" button (calls `resetComicPageMode()`)
+  - Panel script preview rows per page card (panelNumber, shotType, dialogueSfx/aiImagePrompt)
+- **Tab sync effect:** when `comicPageMode === 'panel'` → force Layout tab first; when `'page'` → force Generate tab
+- Bottom nav simplified: Layout → Generate, Generate → `handleApprove(4)`
+
+**TextToComicGenerator.tsx:**
+- `wizardSteps` extended to 6 entries (keys 0–5)
+- Renders `<GenerationModeModal />` when `activeStep === 4 && comicPageMode === null`
+- Bottom bar hidden for steps 1–5 (each owns its action bar)
+
+---
+
+### 🎯 NEXT SESSION — Canvas Editor Redesign (Step 4)
+
+The user provided a comprehensive redesign spec for Step 4 titled **"REDESIGN: Comic Page Editor"** requesting a Canva-style 3-zone layout. This has NOT been implemented yet.
+
+**Spec summary:**
+
+Replace the current 2-tab (Layout + Generate) flow in Step 4 with a **unified canvas editor**:
+
+```
+┌────────────────────────────────────────────────────┐
+│  [Page 1] [Page 2] [Page 3]  ← page navigator     │
+├──────────┬─────────────────────────┬───────────────┤
+│ LEFT     │  CENTER CANVAS          │ RIGHT         │
+│ 240px    │  (fills remaining)      │ 280px         │
+│          │                         │               │
+│ Templates│  Comic page at 1:1.414  │ Contextual:   │
+│ + scene  │  ratio with panel slots │ page overview │
+│ + import │  (positioned by bbox)   │ panel props   │
+│ + script │                         │ bubble editor │
+│ preview  │                         │               │
+├──────────┴─────────────────────────┴───────────────┤
+│  [← Back]   X/Y panels generated   [Export →]      │
+└────────────────────────────────────────────────────┘
+```
+
+**Key behaviors from spec:**
+1. **No Layout/Generate tabs** — single unified view per page
+2. **Page navigator** at top: horizontal page tabs with mini progress bars
+3. **Left panel** (240px): layout template list, scene type dropdown, AI suggestion button, dialogue auto-import, page script preview
+4. **Center canvas**: shows ONE page at a time; panel slots positioned using `bbox` from `confirmedLayouts[pageNumber]`; 6 panel states (no layout / pending / generating / generated / selected / error); zoom controls
+5. **Click empty panel** = immediate generation (`handleRegenerateSinglePanel(panel)`)
+6. **Layout change = canvas re-renders immediately** — auto-calls `comicLayoutApi.confirm()` when template selected (no explicit "Confirm" button)
+7. **Right panel** (280px): contextual — page overview (default) / panel properties (when panel selected) / bubble editor (when bubble selected)
+8. **Inline dialogue bubbles** always visible on canvas over panel images
+9. **Bottom bar**: back to script + X/Y panels progress + Export button (calls `handleApprove(4)`)
+
+**Implementation plan for next session:**
+- Create `frontend/src/components/studio-steps/Step4CanvasEditor.tsx` (replaces Step4Generation.tsx in wizard)
+- Update `TextToComicGenerator.tsx`: swap `Step4Generation` import → `Step4CanvasEditor`
+- Keep `Step4Generation.tsx` until canvas editor is verified working
+- Keep `Step5Export.tsx` unchanged — canvas editor calls `handleApprove(4)` to advance to export
+
+**Key technical notes:**
+- Panel positions from `confirmedLayouts[pageNumber].panels[idx].bbox = [x1,y1,x2,y2]` (in 1240×1754 space)
+- CSS: `left: x1/1240*100%`, `top: y1/1754*100%`, `width: (x2-x1)/1240*100%`, `height: (y2-y1)/1754*100%`
+- Diagonal panels: `clip-path: polygon(${pts.map(([x,y])=>'${x/1240*100}% ${y/1754*100}%').join(',')})`
+- Map `confirmedLayouts[page].panels[idx]` ↔ `step4PanelsByPage.find([page,...])[idx]` by array index to get panel IDs
+- Auto-confirm flow: user picks template → `comicLayoutApi.confirm({panel_count, layout_name})` → stores in `confirmedLayouts` → `setRawPanelDimensions(page, dimMap)` → canvas renders positioned slots
+- Use `MANGA_LAYOUT_SVGS` constants from Step4Generation for wireframe previews while awaiting confirm API response
+- The `comicPageMode === 'page'` case: show a single slot for the full page image; no layout picker needed
+
+---
+
 ## SESSION: 2026-06-21 (continued — layout-first system)
 
 ### ✅ COMPLETED — Layout-First Manga Panel System

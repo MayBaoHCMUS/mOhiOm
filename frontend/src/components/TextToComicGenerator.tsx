@@ -8,7 +8,7 @@ import Step0Setup from '@/components/studio-steps/Step0Setup';
 import Step1Analysis from '@/components/studio-steps/Step1Analysis';
 import Step2Characters from '@/components/studio-steps/Step2Characters';
 import Step3Script from '@/components/studio-steps/Step3Script';
-import Step4Generation from '@/components/studio-steps/Step4Generation';
+import Step4CanvasEditor from '@/components/studio-steps/Step4CanvasEditor';
 import Step5Export from '@/components/studio-steps/Step5Export';
 import GenerationModeModal from '@/components/GenerationModeModal';
 
@@ -17,7 +17,7 @@ const wizardSteps = [
   { key: 1, label: 'Analysis',   subtitle: 'Story breakdown',        Component: Step1Analysis },
   { key: 2, label: 'Characters', subtitle: 'Designs and references', Component: Step2Characters },
   { key: 3, label: 'Script',     subtitle: 'Panel-by-panel script',  Component: Step3Script },
-  { key: 4, label: 'Generate',   subtitle: 'Image generation',       Component: Step4Generation },
+  { key: 4, label: 'Generate',   subtitle: 'Image generation',       Component: Step4CanvasEditor },
   { key: 5, label: 'Export',     subtitle: 'Dialogue & export',      Component: Step5Export },
 ] as const;
 

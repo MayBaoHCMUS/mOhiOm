@@ -55,8 +55,9 @@ export default function GenerationModeModal() {
           </button>
         </div>
 
-        <p className="text-center text-xs text-gray-400">
-          You can change mode later by regenerating the script in Step 3.
+        <p className="text-center text-xs text-gray-400 max-w-sm mx-auto leading-relaxed">
+          Your AI image prompts were automatically created during the Panel-by-panel script step (Step 4).
+          You can edit individual prompts by clicking any panel on the canvas.
         </p>
       </div>
     </div>

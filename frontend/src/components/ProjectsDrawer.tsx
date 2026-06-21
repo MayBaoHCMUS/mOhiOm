@@ -14,7 +14,7 @@ interface Props {
 const StepBadge = ({ label, active }: { label: string; active: boolean }) => (
   <span
     className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-      active ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-400'
+      active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'
     }`}
   >
     {label}
@@ -161,63 +161,68 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
               <p className="text-xs text-gray-400 mt-1">Save a project above to see it here.</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="flex flex-col gap-2">
               {projects.map((p) => (
-                <div key={p.project_id} className="rounded-2xl bg-gray-100 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-sm text-gray-900 truncate">{p.project_id}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{formatDate(p.saved_at)}</p>
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        <StepBadge label="S1" active={p.has_step1} />
-                        <StepBadge label="S2" active={p.has_step2} />
-                        <StepBadge label="Img" active={p.has_step2_images} />
-                        <StepBadge label="S3" active={p.has_step3} />
-                        <StepBadge label="S4" active={p.has_step4} />
-                      </div>
+                <div
+                  key={p.project_id}
+                  className="rounded-xl bg-white border border-gray-100 p-4 hover:border-gray-200 hover:bg-gray-50 transition-colors"
+                >
+                  {/* Title */}
+                  <p className="font-semibold text-sm text-gray-900 truncate mb-1.5">{p.project_id}</p>
+
+                  {/* Date + step badges */}
+                  <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mb-3">
+                    <span className="text-xs text-gray-400">{formatDate(p.saved_at)}</span>
+                    <span className="text-gray-200 text-xs">·</span>
+                    <div className="flex gap-1.5">
+                      <StepBadge label="S1" active={p.has_step1} />
+                      <StepBadge label="S2" active={p.has_step2} />
+                      <StepBadge label="Img" active={p.has_step2_images} />
+                      <StepBadge label="S3" active={p.has_step3} />
+                      <StepBadge label="S4" active={p.has_step4} />
                     </div>
-                    <div className="flex flex-col gap-2 flex-shrink-0 items-end">
-                      {deleteConfirmId === p.project_id ? (
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setDeleteConfirmId(null)}
-                            className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-gray-200 text-gray-700 hover:scale-105 transition-transform"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleLoad(p.project_id)}
-                          disabled={loadingId === p.project_id}
-                          className={`px-4 py-2 rounded-2xl text-xs font-semibold transition-transform ${
-                            loadingId === p.project_id
-                              ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                              : 'bg-gray-900 text-white hover:scale-105'
-                          }`}
-                        >
-                          {loadingId === p.project_id ? 'Loading…' : 'Load'}
-                        </button>
-                      )}
-                      {p.has_step4 && (
-                        <button
-                          type="button"
-                          title={p.is_public ? 'Remove from Gallery' : 'Publish to Gallery'}
-                          disabled={publishingId === p.project_id}
-                          onClick={() => handlePublish(p.project_id, !p.is_public)}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-colors ${
-                            p.is_public
-                              ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          } ${publishingId === p.project_id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                          <Globe size={11} />
-                          {p.is_public ? 'Published' : 'Publish'}
-                        </button>
-                      )}
-                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex items-center gap-2">
+                    {deleteConfirmId === p.project_id ? (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirmId(null)}
+                        className="px-4 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleLoad(p.project_id)}
+                        disabled={loadingId === p.project_id}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                          loadingId === p.project_id
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-100'
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-blue-400 hover:text-blue-600'
+                        }`}
+                      >
+                        {loadingId === p.project_id ? 'Loading…' : 'Load'}
+                      </button>
+                    )}
+                    {p.has_step4 && (
+                      <button
+                        type="button"
+                        title={p.is_public ? 'Remove from Gallery' : 'Publish to Gallery'}
+                        disabled={publishingId === p.project_id}
+                        onClick={() => handlePublish(p.project_id, !p.is_public)}
+                        className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          p.is_public
+                            ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        } ${publishingId === p.project_id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <Globe size={11} />
+                        {p.is_public ? 'Published' : 'Publish'}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
