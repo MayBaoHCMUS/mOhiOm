@@ -15,7 +15,7 @@ import GenerationModeModal from '@/components/GenerationModeModal';
 const wizardSteps = [
   { key: 0, label: 'Setup',      subtitle: 'Project configuration',  Component: Step0Setup },
   { key: 1, label: 'Analysis',   subtitle: 'Story breakdown',        Component: Step1Analysis },
-  { key: 2, label: 'Characters', subtitle: 'Designs and references', Component: Step2Characters },
+  { key: 2, label: 'Characters', subtitle: 'Designs & refs', Component: Step2Characters },
   { key: 3, label: 'Script',     subtitle: 'Panel-by-panel script',  Component: Step3Script },
   { key: 4, label: 'Generate',   subtitle: 'Image generation',       Component: Step4CanvasEditor },
   { key: 5, label: 'Export',     subtitle: 'Dialogue & export',      Component: Step5Export },
