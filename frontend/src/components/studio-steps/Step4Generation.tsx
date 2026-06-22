@@ -3,9 +3,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
-import type { Step4Panel, PanelVersion } from '@/context/ComicGenerationContext';
-import { apiClient, geminiApi, comicLayoutApi } from '@/services/api';
-import type { SuggestLayoutResponse, ConfirmLayoutResponse } from '@/services/api';
+import type { Step4Panel, Step4PanelState, PanelVersion } from '@/context/ComicGenerationContext';
+import { apiClient, geminiApi } from '@/services/api';
 import ProjectsDrawer from '@/components/ProjectsDrawer';
 import Markdown from '@/components/Markdown';
 
@@ -834,6 +833,14 @@ const TEMPLATES_BY_COUNT: Record<number, string[]> = {
   6: ['grid_3x2', 'grid_2x3'],
 };
 
+const LAYOUT_DISPLAY_NAMES_MAP: Record<string, string> = {
+  splash: 'Full Splash', stacked: 'Stacked', side_by_side: 'Side by Side',
+  three_rows: 'Three Rows', top_wide: 'Wide Top', bottom_wide: 'Wide Bottom',
+  grid_2x2: '2×2 Grid', top_wide_3: 'Wide + Three', bottom_wide_3: 'Three + Wide',
+  four_rows: 'Four Rows', wide_2x2: 'Wide + 2×2', '2x2_wide': '2×2 + Wide',
+  grid_3x2: '3-Col Grid', grid_2x3: '2-Col Grid',
+};
+
 // Row-of-indices for each template (needed for compose-page explicit layout)
 const LAYOUT_ROW_STRUCTURES: Record<string, number[][]> = {
   splash: [[0]], stacked: [[0],[1]], side_by_side: [[0,1]],
@@ -843,199 +850,59 @@ const LAYOUT_ROW_STRUCTURES: Record<string, number[][]> = {
   grid_3x2: [[0,1,2],[3,4,5]], grid_2x3: [[0,1],[2,3],[4,5]],
 };
 
-// ── Manga polygon layout constants (mirrors backend comic/layout/) ─────────────
-
-const MANGA_TEMPLATES_BY_COUNT: Record<number, string[]> = {
-  1: ['full_bleed'],
-  2: ['diagonal_split_2', 'one_large_two_small', 'two_small_one_large'],
-  3: ['three_panels_row', 'one_large_two_small', 'two_small_one_large', 'diagonal_3_panels', 'cinematic_strips'],
-  4: ['grid_2x2', 'action_dynamic_4', 'splash_top', 'asymmetric_4', 'vertical_flow'],
-  5: ['manga_classic_5', 'splash_top', 'splash_bottom'],
-  6: ['cinematic_strips'],
+// SVG panel rects for each template (48×64 viewport)
+const LAYOUT_SVGS: Record<string, React.ReactNode> = {
+  splash:        <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>,
+  stacked:       <><rect x="2" y="2"  width="44" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="44" height="28" rx="1" fill="currentColor"/></>,
+  side_by_side:  <><rect x="2"  y="2" width="20" height="60" rx="1" fill="currentColor"/><rect x="26" y="2" width="20" height="60" rx="1" fill="currentColor"/></>,
+  three_rows:    <><rect x="2" y="2"  width="44" height="17" rx="1" fill="currentColor"/><rect x="2" y="23" width="44" height="17" rx="1" fill="currentColor"/><rect x="2" y="44" width="44" height="18" rx="1" fill="currentColor"/></>,
+  top_wide:      <><rect x="2" y="2"  width="44" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="34" width="20" height="28" rx="1" fill="currentColor"/></>,
+  bottom_wide:   <><rect x="2" y="2"  width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="2" width="20" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="44" height="28" rx="1" fill="currentColor"/></>,
+  grid_2x2:      <><rect x="2"  y="2"  width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="2"  width="20" height="28" rx="1" fill="currentColor"/><rect x="2"  y="34" width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="34" width="20" height="28" rx="1" fill="currentColor"/></>,
+  top_wide_3:    <><rect x="2" y="2"  width="44" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="12" height="28" rx="1" fill="currentColor"/><rect x="18" y="34" width="12" height="28" rx="1" fill="currentColor"/><rect x="34" y="34" width="12" height="28" rx="1" fill="currentColor"/></>,
+  bottom_wide_3: <><rect x="2" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="18" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="34" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="44" height="28" rx="1" fill="currentColor"/></>,
+  four_rows:     <><rect x="2" y="2"  width="44" height="12" rx="1" fill="currentColor"/><rect x="2" y="18" width="44" height="12" rx="1" fill="currentColor"/><rect x="2" y="34" width="44" height="12" rx="1" fill="currentColor"/><rect x="2" y="50" width="44" height="12" rx="1" fill="currentColor"/></>,
+  wide_2x2:      <><rect x="2" y="2"  width="44" height="17" rx="1" fill="currentColor"/><rect x="2" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="2" y="44" width="20" height="18" rx="1" fill="currentColor"/><rect x="26" y="44" width="20" height="18" rx="1" fill="currentColor"/></>,
+  '2x2_wide':    <><rect x="2" y="2"  width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="2"  width="20" height="17" rx="1" fill="currentColor"/><rect x="2" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="2" y="44" width="44" height="18" rx="1" fill="currentColor"/></>,
+  grid_3x2:      <><rect x="2"  y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="18" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="34" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="2"  y="34" width="12" height="28" rx="1" fill="currentColor"/><rect x="18" y="34" width="12" height="28" rx="1" fill="currentColor"/><rect x="34" y="34" width="12" height="28" rx="1" fill="currentColor"/></>,
+  grid_2x3:      <><rect x="2"  y="2"  width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="2"  width="20" height="17" rx="1" fill="currentColor"/><rect x="2"  y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="2"  y="44" width="20" height="18" rx="1" fill="currentColor"/><rect x="26" y="44" width="20" height="18" rx="1" fill="currentColor"/></>,
 };
 
-const MANGA_LAYOUT_DISPLAY_NAMES: Record<string, string> = {
-  full_bleed:          'Full Bleed',
-  diagonal_split_2:    'Diagonal Split',
-  one_large_two_small: 'Feature Left',
-  two_small_one_large: 'Feature Right',
-  three_panels_row:    'Three Row',
-  diagonal_3_panels:   'Diagonal 3',
-  cinematic_strips:    'Cinematic',
-  grid_2x2:            '2×2 Grid',
-  action_dynamic_4:    'Action ✕',
-  splash_top:          'Splash Top',
-  splash_bottom:       'Splash Bottom',
-  asymmetric_4:        'Asymmetric',
-  vertical_flow:       'Flow',
-  manga_classic_5:     'Classic 5',
-};
-
-// SVG polygon thumbnails for each manga template (viewBox 0 0 48 64)
-const MANGA_LAYOUT_SVGS: Record<string, React.ReactNode> = {
-  full_bleed:
-    <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>,
-
-  diagonal_split_2:
-    <><polygon points="2,2 32,2 24,62 2,62" fill="currentColor"/>
-      <polygon points="34,2 46,2 46,62 26,62" fill="currentColor"/></>,
-
-  one_large_two_small:
-    <><rect x="2" y="2" width="26" height="60" rx="1" fill="currentColor"/>
-      <rect x="31" y="2"  width="15" height="28" rx="1" fill="currentColor"/>
-      <rect x="31" y="33" width="15" height="29" rx="1" fill="currentColor"/></>,
-
-  two_small_one_large:
-    <><rect x="2"  y="2"  width="15" height="28" rx="1" fill="currentColor"/>
-      <rect x="2"  y="33" width="15" height="29" rx="1" fill="currentColor"/>
-      <rect x="20" y="2"  width="26" height="60" rx="1" fill="currentColor"/></>,
-
-  three_panels_row:
-    <><rect x="2"  y="2" width="12" height="60" rx="1" fill="currentColor"/>
-      <rect x="17" y="2" width="14" height="60" rx="1" fill="currentColor"/>
-      <rect x="34" y="2" width="12" height="60" rx="1" fill="currentColor"/></>,
-
-  diagonal_3_panels:
-    <><rect x="2" y="2" width="44" height="24" rx="1" fill="currentColor"/>
-      <polygon points="2,28 22,28 17,62 2,62" fill="currentColor"/>
-      <polygon points="24,28 46,28 46,62 19,62" fill="currentColor"/></>,
-
-  cinematic_strips:
-    <><rect x="2" y="2"  width="44" height="17" rx="1" fill="currentColor"/>
-      <rect x="2" y="23" width="44" height="17" rx="1" fill="currentColor"/>
-      <rect x="2" y="44" width="44" height="18" rx="1" fill="currentColor"/></>,
-
-  grid_2x2:
-    <><rect x="2"  y="2"  width="20" height="28" rx="1" fill="currentColor"/>
-      <rect x="26" y="2"  width="20" height="28" rx="1" fill="currentColor"/>
-      <rect x="2"  y="34" width="20" height="28" rx="1" fill="currentColor"/>
-      <rect x="26" y="34" width="20" height="28" rx="1" fill="currentColor"/></>,
-
-  action_dynamic_4:
-    <><polygon points="2,2 21,2 18,30 2,30"  fill="currentColor"/>
-      <polygon points="27,2 46,2 46,30 29,30" fill="currentColor"/>
-      <polygon points="2,33 18,33 21,62 2,62" fill="currentColor"/>
-      <polygon points="29,33 46,33 46,62 27,62" fill="currentColor"/></>,
-
-  splash_top:
-    <><rect x="2" y="2"  width="44" height="34" rx="1" fill="currentColor"/>
-      <rect x="2"  y="39" width="12" height="23" rx="1" fill="currentColor"/>
-      <rect x="18" y="39" width="12" height="23" rx="1" fill="currentColor"/>
-      <rect x="34" y="39" width="12" height="23" rx="1" fill="currentColor"/></>,
-
-  splash_bottom:
-    <><rect x="2"  y="2"  width="12" height="23" rx="1" fill="currentColor"/>
-      <rect x="18" y="2"  width="12" height="23" rx="1" fill="currentColor"/>
-      <rect x="34" y="2"  width="12" height="23" rx="1" fill="currentColor"/>
-      <rect x="2" y="28"  width="44" height="34" rx="1" fill="currentColor"/></>,
-
-  asymmetric_4:
-    <><rect x="2"  y="2"  width="25" height="36" rx="1" fill="currentColor"/>
-      <rect x="30" y="2"  width="16" height="16" rx="1" fill="currentColor"/>
-      <rect x="30" y="21" width="16" height="17" rx="1" fill="currentColor"/>
-      <rect x="2"  y="41" width="44" height="21" rx="1" fill="currentColor"/></>,
-
-  vertical_flow:
-    <><rect x="2"  y="2"  width="13" height="28" rx="1" fill="currentColor"/>
-      <rect x="18" y="2"  width="28" height="28" rx="1" fill="currentColor"/>
-      <rect x="2"  y="34" width="24" height="28" rx="1" fill="currentColor"/>
-      <rect x="29" y="34" width="17" height="28" rx="1" fill="currentColor"/></>,
-
-  manga_classic_5:
-    <><rect x="2"  y="2"  width="27" height="22" rx="1" fill="currentColor"/>
-      <rect x="32" y="2"  width="14" height="22" rx="1" fill="currentColor"/>
-      <rect x="2"  y="27" width="15" height="16" rx="1" fill="currentColor"/>
-      <rect x="20" y="27" width="26" height="16" rx="1" fill="currentColor"/>
-      <rect x="2"  y="46" width="44" height="16" rx="1" fill="currentColor"/></>,
-};
-
-const MANGA_SCENE_TYPES = [
-  { value: 'default',      label: 'Auto' },
-  { value: 'action',       label: 'Action' },
-  { value: 'dialogue',     label: 'Dialogue' },
-  { value: 'emotional',    label: 'Emotional' },
-  { value: 'establishing', label: 'Establishing' },
-  { value: 'climax',       label: 'Climax' },
-];
-
-function MangaLayoutPicker({
+function LayoutTemplatePicker({
   panelCount,
   selectedLayout,
-  sceneType,
-  onSelectLayout,
-  onSelectScene,
+  onSelect,
 }: {
   panelCount: number;
   selectedLayout: string;
-  sceneType: string;
-  onSelectLayout: (name: string) => void;
-  onSelectScene: (scene: string) => void;
+  onSelect: (name: string) => void;
 }) {
-  const options = MANGA_TEMPLATES_BY_COUNT[panelCount] ?? [];
+  const options = TEMPLATES_BY_COUNT[panelCount] ?? [];
+  if (options.length <= 1) return null;
 
   return (
-    <div className="space-y-3">
-      {/* Scene type quick-pick (drives auto-select) */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider">Scene</span>
-        {MANGA_SCENE_TYPES.map((s) => (
-          <button
-            key={s.value}
-            type="button"
-            onClick={() => onSelectScene(s.value)}
-            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-colors ${
-              sceneType === s.value
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'border-outline-variant/30 text-on-surface-variant hover:border-primary/40'
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Layout template thumbnails */}
-      {options.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider">Style</span>
-          {/* Auto option */}
-          <button
-            type="button"
-            title="Auto — let the scene type choose"
-            onClick={() => onSelectLayout('auto')}
-            className={`w-8 h-[42px] rounded-lg border-2 flex items-center justify-center text-[8px] font-bold transition-all ${
-              selectedLayout === 'auto'
-                ? 'border-primary text-primary bg-primary/10'
-                : 'border-outline-variant/30 text-on-surface-variant/50 hover:border-primary/40'
-            }`}
-          >
-            AUTO
-          </button>
-          {options.map((name) => (
-            <button
-              key={name}
-              type="button"
-              title={MANGA_LAYOUT_DISPLAY_NAMES[name] ?? name}
-              onClick={() => onSelectLayout(name)}
-              className={`w-8 h-[42px] rounded-lg border-2 flex items-center justify-center transition-all ${
-                selectedLayout === name
-                  ? 'border-primary text-primary bg-primary/10'
-                  : 'border-outline-variant/30 text-on-surface-variant/40 hover:border-primary/40 hover:text-primary/60'
-              }`}
-            >
-              <svg viewBox="0 0 48 64" className="w-5 h-[27px]" fill="none" xmlns="http://www.w3.org/2000/svg">
-                {MANGA_SVGS[name] ?? MANGA_LAYOUT_SVGS[name] ?? <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>}
-              </svg>
-            </button>
-          ))}
-        </div>
-      )}
+    <div className="flex items-center gap-1 flex-wrap">
+      <span className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider mr-1">Layout</span>
+      {options.map((name) => (
+        <button
+          key={name}
+          type="button"
+          title={LAYOUT_DISPLAY_NAMES_MAP[name] ?? name}
+          onClick={() => onSelect(name)}
+          className={`w-8 h-[42px] rounded-lg border-2 flex items-center justify-center transition-all ${
+            selectedLayout === name
+              ? 'border-primary text-primary bg-primary/10'
+              : 'border-outline-variant/30 text-on-surface-variant/40 hover:border-primary/40 hover:text-primary/60'
+          }`}
+        >
+          <svg viewBox="0 0 48 64" className="w-5 h-[27px]" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {LAYOUT_SVGS[name] ?? <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>}
+          </svg>
+        </button>
+      ))}
     </div>
   );
 }
-
-// Alias so the component can reference either key namespace cleanly
-const MANGA_SVGS = MANGA_LAYOUT_SVGS;
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function Step4Generation() {
@@ -1044,6 +911,7 @@ export default function Step4Generation() {
     step3,
     step4PanelsByPage,
     step4Stats,
+    jsonCopied,
     handleGenerate,
     handleApprove,
     handleRetry,
@@ -1054,19 +922,23 @@ export default function Step4Generation() {
     handleRegenerateWithFeedback,
     acceptPanelRegen,
     rejectPanelRegen,
+    copyProjectJson,
+    downloadProjectJson,
+    exportZip,
+    exportPdf,
     exportStatus,
+    saveToCloud,
+    cloudSaveStatus,
     artStyle,
+    mangaGenre,
     projectId,
     getCooldownSeconds,
     setActiveStep,
     sfxMode,
     setSfxMode,
-    comicPageMode,
-    resetComicPageMode,
     pageLayoutNames,
     pagePanelDimensions,
     setPageLayout,
-    setRawPanelDimensions,
   } = useComicGeneration();
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -1084,37 +956,39 @@ export default function Step4Generation() {
 
   // ── Rating state ──────────────────────────────────────────────────────────
   const [panelReactions, setPanelReactions] = useState<Record<string, Reaction>>({});
+  const [comicRating, setComicRating] = useState<{ stars: number; positive: string; negative: string } | null>(null);
+  const sessionStartRef = useRef(Date.now());
 
   // ── Generation mode ───────────────────────────────────────────────────────
+  type ComicPageMode = 'page' | 'panel';
+  const [comicPageMode, setComicPageMode] = useState<ComicPageMode>('page');
   const [approvedPanelIds, setApprovedPanelIds] = useState<Set<string>>(new Set());
   const [panelItemReactions, setPanelItemReactions] = useState<Record<string, PanelReaction>>({});
 
   // ── Tab navigation ────────────────────────────────────────────────────────
-  type Step4Tab = 'layout' | 'generate';
+  type Step4Tab = 'generate' | 'layout' | 'dialogue' | 'export';
   const [activeStep4Tab, setActiveStep4Tab] = useState<Step4Tab>(() => {
     if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('mohiom-step4-tab') as Step4Tab | null;
-      if (saved === 'layout' || saved === 'generate') return saved;
+      return (sessionStorage.getItem('mohiom-step4-tab') as Step4Tab) ?? 'generate';
     }
-    return 'layout';
+    return 'generate';
   });
+  const [dialogueEdits, setDialogueEdits] = useState<Record<string, string>>({});
+  const [dialogueEditOpen, setDialogueEditOpen] = useState<string | null>(null);
+  const [dialogueEditValue, setDialogueEditValue] = useState('');
+  const [composingAll, setComposingAll] = useState(false);
   const [showCompletionNudge, setShowCompletionNudge] = useState(false);
   const prevAllImgDoneRef = useRef(false);
+  // Export tab inline state
+  const [exportStars, setExportStars] = useState(0);
+  const [exportHovered, setExportHovered] = useState(0);
+  const [exportPositive, setExportPositive] = useState('');
+  const [exportNegative, setExportNegative] = useState('');
+  const [includeMetadata, setIncludeMetadata] = useState(false);
 
   // ── Compose state ─────────────────────────────────────────────────────────
   type ComposeStatus = 'idle' | 'composing' | 'done' | 'error';
   const [composeStates, setComposeStates] = useState<Record<number, { status: ComposeStatus; imageUrl: string | null; layoutName?: string; error: string | null }>>({});
-
-  // ── Manga polygon layout picker state ─────────────────────────────────────
-  const [pagePolygonLayout, setPagePolygonLayout] = useState<Record<number, string>>({});   // 'auto' | template name
-  const [pageSceneType, setPageSceneType] = useState<Record<number, string>>({});            // 'default' | 'action' | …
-
-  // ── Layout-first flow state ────────────────────────────────────────────────
-  const [confirmedLayouts, setConfirmedLayouts] = useState<Record<number, ConfirmLayoutResponse>>({});
-  const [layoutSuggestions, setLayoutSuggestions] = useState<Record<number, SuggestLayoutResponse>>({});
-  const [suggestionLoading, setSuggestionLoading] = useState<Record<number, boolean>>({});
-  const [confirmingLayout, setConfirmingLayout] = useState<Record<number, boolean>>({});
-  const anyLayoutConfirmed = Object.keys(confirmedLayouts).length > 0;
 
   // ── Panel-level stats (panel mode) ────────────────────────────────────────
   const panelStats = useMemo(() => {
@@ -1150,9 +1024,6 @@ export default function Step4Generation() {
             page_number: pageNumber,
             shot_type: pi.panel.shotType ?? 'medium shot',
             image_data_url: pi.imageUrl!,
-            dialogue: pi.panel.dialogueSfx && pi.panel.dialogueSfx !== 'No dialogue/SFX provided.'
-              ? pi.panel.dialogueSfx
-              : undefined,
           })),
           style,
           layout: chosenLayout,
@@ -1199,113 +1070,46 @@ export default function Step4Generation() {
     }
   }, [step4.data?.panelStates, step4.data?.pageStates, artStyle, pageLayoutNames]);
 
+  const handleComposeAllPages = useCallback(async () => {
+    setComposingAll(true);
+    for (const [pageNumber, panels] of step4PanelsByPage) {
+      await handleComposePage(pageNumber, panels);
+    }
+    setComposingAll(false);
+  }, [step4PanelsByPage, handleComposePage]);
 
-  const handlePolygonComposePage = useCallback(async (pageNumber: number, panels: Step4Panel[]) => {
-    const panelImages: Record<string, string> = {};
-    for (let i = 0; i < panels.length; i++) {
-      const imageUrl = step4.data?.panelStates?.[panels[i].id]?.imageUrl;
-      if (!imageUrl) {
-        setComposeStates((prev) => ({
-          ...prev,
-          [pageNumber]: { status: 'error', imageUrl: null, error: 'Generate all panel images first before applying a manga layout.' },
-        }));
-        return;
+  const handleApproveAllOnPage = useCallback((pageNumber: number) => {
+    const panels = step4PanelsByPage.find(([n]) => n === pageNumber)?.[1] ?? [];
+    setApprovedPanelIds((prev) => {
+      const next = new Set(prev);
+      panels.forEach((p) => next.add(p.id));
+      return next;
+    });
+  }, [step4PanelsByPage]);
+
+  const autoImportDialogue = useCallback(() => {
+    const edits: Record<string, string> = {};
+    for (const [, panels] of step4PanelsByPage) {
+      for (const p of panels) {
+        const text = stripBold(p.dialogueSfx ?? '');
+        if (text && text !== 'No dialogue/SFX provided.') edits[p.id] = text;
       }
-      panelImages[`p${i + 1}`] = imageUrl;
     }
+    setDialogueEdits(edits);
+  }, [step4PanelsByPage]);
 
-    setComposeStates((prev) => ({ ...prev, [pageNumber]: { status: 'composing', imageUrl: null, error: null } }));
-
-    try {
-      const layoutName = pagePolygonLayout[pageNumber] ?? 'auto';
-      const sceneType  = pageSceneType[pageNumber] ?? 'default';
-      const res = await comicLayoutApi.composePage({
-        panel_images: panelImages,
-        panel_count: panels.length,
-        layout_name: layoutName,
-        scene_type: sceneType,
-        page_width: 1240,
-        page_height: 1754,
-      });
-      setComposeStates((prev) => ({
-        ...prev,
-        [pageNumber]: {
-          status: 'done',
-          imageUrl: `data:image/png;base64,${res.data.page_image_b64}`,
-          layoutName: res.data.layout_used,
-          error: null,
-        },
-      }));
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Layout failed';
-      setComposeStates((prev) => ({ ...prev, [pageNumber]: { status: 'error', imageUrl: null, error: msg } }));
-    }
-  }, [step4.data?.panelStates, pagePolygonLayout, pageSceneType]);
-
-  const handleGetSuggestion = useCallback(async (pageNumber: number, panels: Step4Panel[]) => {
-    setSuggestionLoading((prev) => ({ ...prev, [pageNumber]: true }));
-    try {
-      const res = await comicLayoutApi.suggest({
-        panel_count: panels.length,
-        panels: panels.map((p) => ({ shot_type: p.shotType ?? undefined })),
-      });
-      setLayoutSuggestions((prev) => ({ ...prev, [pageNumber]: res.data }));
-      setPagePolygonLayout((prev) => {
-        if (prev[pageNumber]) return prev;
-        return { ...prev, [pageNumber]: res.data.suggested };
-      });
-    } catch {
-      // suggestion is optional — silently ignore errors
-    } finally {
-      setSuggestionLoading((prev) => ({ ...prev, [pageNumber]: false }));
-    }
-  }, []);
-
-  const handleConfirmLayout = useCallback(async (pageNumber: number, layoutName: string, panels: Step4Panel[]) => {
-    if (!layoutName || layoutName === 'auto') return;
-    setConfirmingLayout((prev) => ({ ...prev, [pageNumber]: true }));
-    try {
-      const res = await comicLayoutApi.confirm({
-        panel_count: panels.length,
-        layout_name: layoutName,
-        page_width: 1240,
-        page_height: 1754,
-      });
-      setConfirmedLayouts((prev) => ({ ...prev, [pageNumber]: res.data }));
-
-      // Map polygon panel slots (p1, p2, …) → actual panel IDs by position order
-      const sorted = [...panels].sort((a, b) => a.panelNumber - b.panelNumber);
-      const dimMap: Record<string, { width: number; height: number }> = {};
-      res.data.panels.forEach((slot, idx) => {
-        const panel = sorted[idx];
-        if (panel) dimMap[panel.id] = { width: slot.sd_width, height: slot.sd_height };
-      });
-      setRawPanelDimensions(pageNumber, dimMap);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to confirm layout';
-      console.error('[handleConfirmLayout]', msg);
-    } finally {
-      setConfirmingLayout((prev) => ({ ...prev, [pageNumber]: false }));
-    }
-  }, [setRawPanelDimensions]);
-
-
-
-  // Auto-initialize layout selection for each page when panels first become available.
-  // Also re-fetches dimensions for pages whose layout was restored from a saved project
-  // (pageLayoutNames set, but pagePanelDimensions not yet computed).
+  // Auto-initialize layout selection for each page when panels first become available
   const hasInitializedLayoutsRef = useRef(false);
   useEffect(() => {
     if (!step4.data?.panels.length || hasInitializedLayoutsRef.current) return;
     hasInitializedLayoutsRef.current = true;
     for (const [pageNumber, panels] of step4PanelsByPage) {
-      if (!pagePanelDimensions[pageNumber]) {
-        // Use saved layout name if available; otherwise pick the first template as default
-        const layout = pageLayoutNames[pageNumber] ?? TEMPLATES_BY_COUNT[panels.length]?.[0] ?? 'stacked';
-        setPageLayout(pageNumber, layout, panels);
+      if (!pageLayoutNames[pageNumber]) {
+        const defaultLayout = TEMPLATES_BY_COUNT[panels.length]?.[0] ?? 'stacked';
+        setPageLayout(pageNumber, defaultLayout, panels);
       }
     }
-  }, [step4.data?.panels.length, step4PanelsByPage, pageLayoutNames, pagePanelDimensions, setPageLayout]);
+  }, [step4.data?.panels.length, step4PanelsByPage, pageLayoutNames, setPageLayout]);
 
   // Reset layout init flag when step4 panels are rebuilt
   useEffect(() => {
@@ -1314,13 +1118,17 @@ export default function Step4Generation() {
     }
   }, [step4.data?.panels.length]);
 
-  // Load saved panel ratings on mount
+  // Load saved ratings on mount
   useEffect(() => {
     if (!projectId) return;
     apiClient.get(`/ratings/panels/${projectId}`).then((res) => {
       const map: Record<string, Reaction> = {};
       for (const r of (res.data.ratings ?? [])) map[r.panel_id] = r.reaction;
       setPanelReactions(map);
+    }).catch(() => {});
+    apiClient.get(`/ratings/comic/${projectId}`).then((res) => {
+      const r = res.data.rating;
+      if (r) setComicRating({ stars: r.stars ?? 0, positive: r.comment_positive ?? '', negative: r.comment_negative ?? '' });
     }).catch(() => {});
   }, [projectId]);
 
@@ -1329,6 +1137,38 @@ export default function Step4Generation() {
     setToasts((prev) => [...prev, { id, label: "Couldn't save rating", pageNumber: 0, panelId: '' }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
   }, []);
+
+  const handleRatingSubmit = useCallback(async (stars: number, positive: string, negative: string) => {
+    const elapsed = Math.round((Date.now() - sessionStartRef.current) / 1000);
+    const reactionSummary = REACTIONS.reduce((acc, r) => {
+      acc[r.value] = Object.values(panelReactions).filter((v) => v === r.value).length;
+      return acc;
+    }, {} as Record<string, number>);
+    const panelsRegenerated = Object.values(step4.data?.pageStates ?? {}).filter(
+      (s) => (s as Step4PanelState).versions && (s as Step4PanelState).versions.length > 0
+    ).length;
+    const totalRegenCount = Object.values(step4.data?.pageStates ?? {}).reduce(
+      (n, s) => n + ((s as Step4PanelState).versions?.length ?? 0), 0
+    );
+    setComicRating({ stars, positive, negative });
+    try {
+      await apiClient.post('/ratings/comic', {
+        comic_id: projectId,
+        stars,
+        skipped: false,
+        comment_positive: positive,
+        comment_negative: negative,
+        total_panels: step4.data?.panels?.length ?? 0,
+        panels_regenerated: panelsRegenerated,
+        total_regen_count: totalRegenCount,
+        art_style: artStyle,
+        genre: mangaGenre,
+        total_session_time_seconds: elapsed,
+        panel_reactions_summary: reactionSummary,
+        step_completion_times: {},
+      });
+    } catch { /* fire-and-forget */ }
+  }, [panelReactions, step4.data, projectId, artStyle, mangaGenre]);
 
   const cooldown = getCooldownSeconds(4);
   const isGenerating = step4.isLoading;
@@ -1434,7 +1274,16 @@ export default function Step4Generation() {
   [comicPageMode, panelStats, step4Stats]);
 
   // Finish button state machine — use panel stats in panel mode
+  const activeStatsForBtn = comicPageMode === 'panel'
+    ? { total: panelStats.total, success: panelStats.done, error: panelStats.errors }
+    : { total: step4Stats.total, success: step4Stats.success, error: step4Stats.error };
 
+  const finishBtnState = (() => {
+    if (isImageGenerating) return 'in-progress' as const;
+    if (activeStatsForBtn.total > 0 && activeStatsForBtn.error === 0 && activeStatsForBtn.success === activeStatsForBtn.total) return 'all-complete' as const;
+    if (activeStatsForBtn.total > 0 && activeStatsForBtn.error > 0) return 'has-errors' as const;
+    return 'not-started' as const;
+  })();
 
 
   const retryErrorPages = () => {
@@ -1451,21 +1300,14 @@ export default function Step4Generation() {
     sessionStorage.setItem('mohiom-step4-tab', activeStep4Tab);
   }, [activeStep4Tab]);
 
-  // Sync active tab with mode:
-  // Full Page → no Layout tab, so switch to Generate
-  // Panel by Panel → always start on Layout so user picks a layout first
+  // Sync export rating fields when comicRating loads
   useEffect(() => {
-    if (comicPageMode === 'page' && activeStep4Tab === 'layout') {
-      setActiveStep4Tab('generate');
-    } else if (comicPageMode === 'panel' && activeStep4Tab === 'generate') {
-      setActiveStep4Tab('layout');
+    if (comicRating) {
+      setExportStars(comicRating.stars);
+      setExportPositive(comicRating.positive);
+      setExportNegative(comicRating.negative);
     }
-  }, [comicPageMode]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Panel mode always uses clean images — force it on so panel images stay clean for Dialogue tab
-  useEffect(() => {
-    if (comicPageMode === 'panel') setSfxMode('manual');
-  }, [comicPageMode, setSfxMode]);
+  }, [comicRating]);
 
   // Completion nudge
   useEffect(() => {
@@ -1476,13 +1318,11 @@ export default function Step4Generation() {
 
   // Tab helpers
   const isTabLocked = useCallback((tab: Step4Tab) => {
-    if (tab === 'layout') return false;
-    if (tab === 'generate') {
-      if (comicPageMode === 'page') return false;
-      return !anyLayoutConfirmed;
-    }
+    if (tab === 'generate') return false;
+    if (tab === 'layout' || tab === 'dialogue') return activeStats.success === 0;
+    if (tab === 'export') return activeStats.success < activeStats.total;
     return false;
-  }, [anyLayoutConfirmed, comicPageMode]);
+  }, [activeStats.success, activeStats.total]);
 
   const handleTabChange = useCallback((tab: Step4Tab) => {
     if (isTabLocked(tab)) return;
@@ -1490,6 +1330,11 @@ export default function Step4Generation() {
     setShowCompletionNudge(false);
   }, [isTabLocked]);
 
+  const pagesComposed = Object.values(composeStates).filter((cs) => cs.status === 'done').length;
+  const panelsWithDialogue = allPanels.filter((p) => {
+    const text = dialogueEdits[p.id] ?? (p.dialogueSfx ? stripBold(p.dialogueSfx) : '');
+    return text.trim().length > 0 && text !== 'No dialogue/SFX provided.';
+  }).length;
 
   return (
     <section className="text-on-surface pb-20">
@@ -1499,7 +1344,7 @@ export default function Step4Generation() {
         <div>
           <h2 className="text-2xl font-bold text-on-surface">Image Generation</h2>
           <p className="text-sm text-on-surface-variant mt-1">
-            Generate panel images for your comic
+            Generate panel images and export the final project package
           </p>
         </div>
         <StateBadge state={state} />
@@ -1510,27 +1355,19 @@ export default function Step4Generation() {
         <div className="flex items-center gap-8">
           {(
             [
-              { id: 'layout' as Step4Tab, label: '⊞ Layout' },
               { id: 'generate' as Step4Tab, label: '⚡ Generate' },
+              { id: 'layout' as Step4Tab, label: '⊞ Layout' },
+              { id: 'dialogue' as Step4Tab, label: '💬 Dialogue' },
+              { id: 'export' as Step4Tab, label: '⬇ Export' },
             ] as const
-          ).filter((tab) => !(tab.id === 'layout' && comicPageMode === 'page'))
-           .map((tab) => {
+          ).map((tab) => {
             const locked = isTabLocked(tab.id);
             const active = activeStep4Tab === tab.id;
 
             let badgeText: string | null = null;
             let badgeVariant: 'complete' | 'progress' | 'gray' = 'progress';
             if (!locked) {
-              if (tab.id === 'layout') {
-                const confirmedCount = Object.keys(confirmedLayouts).length;
-                if (step4PanelsByPage.length > 0 && confirmedCount >= step4PanelsByPage.length) {
-                  badgeText = `${confirmedCount} ✓`; badgeVariant = 'complete';
-                } else if (confirmedCount > 0) {
-                  badgeText = `${confirmedCount}/${step4PanelsByPage.length}`; badgeVariant = 'progress';
-                } else {
-                  badgeText = step4PanelsByPage.length > 0 ? 'Pick →' : 'Start here'; badgeVariant = 'gray';
-                }
-              } else if (tab.id === 'generate' && activeStats.total > 0) {
+              if (tab.id === 'generate' && activeStats.total > 0) {
                 if (activeStats.success === activeStats.total) {
                   badgeText = `${activeStats.total} ✓`; badgeVariant = 'complete';
                 } else if (activeStats.success === 0) {
@@ -1538,6 +1375,20 @@ export default function Step4Generation() {
                 } else {
                   badgeText = `${activeStats.success}/${activeStats.total}`; badgeVariant = 'progress';
                 }
+              } else if (tab.id === 'layout') {
+                if (step4PanelsByPage.length > 0 && pagesComposed === step4PanelsByPage.length) {
+                  badgeText = `${pagesComposed} ✓`; badgeVariant = 'complete';
+                } else {
+                  badgeText = `${pagesComposed}/${step4PanelsByPage.length}`; badgeVariant = 'progress';
+                }
+              } else if (tab.id === 'dialogue') {
+                if (panelsWithDialogue > 0) {
+                  badgeText = `${panelsWithDialogue}/${allPanels.length}`; badgeVariant = 'progress';
+                } else {
+                  badgeText = 'Optional'; badgeVariant = 'gray';
+                }
+              } else if (tab.id === 'export') {
+                badgeText = 'Ready →'; badgeVariant = 'complete';
               }
             }
 
@@ -1547,11 +1398,7 @@ export default function Step4Generation() {
                 type="button"
                 onClick={() => handleTabChange(tab.id)}
                 disabled={locked}
-                title={
-                  locked
-                    ? 'Confirm layout to unlock generation'
-                    : undefined
-                }
+                title={locked ? 'Complete image generation to unlock' : undefined}
                 className={[
                   'flex items-center gap-2 pb-3 pt-1 -mb-px border-b-[3px] transition-colors whitespace-nowrap text-[13px]',
                   active
@@ -1679,26 +1526,46 @@ export default function Step4Generation() {
             if (state >= 3 && !isGenerating) {
               return (
                 <div className="rounded-2xl border border-outline-variant/10 bg-white p-5 space-y-4">
-                  <p className="text-xs text-[#6B7280]">
-                    {panelCount} panels · Est. ~{estMin} min
-                  </p>
-                  {comicPageMode === 'page' && (
-                    <label className="flex items-start gap-3 cursor-pointer select-none group">
-                      <div className="flex-none mt-0.5">
-                        <input type="checkbox" checked={sfxMode === 'manual'} onChange={(e) => setSfxMode(e.target.checked ? 'manual' : 'auto')} className="sr-only" />
-                        <div className="w-4 h-4 rounded border-2 flex items-center justify-center transition-colors"
-                          style={{ borderColor: sfxMode === 'manual' ? '#4F46E5' : '#D1D5DB', background: sfxMode === 'manual' ? '#4F46E5' : '#FFFFFF' }}>
-                          {sfxMode === 'manual' && <span className="material-symbols-outlined text-white" style={{ fontSize: 11 }}>check</span>}
-                        </div>
+                  <div>
+                    <p className="text-sm font-bold text-on-surface">Generation Mode</p>
+                    <p className="text-xs text-[#6B7280] mt-0.5">{panelCount} panels · Est. ~{estMin} min</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {([
+                      { mode: 'page' as ComicPageMode, icon: 'auto_awesome_mosaic', title: 'Full Page', desc1: 'One image per page', desc2: 'Faster · Less precise' },
+                      { mode: 'panel' as ComicPageMode, icon: 'dashboard', title: 'Panel by Panel', desc1: 'One image per panel', desc2: 'Slower · More precise' },
+                    ] as const).map(({ mode, icon, title, desc1, desc2 }) => {
+                      const active = comicPageMode === mode;
+                      return (
+                        <button key={mode} type="button" onClick={() => setComicPageMode(mode)}
+                          style={{ height: 108, border: `2px solid ${active ? '#4F46E5' : '#E5E7EB'}`, background: active ? '#EEF2FF' : '#FFFFFF' }}
+                          className="relative rounded-xl p-3 text-left transition-all hover:border-[#4F46E5]/50 focus:outline-none">
+                          <span className="material-symbols-outlined" style={{ fontSize: 24, color: active ? '#4F46E5' : '#6B7280', display: 'block', marginBottom: 6 }}>{icon}</span>
+                          <p style={{ fontSize: 14, fontWeight: 700, color: active ? '#4F46E5' : '#111827', lineHeight: 1.2 }}>{title}</p>
+                          <p style={{ fontSize: 12, color: '#6B7280', lineHeight: 1.4, marginTop: 2 }}>{desc1}</p>
+                          <p style={{ fontSize: 12, color: '#6B7280', lineHeight: 1.4 }}>{desc2}</p>
+                          {active && (
+                            <span className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: '#4F46E5' }}>
+                              <span className="material-symbols-outlined text-white" style={{ fontSize: 12 }}>check</span>
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <label className="flex items-start gap-3 cursor-pointer select-none group">
+                    <div className="flex-none mt-0.5">
+                      <input type="checkbox" checked={sfxMode === 'manual'} onChange={(e) => setSfxMode(e.target.checked ? 'manual' : 'auto')} className="sr-only" />
+                      <div className="w-4 h-4 rounded border-2 flex items-center justify-center transition-colors"
+                        style={{ borderColor: sfxMode === 'manual' ? '#4F46E5' : '#D1D5DB', background: sfxMode === 'manual' ? '#4F46E5' : '#FFFFFF' }}>
+                        {sfxMode === 'manual' && <span className="material-symbols-outlined text-white" style={{ fontSize: 11 }}>check</span>}
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-on-surface leading-snug">Clean images (no dialogue/SFX text embedded)</p>
-                        <p className="text-xs text-[#6B7280] mt-0.5">
-                          Required for the Dialogue tab — add speech bubbles over the generated page
-                        </p>
-                      </div>
-                    </label>
-                  )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-on-surface leading-snug">Clean images (no dialogue/SFX text embedded)</p>
+                      <p className="text-xs text-[#6B7280] mt-0.5">Add text manually in Comic Editor after export</p>
+                    </div>
+                  </label>
                   {step4.error && <p className="text-sm text-red-500">{step4.error}</p>}
                   <button type="button"
                     onClick={comicPageMode === 'page' ? handleStartFullGeneration : handleStartPanelGeneration}
@@ -1748,21 +1615,12 @@ export default function Step4Generation() {
             <div className="rounded-xl border border-[#86EFAC] px-5 py-4 flex items-center justify-between gap-4"
               style={{ background: '#F0FDF4' }}>
               <div>
-                <p className="text-sm font-semibold text-emerald-700">
-                  ✓ All {activeStats.total} {comicPageMode === 'panel' ? 'panels' : 'pages'} generated!
-                </p>
-                <p className="text-xs text-emerald-600 mt-0.5">
-                  {comicPageMode === 'panel'
-                    ? 'Next: Arrange your comic page layout'
-                    : sfxMode === 'manual'
-                      ? 'Clean images ready — add speech bubbles in Dialogue'
-                      : 'Ready to export, or enable Clean images to add speech bubbles'}
-                </p>
+                <p className="text-sm font-semibold text-emerald-700">✓ All {activeStats.total} panels generated!</p>
+                <p className="text-xs text-emerald-600 mt-0.5">Next: Arrange your comic page layout</p>
               </div>
-              <button type="button"
-                onClick={() => handleTabChange(comicPageMode === 'panel' ? 'layout' : 'generate')}
+              <button type="button" onClick={() => handleTabChange('layout')}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors whitespace-nowrap">
-                {comicPageMode === 'panel' ? 'Go to Layout →' : 'Go to Export →'}
+                Go to Layout →
               </button>
             </div>
           )}
@@ -1771,14 +1629,25 @@ export default function Step4Generation() {
           {comicPageMode === 'panel' && (state === 3 || state === 4 || state === 5) && step4PanelsByPage.length > 0 && (
             <div className="space-y-4">
               {step4PanelsByPage.map(([pageNumber, panels]) => {
+                const chosenLayout = pageLayoutNames[pageNumber] ?? TEMPLATES_BY_COUNT[panels.length]?.[0] ?? 'stacked';
                 const hasDimensions = !!pagePanelDimensions[pageNumber];
                 return (
                 <div key={`page-${pageNumber}`} className="space-y-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Page {pageNumber}</p>
-                    {hasDimensions && (
-                      <span className="text-[10px] text-emerald-600 font-semibold">✓ layout set</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <LayoutTemplatePicker
+                        panelCount={panels.length}
+                        selectedLayout={chosenLayout}
+                        onSelect={(name) => setPageLayout(pageNumber, name, panels)}
+                      />
+                      {chosenLayout && !hasDimensions && (
+                        <span className="text-[10px] text-on-surface-variant animate-pulse">setting…</span>
+                      )}
+                      {hasDimensions && (
+                        <span className="text-[10px] text-emerald-600 font-semibold">✓ sizes set</span>
+                      )}
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     {panels.map((panel, idx) => {
@@ -1889,311 +1758,113 @@ export default function Step4Generation() {
         </div>
       )}
 
-      {/* ═══════════ TAB 1 — LAYOUT (layout-first: pick before generation) ═══════════ */}
+      {/* ═══════════ TAB 2 — LAYOUT ═══════════ */}
       {activeStep4Tab === 'layout' && (
         <div className="space-y-6">
-
-          {/* Mode indicator + change */}
-          <div className="flex items-center justify-between px-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">Mode</span>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700">
-                {comicPageMode === 'page' ? 'Full Page' : 'Panel by Panel'}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={resetComicPageMode}
-              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
-            >
-              Change mode →
+          <div className="flex items-center justify-between gap-4">
+            <button type="button" onClick={handleComposeAllPages}
+              disabled={composingAll || step4PanelsByPage.length === 0}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-primary text-on-primary hover:opacity-90 transition-opacity disabled:opacity-50">
+              {composingAll ? (
+                <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Composing…</>
+              ) : '✨ AI Layout All Pages'}
             </button>
-          </div>
-
-          {/* Intro banner */}
-          <div className="rounded-2xl bg-blue-50 border border-blue-100 px-5 py-4">
-            <p className="text-sm text-blue-800 font-medium">
-              Pick a panel layout for each page. Review the script below each page, then confirm to lock in panel dimensions for generation.
-            </p>
+            <span className="text-xs text-on-surface-variant font-medium">
+              {pagesComposed}/{step4PanelsByPage.length} pages arranged
+            </span>
           </div>
 
           {step4PanelsByPage.length === 0 ? (
             <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-lowest p-8 text-center">
-              <p className="text-sm text-on-surface-variant">Your story script panels will appear here once you reach Step 3.</p>
+              <p className="text-sm text-on-surface-variant">Generate panels first to arrange layouts.</p>
             </div>
           ) : (
             step4PanelsByPage.map(([pageNumber, panels]) => {
-              const cs               = composeStates[pageNumber];
-              const confirmed        = confirmedLayouts[pageNumber];
-              const suggestion       = layoutSuggestions[pageNumber];
-              const isSuggLoading    = suggestionLoading[pageNumber] ?? false;
-              const isConfirming     = confirmingLayout[pageNumber] ?? false;
-              const selectedLayout   = pagePolygonLayout[pageNumber]
-                ?? suggestion?.suggested
-                ?? 'auto';
-              const allPanelsGenerated = panels.every(
-                (p) => !!step4.data?.panelStates?.[p.id]?.imageUrl
-              );
-
+              const cs = composeStates[pageNumber];
+              const approvedCount = panels.filter((p) => approvedPanelIds.has(p.id)).length;
               return (
                 <div key={`layout-page-${pageNumber}`} className="rounded-3xl bg-surface-container-low border border-outline-variant/10 p-6 space-y-4">
-
-                  {/* Page header */}
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <h3 className="text-base font-bold text-on-surface">Page {pageNumber}</h3>
-                      <span className="text-xs text-on-surface-variant">· {panels.length} panel{panels.length !== 1 ? 's' : ''}</span>
-                      {confirmed && (
-                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
-                          ✓ Layout confirmed
-                        </span>
-                      )}
+                      <span className="text-xs text-on-surface-variant">· {panels.length} panels · {approvedCount}/{panels.length} approved</span>
                     </div>
-                    {/* AI suggestion loader */}
-                    {!suggestion && !isSuggLoading && (
-                      <button type="button"
-                        onClick={() => handleGetSuggestion(pageNumber, panels)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border border-primary/30 text-primary hover:bg-primary/5 transition-colors">
-                        ✦ AI Suggest
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => handleApproveAllOnPage(pageNumber)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 transition-colors">
+                        ✓ Approve All
                       </button>
-                    )}
-                    {isSuggLoading && (
-                      <span className="flex items-center gap-1.5 text-xs text-on-surface-variant">
-                        <span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                        Analyzing…
-                      </span>
-                    )}
+                      <button type="button" onClick={() => handleComposePage(pageNumber, panels)}
+                        disabled={cs?.status === 'composing'}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50">
+                        {cs?.status === 'composing' ? (
+                          <><span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />Composing…</>
+                        ) : cs?.status === 'done' ? '↺ Re-layout' : '✨ AI Layout'}
+                      </button>
+                    </div>
                   </div>
 
-                  {/* AI Suggestion banner */}
-                  {suggestion && (
-                    <div className="rounded-xl bg-violet-50 border border-violet-100 px-4 py-3 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-violet-700">
-                          ✦ AI suggests: {MANGA_LAYOUT_DISPLAY_NAMES[suggestion.suggested] ?? suggestion.suggested}
-                        </p>
-                        <p className="text-[11px] text-violet-600 mt-0.5 truncate">{suggestion.reason}</p>
-                        {suggestion.alternatives.length > 0 && (
-                          <p className="text-[10px] text-violet-500 mt-1">
-                            Alternatives: {suggestion.alternatives.map((a) => MANGA_LAYOUT_DISPLAY_NAMES[a] ?? a).join(', ')}
-                          </p>
-                        )}
-                      </div>
-                      {selectedLayout !== suggestion.suggested && (
-                        <button type="button"
-                          onClick={() => setPagePolygonLayout((prev) => ({ ...prev, [pageNumber]: suggestion.suggested }))}
-                          className="shrink-0 text-[11px] font-bold text-violet-600 hover:text-violet-800 px-2 py-1 rounded-lg hover:bg-violet-100 transition-colors whitespace-nowrap">
-                          Use →
-                        </button>
+                  {cs?.status === 'done' && cs.imageUrl && (
+                    <div className="rounded-2xl overflow-hidden border border-primary/20 relative">
+                      {cs.layoutName && (
+                        <div className="absolute top-2 left-2 z-10">
+                          <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-primary/90 text-white">AI: {cs.layoutName}</span>
+                        </div>
                       )}
+                      <img src={cs.imageUrl} alt={`Page ${pageNumber} layout`} className="w-full h-auto" />
+                      <div className="flex justify-end p-2 bg-surface-container-low">
+                        <a href={cs.imageUrl} download={`page-${pageNumber}-layout.png`}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-all">
+                          <span className="material-symbols-outlined text-sm">download</span>Download
+                        </a>
+                      </div>
                     </div>
                   )}
+                  {cs?.status === 'error' && <p className="text-xs text-red-500 px-1">{cs.error}</p>}
 
-                  {/* Panel script preview — helps user choose the right layout */}
-                  <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest divide-y divide-outline-variant/10 overflow-hidden">
+                  <div className="flex items-start gap-3 flex-wrap">
                     {panels.map((panel) => {
-                      const dialogue = panel.dialogueSfx && panel.dialogueSfx !== 'No dialogue/SFX provided.'
-                        ? panel.dialogueSfx.replace(/\*\*/g, '').trim()
-                        : null;
-                      const shot = panel.shotType?.replace(/_/g, ' ') ?? null;
+                      const imageUrl = step4.data?.panelStates?.[panel.id]?.imageUrl ?? null;
+                      const isApproved = approvedPanelIds.has(panel.id);
                       return (
-                        <div key={panel.id} className="flex items-start gap-3 px-3 py-2.5">
-                          <span className="shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center mt-0.5">
-                            {panel.panelNumber}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            {shot && (
-                              <span className="inline-block text-[10px] font-semibold uppercase tracking-wider text-indigo-500 mb-0.5">{shot}</span>
-                            )}
-                            {dialogue && (
-                              <p className="text-xs text-gray-600 leading-snug truncate">{dialogue}</p>
-                            )}
-                            {!dialogue && (
-                              <p className="text-xs text-gray-400 leading-snug truncate italic">{panel.aiImagePrompt?.slice(0, 80) ?? ''}{(panel.aiImagePrompt?.length ?? 0) > 80 ? '…' : ''}</p>
+                        <div key={panel.id} className="flex flex-col items-center gap-1.5 w-[80px]">
+                          <div className="w-20 h-20 rounded-xl overflow-hidden border border-outline-variant/20 bg-surface-container">
+                            {imageUrl ? (
+                              <img src={imageUrl} alt={`P${panel.panelNumber}`} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <span className="material-symbols-outlined text-xl opacity-20">crop_original</span>
+                              </div>
                             )}
                           </div>
+                          <span className="text-[10px] text-on-surface-variant font-medium">P.{panel.panelNumber}</span>
+                          <button type="button"
+                            onClick={() => setApprovedPanelIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(panel.id)) { next.delete(panel.id); } else { next.add(panel.id); }
+                              return next;
+                            })}
+                            className={`flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors ${
+                              isApproved ? 'bg-primary text-on-primary' : 'border border-primary/30 text-primary hover:bg-primary/10'
+                            }`}>
+                            {isApproved ? '✓ OK' : '○ OK'}
+                          </button>
                         </div>
                       );
                     })}
                   </div>
-
-                  {/* Template picker + wireframe preview */}
-                  <div className="rounded-2xl bg-surface-container p-4 space-y-3">
-                    <MangaLayoutPicker
-                      panelCount={panels.length}
-                      selectedLayout={selectedLayout}
-                      sceneType={pageSceneType[pageNumber] ?? 'default'}
-                      onSelectLayout={(name) => setPagePolygonLayout((prev) => ({ ...prev, [pageNumber]: name }))}
-                      onSelectScene={(scene) => setPageSceneType((prev) => ({ ...prev, [pageNumber]: scene }))}
-                    />
-
-                    {/* Wireframe preview of selected layout */}
-                    {selectedLayout && selectedLayout !== 'auto' && MANGA_LAYOUT_SVGS[selectedLayout] && (
-                      <div className="mt-1 flex items-center gap-4">
-                        <div className="shrink-0 w-24 h-32 rounded-xl border border-outline-variant/20 bg-white overflow-hidden flex items-center justify-center p-1">
-                          <svg viewBox="0 0 48 64" className="w-full h-full text-gray-400">
-                            {MANGA_LAYOUT_SVGS[selectedLayout]}
-                          </svg>
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-on-surface">
-                            {MANGA_LAYOUT_DISPLAY_NAMES[selectedLayout] ?? selectedLayout}
-                          </p>
-                          {confirmed?.layout_name === selectedLayout ? (
-                            <div className="mt-2 space-y-1">
-                              {confirmed.panels.map((slot, idx) => (
-                                <p key={slot.id} className="text-[11px] text-on-surface-variant">
-                                  Panel {idx + 1}: {slot.sd_width} × {slot.sd_height}px · {slot.recommended_shot}
-                                </p>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-on-surface-variant mt-1">
-                              Confirm to lock in panel dimensions for generation.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Confirm Layout button */}
-                  {!confirmed ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const layout = selectedLayout === 'auto' ? (suggestion?.suggested ?? '') : selectedLayout;
-                        if (layout) handleConfirmLayout(pageNumber, layout, panels);
-                      }}
-                      disabled={isConfirming || !selectedLayout || selectedLayout === 'auto'}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-primary text-on-primary hover:opacity-90 transition-opacity disabled:opacity-50 w-full justify-center"
-                    >
-                      {isConfirming ? (
-                        <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Confirming…</>
-                      ) : (
-                        selectedLayout === 'auto'
-                          ? 'Select a layout template above first'
-                          : `✓ Confirm Layout — ${MANGA_LAYOUT_DISPLAY_NAMES[selectedLayout] ?? selectedLayout}`
-                      )}
-                    </button>
-                  ) : (
-                    <div className="space-y-3">
-                      {/* Confirmed state */}
-                      <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200">
-                        <div>
-                          <p className="text-sm font-bold text-emerald-800">
-                            ✓ {MANGA_LAYOUT_DISPLAY_NAMES[confirmed.layout_name] ?? confirmed.layout_name}
-                          </p>
-                          <p className="text-xs text-emerald-600 mt-0.5">
-                            {confirmed.panels.length} panels confirmed · dimensions ready for generation
-                          </p>
-                        </div>
-                        <button type="button"
-                          onClick={() => setConfirmedLayouts((prev) => {
-                            const next = { ...prev };
-                            delete next[pageNumber];
-                            return next;
-                          })}
-                          className="text-xs text-emerald-600 hover:text-emerald-800 px-2 py-1 rounded-lg hover:bg-emerald-100 transition-colors">
-                          Change
-                        </button>
-                      </div>
-
-                      {/* Compose section — only shown when all panels have images */}
-                      {allPanelsGenerated && (
-                        <div className="rounded-2xl bg-surface-container p-4 space-y-3">
-                          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide">Apply Layout to Images</p>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handlePolygonComposePage(pageNumber, panels)}
-                              disabled={cs?.status === 'composing'}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-primary text-on-primary hover:opacity-90 transition-opacity disabled:opacity-50"
-                            >
-                              {cs?.status === 'composing' ? (
-                                <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Applying…</>
-                              ) : cs?.status === 'done' ? '↺ Re-apply Layout' : '⊞ Apply Manga Layout'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleComposePage(pageNumber, panels)}
-                              disabled={cs?.status === 'composing'}
-                              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high transition-colors disabled:opacity-50"
-                              title="Classic rectangular auto-layout"
-                            >
-                              ✨ Classic
-                            </button>
-                          </div>
-
-                          {/* Composed result */}
-                          {cs?.status === 'done' && cs.imageUrl && (
-                            <div className="rounded-2xl overflow-hidden border border-primary/20 relative">
-                              {cs.layoutName && (
-                                <div className="absolute top-2 left-2 z-10">
-                                  <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-black/60 text-white backdrop-blur-sm">
-                                    {MANGA_LAYOUT_DISPLAY_NAMES[cs.layoutName] ?? cs.layoutName}
-                                  </span>
-                                </div>
-                              )}
-                              <img src={cs.imageUrl} alt={`Page ${pageNumber} layout`} className="w-full h-auto" />
-                              <div className="flex justify-end p-2 bg-surface-container-low">
-                                <a href={cs.imageUrl} download={`page-${pageNumber}-layout.png`}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-all">
-                                  <span className="material-symbols-outlined text-sm">download</span>Download
-                                </a>
-                              </div>
-                            </div>
-                          )}
-                          {cs?.status === 'error' && <p className="text-xs text-red-500 px-1">{cs.error}</p>}
-                        </div>
-                      )}
-
-                      {/* Panel thumbnails */}
-                      <div className="flex items-start gap-3 flex-wrap">
-                        {panels.map((panel) => {
-                          const imageUrl = step4.data?.panelStates?.[panel.id]?.imageUrl ?? null;
-                          const slotDims = confirmed.panels[panels.indexOf(panel)];
-                          return (
-                            <div key={panel.id} className="flex flex-col items-center gap-1.5 w-[80px]">
-                              <div className="w-20 h-20 rounded-xl overflow-hidden border border-outline-variant/20 bg-surface-container relative">
-                                {imageUrl ? (
-                                  <img src={imageUrl} alt={`P${panel.panelNumber}`} className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center">
-                                    <span className="material-symbols-outlined text-xl opacity-20">crop_original</span>
-                                  </div>
-                                )}
-                              </div>
-                              <span className="text-[10px] text-on-surface-variant font-medium">P.{panel.panelNumber}</span>
-                              {slotDims && (
-                                <span className="text-[9px] text-on-surface-variant/60">{slotDims.sd_width}×{slotDims.sd_height}</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })
           )}
 
-          {/* CTA when all layouts confirmed */}
-          {anyLayoutConfirmed && step4PanelsByPage.length > 0 && (
+          {pagesComposed === step4PanelsByPage.length && step4PanelsByPage.length > 0 && (
             <div className="rounded-xl border border-[#86EFAC] px-5 py-4 flex items-center justify-between gap-4"
               style={{ background: '#F0FDF4' }}>
-              <div>
-                <p className="text-sm font-semibold text-emerald-700">
-                  {Object.keys(confirmedLayouts).length >= step4PanelsByPage.length
-                    ? '✓ All layouts confirmed!'
-                    : `✓ ${Object.keys(confirmedLayouts).length}/${step4PanelsByPage.length} layouts confirmed`}
-                </p>
-                <p className="text-xs text-emerald-600 mt-0.5">Panel dimensions are ready — generate images at the correct sizes.</p>
-              </div>
-              <button type="button" onClick={() => handleTabChange('generate')}
+              <p className="text-sm font-semibold text-emerald-700">✓ All pages arranged!</p>
+              <button type="button" onClick={() => handleTabChange('dialogue')}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors whitespace-nowrap">
-                Generate Images →
+                Go to Dialogue →
               </button>
             </div>
           )}
@@ -2201,6 +1872,236 @@ export default function Step4Generation() {
       )}
 
       {/* ═══════════ TAB 3 — DIALOGUE ═══════════ */}
+      {activeStep4Tab === 'dialogue' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-xs text-on-surface-variant">Optional · {panelsWithDialogue}/{allPanels.length} panels have dialogue</p>
+            <button type="button" onClick={autoImportDialogue}
+              className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 transition-colors whitespace-nowrap">
+              ⚡ Auto-import all dialogue
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            {allPanels.map((panel) => {
+              const rawDialogue = dialogueEdits[panel.id] ?? (panel.dialogueSfx ? stripBold(panel.dialogueSfx) : '');
+              const hasDialogue = rawDialogue.trim().length > 0 && rawDialogue !== 'No dialogue/SFX provided.';
+              const isEditing = dialogueEditOpen === panel.id;
+              const imageUrl = step4.data?.panelStates?.[panel.id]?.imageUrl ?? null;
+              return (
+                <div key={panel.id} className="rounded-xl bg-surface-container-low border border-outline-variant/10 overflow-hidden">
+                  <div className="flex items-start gap-3 p-3">
+                    <div className="w-16 h-16 rounded-lg overflow-hidden border border-outline-variant/20 bg-surface-container flex-shrink-0">
+                      {imageUrl ? (
+                        <img src={imageUrl} alt={`P${panel.panelNumber}`} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <span className="material-symbols-outlined text-lg opacity-20">crop_original</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-on-surface">Pg.{panel.pageNumber} · Panel {panel.panelNumber}</p>
+                      {!isEditing ? (
+                        <>
+                          <p className={`text-xs mt-1 leading-relaxed ${hasDialogue ? 'text-on-surface' : 'text-outline italic'}`}>
+                            {hasDialogue ? rawDialogue : '○ No dialogue'}
+                          </p>
+                          <button type="button"
+                            onClick={() => { setDialogueEditOpen(panel.id); setDialogueEditValue(rawDialogue); }}
+                            className="flex items-center gap-1 mt-2 text-[11px] font-semibold text-primary hover:opacity-80 transition-opacity">
+                            {hasDialogue ? '✎ Edit' : '+ Add Dialogue'}
+                          </button>
+                        </>
+                      ) : (
+                        <div className="mt-1 space-y-2">
+                          <textarea
+                            autoFocus
+                            value={dialogueEditValue}
+                            onChange={(e) => setDialogueEditValue(e.target.value)}
+                            rows={3}
+                            className="w-full bg-surface rounded-lg px-2 py-1.5 text-xs text-on-surface border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                          />
+                          <div className="flex items-center gap-2">
+                            <button type="button"
+                              onClick={() => { setDialogueEdits((prev) => ({ ...prev, [panel.id]: dialogueEditValue })); setDialogueEditOpen(null); }}
+                              className="px-3 py-1 rounded-full text-[11px] font-bold bg-primary text-on-primary hover:opacity-90">
+                              Save
+                            </button>
+                            <button type="button" onClick={() => setDialogueEditOpen(null)}
+                              className="px-3 py-1 rounded-full text-[11px] font-semibold text-on-surface-variant hover:text-on-surface">
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button type="button" onClick={() => handleTabChange('export')}
+              className="text-sm text-on-surface-variant hover:text-primary transition-colors">
+              Skip to Export →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════ TAB 4 — EXPORT ═══════════ */}
+      {activeStep4Tab === 'export' && (
+        <div className="space-y-8">
+
+          {/* Rating section */}
+          <div className="rounded-3xl bg-surface-container-low border border-outline-variant/10 p-6 space-y-5">
+            <div className="text-center">
+              <p className="text-lg font-bold text-on-surface">🎉 Rate Your Experience</p>
+              <p className="text-sm text-on-surface-variant mt-1">Optional — export whenever you&apos;re ready</p>
+            </div>
+            <div className="flex items-center justify-center gap-2">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button key={n} type="button"
+                  onClick={() => setExportStars(n)}
+                  onMouseEnter={() => setExportHovered(n)}
+                  onMouseLeave={() => setExportHovered(0)}
+                  className="transition-transform hover:scale-110">
+                  <svg width="32" height="32" viewBox="0 0 24 24">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                      fill={n <= (exportHovered || exportStars) ? '#F59E0B' : '#E5E7EB'}
+                      stroke={n <= (exportHovered || exportStars) ? '#F59E0B' : '#D1D5DB'} strokeWidth="1" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">What worked well? <span className="font-normal text-outline">(optional)</span></label>
+                <textarea value={exportPositive} onChange={(e) => setExportPositive(e.target.value)}
+                  placeholder="e.g. The art style came out great…" rows={2}
+                  className="w-full bg-surface-container-lowest rounded-xl px-4 py-2.5 text-sm text-on-surface placeholder-outline outline-none focus:ring-2 focus:ring-primary/30 resize-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">What could be better? <span className="font-normal text-outline">(optional)</span></label>
+                <textarea value={exportNegative} onChange={(e) => setExportNegative(e.target.value)}
+                  placeholder="e.g. Panel composition felt off…" rows={2}
+                  className="w-full bg-surface-container-lowest rounded-xl px-4 py-2.5 text-sm text-on-surface placeholder-outline outline-none focus:ring-2 focus:ring-primary/30 resize-none" />
+              </div>
+            </div>
+            <button type="button"
+              onClick={() => handleRatingSubmit(exportStars, exportPositive, exportNegative)}
+              disabled={exportStars === 0}
+              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                exportStars > 0 ? 'bg-primary text-on-primary hover:opacity-90' : 'bg-surface-container text-outline cursor-not-allowed opacity-50'
+              }`}>
+              {comicRating ? '✓ Update Rating' : 'Submit Rating'}
+            </button>
+          </div>
+
+          {/* Export options */}
+          <div className="space-y-4">
+            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Download</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button type="button"
+                onClick={() => exportPdf(includeMetadata)}
+                disabled={!Object.values(step4.data?.pageStates ?? {}).some((s) => s.status === 'success' && s.imageUrl) || exportStatus === 'exporting'}
+                className={`text-left p-4 rounded-2xl border-2 transition-all ${
+                  !Object.values(step4.data?.pageStates ?? {}).some((s) => s.status === 'success' && s.imageUrl) || exportStatus === 'exporting'
+                    ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
+                    : 'border-gray-200 hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
+                }`}>
+                <span className="text-2xl">📄</span>
+                <p className="text-sm font-bold text-gray-900 mt-2">PDF Comic</p>
+                <p className="text-xs text-gray-400 mt-0.5">Full comic, print-ready</p>
+              </button>
+              <button type="button"
+                onClick={() => exportZip(includeMetadata)}
+                disabled={!Object.values(step4.data?.pageStates ?? {}).some((s) => s.status === 'success' && s.imageUrl) || exportStatus === 'exporting'}
+                className={`text-left p-4 rounded-2xl border-2 transition-all ${
+                  !Object.values(step4.data?.pageStates ?? {}).some((s) => s.status === 'success' && s.imageUrl) || exportStatus === 'exporting'
+                    ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
+                    : 'border-gray-200 hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
+                }`}>
+                <span className="text-2xl">🖼</span>
+                <p className="text-sm font-bold text-gray-900 mt-2">Image Pack</p>
+                <p className="text-xs text-gray-400 mt-0.5">All pages as PNG ZIP</p>
+              </button>
+              <label className="col-span-2 flex items-center gap-2.5 cursor-pointer select-none">
+                <input type="checkbox" checked={includeMetadata} onChange={(e) => setIncludeMetadata(e.target.checked)} className="w-4 h-4 rounded accent-indigo-600" />
+                <span className="text-sm text-gray-700">Include panel script (dialogue, shot types, prompts)</span>
+              </label>
+            </div>
+
+            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant pt-2">Save &amp; Share</p>
+            <div className="flex flex-wrap gap-3">
+              <button type="button" onClick={saveToCloud}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold border transition-colors ${
+                  cloudSaveStatus === 'saved' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-gray-200 hover:bg-gray-50'
+                }`}>
+                {cloudSaveStatus === 'saved' ? '✓ Saved to Cloud' : '☁ Save to Cloud'}
+              </button>
+              <button type="button" onClick={() => setIsDrawerOpen(true)}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold border border-gray-200 hover:bg-gray-50 transition-colors">
+                👤 My Projects
+              </button>
+            </div>
+
+            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant pt-2">Developer</p>
+            <div className="flex flex-wrap gap-3">
+              <button type="button" onClick={downloadProjectJson}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold border border-gray-200 hover:bg-gray-50 transition-colors">
+                {'{ }'} Download JSON
+              </button>
+              <button type="button" onClick={copyProjectJson}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold border border-gray-200 hover:bg-gray-50 transition-colors">
+                {jsonCopied ? '✓ Copied!' : '📋 Copy JSON'}
+              </button>
+            </div>
+          </div>
+
+          {/* Preview strip */}
+          {(() => {
+            const composedPages = Object.entries(composeStates)
+              .filter(([, cs]) => cs.status === 'done' && cs.imageUrl)
+              .map(([n, cs]) => ({ pageNumber: Number(n), imageUrl: cs.imageUrl! }))
+              .sort((a, b) => a.pageNumber - b.pageNumber);
+            const rawPages = Object.entries((step4.data?.pageStates ?? {}) as Record<string, { status: string; imageUrl: string | null }>)
+              .filter(([, v]) => !!v.imageUrl)
+              .map(([k, v]) => ({ pageNumber: Number(k.replace('page-', '')), imageUrl: v.imageUrl! }))
+              .sort((a, b) => a.pageNumber - b.pageNumber);
+            const previewPages = composedPages.length > 0 ? composedPages : rawPages;
+            if (previewPages.length === 0) return null;
+            return (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Preview</p>
+                  <button type="button" onClick={() => setShowPreview(true)}
+                    className="text-xs font-semibold text-primary hover:opacity-80 transition-opacity">👁 Full preview →</button>
+                </div>
+                <div className="flex gap-3 overflow-x-auto pb-2">
+                  {previewPages.map((p) => (
+                    <button key={p.pageNumber} type="button" onClick={() => setShowPreview(true)}
+                      className="flex-shrink-0 w-24 rounded-lg overflow-hidden border border-outline-variant/20 hover:border-primary/40 transition-colors">
+                      <img src={p.imageUrl} alt={`Page ${p.pageNumber}`} className="w-full h-auto" />
+                      <p className="text-[10px] text-center py-1 text-on-surface-variant">Pg.{p.pageNumber}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Mark complete */}
+          <div className="border-t border-outline-variant/20 pt-4">
+            <button type="button" onClick={() => handleApprove(4)}
+              className="w-full py-3 rounded-2xl text-sm font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity">
+              ✓ Mark Complete &amp; Finish
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Always-on modals ── */}
       {regenModal && (
@@ -2283,33 +2184,46 @@ export default function Step4Generation() {
         <div className="px-10 max-w-6xl mx-auto flex items-center justify-between gap-4" style={{ height: 56 }}>
           <button type="button"
             onClick={() => {
-              if (activeStep4Tab === 'layout') setActiveStep(3);
-              else if (comicPageMode === 'page') setActiveStep(3);
-              else handleTabChange('layout');
+              if (activeStep4Tab === 'generate') setActiveStep(3);
+              else if (activeStep4Tab === 'layout') handleTabChange('generate');
+              else if (activeStep4Tab === 'dialogue') handleTabChange('layout');
+              else handleTabChange('dialogue');
             }}
             className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors flex-shrink-0">
             <span className="material-symbols-outlined text-base">arrow_back</span>
             <span className="hidden sm:inline">
-              {activeStep4Tab === 'layout' || comicPageMode === 'page' ? 'Edit Script' : 'Layout'}
+              {activeStep4Tab === 'generate' ? 'Edit Script' :
+               activeStep4Tab === 'layout' ? 'Generate' :
+               activeStep4Tab === 'dialogue' ? 'Layout' : 'Dialogue'}
             </span>
           </button>
 
           <button type="button"
             onClick={() => {
-              if (activeStep4Tab === 'layout') handleTabChange('generate');
+              if (activeStep4Tab === 'generate') handleTabChange('layout');
+              else if (activeStep4Tab === 'layout') handleTabChange('dialogue');
+              else if (activeStep4Tab === 'dialogue') handleTabChange('export');
               else handleApprove(4);
             }}
             disabled={
-              (activeStep4Tab === 'layout' && isTabLocked('generate')) ||
-              (activeStep4Tab === 'generate' && activeStats.success === 0)
+              (activeStep4Tab === 'generate' && isTabLocked('layout')) ||
+              (activeStep4Tab === 'export' && finishBtnState !== 'all-complete')
             }
             className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
-              (activeStep4Tab === 'layout' && isTabLocked('generate')) ||
-              (activeStep4Tab === 'generate' && activeStats.success === 0)
+              activeStep4Tab === 'export'
+                ? finishBtnState === 'all-complete'
+                  ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                : isTabLocked(
+                    activeStep4Tab === 'generate' ? 'layout' :
+                    activeStep4Tab === 'layout' ? 'dialogue' : 'export'
+                  )
                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                 : 'bg-primary text-on-primary hover:opacity-90'
             }`}>
-            {activeStep4Tab === 'layout' ? 'Go to Generate →' : 'Go to Export →'}
+            {activeStep4Tab === 'export' ? '✓ Finish & Export' :
+             activeStep4Tab === 'generate' ? 'Go to Layout →' :
+             activeStep4Tab === 'layout' ? 'Go to Dialogue →' : 'Go to Export →'}
           </button>
         </div>
       </div>

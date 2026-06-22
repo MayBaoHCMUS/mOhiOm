@@ -8,26 +8,23 @@ import Step0Setup from '@/components/studio-steps/Step0Setup';
 import Step1Analysis from '@/components/studio-steps/Step1Analysis';
 import Step2Characters from '@/components/studio-steps/Step2Characters';
 import Step3Script from '@/components/studio-steps/Step3Script';
-import Step4CanvasEditor from '@/components/studio-steps/Step4CanvasEditor';
-import Step5Export from '@/components/studio-steps/Step5Export';
-import GenerationModeModal from '@/components/GenerationModeModal';
+import Step4Generation from '@/components/studio-steps/Step4Generation';
 
 const wizardSteps = [
-  { key: 0, label: 'Setup',      subtitle: 'Project configuration',  Component: Step0Setup },
-  { key: 1, label: 'Analysis',   subtitle: 'Story breakdown',        Component: Step1Analysis },
-  { key: 2, label: 'Characters', subtitle: 'Designs & refs', Component: Step2Characters },
-  { key: 3, label: 'Script',     subtitle: 'Panel-by-panel script',  Component: Step3Script },
-  { key: 4, label: 'Generate',   subtitle: 'Image generation',       Component: Step4CanvasEditor },
-  { key: 5, label: 'Export',     subtitle: 'Dialogue & export',      Component: Step5Export },
+  { key: 0, label: 'Setup', subtitle: 'Project configuration', Component: Step0Setup },
+  { key: 1, label: 'Analysis', subtitle: 'Story breakdown', Component: Step1Analysis },
+  { key: 2, label: 'Characters', subtitle: 'Designs and references', Component: Step2Characters },
+  { key: 3, label: 'Script', subtitle: 'Panel-by-panel script', Component: Step3Script },
+  { key: 4, label: 'Generation', subtitle: 'Images and export', Component: Step4Generation },
 ] as const;
 
 function WizardContent() {
-  const { activeStep, setActiveStep, stepMap, setupValidation, handleGenerate, step1, comicPageMode } = useComicGeneration();
+  const { activeStep, setActiveStep, stepMap, setupValidation, handleGenerate, step1 } = useComicGeneration();
 
   const current = wizardSteps.find((step) => step.key === activeStep) ?? wizardSteps[0];
   const CurrentComponent = current.Component;
 
-  const isLastStep = activeStep === (wizardSteps[wizardSteps.length - 1] as typeof wizardSteps[number]).key;
+  const isLastStep = activeStep === wizardSteps.length - 1;
 
   // Step 0: enabled when all required fields are complete (loading is OK — clicking navigates to watch the stream)
   // Steps 1–4: enabled when the current step is approved
@@ -140,14 +137,13 @@ function WizardContent() {
           </section>
 
           <section className="mt-8">
-            {activeStep === 4 && comicPageMode === null && <GenerationModeModal />}
             <CurrentComponent />
           </section>
         </div>
       </main>
 
       {/* Sticky bottom navigation bar — hidden on steps that own their action bar */}
-      {activeStep !== 1 && activeStep !== 2 && activeStep !== 3 && activeStep !== 4 && activeStep !== 5 && <div className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
+      {activeStep !== 1 && activeStep !== 2 && activeStep !== 3 && activeStep !== 4 && <div className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
         style={{ left: 'var(--studio-sidebar-width)' }}>
         <div className="px-10 py-4 max-w-6xl mx-auto flex items-center justify-between">
           {/* Previous Step — hidden on Step 1, ghost on Steps 2–5 */}
