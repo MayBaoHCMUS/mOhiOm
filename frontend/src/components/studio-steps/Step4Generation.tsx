@@ -3,9 +3,10 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
-import type { Step4Panel, Step4PanelState, PanelVersion } from '@/context/ComicGenerationContext';
-import { apiClient, geminiApi } from '@/services/api';
-import ProjectsDrawer from '@/components/ProjectsDrawer';
+import type { Step4Panel, PanelVersion } from '@/context/ComicGenerationContext';
+import { bubblesApi } from '@/services/api';
+import type { BubbleDataPayload } from '@/services/api';
+import DialogueEditor, { type PanelBubbles, type SingleBubble, type BubbleType } from '@/components/studio-steps/DialogueEditor';
 import Markdown from '@/components/Markdown';
 
 type State = 1 | 2 | 3 | 4 | 5;
@@ -89,6 +90,10 @@ function stripBold(s: string) {
   return s.replace(/^\*{1,3}\s*/, '').replace(/\s*\*{1,3}$/, '').trim();
 }
 
+function genBubbleId() {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
 // ── Prompt display: dims the shared art-style prefix, highlights unique content ──
 function PromptDisplay({ prompt, artStyle }: { prompt: string; artStyle: string }) {
   const style = artStyle.trim().replace(/\.$/, '');
@@ -122,7 +127,7 @@ const REGEN_CHIPS = [
 ];
 
 function RegenerateModal({
-  pageNumber,
+  pageNumber: _pn, // eslint-disable-line @typescript-eslint/no-unused-vars
   contextLabel,
   currentImageUrl,
   prevFeedback,
@@ -427,88 +432,6 @@ function PreviewModal({ pages, onClose }: {
         className="absolute right-5 top-1/2 -translate-y-1/2 text-white/60 hover:text-white disabled:opacity-20 transition-colors">
         <span className="material-symbols-outlined text-5xl">chevron_right</span>
       </button>
-    </div>
-  );
-}
-
-// ── Emoji reaction bar ────────────────────────────────────────────────────────
-type Reaction = 'love' | 'good' | 'neutral' | 'bad';
-
-const REACTIONS: { value: Reaction; emoji: string; label: string }[] = [
-  { value: 'love',    emoji: '😍', label: 'Love it!' },
-  { value: 'good',    emoji: '👍', label: 'Good' },
-  { value: 'neutral', emoji: '😐', label: 'Okay' },
-  { value: 'bad',     emoji: '👎', label: 'Poor' },
-];
-
-function EmojiReactionBar({
-  pageId,
-  panels,
-  comicId,
-  reaction,
-  onReaction,
-  onError,
-}: {
-  pageId: string;
-  panels: Step4Panel[];
-  comicId: string;
-  reaction: Reaction | null;
-  onReaction: (pageId: string, r: Reaction) => void;
-  onError: () => void;
-}) {
-  const regenCount = panels.reduce((n, p) => {
-    return n; // panel version tracking happens at page level
-  }, 0);
-  const wasRegenerated = panels.some(() => false); // filled from pageState versions
-  const selected = REACTIONS.find((r) => r.value === reaction);
-
-  const handleClick = async (r: Reaction) => {
-    onReaction(pageId, r);
-    try {
-      await apiClient.post('/ratings/panel', {
-        panel_id: pageId,
-        comic_id: comicId,
-        reaction: r,
-        panel_version: 1,
-        was_regenerated: wasRegenerated,
-        regen_count: regenCount,
-      });
-    } catch {
-      onError();
-    }
-  };
-
-  return (
-    <div className="px-4 py-3 border-t border-outline-variant/10 flex items-center gap-3">
-      {selected ? (
-        <span className="text-xs text-on-surface-variant flex items-center gap-1.5">
-          <span className="text-base">{selected.emoji}</span>
-          <span className="font-medium">{selected.label}</span>
-        </span>
-      ) : (
-        <span className="text-xs text-on-surface-variant">Rate this panel:</span>
-      )}
-      <div className="flex items-center gap-2 ml-auto">
-        {REACTIONS.map((r) => {
-          const isSelected = reaction === r.value;
-          return (
-            <button
-              key={r.value}
-              type="button"
-              onClick={() => handleClick(r.value)}
-              title={r.label}
-              className={`w-7 h-7 rounded-lg flex items-center justify-center text-base transition-all duration-100 ${
-                isSelected
-                  ? 'bg-[#EEF2FF] border border-primary scale-100'
-                  : 'bg-transparent border border-transparent hover:bg-gray-100 hover:scale-[1.15]'
-              }`}
-              style={{ opacity: isSelected ? 1 : 0.7 }}
-            >
-              {r.emoji}
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -841,15 +764,6 @@ const LAYOUT_DISPLAY_NAMES_MAP: Record<string, string> = {
   grid_3x2: '3-Col Grid', grid_2x3: '2-Col Grid',
 };
 
-// Row-of-indices for each template (needed for compose-page explicit layout)
-const LAYOUT_ROW_STRUCTURES: Record<string, number[][]> = {
-  splash: [[0]], stacked: [[0],[1]], side_by_side: [[0,1]],
-  three_rows: [[0],[1],[2]], top_wide: [[0],[1,2]], bottom_wide: [[0,1],[2]],
-  grid_2x2: [[0,1],[2,3]], top_wide_3: [[0],[1,2,3]], bottom_wide_3: [[0,1,2],[3]],
-  four_rows: [[0],[1],[2],[3]], wide_2x2: [[0],[1,2],[3,4]], '2x2_wide': [[0,1],[2,3],[4]],
-  grid_3x2: [[0,1,2],[3,4,5]], grid_2x3: [[0,1],[2,3],[4,5]],
-};
-
 // SVG panel rects for each template (48×64 viewport)
 const LAYOUT_SVGS: Record<string, React.ReactNode> = {
   splash:        <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>,
@@ -911,7 +825,6 @@ export default function Step4Generation() {
     step3,
     step4PanelsByPage,
     step4Stats,
-    jsonCopied,
     handleGenerate,
     handleApprove,
     handleRetry,
@@ -924,13 +837,7 @@ export default function Step4Generation() {
     rejectPanelRegen,
     copyProjectJson,
     downloadProjectJson,
-    exportZip,
-    exportPdf,
-    exportStatus,
-    saveToCloud,
-    cloudSaveStatus,
     artStyle,
-    mangaGenre,
     projectId,
     getCooldownSeconds,
     setActiveStep,
@@ -941,7 +848,6 @@ export default function Step4Generation() {
     setPageLayout,
   } = useComicGeneration();
 
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [showFinishErrorModal, setShowFinishErrorModal] = useState(false);
   const [regenModal, setRegenModal] = useState<{
@@ -954,41 +860,28 @@ export default function Step4Generation() {
   const [showConfetti] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
-  // ── Rating state ──────────────────────────────────────────────────────────
-  const [panelReactions, setPanelReactions] = useState<Record<string, Reaction>>({});
-  const [comicRating, setComicRating] = useState<{ stars: number; positive: string; negative: string } | null>(null);
-  const sessionStartRef = useRef(Date.now());
-
   // ── Generation mode ───────────────────────────────────────────────────────
   type ComicPageMode = 'page' | 'panel';
   const [comicPageMode, setComicPageMode] = useState<ComicPageMode>('page');
   const [approvedPanelIds, setApprovedPanelIds] = useState<Set<string>>(new Set());
   const [panelItemReactions, setPanelItemReactions] = useState<Record<string, PanelReaction>>({});
 
+  // ── Bubble dialogue state ─────────────────────────────────────────────────
+  const [panelBubbles, setPanelBubbles] = useState<Record<string, PanelBubbles>>({});
+  const bubblesLoadedRef = useRef(false);
+
   // ── Tab navigation ────────────────────────────────────────────────────────
-  type Step4Tab = 'generate' | 'layout' | 'dialogue' | 'export';
+  type Step4Tab = 'layout' | 'dialogue';
   const [activeStep4Tab, setActiveStep4Tab] = useState<Step4Tab>(() => {
     if (typeof window !== 'undefined') {
-      return (sessionStorage.getItem('mohiom-step4-tab') as Step4Tab) ?? 'generate';
+      const saved = sessionStorage.getItem('mohiom-step4-tab-v2') as Step4Tab | null;
+      return saved === 'dialogue' ? 'dialogue' : 'layout';
     }
-    return 'generate';
+    return 'layout';
   });
-  const [dialogueEdits, setDialogueEdits] = useState<Record<string, string>>({});
-  const [dialogueEditOpen, setDialogueEditOpen] = useState<string | null>(null);
-  const [dialogueEditValue, setDialogueEditValue] = useState('');
-  const [composingAll, setComposingAll] = useState(false);
   const [showCompletionNudge, setShowCompletionNudge] = useState(false);
   const prevAllImgDoneRef = useRef(false);
-  // Export tab inline state
-  const [exportStars, setExportStars] = useState(0);
-  const [exportHovered, setExportHovered] = useState(0);
-  const [exportPositive, setExportPositive] = useState('');
-  const [exportNegative, setExportNegative] = useState('');
-  const [includeMetadata, setIncludeMetadata] = useState(false);
 
-  // ── Compose state ─────────────────────────────────────────────────────────
-  type ComposeStatus = 'idle' | 'composing' | 'done' | 'error';
-  const [composeStates, setComposeStates] = useState<Record<number, { status: ComposeStatus; imageUrl: string | null; layoutName?: string; error: string | null }>>({});
 
   // ── Panel-level stats (panel mode) ────────────────────────────────────────
   const panelStats = useMemo(() => {
@@ -1003,99 +896,33 @@ export default function Step4Generation() {
     };
   }, [step4.data]);
 
-  const handleComposePage = useCallback(async (pageNumber: number, panels: Step4Panel[]) => {
-    const style = artStyle.toLowerCase().includes('webtoon') ? 'webtoon' : 'manga';
-    setComposeStates((prev) => ({ ...prev, [pageNumber]: { status: 'composing', imageUrl: null, error: null } }));
-
-    try {
-      // Path A: individual panel images exist — compose directly, no split needed
-      const panelImages = panels.map((p) => ({
-        panel: p,
-        imageUrl: step4.data?.panelStates?.[p.id]?.imageUrl ?? null,
-      }));
-      const allPanelsHaveImages = panelImages.every((pi) => pi.imageUrl);
-
-      if (allPanelsHaveImages) {
-        const chosenLayoutName = pageLayoutNames[pageNumber];
-        const chosenLayout = chosenLayoutName ? LAYOUT_ROW_STRUCTURES[chosenLayoutName] : undefined;
-        const res = await geminiApi.composePage({
-          panels: panelImages.map((pi) => ({
-            panel_number: pi.panel.panelNumber,
-            page_number: pageNumber,
-            shot_type: pi.panel.shotType ?? 'medium shot',
-            image_data_url: pi.imageUrl!,
-          })),
-          style,
-          layout: chosenLayout,
-          use_smart_layout: !chosenLayout,
-        });
-        setComposeStates((prev) => ({
-          ...prev,
-          [pageNumber]: {
-            status: 'done',
-            imageUrl: `data:image/png;base64,${res.data.page_base64}`,
-            layoutName: res.data.layout_name,
-            error: null,
-          },
-        }));
-        return;
-      }
-
-      // Path B: only a full-page image exists — split it then re-compose
-      const pageImageUrl = step4.data?.pageStates?.[`page-${pageNumber}`]?.imageUrl;
-      if (!pageImageUrl) {
-        setComposeStates((prev) => ({ ...prev, [pageNumber]: { status: 'error', imageUrl: null, error: 'Generate panels or a page image first before using Auto Layout.' } }));
-        return;
-      }
-
-      const res = await geminiApi.autoLayout({
-        page_image_data_url: pageImageUrl,
-        panels: panels.map((p) => ({
-          panel_number: p.panelNumber,
-          shot_type: p.shotType ?? 'medium shot',
-        })),
-        style,
-      });
-      setComposeStates((prev) => ({
-        ...prev,
-        [pageNumber]: {
-          status: 'done',
-          imageUrl: `data:image/png;base64,${res.data.page_base64}`,
-          error: null,
-        },
-      }));
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Auto layout failed';
-      setComposeStates((prev) => ({ ...prev, [pageNumber]: { status: 'error', imageUrl: null, error: msg } }));
-    }
-  }, [step4.data?.panelStates, step4.data?.pageStates, artStyle, pageLayoutNames]);
-
-  const handleComposeAllPages = useCallback(async () => {
-    setComposingAll(true);
-    for (const [pageNumber, panels] of step4PanelsByPage) {
-      await handleComposePage(pageNumber, panels);
-    }
-    setComposingAll(false);
-  }, [step4PanelsByPage, handleComposePage]);
-
-  const handleApproveAllOnPage = useCallback((pageNumber: number) => {
-    const panels = step4PanelsByPage.find(([n]) => n === pageNumber)?.[1] ?? [];
-    setApprovedPanelIds((prev) => {
-      const next = new Set(prev);
-      panels.forEach((p) => next.add(p.id));
-      return next;
-    });
-  }, [step4PanelsByPage]);
-
   const autoImportDialogue = useCallback(() => {
-    const edits: Record<string, string> = {};
+    const bubbles: Record<string, PanelBubbles> = {};
     for (const [, panels] of step4PanelsByPage) {
       for (const p of panels) {
         const text = stripBold(p.dialogueSfx ?? '');
-        if (text && text !== 'No dialogue/SFX provided.') edits[p.id] = text;
+        if (text && text !== 'No dialogue/SFX provided.') {
+          const isSfx = /^<.+>$/.test(text.trim());
+          const isThought = text.startsWith('*');
+          const bubbleType: BubbleType = isSfx ? 'sfx' : isThought ? 'thought' : 'speech';
+          const tailDir = bubbleType === 'sfx' ? 'none' as const : 'down-left' as const;
+          const sfxRotation = isSfx ? Math.round((Math.random() * 20 - 10)) : 0;
+          const defaultFontSize = isSfx ? 24 : isThought ? 12 : 13;
+          const newBubble: SingleBubble = {
+            id: genBubbleId(),
+            dialogue: text, bubbleType, tailDir,
+            bubblePosition: { x: 0.5, y: 0.3 },
+            bubbleSize: { w: isSfx ? 180 : 160, h: isSfx ? 90 : 80 },
+            fontSize: defaultFontSize,
+            rotation: sfxRotation,
+            opacity: 1,
+            zIndex: 0,
+          };
+          bubbles[p.id] = [newBubble];
+        }
       }
     }
-    setDialogueEdits(edits);
+    setPanelBubbles((prev) => ({ ...prev, ...bubbles }));
   }, [step4PanelsByPage]);
 
   // Auto-initialize layout selection for each page when panels first become available
@@ -1118,57 +945,6 @@ export default function Step4Generation() {
     }
   }, [step4.data?.panels.length]);
 
-  // Load saved ratings on mount
-  useEffect(() => {
-    if (!projectId) return;
-    apiClient.get(`/ratings/panels/${projectId}`).then((res) => {
-      const map: Record<string, Reaction> = {};
-      for (const r of (res.data.ratings ?? [])) map[r.panel_id] = r.reaction;
-      setPanelReactions(map);
-    }).catch(() => {});
-    apiClient.get(`/ratings/comic/${projectId}`).then((res) => {
-      const r = res.data.rating;
-      if (r) setComicRating({ stars: r.stars ?? 0, positive: r.comment_positive ?? '', negative: r.comment_negative ?? '' });
-    }).catch(() => {});
-  }, [projectId]);
-
-  const addRatingErrorToast = useCallback(() => {
-    const id = `rating-err-${Date.now()}`;
-    setToasts((prev) => [...prev, { id, label: "Couldn't save rating", pageNumber: 0, panelId: '' }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
-  }, []);
-
-  const handleRatingSubmit = useCallback(async (stars: number, positive: string, negative: string) => {
-    const elapsed = Math.round((Date.now() - sessionStartRef.current) / 1000);
-    const reactionSummary = REACTIONS.reduce((acc, r) => {
-      acc[r.value] = Object.values(panelReactions).filter((v) => v === r.value).length;
-      return acc;
-    }, {} as Record<string, number>);
-    const panelsRegenerated = Object.values(step4.data?.pageStates ?? {}).filter(
-      (s) => (s as Step4PanelState).versions && (s as Step4PanelState).versions.length > 0
-    ).length;
-    const totalRegenCount = Object.values(step4.data?.pageStates ?? {}).reduce(
-      (n, s) => n + ((s as Step4PanelState).versions?.length ?? 0), 0
-    );
-    setComicRating({ stars, positive, negative });
-    try {
-      await apiClient.post('/ratings/comic', {
-        comic_id: projectId,
-        stars,
-        skipped: false,
-        comment_positive: positive,
-        comment_negative: negative,
-        total_panels: step4.data?.panels?.length ?? 0,
-        panels_regenerated: panelsRegenerated,
-        total_regen_count: totalRegenCount,
-        art_style: artStyle,
-        genre: mangaGenre,
-        total_session_time_seconds: elapsed,
-        panel_reactions_summary: reactionSummary,
-        step_completion_times: {},
-      });
-    } catch { /* fire-and-forget */ }
-  }, [panelReactions, step4.data, projectId, artStyle, mangaGenre]);
 
   const cooldown = getCooldownSeconds(4);
   const isGenerating = step4.isLoading;
@@ -1249,16 +1025,16 @@ export default function Step4Generation() {
     return () => { Object.values(ref).forEach(clearTimeout); };
   }, []);
 
-  // Export error toast
+  // Load saved bubbles from MongoDB on mount
   useEffect(() => {
-    if (exportStatus !== 'error') return;
-    const id = `export-error-${Date.now()}`;
-    setToasts((t) => [...t.slice(-3), { id, label: 'Export', pageNumber: 0, panelId: '__export__' }]);
-    toastTimeoutsRef.current[id] = setTimeout(() => {
-      setToasts((t) => t.filter((x) => x.id !== id));
-      delete toastTimeoutsRef.current[id];
-    }, 6000);
-  }, [exportStatus]);
+    if (!projectId || bubblesLoadedRef.current) return;
+    bubblesLoadedRef.current = true;
+    bubblesApi.getForComic(projectId).then((res) => {
+      const map: Record<string, PanelBubbles> = {};
+      for (const doc of res.data) map[doc.panelId] = doc.bubbles as PanelBubbles;
+      if (Object.keys(map).length > 0) setPanelBubbles((prev) => ({ ...map, ...prev }));
+    }).catch(() => {});
+  }, [projectId]);
 
   const dismissToast = (id: string) => {
     clearTimeout(toastTimeoutsRef.current[id]);
@@ -1273,19 +1049,6 @@ export default function Step4Generation() {
       : { total: step4Stats.total, success: step4Stats.success, loading: step4Stats.loading, error: step4Stats.error },
   [comicPageMode, panelStats, step4Stats]);
 
-  // Finish button state machine — use panel stats in panel mode
-  const activeStatsForBtn = comicPageMode === 'panel'
-    ? { total: panelStats.total, success: panelStats.done, error: panelStats.errors }
-    : { total: step4Stats.total, success: step4Stats.success, error: step4Stats.error };
-
-  const finishBtnState = (() => {
-    if (isImageGenerating) return 'in-progress' as const;
-    if (activeStatsForBtn.total > 0 && activeStatsForBtn.error === 0 && activeStatsForBtn.success === activeStatsForBtn.total) return 'all-complete' as const;
-    if (activeStatsForBtn.total > 0 && activeStatsForBtn.error > 0) return 'has-errors' as const;
-    return 'not-started' as const;
-  })();
-
-
   const retryErrorPages = () => {
     if (!step4.data?.pageStates) return;
     const errorPages = Object.entries(step4.data.pageStates as Record<string, { status: string }>)
@@ -1297,17 +1060,8 @@ export default function Step4Generation() {
 
   // Tab persistence
   useEffect(() => {
-    sessionStorage.setItem('mohiom-step4-tab', activeStep4Tab);
+    sessionStorage.setItem('mohiom-step4-tab-v2', activeStep4Tab);
   }, [activeStep4Tab]);
-
-  // Sync export rating fields when comicRating loads
-  useEffect(() => {
-    if (comicRating) {
-      setExportStars(comicRating.stars);
-      setExportPositive(comicRating.positive);
-      setExportNegative(comicRating.negative);
-    }
-  }, [comicRating]);
 
   // Completion nudge
   useEffect(() => {
@@ -1318,11 +1072,10 @@ export default function Step4Generation() {
 
   // Tab helpers
   const isTabLocked = useCallback((tab: Step4Tab) => {
-    if (tab === 'generate') return false;
-    if (tab === 'layout' || tab === 'dialogue') return activeStats.success === 0;
-    if (tab === 'export') return activeStats.success < activeStats.total;
+    if (tab === 'layout') return false;
+    if (tab === 'dialogue') return activeStats.success === 0;
     return false;
-  }, [activeStats.success, activeStats.total]);
+  }, [activeStats.success]);
 
   const handleTabChange = useCallback((tab: Step4Tab) => {
     if (isTabLocked(tab)) return;
@@ -1330,11 +1083,9 @@ export default function Step4Generation() {
     setShowCompletionNudge(false);
   }, [isTabLocked]);
 
-  const pagesComposed = Object.values(composeStates).filter((cs) => cs.status === 'done').length;
-  const panelsWithDialogue = allPanels.filter((p) => {
-    const text = dialogueEdits[p.id] ?? (p.dialogueSfx ? stripBold(p.dialogueSfx) : '');
-    return text.trim().length > 0 && text !== 'No dialogue/SFX provided.';
-  }).length;
+  const panelsWithDialogue = allPanels.filter((p) =>
+    (panelBubbles[p.id]?.length ?? 0) > 0
+  ).length;
 
   return (
     <section className="text-on-surface pb-20">
@@ -1344,7 +1095,7 @@ export default function Step4Generation() {
         <div>
           <h2 className="text-2xl font-bold text-on-surface">Image Generation</h2>
           <p className="text-sm text-on-surface-variant mt-1">
-            Generate panel images and export the final project package
+            Pick a layout, generate panels, and add dialogue
           </p>
         </div>
         <StateBadge state={state} />
@@ -1355,10 +1106,8 @@ export default function Step4Generation() {
         <div className="flex items-center gap-8">
           {(
             [
-              { id: 'generate' as Step4Tab, label: '⚡ Generate' },
-              { id: 'layout' as Step4Tab, label: '⊞ Layout' },
+              { id: 'layout' as Step4Tab, label: '⚡ Layout & Generate' },
               { id: 'dialogue' as Step4Tab, label: '💬 Dialogue' },
-              { id: 'export' as Step4Tab, label: '⬇ Export' },
             ] as const
           ).map((tab) => {
             const locked = isTabLocked(tab.id);
@@ -1367,7 +1116,7 @@ export default function Step4Generation() {
             let badgeText: string | null = null;
             let badgeVariant: 'complete' | 'progress' | 'gray' = 'progress';
             if (!locked) {
-              if (tab.id === 'generate' && activeStats.total > 0) {
+              if (tab.id === 'layout' && activeStats.total > 0) {
                 if (activeStats.success === activeStats.total) {
                   badgeText = `${activeStats.total} ✓`; badgeVariant = 'complete';
                 } else if (activeStats.success === 0) {
@@ -1375,20 +1124,12 @@ export default function Step4Generation() {
                 } else {
                   badgeText = `${activeStats.success}/${activeStats.total}`; badgeVariant = 'progress';
                 }
-              } else if (tab.id === 'layout') {
-                if (step4PanelsByPage.length > 0 && pagesComposed === step4PanelsByPage.length) {
-                  badgeText = `${pagesComposed} ✓`; badgeVariant = 'complete';
-                } else {
-                  badgeText = `${pagesComposed}/${step4PanelsByPage.length}`; badgeVariant = 'progress';
-                }
               } else if (tab.id === 'dialogue') {
                 if (panelsWithDialogue > 0) {
                   badgeText = `${panelsWithDialogue}/${allPanels.length}`; badgeVariant = 'progress';
                 } else {
                   badgeText = 'Optional'; badgeVariant = 'gray';
                 }
-              } else if (tab.id === 'export') {
-                badgeText = 'Ready →'; badgeVariant = 'complete';
               }
             }
 
@@ -1398,7 +1139,7 @@ export default function Step4Generation() {
                 type="button"
                 onClick={() => handleTabChange(tab.id)}
                 disabled={locked}
-                title={locked ? 'Complete image generation to unlock' : undefined}
+                title={locked ? 'Generate at least one image to unlock' : undefined}
                 className={[
                   'flex items-center gap-2 pb-3 pt-1 -mb-px border-b-[3px] transition-colors whitespace-nowrap text-[13px]',
                   active
@@ -1427,8 +1168,8 @@ export default function Step4Generation() {
         </div>
       </div>
 
-      {/* ═══════════ TAB 1 — GENERATE ═══════════ */}
-      {activeStep4Tab === 'generate' && (
+      {/* ═══════════ TAB 1 — LAYOUT & GENERATE ═══════════ */}
+      {activeStep4Tab === 'layout' && (
         <div className="space-y-6">
 
           {/* Generation Dashboard */}
@@ -1616,11 +1357,11 @@ export default function Step4Generation() {
               style={{ background: '#F0FDF4' }}>
               <div>
                 <p className="text-sm font-semibold text-emerald-700">✓ All {activeStats.total} panels generated!</p>
-                <p className="text-xs text-emerald-600 mt-0.5">Next: Arrange your comic page layout</p>
+                <p className="text-xs text-emerald-600 mt-0.5">Next: Add dialogue to your panels</p>
               </div>
-              <button type="button" onClick={() => handleTabChange('layout')}
+              <button type="button" onClick={() => handleTabChange('dialogue')}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors whitespace-nowrap">
-                Go to Layout →
+                Go to Dialogue →
               </button>
             </div>
           )}
@@ -1726,14 +1467,6 @@ export default function Step4Generation() {
                     ) : pageState?.imageUrl ? (
                       <div className="rounded-2xl bg-surface-container overflow-hidden border border-outline-variant/10">
                         <Image src={pageState.imageUrl} alt={`Page ${pageNumber} comic render`} width={720} height={960} className="h-auto w-full object-cover" unoptimized />
-                        <EmojiReactionBar
-                          pageId={`page-${pageNumber}`}
-                          panels={panels}
-                          comicId={projectId}
-                          reaction={panelReactions[`page-${pageNumber}`] ?? null}
-                          onReaction={(id, r) => setPanelReactions((prev) => ({ ...prev, [id]: r }))}
-                          onError={addRatingErrorToast}
-                        />
                       </div>
                     ) : (
                       <div className="rounded-2xl bg-surface-container py-12 text-center">
@@ -1758,349 +1491,22 @@ export default function Step4Generation() {
         </div>
       )}
 
-      {/* ═══════════ TAB 2 — LAYOUT ═══════════ */}
-      {activeStep4Tab === 'layout' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between gap-4">
-            <button type="button" onClick={handleComposeAllPages}
-              disabled={composingAll || step4PanelsByPage.length === 0}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-primary text-on-primary hover:opacity-90 transition-opacity disabled:opacity-50">
-              {composingAll ? (
-                <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Composing…</>
-              ) : '✨ AI Layout All Pages'}
-            </button>
-            <span className="text-xs text-on-surface-variant font-medium">
-              {pagesComposed}/{step4PanelsByPage.length} pages arranged
-            </span>
-          </div>
-
-          {step4PanelsByPage.length === 0 ? (
-            <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-lowest p-8 text-center">
-              <p className="text-sm text-on-surface-variant">Generate panels first to arrange layouts.</p>
-            </div>
-          ) : (
-            step4PanelsByPage.map(([pageNumber, panels]) => {
-              const cs = composeStates[pageNumber];
-              const approvedCount = panels.filter((p) => approvedPanelIds.has(p.id)).length;
-              return (
-                <div key={`layout-page-${pageNumber}`} className="rounded-3xl bg-surface-container-low border border-outline-variant/10 p-6 space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold text-on-surface">Page {pageNumber}</h3>
-                      <span className="text-xs text-on-surface-variant">· {panels.length} panels · {approvedCount}/{panels.length} approved</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => handleApproveAllOnPage(pageNumber)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 transition-colors">
-                        ✓ Approve All
-                      </button>
-                      <button type="button" onClick={() => handleComposePage(pageNumber, panels)}
-                        disabled={cs?.status === 'composing'}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50">
-                        {cs?.status === 'composing' ? (
-                          <><span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />Composing…</>
-                        ) : cs?.status === 'done' ? '↺ Re-layout' : '✨ AI Layout'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {cs?.status === 'done' && cs.imageUrl && (
-                    <div className="rounded-2xl overflow-hidden border border-primary/20 relative">
-                      {cs.layoutName && (
-                        <div className="absolute top-2 left-2 z-10">
-                          <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-primary/90 text-white">AI: {cs.layoutName}</span>
-                        </div>
-                      )}
-                      <img src={cs.imageUrl} alt={`Page ${pageNumber} layout`} className="w-full h-auto" />
-                      <div className="flex justify-end p-2 bg-surface-container-low">
-                        <a href={cs.imageUrl} download={`page-${pageNumber}-layout.png`}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-all">
-                          <span className="material-symbols-outlined text-sm">download</span>Download
-                        </a>
-                      </div>
-                    </div>
-                  )}
-                  {cs?.status === 'error' && <p className="text-xs text-red-500 px-1">{cs.error}</p>}
-
-                  <div className="flex items-start gap-3 flex-wrap">
-                    {panels.map((panel) => {
-                      const imageUrl = step4.data?.panelStates?.[panel.id]?.imageUrl ?? null;
-                      const isApproved = approvedPanelIds.has(panel.id);
-                      return (
-                        <div key={panel.id} className="flex flex-col items-center gap-1.5 w-[80px]">
-                          <div className="w-20 h-20 rounded-xl overflow-hidden border border-outline-variant/20 bg-surface-container">
-                            {imageUrl ? (
-                              <img src={imageUrl} alt={`P${panel.panelNumber}`} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <span className="material-symbols-outlined text-xl opacity-20">crop_original</span>
-                              </div>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-on-surface-variant font-medium">P.{panel.panelNumber}</span>
-                          <button type="button"
-                            onClick={() => setApprovedPanelIds((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(panel.id)) { next.delete(panel.id); } else { next.add(panel.id); }
-                              return next;
-                            })}
-                            className={`flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors ${
-                              isApproved ? 'bg-primary text-on-primary' : 'border border-primary/30 text-primary hover:bg-primary/10'
-                            }`}>
-                            {isApproved ? '✓ OK' : '○ OK'}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })
-          )}
-
-          {pagesComposed === step4PanelsByPage.length && step4PanelsByPage.length > 0 && (
-            <div className="rounded-xl border border-[#86EFAC] px-5 py-4 flex items-center justify-between gap-4"
-              style={{ background: '#F0FDF4' }}>
-              <p className="text-sm font-semibold text-emerald-700">✓ All pages arranged!</p>
-              <button type="button" onClick={() => handleTabChange('dialogue')}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors whitespace-nowrap">
-                Go to Dialogue →
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ═══════════ TAB 3 — DIALOGUE ═══════════ */}
+      {/* ═══════════ TAB 2 — DIALOGUE ═══════════ */}
       {activeStep4Tab === 'dialogue' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-xs text-on-surface-variant">Optional · {panelsWithDialogue}/{allPanels.length} panels have dialogue</p>
-            <button type="button" onClick={autoImportDialogue}
-              className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 transition-colors whitespace-nowrap">
-              ⚡ Auto-import all dialogue
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            {allPanels.map((panel) => {
-              const rawDialogue = dialogueEdits[panel.id] ?? (panel.dialogueSfx ? stripBold(panel.dialogueSfx) : '');
-              const hasDialogue = rawDialogue.trim().length > 0 && rawDialogue !== 'No dialogue/SFX provided.';
-              const isEditing = dialogueEditOpen === panel.id;
-              const imageUrl = step4.data?.panelStates?.[panel.id]?.imageUrl ?? null;
-              return (
-                <div key={panel.id} className="rounded-xl bg-surface-container-low border border-outline-variant/10 overflow-hidden">
-                  <div className="flex items-start gap-3 p-3">
-                    <div className="w-16 h-16 rounded-lg overflow-hidden border border-outline-variant/20 bg-surface-container flex-shrink-0">
-                      {imageUrl ? (
-                        <img src={imageUrl} alt={`P${panel.panelNumber}`} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <span className="material-symbols-outlined text-lg opacity-20">crop_original</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-on-surface">Pg.{panel.pageNumber} · Panel {panel.panelNumber}</p>
-                      {!isEditing ? (
-                        <>
-                          <p className={`text-xs mt-1 leading-relaxed ${hasDialogue ? 'text-on-surface' : 'text-outline italic'}`}>
-                            {hasDialogue ? rawDialogue : '○ No dialogue'}
-                          </p>
-                          <button type="button"
-                            onClick={() => { setDialogueEditOpen(panel.id); setDialogueEditValue(rawDialogue); }}
-                            className="flex items-center gap-1 mt-2 text-[11px] font-semibold text-primary hover:opacity-80 transition-opacity">
-                            {hasDialogue ? '✎ Edit' : '+ Add Dialogue'}
-                          </button>
-                        </>
-                      ) : (
-                        <div className="mt-1 space-y-2">
-                          <textarea
-                            autoFocus
-                            value={dialogueEditValue}
-                            onChange={(e) => setDialogueEditValue(e.target.value)}
-                            rows={3}
-                            className="w-full bg-surface rounded-lg px-2 py-1.5 text-xs text-on-surface border border-outline-variant/30 outline-none focus:ring-2 focus:ring-primary/20 resize-none"
-                          />
-                          <div className="flex items-center gap-2">
-                            <button type="button"
-                              onClick={() => { setDialogueEdits((prev) => ({ ...prev, [panel.id]: dialogueEditValue })); setDialogueEditOpen(null); }}
-                              className="px-3 py-1 rounded-full text-[11px] font-bold bg-primary text-on-primary hover:opacity-90">
-                              Save
-                            </button>
-                            <button type="button" onClick={() => setDialogueEditOpen(null)}
-                              className="px-3 py-1 rounded-full text-[11px] font-semibold text-on-surface-variant hover:text-on-surface">
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <button type="button" onClick={() => handleTabChange('export')}
-              className="text-sm text-on-surface-variant hover:text-primary transition-colors">
-              Skip to Export →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════ TAB 4 — EXPORT ═══════════ */}
-      {activeStep4Tab === 'export' && (
-        <div className="space-y-8">
-
-          {/* Rating section */}
-          <div className="rounded-3xl bg-surface-container-low border border-outline-variant/10 p-6 space-y-5">
-            <div className="text-center">
-              <p className="text-lg font-bold text-on-surface">🎉 Rate Your Experience</p>
-              <p className="text-sm text-on-surface-variant mt-1">Optional — export whenever you&apos;re ready</p>
-            </div>
-            <div className="flex items-center justify-center gap-2">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button key={n} type="button"
-                  onClick={() => setExportStars(n)}
-                  onMouseEnter={() => setExportHovered(n)}
-                  onMouseLeave={() => setExportHovered(0)}
-                  className="transition-transform hover:scale-110">
-                  <svg width="32" height="32" viewBox="0 0 24 24">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                      fill={n <= (exportHovered || exportStars) ? '#F59E0B' : '#E5E7EB'}
-                      stroke={n <= (exportHovered || exportStars) ? '#F59E0B' : '#D1D5DB'} strokeWidth="1" />
-                  </svg>
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">What worked well? <span className="font-normal text-outline">(optional)</span></label>
-                <textarea value={exportPositive} onChange={(e) => setExportPositive(e.target.value)}
-                  placeholder="e.g. The art style came out great…" rows={2}
-                  className="w-full bg-surface-container-lowest rounded-xl px-4 py-2.5 text-sm text-on-surface placeholder-outline outline-none focus:ring-2 focus:ring-primary/30 resize-none" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">What could be better? <span className="font-normal text-outline">(optional)</span></label>
-                <textarea value={exportNegative} onChange={(e) => setExportNegative(e.target.value)}
-                  placeholder="e.g. Panel composition felt off…" rows={2}
-                  className="w-full bg-surface-container-lowest rounded-xl px-4 py-2.5 text-sm text-on-surface placeholder-outline outline-none focus:ring-2 focus:ring-primary/30 resize-none" />
-              </div>
-            </div>
-            <button type="button"
-              onClick={() => handleRatingSubmit(exportStars, exportPositive, exportNegative)}
-              disabled={exportStars === 0}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                exportStars > 0 ? 'bg-primary text-on-primary hover:opacity-90' : 'bg-surface-container text-outline cursor-not-allowed opacity-50'
-              }`}>
-              {comicRating ? '✓ Update Rating' : 'Submit Rating'}
-            </button>
-          </div>
-
-          {/* Export options */}
-          <div className="space-y-4">
-            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Download</p>
-            <div className="grid grid-cols-2 gap-3">
-              <button type="button"
-                onClick={() => exportPdf(includeMetadata)}
-                disabled={!Object.values(step4.data?.pageStates ?? {}).some((s) => s.status === 'success' && s.imageUrl) || exportStatus === 'exporting'}
-                className={`text-left p-4 rounded-2xl border-2 transition-all ${
-                  !Object.values(step4.data?.pageStates ?? {}).some((s) => s.status === 'success' && s.imageUrl) || exportStatus === 'exporting'
-                    ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
-                    : 'border-gray-200 hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
-                }`}>
-                <span className="text-2xl">📄</span>
-                <p className="text-sm font-bold text-gray-900 mt-2">PDF Comic</p>
-                <p className="text-xs text-gray-400 mt-0.5">Full comic, print-ready</p>
-              </button>
-              <button type="button"
-                onClick={() => exportZip(includeMetadata)}
-                disabled={!Object.values(step4.data?.pageStates ?? {}).some((s) => s.status === 'success' && s.imageUrl) || exportStatus === 'exporting'}
-                className={`text-left p-4 rounded-2xl border-2 transition-all ${
-                  !Object.values(step4.data?.pageStates ?? {}).some((s) => s.status === 'success' && s.imageUrl) || exportStatus === 'exporting'
-                    ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
-                    : 'border-gray-200 hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
-                }`}>
-                <span className="text-2xl">🖼</span>
-                <p className="text-sm font-bold text-gray-900 mt-2">Image Pack</p>
-                <p className="text-xs text-gray-400 mt-0.5">All pages as PNG ZIP</p>
-              </button>
-              <label className="col-span-2 flex items-center gap-2.5 cursor-pointer select-none">
-                <input type="checkbox" checked={includeMetadata} onChange={(e) => setIncludeMetadata(e.target.checked)} className="w-4 h-4 rounded accent-indigo-600" />
-                <span className="text-sm text-gray-700">Include panel script (dialogue, shot types, prompts)</span>
-              </label>
-            </div>
-
-            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant pt-2">Save &amp; Share</p>
-            <div className="flex flex-wrap gap-3">
-              <button type="button" onClick={saveToCloud}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold border transition-colors ${
-                  cloudSaveStatus === 'saved' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-gray-200 hover:bg-gray-50'
-                }`}>
-                {cloudSaveStatus === 'saved' ? '✓ Saved to Cloud' : '☁ Save to Cloud'}
-              </button>
-              <button type="button" onClick={() => setIsDrawerOpen(true)}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold border border-gray-200 hover:bg-gray-50 transition-colors">
-                👤 My Projects
-              </button>
-            </div>
-
-            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant pt-2">Developer</p>
-            <div className="flex flex-wrap gap-3">
-              <button type="button" onClick={downloadProjectJson}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold border border-gray-200 hover:bg-gray-50 transition-colors">
-                {'{ }'} Download JSON
-              </button>
-              <button type="button" onClick={copyProjectJson}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold border border-gray-200 hover:bg-gray-50 transition-colors">
-                {jsonCopied ? '✓ Copied!' : '📋 Copy JSON'}
-              </button>
-            </div>
-          </div>
-
-          {/* Preview strip */}
-          {(() => {
-            const composedPages = Object.entries(composeStates)
-              .filter(([, cs]) => cs.status === 'done' && cs.imageUrl)
-              .map(([n, cs]) => ({ pageNumber: Number(n), imageUrl: cs.imageUrl! }))
-              .sort((a, b) => a.pageNumber - b.pageNumber);
-            const rawPages = Object.entries((step4.data?.pageStates ?? {}) as Record<string, { status: string; imageUrl: string | null }>)
-              .filter(([, v]) => !!v.imageUrl)
-              .map(([k, v]) => ({ pageNumber: Number(k.replace('page-', '')), imageUrl: v.imageUrl! }))
-              .sort((a, b) => a.pageNumber - b.pageNumber);
-            const previewPages = composedPages.length > 0 ? composedPages : rawPages;
-            if (previewPages.length === 0) return null;
-            return (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Preview</p>
-                  <button type="button" onClick={() => setShowPreview(true)}
-                    className="text-xs font-semibold text-primary hover:opacity-80 transition-opacity">👁 Full preview →</button>
-                </div>
-                <div className="flex gap-3 overflow-x-auto pb-2">
-                  {previewPages.map((p) => (
-                    <button key={p.pageNumber} type="button" onClick={() => setShowPreview(true)}
-                      className="flex-shrink-0 w-24 rounded-lg overflow-hidden border border-outline-variant/20 hover:border-primary/40 transition-colors">
-                      <img src={p.imageUrl} alt={`Page ${p.pageNumber}`} className="w-full h-auto" />
-                      <p className="text-[10px] text-center py-1 text-on-surface-variant">Pg.{p.pageNumber}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Mark complete */}
-          <div className="border-t border-outline-variant/20 pt-4">
-            <button type="button" onClick={() => handleApprove(4)}
-              className="w-full py-3 rounded-2xl text-sm font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity">
-              ✓ Mark Complete &amp; Finish
-            </button>
-          </div>
-        </div>
+        <DialogueEditor
+          panelsByPage={step4PanelsByPage}
+          panelStates={step4.data?.panelStates ?? {}}
+          panelBubbles={panelBubbles}
+          pageLayoutNames={pageLayoutNames}
+          onSaveBubbles={(panelId, bubbles) => {
+            setPanelBubbles((prev) => ({ ...prev, [panelId]: bubbles }));
+            if (projectId) {
+              bubblesApi.upsert(panelId, projectId, bubbles as BubbleDataPayload[]).catch(() => {});
+            }
+          }}
+          onExport={() => { handleApprove(4); setActiveStep(5); }}
+          onAutoImport={autoImportDialogue}
+        />
       )}
 
       {/* ── Always-on modals ── */}
@@ -2114,8 +1520,6 @@ export default function Step4Generation() {
           onRegenerate={(feedback) => handleRegenerateWithFeedback(regenModal.pageNumber, feedback)}
         />
       )}
-
-      <ProjectsDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
 
       {showConfetti && null}
 
@@ -2184,46 +1588,30 @@ export default function Step4Generation() {
         <div className="px-10 max-w-6xl mx-auto flex items-center justify-between gap-4" style={{ height: 56 }}>
           <button type="button"
             onClick={() => {
-              if (activeStep4Tab === 'generate') setActiveStep(3);
-              else if (activeStep4Tab === 'layout') handleTabChange('generate');
-              else if (activeStep4Tab === 'dialogue') handleTabChange('layout');
-              else handleTabChange('dialogue');
+              if (activeStep4Tab === 'layout') setActiveStep(3);
+              else handleTabChange('layout');
             }}
             className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors flex-shrink-0">
             <span className="material-symbols-outlined text-base">arrow_back</span>
             <span className="hidden sm:inline">
-              {activeStep4Tab === 'generate' ? 'Edit Script' :
-               activeStep4Tab === 'layout' ? 'Generate' :
-               activeStep4Tab === 'dialogue' ? 'Layout' : 'Dialogue'}
+              {activeStep4Tab === 'layout' ? 'Edit Script' : 'Layout & Generate'}
             </span>
           </button>
 
           <button type="button"
             onClick={() => {
-              if (activeStep4Tab === 'generate') handleTabChange('layout');
-              else if (activeStep4Tab === 'layout') handleTabChange('dialogue');
-              else if (activeStep4Tab === 'dialogue') handleTabChange('export');
-              else handleApprove(4);
+              if (activeStep4Tab === 'layout') handleTabChange('dialogue');
+              else { handleApprove(4); setActiveStep(5); }
             }}
-            disabled={
-              (activeStep4Tab === 'generate' && isTabLocked('layout')) ||
-              (activeStep4Tab === 'export' && finishBtnState !== 'all-complete')
-            }
+            disabled={activeStep4Tab === 'layout' && isTabLocked('dialogue')}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
-              activeStep4Tab === 'export'
-                ? finishBtnState === 'all-complete'
-                  ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                : isTabLocked(
-                    activeStep4Tab === 'generate' ? 'layout' :
-                    activeStep4Tab === 'layout' ? 'dialogue' : 'export'
-                  )
+              activeStep4Tab === 'dialogue'
+                ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                : isTabLocked('dialogue')
                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                 : 'bg-primary text-on-primary hover:opacity-90'
             }`}>
-            {activeStep4Tab === 'export' ? '✓ Finish & Export' :
-             activeStep4Tab === 'generate' ? 'Go to Layout →' :
-             activeStep4Tab === 'layout' ? 'Go to Dialogue →' : 'Go to Export →'}
+            {activeStep4Tab === 'layout' ? 'Go to Dialogue →' : 'Continue to Export →'}
           </button>
         </div>
       </div>

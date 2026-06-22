@@ -4,20 +4,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import type { Step4PanelState } from '@/context/ComicGenerationContext';
 import { apiClient, bubblesApi } from '@/services/api';
-import type { BubbleDataPayload } from '@/services/api';
 import { exportWithDialogueAsZip } from '@/lib/bubbles/exportComposite';
 import type { CompositePanel } from '@/lib/bubbles/exportComposite';
-import DialogueEditor, { type BubbleType, type SingleBubble, type PanelBubbles } from '@/components/studio-steps/DialogueEditor';
-
-type Step5Tab = 'dialogue' | 'export';
-
-function genBubbleId() {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
-function stripBold(text: string) {
-  return text.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
-}
+import type { PanelBubbles } from '@/components/studio-steps/DialogueEditor';
 
 export default function Step5Export() {
   const {
@@ -36,13 +25,8 @@ export default function Step5Export() {
     copyProjectJson,
     downloadProjectJson,
     jsonCopied,
-    pageLayoutNames,
     setActiveStep,
   } = useComicGeneration();
-
-  const [activeTab, setActiveTab] = useState<Step5Tab>(() =>
-    comicPageMode === 'panel' ? 'dialogue' : 'export'
-  );
 
   const [panelBubbles, setPanelBubbles] = useState<Record<string, PanelBubbles>>({});
   const bubblesLoadedRef = useRef(false);
@@ -57,7 +41,6 @@ export default function Step5Export() {
   const [dialogueExportProgress, setDialogueExportProgress] = useState<{ done: number; total: number } | null>(null);
   const sessionStartRef = useRef(Date.now());
   const [panelReactions, setPanelReactions] = useState<Record<string, string>>({});
-  const [isDrawerOpen] = useState(false);
 
   // Load ratings and bubbles on mount
   useEffect(() => {
@@ -96,35 +79,6 @@ export default function Step5Export() {
       }
     }).catch(() => {});
   }, [projectId]);
-
-  const autoImportDialogue = useCallback(() => {
-    const bubbles: Record<string, PanelBubbles> = {};
-    for (const [, panels] of step4PanelsByPage) {
-      for (const p of panels) {
-        const text = stripBold(p.dialogueSfx ?? '');
-        if (text && text !== 'No dialogue/SFX provided.') {
-          const isSfx = /^<.+>$/.test(text.trim());
-          const isThought = text.startsWith('*');
-          const bubbleType: BubbleType = isSfx ? 'sfx' : isThought ? 'thought' : 'speech';
-          const tailDir = bubbleType === 'sfx' ? 'none' as const : 'down-left' as const;
-          const sfxRotation = isSfx ? Math.round((Math.random() * 20 - 10)) : 0;
-          const defaultFontSize = isSfx ? 24 : isThought ? 12 : 13;
-          const newBubble: SingleBubble = {
-            id: genBubbleId(),
-            dialogue: text, bubbleType, tailDir,
-            bubblePosition: { x: 0.5, y: 0.3 },
-            bubbleSize: { w: isSfx ? 180 : 160, h: isSfx ? 90 : 80 },
-            fontSize: defaultFontSize,
-            rotation: sfxRotation,
-            opacity: 1,
-            zIndex: 0,
-          };
-          bubbles[p.id] = [newBubble];
-        }
-      }
-    }
-    setPanelBubbles((prev) => ({ ...prev, ...bubbles }));
-  }, [step4PanelsByPage]);
 
   const handleRatingSubmit = useCallback(async (stars: number, positive: string, negative: string) => {
     const elapsed = Math.round((Date.now() - sessionStartRef.current) / 1000);
@@ -182,98 +136,17 @@ export default function Step5Export() {
     (s) => (s as Step4PanelState).status === 'success' && (s as Step4PanelState).imageUrl
   );
 
-  const panelsWithDialogue = (() => {
-    let count = 0;
-    for (const bs of Object.values(panelBubbles)) {
-      if (bs.some((b) => {
-        const t = b.dialogue?.trim() ?? '';
-        return t !== '' && t.toUpperCase() !== 'NONE';
-      })) count++;
-    }
-    return count;
-  })();
-
-  const allPanels = step4PanelsByPage.flatMap(([, panels]) => panels);
-
   return (
     <section className="text-on-surface pb-20">
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-4 px-1 pt-1 mb-2">
+      <div className="flex flex-wrap items-start justify-between gap-4 px-1 pt-1 mb-6">
         <div>
           <h2 className="text-2xl font-bold text-on-surface">Export</h2>
-          <p className="text-sm text-on-surface-variant mt-1">
-            {comicPageMode === 'panel' ? 'Add dialogue bubbles and export your comic' : 'Export your finished comic'}
-          </p>
+          <p className="text-sm text-on-surface-variant mt-1">Rate your experience and download your comic</p>
         </div>
       </div>
 
-      {/* ── Tab Bar ── */}
-      <div className="border-b border-gray-200 mb-6">
-        <div className="flex items-center gap-8">
-          {(
-            [
-              { id: 'dialogue' as Step5Tab, label: '💬 Dialogue' },
-              { id: 'export' as Step5Tab, label: '⬇ Export' },
-            ] as const
-          )
-          .filter((tab) => !(tab.id === 'dialogue' && comicPageMode !== 'panel'))
-          .map((tab) => {
-            const active = activeTab === tab.id;
-            let badgeText: string | null = null;
-            let badgeVariant: 'complete' | 'progress' | 'gray' = 'gray';
-            if (tab.id === 'dialogue') {
-              if (panelsWithDialogue > 0) {
-                badgeText = `${panelsWithDialogue}/${allPanels.length}`; badgeVariant = 'progress';
-              } else {
-                badgeText = 'Optional';
-              }
-            } else {
-              badgeText = hasImages ? 'Ready →' : 'Waiting'; badgeVariant = hasImages ? 'complete' : 'gray';
-            }
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`relative pb-3 text-sm font-semibold transition-colors whitespace-nowrap ${
-                  active ? 'text-on-surface border-b-2 border-primary' : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                {tab.label}
-                {badgeText && (
-                  <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    badgeVariant === 'complete' ? 'bg-emerald-100 text-emerald-700' :
-                    badgeVariant === 'progress' ? 'bg-blue-100 text-blue-700' :
-                    'bg-gray-100 text-gray-500'
-                  }`}>{badgeText}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ═══════════ DIALOGUE TAB ═══════════ */}
-      {activeTab === 'dialogue' && (
-        <DialogueEditor
-          panelsByPage={step4PanelsByPage}
-          panelStates={step4.data?.panelStates ?? {}}
-          panelBubbles={panelBubbles}
-          pageLayoutNames={pageLayoutNames}
-          onSaveBubbles={(panelId, bubbles) => {
-            setPanelBubbles((prev) => ({ ...prev, [panelId]: bubbles }));
-            if (projectId) {
-              bubblesApi.upsert(panelId, projectId, bubbles as BubbleDataPayload[]).catch(() => {});
-            }
-          }}
-          onExport={() => setActiveTab('export')}
-          onAutoImport={autoImportDialogue}
-        />
-      )}
-
-      {/* ═══════════ EXPORT TAB ═══════════ */}
-      {activeTab === 'export' && (
-        <div className="space-y-8">
+      <div className="space-y-8">
 
           {/* Rating section */}
           <div className="rounded-3xl bg-surface-container-low border border-outline-variant/10 p-6 space-y-5">
@@ -426,44 +299,28 @@ export default function Step5Export() {
             </button>
           </div>
         </div>
-      )}
 
       {/* ── Bottom bar ── */}
       <div className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
         style={{ left: 'var(--studio-sidebar-width)' }}>
         <div className="px-10 max-w-6xl mx-auto flex items-center justify-between gap-4" style={{ height: 56 }}>
           <button type="button"
-            onClick={() => {
-              if (activeTab === 'dialogue') setActiveStep(4);
-              else if (comicPageMode === 'panel') setActiveTab('dialogue');
-              else setActiveStep(4);
-            }}
+            onClick={() => setActiveStep(4)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors flex-shrink-0">
             <span className="material-symbols-outlined text-base">arrow_back</span>
-            <span className="hidden sm:inline">
-              {activeTab === 'dialogue' || comicPageMode !== 'panel' ? 'Generate' : 'Dialogue'}
-            </span>
+            <span className="hidden sm:inline">Image Generation</span>
           </button>
 
           <button type="button"
-            onClick={() => {
-              if (activeTab === 'dialogue') setActiveTab('export');
-              else handleApprove(5);
-            }}
-            disabled={activeTab === 'export' && !hasImages}
+            onClick={() => handleApprove(5)}
+            disabled={!hasImages}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
-              activeTab === 'export' && !hasImages
-                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                : activeTab === 'export'
-                  ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                  : 'bg-primary text-on-primary hover:opacity-90'
+              !hasImages ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600'
             }`}>
-            {activeTab === 'dialogue' ? 'Go to Export →' : '✓ Finish & Export'}
+            ✓ Finish &amp; Export
           </button>
         </div>
       </div>
-
-      {isDrawerOpen && null}
     </section>
   );
 }
