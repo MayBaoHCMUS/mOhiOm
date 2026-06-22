@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import type { Step4Panel, PanelVersion } from '@/context/ComicGenerationContext';
-import { bubblesApi } from '@/services/api';
+import { bubblesApi, comicLayoutApi } from '@/services/api';
 import type { BubbleDataPayload } from '@/services/api';
 import DialogueEditor, { type PanelBubbles, type SingleBubble, type BubbleType } from '@/components/studio-steps/DialogueEditor';
 import Markdown from '@/components/Markdown';
@@ -521,231 +521,7 @@ function GenerationProgressBar({
       </p>
     </div>
   );
-}
-
-// ── Individual panel card (panel-by-panel mode) ───────────────────────────────
-type PanelReaction = 'love' | 'good' | 'neutral' | 'bad';
-
-function PanelCard({
-  panel,
-  state,
-  reaction,
-  approved,
-  onGenerate,
-  onReaction,
-  onApprove,
-}: {
-  panel: Step4Panel;
-  state: { status: string; imageUrl: string | null; error: string | null } | null;
-  reaction: PanelReaction | null;
-  approved: boolean;
-  onGenerate: () => void;
-  onReaction: (r: PanelReaction) => void;
-  onApprove: () => void;
-}) {
-  const status = state?.status ?? 'idle';
-  const imageUrl = state?.imageUrl ?? null;
-  const hasImage = !!imageUrl;
-  const isLoading = status === 'loading';
-  const isError = status === 'error';
-  const [lightboxOpen, setLightboxOpen] = useState(false);
-
-  const shotLabel = (panel.shotType ?? 'panel').toUpperCase();
-  const PANEL_REACTIONS: { value: PanelReaction; emoji: string; label: string }[] = [
-    { value: 'love', emoji: '😍', label: 'Love' },
-    { value: 'good', emoji: '👍', label: 'Good' },
-    { value: 'neutral', emoji: '😐', label: 'Okay' },
-    { value: 'bad', emoji: '👎', label: 'Poor' },
-  ];
-
-  return (
-    <>
-    <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-low overflow-hidden flex flex-col" style={{ height: 280 }}>
-
-      {/* ── Image area — flex:1 fills remaining height after 90px footer ── */}
-      <div className="relative flex-1 overflow-hidden bg-surface-container group">
-        {hasImage ? (
-          <>
-            <img src={imageUrl!} alt={`Panel ${panel.panelNumber}`} className="w-full h-full object-cover" />
-            {/* Hover overlay: "View full" lightbox trigger */}
-            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-colors duration-200 flex items-center justify-center pointer-events-none group-hover:pointer-events-auto">
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
-                className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/60 text-white text-xs font-semibold backdrop-blur-sm hover:bg-black/80"
-              >
-                🔍 View full
-              </button>
-            </div>
-            {/* Status badge */}
-            <span className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/90 text-white">
-              <span className="material-symbols-outlined text-[10px]">check</span>
-              Generated
-            </span>
-            {approved && (
-              <span className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/90 text-white">
-                <span className="material-symbols-outlined text-[10px]">thumb_up</span>
-                Approved
-              </span>
-            )}
-          </>
-        ) : isLoading ? (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-on-surface-variant">
-            <span className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-            <span className="text-xs">Generating…</span>
-          </div>
-        ) : isError ? (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2 px-4 text-center">
-            <span className="material-symbols-outlined text-2xl text-red-400">error</span>
-            <p className="text-xs text-red-400 font-semibold">Generation failed</p>
-          </div>
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2 px-4 text-center">
-            <span className="material-symbols-outlined text-2xl opacity-20">crop_original</span>
-            <p className="text-xs text-on-surface-variant">Not generated yet</p>
-          </div>
-        )}
-      </div>
-
-      {/* ── Footer — 3 rows, always exactly 90px ── */}
-      <div className="flex-none flex flex-col justify-between px-3 py-2" style={{ height: 90 }}>
-
-        {/* Row 1 — Metadata */}
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-on-surface flex items-center gap-1">
-            Pg.{panel.pageNumber} · Panel {panel.panelNumber}
-            {approved && <span className="text-primary text-[10px]">✓</span>}
-          </span>
-          <span className="text-[10px] font-bold text-on-surface-variant tracking-wider uppercase">{shotLabel}</span>
-        </div>
-
-        {/* Row 2 — Feedback / status */}
-        <div className="flex items-center min-h-0">
-          {hasImage ? (
-            approved && reaction ? (
-              <span className="text-[11px] text-on-surface-variant flex items-center gap-1">
-                You rated:
-                <span className="text-base leading-none ml-0.5">
-                  {PANEL_REACTIONS.find((r) => r.value === reaction)?.emoji}
-                </span>
-              </span>
-            ) : (
-              <div className="flex items-center gap-1">
-                {PANEL_REACTIONS.map((r) => (
-                  <button
-                    key={r.value}
-                    type="button"
-                    title={r.label}
-                    onClick={() => onReaction(r.value)}
-                    className={`text-base leading-none transition-transform hover:scale-125 ${
-                      reaction === r.value
-                        ? 'scale-110 ring-1 ring-primary/40 rounded-full'
-                        : 'opacity-60 hover:opacity-100'
-                    }`}
-                  >
-                    {r.emoji}
-                  </button>
-                ))}
-              </div>
-            )
-          ) : isLoading ? (
-            <span className="text-[10px] text-on-surface-variant/60 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full border border-primary/40 border-t-primary animate-spin" />
-              Generating…
-            </span>
-          ) : isError ? (
-            <span className="text-[10px] text-red-400 font-medium">⚠ Generation failed</span>
-          ) : (
-            <span className="text-[10px] text-on-surface-variant">○ Not generated yet</span>
-          )}
-        </div>
-
-        {/* Row 3 — Actions */}
-        <div className="flex items-center justify-between gap-2">
-          {hasImage ? (
-            <>
-              <button
-                type="button"
-                onClick={onGenerate}
-                disabled={isLoading}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border border-outline-variant/20 bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors disabled:opacity-40 whitespace-nowrap"
-              >
-                <span className="material-symbols-outlined text-[11px]">refresh</span>
-                {approved ? 'Regen (revokes)' : 'Regen'}
-              </button>
-              <button
-                type="button"
-                onClick={onApprove}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors whitespace-nowrap ${
-                  approved
-                    ? 'bg-primary text-on-primary'
-                    : 'border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[11px]">{approved ? 'check_circle' : 'check'}</span>
-                {approved ? 'Approved' : 'Approve'}
-              </button>
-            </>
-          ) : isError ? (
-            <>
-              <button
-                type="button"
-                onClick={onGenerate}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors flex-shrink-0"
-              >
-                <span className="material-symbols-outlined text-[11px]">refresh</span>
-                Retry
-              </button>
-              {state?.error && (
-                <span className="text-[10px] text-red-400 truncate text-right" title={state.error}>
-                  {state.error}
-                </span>
-              )}
-            </>
-          ) : !isLoading ? (
-            <button
-              type="button"
-              onClick={onGenerate}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-            >
-              <span className="material-symbols-outlined text-[11px]">bolt</span>
-              Generate this panel
-            </button>
-          ) : null}
-        </div>
-
-      </div>
-    </div>
-
-    {/* ── Lightbox: full uncropped image ── */}
-    {lightboxOpen && imageUrl && (
-      <div
-        className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4"
-        onClick={() => setLightboxOpen(false)}
-      >
-        <button
-          type="button"
-          onClick={() => setLightboxOpen(false)}
-          className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
-        >
-          <span className="material-symbols-outlined text-white text-xl">close</span>
-        </button>
-        <img
-          src={imageUrl}
-          alt={`Panel ${panel.panelNumber} full view`}
-          className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl"
-          onClick={(e) => e.stopPropagation()}
-        />
-        <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/60 text-sm whitespace-nowrap">
-          Pg.{panel.pageNumber} · Panel {panel.panelNumber} · {shotLabel}
-        </p>
-      </div>
-    )}
-    </>
-  );
-}
-
-// ── Layout template constants (mirrors backend LAYOUT_TEMPLATES) ──────────────
+}// ── Layout template constants (mirrors backend LAYOUT_TEMPLATES) ──────────────
 
 const TEMPLATES_BY_COUNT: Record<number, string[]> = {
   1: ['splash'],
@@ -782,38 +558,372 @@ const LAYOUT_SVGS: Record<string, React.ReactNode> = {
   grid_2x3:      <><rect x="2"  y="2"  width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="2"  width="20" height="17" rx="1" fill="currentColor"/><rect x="2"  y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="2"  y="44" width="20" height="18" rx="1" fill="currentColor"/><rect x="26" y="44" width="20" height="18" rx="1" fill="currentColor"/></>,
 };
 
-function LayoutTemplatePicker({
+// Panel bounding boxes in 48×64 coordinate space — mirrors LAYOUT_SVGS rect positions
+const LAYOUT_PANEL_RECTS: Record<string, Array<{ x: number; y: number; w: number; h: number }>> = {
+  splash:        [{ x:2,  y:2,  w:44, h:60 }],
+  stacked:       [{ x:2,  y:2,  w:44, h:28 }, { x:2,  y:34, w:44, h:28 }],
+  side_by_side:  [{ x:2,  y:2,  w:20, h:60 }, { x:26, y:2,  w:20, h:60 }],
+  three_rows:    [{ x:2,  y:2,  w:44, h:17 }, { x:2,  y:23, w:44, h:17 }, { x:2,  y:44, w:44, h:18 }],
+  top_wide:      [{ x:2,  y:2,  w:44, h:28 }, { x:2,  y:34, w:20, h:28 }, { x:26, y:34, w:20, h:28 }],
+  bottom_wide:   [{ x:2,  y:2,  w:20, h:28 }, { x:26, y:2,  w:20, h:28 }, { x:2,  y:34, w:44, h:28 }],
+  grid_2x2:      [{ x:2,  y:2,  w:20, h:28 }, { x:26, y:2,  w:20, h:28 }, { x:2,  y:34, w:20, h:28 }, { x:26, y:34, w:20, h:28 }],
+  top_wide_3:    [{ x:2,  y:2,  w:44, h:28 }, { x:2,  y:34, w:12, h:28 }, { x:18, y:34, w:12, h:28 }, { x:34, y:34, w:12, h:28 }],
+  bottom_wide_3: [{ x:2,  y:2,  w:12, h:28 }, { x:18, y:2,  w:12, h:28 }, { x:34, y:2,  w:12, h:28 }, { x:2,  y:34, w:44, h:28 }],
+  four_rows:     [{ x:2,  y:2,  w:44, h:12 }, { x:2,  y:18, w:44, h:12 }, { x:2,  y:34, w:44, h:12 }, { x:2,  y:50, w:44, h:12 }],
+  wide_2x2:      [{ x:2,  y:2,  w:44, h:17 }, { x:2,  y:23, w:20, h:17 }, { x:26, y:23, w:20, h:17 }, { x:2,  y:44, w:20, h:18 }, { x:26, y:44, w:20, h:18 }],
+  '2x2_wide':    [{ x:2,  y:2,  w:20, h:17 }, { x:26, y:2,  w:20, h:17 }, { x:2,  y:23, w:20, h:17 }, { x:26, y:23, w:20, h:17 }, { x:2,  y:44, w:44, h:18 }],
+  grid_3x2:      [{ x:2,  y:2,  w:12, h:28 }, { x:18, y:2,  w:12, h:28 }, { x:34, y:2,  w:12, h:28 }, { x:2,  y:34, w:12, h:28 }, { x:18, y:34, w:12, h:28 }, { x:34, y:34, w:12, h:28 }],
+  grid_2x3:      [{ x:2,  y:2,  w:20, h:17 }, { x:26, y:2,  w:20, h:17 }, { x:2,  y:23, w:20, h:17 }, { x:26, y:23, w:20, h:17 }, { x:2,  y:44, w:20, h:18 }, { x:26, y:44, w:20, h:18 }],
+};
+
+function LayoutPickerPanel({
   panelCount,
   selectedLayout,
   onSelect,
+  suggestion,
+  isSuggLoading,
+  onGetSuggestion,
 }: {
   panelCount: number;
   selectedLayout: string;
   onSelect: (name: string) => void;
+  suggestion: { suggested: string; reason: string } | null;
+  isSuggLoading: boolean;
+  onGetSuggestion: () => void;
 }) {
   const options = TEMPLATES_BY_COUNT[panelCount] ?? [];
-  if (options.length <= 1) return null;
 
   return (
-    <div className="flex items-center gap-1 flex-wrap">
-      <span className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider mr-1">Layout</span>
-      {options.map((name) => (
-        <button
-          key={name}
-          type="button"
-          title={LAYOUT_DISPLAY_NAMES_MAP[name] ?? name}
-          onClick={() => onSelect(name)}
-          className={`w-8 h-[42px] rounded-lg border-2 flex items-center justify-center transition-all ${
-            selectedLayout === name
-              ? 'border-primary text-primary bg-primary/10'
-              : 'border-outline-variant/30 text-on-surface-variant/40 hover:border-primary/40 hover:text-primary/60'
-          }`}
-        >
-          <svg viewBox="0 0 48 64" className="w-5 h-[27px]" fill="none" xmlns="http://www.w3.org/2000/svg">
-            {LAYOUT_SVGS[name] ?? <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>}
-          </svg>
+    <div className="space-y-3">
+      {/* AI Suggest button */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button type="button" onClick={onGetSuggestion} disabled={isSuggLoading}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 transition-colors disabled:opacity-50">
+          {isSuggLoading
+            ? <><span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />Thinking…</>
+            : '✨ AI Suggest Layout'}
         </button>
-      ))}
+        {suggestion && (
+          <span className="text-xs text-on-surface-variant">
+            → <span className="font-semibold text-on-surface">{LAYOUT_DISPLAY_NAMES_MAP[suggestion.suggested] ?? suggestion.suggested}</span>
+          </span>
+        )}
+      </div>
+      {suggestion?.reason && (
+        <p className="text-[11px] text-on-surface-variant bg-surface-container px-3 py-2 rounded-xl leading-relaxed">
+          💡 {suggestion.reason}
+        </p>
+      )}
+
+      {/* Template card grid */}
+      {options.length > 0 && (
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+          {options.map((name) => {
+            const isSelected = selectedLayout === name;
+            const isSuggested = suggestion?.suggested === name && !isSelected;
+            return (
+              <button key={name} type="button" onClick={() => onSelect(name)}
+                className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${
+                  isSelected
+                    ? 'border-primary bg-primary/10'
+                    : isSuggested
+                    ? 'border-primary/40 bg-primary/5'
+                    : 'border-outline-variant/20 hover:border-primary/30 hover:bg-surface-container-low'
+                }`}>
+                {isSelected && (
+                  <span className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-primary flex items-center justify-center">
+                    <span className="text-white text-[8px] font-bold leading-none">✓</span>
+                  </span>
+                )}
+                {isSuggested && (
+                  <span className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-primary/40 flex items-center justify-center">
+                    <span className="text-white text-[8px] font-bold leading-none">✨</span>
+                  </span>
+                )}
+                <svg viewBox="0 0 48 64" className="w-8 h-[42px]" fill="none" xmlns="http://www.w3.org/2000/svg"
+                  style={{ color: isSelected ? 'var(--color-primary)' : 'var(--color-outline-variant)' }}>
+                  {LAYOUT_SVGS[name] ?? <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>}
+                </svg>
+                <span className="text-[10px] font-semibold text-on-surface-variant leading-tight text-center line-clamp-1">
+                  {LAYOUT_DISPLAY_NAMES_MAP[name] ?? name}
+                </span>
+                <span className="text-[9px] text-outline">{panelCount}p</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+// ── Canvas studio: page canvas showing panel slots ────────────────────────────
+function LayoutPageCanvas({
+  panels,
+  panelStates,
+  layoutName,
+  onGeneratePanel,
+}: {
+  panels: Step4Panel[];
+  panelStates: Record<string, { status: string; imageUrl: string | null; error: string | null } | null>;
+  layoutName: string;
+  onGeneratePanel: (panel: Step4Panel) => void;
+}) {
+  const rects = LAYOUT_PANEL_RECTS[layoutName] ?? [];
+  return (
+    <div style={{ flex: 1, background: '#E8E8E8', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 24, paddingBottom: 24, overflow: 'auto' }}>
+      <div style={{ position: 'relative', width: 360, height: 480, background: 'white', boxShadow: '0 4px 24px rgba(0,0,0,0.18)', flexShrink: 0 }}>
+        {panels.map((panel, idx) => {
+          const rect = rects[idx];
+          if (!rect) return null;
+          const ps = panelStates[panel.id] ?? null;
+          const imageUrl = ps?.imageUrl ?? null;
+          const isLoading = ps?.status === 'loading';
+          const isError = ps?.status === 'error';
+          const left   = `${(rect.x / 48) * 100}%`;
+          const top    = `${(rect.y / 64) * 100}%`;
+          const width  = `${(rect.w / 48) * 100}%`;
+          const height = `${(rect.h / 64) * 100}%`;
+          return (
+            <div key={panel.id} style={{ position: 'absolute', left, top, width, height, border: '2px solid #ddd', overflow: 'hidden', boxSizing: 'border-box' }}>
+              {imageUrl ? (
+                <div className="relative w-full h-full group">
+                  <img src={imageUrl} alt={`Panel ${panel.panelNumber}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center pointer-events-none group-hover:pointer-events-auto">
+                    <button type="button" onClick={() => onGeneratePanel(panel)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-2 py-1 rounded-full bg-black/60 text-white text-[10px] font-bold backdrop-blur-sm">
+                      ↺ Regen
+                    </button>
+                  </div>
+                </div>
+              ) : isLoading ? (
+                <div className="w-full h-full flex flex-col items-center justify-center gap-1" style={{ background: '#F3F4F6' }}>
+                  <span className="w-5 h-5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                  <span style={{ fontSize: 9, color: '#6B7280' }}>Generating…</span>
+                </div>
+              ) : isError ? (
+                <div className="w-full h-full flex flex-col items-center justify-center gap-1 cursor-pointer" style={{ background: '#FEF2F2' }} onClick={() => onGeneratePanel(panel)}>
+                  <span style={{ fontSize: 14 }}>⚠</span>
+                  <span style={{ fontSize: 9, color: '#EF4444', fontWeight: 700 }}>Retry</span>
+                </div>
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors hover:bg-primary/5" style={{ background: '#F9FAFB' }} onClick={() => onGeneratePanel(panel)}>
+                  <span style={{ fontSize: 11, color: '#9CA3AF' }}>P{panel.panelNumber}</span>
+                  <span className="text-primary font-bold" style={{ fontSize: 9, opacity: 0.6 }}>⚡ Generate</span>
+                </div>
+              )}
+              <span style={{ position: 'absolute', top: 3, left: 3, background: 'rgba(0,0,0,0.5)', color: 'white', fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 3, lineHeight: 1.4, pointerEvents: 'none' }}>
+                P{panel.panelNumber}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Canvas studio: right sidebar ──────────────────────────────────────────────
+function LayoutStudioSidebar({
+  pageNumber,
+  totalPages,
+  panels,
+  panelStates,
+  panelStats,
+  isImageGenerating,
+  isPaused,
+  comicPageMode,
+  onSetPageMode,
+  onGenerateAll,
+  onPause,
+  onResume,
+  sfxMode,
+  onSetSfxMode,
+  layoutName,
+  onSelectLayout,
+  suggestion,
+  isSuggLoading,
+  onGetSuggestion,
+  artStyle,
+}: {
+  pageNumber: number;
+  totalPages: number;
+  panels: Step4Panel[];
+  panelStates: Record<string, { status: string; imageUrl: string | null; error: string | null } | null>;
+  panelStats: { total: number; done: number; generating: number; errors: number; pending: number };
+  isImageGenerating: boolean;
+  isPaused: boolean;
+  comicPageMode: 'page' | 'panel';
+  onSetPageMode: (m: 'page' | 'panel') => void;
+  onGenerateAll: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  sfxMode: 'auto' | 'manual';
+  onSetSfxMode: (m: 'auto' | 'manual') => void;
+  layoutName: string;
+  onSelectLayout: (name: string) => void;
+  suggestion: { suggested: string; reason: string } | null;
+  isSuggLoading: boolean;
+  onGetSuggestion: () => void;
+  artStyle: string;
+}) {
+  const options = TEMPLATES_BY_COUNT[panels.length] ?? [];
+  const isAllDone = panelStats.total > 0 && panelStats.done >= panelStats.total && !isImageGenerating;
+  const donePct = panelStats.total > 0 ? Math.round((panelStats.done / panelStats.total) * 100) : 0;
+
+  return (
+    <div style={{ width: 280, flexShrink: 0, borderLeft: '1px solid #E5E7EB', background: '#FFFFFF', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+
+        {/* ── LAYOUT TEMPLATE ── (mirrors "DRAG TO ADD BUBBLE" section) */}
+        <div style={{ padding: '16px 12px 12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#374151', textTransform: 'uppercase', margin: 0 }}>
+              Layout Template
+            </p>
+            <button type="button" onClick={onGetSuggestion} disabled={isSuggLoading}
+              style={{ fontSize: 11, color: '#4F46E5', fontWeight: 600, background: 'none', border: 'none', cursor: isSuggLoading ? 'default' : 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 3, opacity: isSuggLoading ? 0.5 : 1 }}>
+              {isSuggLoading
+                ? <><span className="w-3 h-3 border border-gray-300 border-t-indigo-600 rounded-full animate-spin" />Thinking…</>
+                : '✨ AI Suggest'}
+            </button>
+          </div>
+          {suggestion?.reason && (
+            <p style={{ fontSize: 11, color: '#6B7280', background: '#F3F4F6', borderRadius: 8, padding: '6px 10px', marginBottom: 10, lineHeight: 1.5 }}>
+              💡 {suggestion.reason}
+            </p>
+          )}
+          {/* Template cards — same visual style as bubble type buttons */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+            {options.map((name) => {
+              const isSelected = layoutName === name;
+              const isSugg = suggestion?.suggested === name && !isSelected;
+              return (
+                <button key={name} type="button" onClick={() => onSelectLayout(name)}
+                  style={{
+                    position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    gap: 3, padding: '8px 4px 6px', borderRadius: 10,
+                    border: `2px solid ${isSelected ? '#4F46E5' : isSugg ? 'rgba(79,70,229,0.4)' : '#E5E7EB'}`,
+                    background: isSelected ? '#EEF2FF' : isSugg ? 'rgba(79,70,229,0.04)' : '#F9FAFB',
+                    cursor: 'pointer', transition: 'all 0.12s',
+                  }}>
+                  {isSelected && (
+                    <span style={{ position: 'absolute', top: 3, right: 3, width: 12, height: 12, borderRadius: '50%', background: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span className="material-symbols-outlined text-white" style={{ fontSize: 8 }}>check</span>
+                    </span>
+                  )}
+                  <svg viewBox="0 0 48 64" style={{ width: 28, height: 37, color: isSelected ? '#4F46E5' : '#9CA3AF' }} fill="none">
+                    {LAYOUT_SVGS[name] ?? <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>}
+                  </svg>
+                  <span style={{ fontSize: 9, fontWeight: 600, color: isSelected ? '#4F46E5' : '#6B7280', lineHeight: 1.2, textAlign: 'center', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {LAYOUT_DISPLAY_NAMES_MAP[name] ?? name}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ height: 1, background: '#E5E7EB' }} />
+
+        {/* ── Generate action button ── (mirrors "Auto-import from script") */}
+        <div style={{ padding: '12px 12px' }}>
+          {isAllDone ? (
+            <div style={{ borderRadius: 10, background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '10px 14px', textAlign: 'center' }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#065F46', margin: 0 }}>✓ All {panelStats.total} panels generated!</p>
+            </div>
+          ) : isImageGenerating && !isPaused ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ background: '#F9FAFB', borderRadius: 10, padding: '10px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#111827' }}>Generating panels…</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#22C55E', fontVariantNumeric: 'tabular-nums' }}>{donePct}%</span>
+                </div>
+                <div style={{ height: 4, borderRadius: 2, background: '#E5E7EB', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', background: '#22C55E', width: `${donePct}%`, transition: 'width 0.5s', borderRadius: 2 }} />
+                </div>
+                <p style={{ fontSize: 10, color: '#6B7280', marginTop: 6, marginBottom: 0 }}>{panelStats.done}/{panelStats.total} panels done</p>
+              </div>
+              <button type="button" onClick={onPause}
+                style={{ width: '100%', height: 44, borderRadius: 10, border: '1.5px solid #4F46E5', background: 'transparent', color: '#4F46E5', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>pause</span>
+                Pause Generation
+              </button>
+            </div>
+          ) : isPaused ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 12px' }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: '#92400E', margin: 0 }}>Paused — {panelStats.done}/{panelStats.total} done</p>
+              </div>
+              <button type="button" onClick={onResume}
+                style={{ width: '100%', height: 44, borderRadius: 10, border: '1.5px solid #4F46E5', background: 'transparent', color: '#4F46E5', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>play_arrow</span>
+                Resume Generation
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {panelStats.done > 0 && (
+                <p style={{ fontSize: 11, color: '#6B7280', margin: 0 }}>
+                  <span style={{ color: '#22C55E', fontWeight: 600 }}>{panelStats.done}/{panelStats.total}</span> panels already generated
+                </p>
+              )}
+              <button type="button" onClick={onGenerateAll}
+                style={{ width: '100%', height: 44, borderRadius: 10, border: '1.5px solid #4F46E5', background: 'transparent', color: '#4F46E5', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>bolt</span>
+                {panelStats.done === 0 ? 'Generate All Panels' : 'Regen Remaining'}
+              </button>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+                <div style={{ flexShrink: 0, marginTop: 1 }}>
+                  <input type="checkbox" checked={sfxMode === 'manual'} onChange={(e) => onSetSfxMode(e.target.checked ? 'manual' : 'auto')} className="sr-only" />
+                  <div style={{ width: 14, height: 14, borderRadius: 3, border: `2px solid ${sfxMode === 'manual' ? '#4F46E5' : '#D1D5DB'}`, background: sfxMode === 'manual' ? '#4F46E5' : '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {sfxMode === 'manual' && <span className="material-symbols-outlined text-white" style={{ fontSize: 10 }}>check</span>}
+                  </div>
+                </div>
+                <p style={{ fontSize: 11, color: '#6B7280', lineHeight: 1.4, margin: 0 }}>Clean images (no embedded text)</p>
+              </label>
+              {/* Mode toggle — compact link */}
+              <button type="button" onClick={() => onSetPageMode(comicPageMode === 'panel' ? 'page' : 'panel')}
+                style={{ fontSize: 11, color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+                Switch to {comicPageMode === 'panel' ? 'Full Page' : 'Panel by Panel'} mode →
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div style={{ height: 1, background: '#E5E7EB' }} />
+
+        {/* ── PAGE SUMMARY ── (mirrors page summary section in DialogueEditor) */}
+        <div style={{ padding: '12px 12px 16px' }}>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#374151', textTransform: 'uppercase', marginBottom: 10 }}>
+            Page Summary
+            <span style={{ fontSize: 10, fontWeight: 400, color: '#9CA3AF', marginLeft: 6, textTransform: 'none', letterSpacing: 0 }}>
+              {pageNumber}/{totalPages}
+            </span>
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {panels.map((panel) => {
+              const ps = panelStates[panel.id] ?? null;
+              const hasImage = !!ps?.imageUrl;
+              const isLoading = ps?.status === 'loading';
+              const isError = ps?.status === 'error';
+              return (
+                <div key={panel.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                  <span style={{ marginTop: 10, flexShrink: 0 }} className={`w-2 h-2 rounded-full ${
+                    hasImage ? 'bg-emerald-500' : isLoading ? 'bg-amber-400 animate-pulse' : isError ? 'bg-red-400' : 'bg-gray-300'
+                  }`} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <PanelScriptCard panel={panel} artStyle={artStyle} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+      </div>
     </div>
   );
 }
@@ -835,8 +945,6 @@ export default function Step4Generation() {
     handleRegenerateWithFeedback,
     acceptPanelRegen,
     rejectPanelRegen,
-    copyProjectJson,
-    downloadProjectJson,
     artStyle,
     projectId,
     getCooldownSeconds,
@@ -863,12 +971,17 @@ export default function Step4Generation() {
   // ── Generation mode ───────────────────────────────────────────────────────
   type ComicPageMode = 'page' | 'panel';
   const [comicPageMode, setComicPageMode] = useState<ComicPageMode>('page');
-  const [approvedPanelIds, setApprovedPanelIds] = useState<Set<string>>(new Set());
-  const [panelItemReactions, setPanelItemReactions] = useState<Record<string, PanelReaction>>({});
 
   // ── Bubble dialogue state ─────────────────────────────────────────────────
   const [panelBubbles, setPanelBubbles] = useState<Record<string, PanelBubbles>>({});
   const bubblesLoadedRef = useRef(false);
+
+  // ── Layout suggestion state ───────────────────────────────────────────────
+  const [layoutSuggestions, setLayoutSuggestions] = useState<Record<number, { suggested: string; reason: string } | null>>({});
+  const [layoutSuggestLoading, setLayoutSuggestLoading] = useState<Record<number, boolean>>({});
+
+  // ── Canvas studio page navigation ─────────────────────────────────────────
+  const [studioPage, setStudioPage] = useState(1);
 
   // ── Tab navigation ────────────────────────────────────────────────────────
   type Step4Tab = 'layout' | 'dialogue';
@@ -924,6 +1037,25 @@ export default function Step4Generation() {
     }
     setPanelBubbles((prev) => ({ ...prev, ...bubbles }));
   }, [step4PanelsByPage]);
+
+  const handleSuggestLayout = useCallback(async (pageNumber: number, panels: Step4Panel[]) => {
+    setLayoutSuggestLoading((prev) => ({ ...prev, [pageNumber]: true }));
+    try {
+      const res = await comicLayoutApi.suggest({
+        panel_count: panels.length,
+        panels: panels.map((p) => ({ shot_type: p.shotType ?? undefined })),
+      });
+      setLayoutSuggestions((prev) => ({ ...prev, [pageNumber]: { suggested: res.data.suggested, reason: res.data.reason } }));
+      const knownTemplates = TEMPLATES_BY_COUNT[panels.length] ?? [];
+      if (knownTemplates.includes(res.data.suggested)) {
+        setPageLayout(pageNumber, res.data.suggested, panels);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setLayoutSuggestLoading((prev) => ({ ...prev, [pageNumber]: false }));
+    }
+  }, [setPageLayout]);
 
   // Auto-initialize layout selection for each page when panels first become available
   const hasInitializedLayoutsRef = useRef(false);
@@ -1170,6 +1302,74 @@ export default function Step4Generation() {
 
       {/* ═══════════ TAB 1 — LAYOUT & GENERATE ═══════════ */}
       {activeStep4Tab === 'layout' && (
+        comicPageMode === 'panel' && (state === 3 || state === 4 || state === 5) && step4PanelsByPage.length > 0 ? (
+          /* ── PANEL CANVAS STUDIO ── */
+          <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 360px)', minHeight: 560 }}>
+            {/* Page navigation bar */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 16px', borderBottom: '1px solid #E5E7EB', background: '#FAFAFA', flexShrink: 0 }}>
+              <button type="button"
+                onClick={() => setStudioPage((p) => Math.max(1, p - 1))}
+                disabled={studioPage <= 1}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                <span className="material-symbols-outlined text-sm">chevron_left</span>Prev
+              </button>
+              <div className="flex items-center gap-2">
+                {step4PanelsByPage.map(([pn]) => (
+                  <button key={pn} type="button" onClick={() => setStudioPage(pn)}
+                    className={`w-2 h-2 rounded-full transition-all ${studioPage === pn ? 'bg-primary scale-125' : 'bg-gray-300 hover:bg-gray-400'}`} />
+                ))}
+                <span className="text-xs text-on-surface-variant font-medium ml-1">
+                  Page {studioPage} of {step4PanelsByPage.length}
+                </span>
+              </div>
+              <button type="button"
+                onClick={() => setStudioPage((p) => Math.min(step4PanelsByPage.length, p + 1))}
+                disabled={studioPage >= step4PanelsByPage.length}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                Next<span className="material-symbols-outlined text-sm">chevron_right</span>
+              </button>
+            </div>
+            {/* Canvas + Sidebar */}
+            {(() => {
+              const currentPageEntry = step4PanelsByPage.find(([n]) => n === studioPage) ?? step4PanelsByPage[0];
+              const currentPageNum = currentPageEntry?.[0] ?? 1;
+              const currentPagePanels = currentPageEntry?.[1] ?? [];
+              const currentLayoutName = pageLayoutNames[currentPageNum] ?? TEMPLATES_BY_COUNT[currentPagePanels.length]?.[0] ?? 'stacked';
+              return (
+                <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+                  <LayoutPageCanvas
+                    panels={currentPagePanels}
+                    panelStates={step4.data?.panelStates ?? {}}
+                    layoutName={currentLayoutName}
+                    onGeneratePanel={(panel) => handleRegenerateSinglePanel(panel)}
+                  />
+                  <LayoutStudioSidebar
+                    pageNumber={currentPageNum}
+                    totalPages={step4PanelsByPage.length}
+                    panels={currentPagePanels}
+                    panelStates={step4.data?.panelStates ?? {}}
+                    panelStats={panelStats}
+                    isImageGenerating={isImageGenerating}
+                    isPaused={isPaused}
+                    comicPageMode={comicPageMode}
+                    onSetPageMode={setComicPageMode}
+                    onGenerateAll={handleStartPanelGeneration}
+                    onPause={() => setIsPaused(true)}
+                    onResume={() => setIsPaused(false)}
+                    sfxMode={sfxMode}
+                    onSetSfxMode={setSfxMode}
+                    layoutName={currentLayoutName}
+                    onSelectLayout={(name) => setPageLayout(currentPageNum, name, currentPagePanels)}
+                    suggestion={layoutSuggestions[currentPageNum] ?? null}
+                    isSuggLoading={layoutSuggestLoading[currentPageNum] ?? false}
+                    onGetSuggestion={() => handleSuggestLayout(currentPageNum, currentPagePanels)}
+                    artStyle={artStyle}
+                  />
+                </div>
+              );
+            })()}
+          </div>
+        ) : (
         <div className="space-y-6">
 
           {/* Generation Dashboard */}
@@ -1366,61 +1566,6 @@ export default function Step4Generation() {
             </div>
           )}
 
-          {/* Panel mode: per-page panel grids */}
-          {comicPageMode === 'panel' && (state === 3 || state === 4 || state === 5) && step4PanelsByPage.length > 0 && (
-            <div className="space-y-4">
-              {step4PanelsByPage.map(([pageNumber, panels]) => {
-                const chosenLayout = pageLayoutNames[pageNumber] ?? TEMPLATES_BY_COUNT[panels.length]?.[0] ?? 'stacked';
-                const hasDimensions = !!pagePanelDimensions[pageNumber];
-                return (
-                <div key={`page-${pageNumber}`} className="space-y-2">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <p className="text-xs font-bold uppercase tracking-wide text-on-surface-variant">Page {pageNumber}</p>
-                    <div className="flex items-center gap-2">
-                      <LayoutTemplatePicker
-                        panelCount={panels.length}
-                        selectedLayout={chosenLayout}
-                        onSelect={(name) => setPageLayout(pageNumber, name, panels)}
-                      />
-                      {chosenLayout && !hasDimensions && (
-                        <span className="text-[10px] text-on-surface-variant animate-pulse">setting…</span>
-                      )}
-                      {hasDimensions && (
-                        <span className="text-[10px] text-emerald-600 font-semibold">✓ sizes set</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {panels.map((panel, idx) => {
-                      const isLastOdd = panels.length % 2 === 1 && idx === panels.length - 1;
-                      const card = (
-                        <PanelCard
-                          panel={panel}
-                          state={step4.data?.panelStates?.[panel.id] ?? null}
-                          reaction={panelItemReactions[panel.id] ?? null}
-                          approved={approvedPanelIds.has(panel.id)}
-                          onGenerate={() => handleRegenerateSinglePanel(panel)}
-                          onReaction={(r) => setPanelItemReactions((prev) => ({ ...prev, [panel.id]: r }))}
-                          onApprove={() => setApprovedPanelIds((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(panel.id)) { next.delete(panel.id); } else { next.add(panel.id); }
-                            return next;
-                          })}
-                        />
-                      );
-                      return isLastOdd ? (
-                        <div key={panel.id} style={{ gridColumn: 'span 2', maxWidth: '50%', margin: '0 auto', width: '100%' }}>{card}</div>
-                      ) : (
-                        <React.Fragment key={panel.id}>{card}</React.Fragment>
-                      );
-                    })}
-                  </div>
-                </div>
-                );
-              })}
-            </div>
-          )}
-
           {/* Page mode: per-page images */}
           {comicPageMode === 'page' && (state === 3 || state === 4 || state === 5) && step4PanelsByPage.length > 0 && (
             <div className="space-y-6">
@@ -1489,6 +1634,7 @@ export default function Step4Generation() {
             </div>
           )}
         </div>
+        )
       )}
 
       {/* ═══════════ TAB 2 — DIALOGUE ═══════════ */}
