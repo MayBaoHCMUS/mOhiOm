@@ -1878,49 +1878,32 @@ export default function DialogueEditor({
       </div>
 
       {/* Page navigation bar */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '6px 16px', borderBottom: '1px solid var(--color-outline)', flexShrink: 0,
-        background: 'var(--color-surface-container-lowest)',
-      }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', borderBottom: '1px solid #E5E7EB', background: '#F8F9FA', flexShrink: 0 }}>
         <button type="button"
           onClick={() => { const idx = currentPageIdx - 1; if (idx >= 0) navigatePage(pageIds[idx]); }}
           disabled={currentPageIdx <= 0}
-          style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--color-outline)', background: 'none', cursor: currentPageIdx > 0 ? 'pointer' : 'default', opacity: currentPageIdx > 0 ? 1 : 0.35, fontSize: 12, color: 'var(--color-on-surface)' }}>
-          ← Page
+          style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: currentPageIdx > 0 ? 'pointer' : 'default', fontSize: 14, fontWeight: 500, color: currentPageIdx > 0 ? '#374151' : '#C9CCD0', padding: '4px 8px' }}>
+          <span style={{ fontSize: 16, lineHeight: 1 }}>‹</span> Prev
         </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-on-surface)' }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {pageIds.map(n => (
+              <button key={n} type="button" onClick={() => navigatePage(n)}
+                style={{ width: n === currentPage ? 12 : 8, height: n === currentPage ? 12 : 8, borderRadius: '50%', border: 'none', background: n === currentPage ? '#2563EB' : '#D1D5DB', cursor: 'pointer', padding: 0, transition: 'all 0.15s' }}
+              />
+            ))}
+          </div>
+          <span style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>
             {`Page ${currentPage} of ${pageIds.length}`}
           </span>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {pageIds.map(n => (
-                <button key={n} type="button" onClick={() => navigatePage(n)}
-                  style={{
-                    width: 8, height: 8, borderRadius: '50%', border: 'none',
-                    background: n === currentPage ? 'var(--color-primary)' : pageDotColor(n),
-                    cursor: 'pointer', padding: 0,
-                    transform: n === currentPage ? 'scale(1.4)' : 'scale(1)',
-                    transition: 'transform 0.15s',
-                  }}
-                />
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 8, fontSize: 11, color: 'var(--color-on-surface-variant)' }}>
-              <span><span style={{ color: '#1D9E75' }}>●</span> All done</span>
-              <span><span style={{ color: '#F59E0B' }}>◐</span> Partial</span>
-              <span><span style={{ color: 'var(--color-outline)' }}>○</span> None</span>
-            </div>
-          </div>
         </div>
 
         <button type="button"
           onClick={() => { const idx = currentPageIdx + 1; if (idx < pageIds.length) navigatePage(pageIds[idx]); }}
           disabled={currentPageIdx >= pageIds.length - 1}
-          style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--color-outline)', background: 'none', cursor: currentPageIdx < pageIds.length - 1 ? 'pointer' : 'default', opacity: currentPageIdx < pageIds.length - 1 ? 1 : 0.35, fontSize: 12, color: 'var(--color-on-surface)' }}>
-          Page →
+          style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: currentPageIdx < pageIds.length - 1 ? 'pointer' : 'default', fontSize: 14, fontWeight: 500, color: currentPageIdx < pageIds.length - 1 ? '#374151' : '#C9CCD0', padding: '4px 8px' }}>
+          Next <span style={{ fontSize: 16, lineHeight: 1 }}>›</span>
         </button>
       </div>
 

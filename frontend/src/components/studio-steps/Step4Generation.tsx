@@ -659,6 +659,17 @@ function LayoutPickerPanel({
 
 
 
+// ── Canvas studio: zoom constants ─────────────────────────────────────────────
+const LAYOUT_BASE_PAGE_W = 600;
+const LAYOUT_BASE_PAGE_H = 800;
+const LAYOUT_ZOOM_PRESETS = [0.5, 0.75, 1.0];
+function clampLayoutZoom(v: number) { return Math.max(0.25, Math.min(2.0, v)); }
+function computeLayoutFitZoom(viewW: number, viewH: number): number {
+  const scaleW = (viewW - 96) / LAYOUT_BASE_PAGE_W;
+  const scaleH = (viewH - 96) / LAYOUT_BASE_PAGE_H;
+  return Math.min(scaleW, scaleH, 1.0);
+}
+
 // ── Canvas studio: page canvas showing panel slots ────────────────────────────
 function LayoutPageCanvas({
   panels,
@@ -671,55 +682,131 @@ function LayoutPageCanvas({
   layoutName: string;
   onGeneratePanel: (panel: Step4Panel) => void;
 }) {
+  const [zoom, setZoom] = useState(0.75);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const canvasAreaRef = useRef<HTMLDivElement>(null);
+  const spaceDownRef = useRef(false);
+  const panStartRef = useRef<{ mx: number; my: number; ox: number; oy: number } | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); spaceDownRef.current = true; }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') { spaceDownRef.current = false; panStartRef.current = null; }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); };
+  }, []);
+
+  const onWheel = useCallback((e: React.WheelEvent) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setZoom(z => clampLayoutZoom(parseFloat((z + delta).toFixed(2))));
+  }, []);
+
   const rects = LAYOUT_PANEL_RECTS[layoutName] ?? [];
+
   return (
-    <div style={{ flex: 1, background: '#E8E8E8', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 24, paddingBottom: 24, overflow: 'auto' }}>
-      <div style={{ position: 'relative', width: 360, height: 480, background: 'white', boxShadow: '0 4px 24px rgba(0,0,0,0.18)', flexShrink: 0 }}>
-        {panels.map((panel, idx) => {
-          const rect = rects[idx];
-          if (!rect) return null;
-          const ps = panelStates[panel.id] ?? null;
-          const imageUrl = ps?.imageUrl ?? null;
-          const isLoading = ps?.status === 'loading';
-          const isError = ps?.status === 'error';
-          const left   = `${(rect.x / 48) * 100}%`;
-          const top    = `${(rect.y / 64) * 100}%`;
-          const width  = `${(rect.w / 48) * 100}%`;
-          const height = `${(rect.h / 64) * 100}%`;
-          return (
-            <div key={panel.id} style={{ position: 'absolute', left, top, width, height, border: '2px solid #ddd', overflow: 'hidden', boxSizing: 'border-box' }}>
-              {imageUrl ? (
-                <div className="relative w-full h-full group">
-                  <img src={imageUrl} alt={`Panel ${panel.panelNumber}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center pointer-events-none group-hover:pointer-events-auto">
-                    <button type="button" onClick={() => onGeneratePanel(panel)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-2 py-1 rounded-full bg-black/60 text-white text-[10px] font-bold backdrop-blur-sm">
-                      ↺ Regen
-                    </button>
-                  </div>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+      {/* Canvas viewport */}
+      <div ref={canvasAreaRef}
+        style={{ flex: 1, overflow: 'hidden', position: 'relative', background: '#E8E8E8', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 24 }}
+        onWheel={onWheel}
+        onMouseDown={(e) => {
+          if (!spaceDownRef.current) return;
+          e.preventDefault();
+          panStartRef.current = { mx: e.clientX, my: e.clientY, ox: panOffset.x, oy: panOffset.y };
+        }}
+        onMouseMove={(e) => {
+          if (!panStartRef.current) return;
+          setPanOffset({ x: panStartRef.current.ox + e.clientX - panStartRef.current.mx, y: panStartRef.current.oy + e.clientY - panStartRef.current.my });
+        }}
+        onMouseUp={() => { panStartRef.current = null; }}
+      >
+        <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`, transformOrigin: 'top center', flexShrink: 0 }}>
+          <div style={{ position: 'relative', width: LAYOUT_BASE_PAGE_W, height: LAYOUT_BASE_PAGE_H, background: 'white', boxShadow: '0 4px 24px rgba(0,0,0,0.18)' }}>
+            {panels.map((panel, idx) => {
+              const rect = rects[idx];
+              if (!rect) return null;
+              const ps = panelStates[panel.id] ?? null;
+              const imageUrl = ps?.imageUrl ?? null;
+              const isLoading = ps?.status === 'loading';
+              const isError = ps?.status === 'error';
+              const left   = `${(rect.x / 48) * 100}%`;
+              const top    = `${(rect.y / 64) * 100}%`;
+              const width  = `${(rect.w / 48) * 100}%`;
+              const height = `${(rect.h / 64) * 100}%`;
+              return (
+                <div key={panel.id} style={{ position: 'absolute', left, top, width, height, border: '2px solid #ddd', overflow: 'hidden', boxSizing: 'border-box' }}>
+                  {imageUrl ? (
+                    <div className="relative w-full h-full group">
+                      <img src={imageUrl} alt={`Panel ${panel.panelNumber}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center pointer-events-none group-hover:pointer-events-auto">
+                        <button type="button" onClick={() => onGeneratePanel(panel)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-2 py-1 rounded-full bg-black/60 text-white text-[10px] font-bold backdrop-blur-sm">
+                          ↺ Regen
+                        </button>
+                      </div>
+                    </div>
+                  ) : isLoading ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-1" style={{ background: '#F3F4F6' }}>
+                      <span className="w-5 h-5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                      <span style={{ fontSize: 9, color: '#6B7280' }}>Generating…</span>
+                    </div>
+                  ) : isError ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-1 cursor-pointer" style={{ background: '#FEF2F2' }} onClick={() => onGeneratePanel(panel)}>
+                      <span style={{ fontSize: 14 }}>⚠</span>
+                      <span style={{ fontSize: 9, color: '#EF4444', fontWeight: 700 }}>Retry</span>
+                    </div>
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors hover:bg-primary/5" style={{ background: '#F9FAFB' }} onClick={() => onGeneratePanel(panel)}>
+                      <span style={{ fontSize: 11, color: '#9CA3AF' }}>P{panel.panelNumber}</span>
+                      <span className="text-primary font-bold" style={{ fontSize: 9, opacity: 0.6 }}>⚡ Generate</span>
+                    </div>
+                  )}
+                  <span style={{ position: 'absolute', top: 3, left: 3, background: 'rgba(0,0,0,0.5)', color: 'white', fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 3, lineHeight: 1.4, pointerEvents: 'none' }}>
+                    P{panel.panelNumber}
+                  </span>
                 </div>
-              ) : isLoading ? (
-                <div className="w-full h-full flex flex-col items-center justify-center gap-1" style={{ background: '#F3F4F6' }}>
-                  <span className="w-5 h-5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                  <span style={{ fontSize: 9, color: '#6B7280' }}>Generating…</span>
-                </div>
-              ) : isError ? (
-                <div className="w-full h-full flex flex-col items-center justify-center gap-1 cursor-pointer" style={{ background: '#FEF2F2' }} onClick={() => onGeneratePanel(panel)}>
-                  <span style={{ fontSize: 14 }}>⚠</span>
-                  <span style={{ fontSize: 9, color: '#EF4444', fontWeight: 700 }}>Retry</span>
-                </div>
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors hover:bg-primary/5" style={{ background: '#F9FAFB' }} onClick={() => onGeneratePanel(panel)}>
-                  <span style={{ fontSize: 11, color: '#9CA3AF' }}>P{panel.panelNumber}</span>
-                  <span className="text-primary font-bold" style={{ fontSize: 9, opacity: 0.6 }}>⚡ Generate</span>
-                </div>
-              )}
-              <span style={{ position: 'absolute', top: 3, left: 3, background: 'rgba(0,0,0,0.5)', color: 'white', fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 3, lineHeight: 1.4, pointerEvents: 'none' }}>
-                P{panel.panelNumber}
-              </span>
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Zoom bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', padding: '6px 16px', borderTop: '1px solid var(--color-outline)', flexShrink: 0, background: 'var(--color-surface-container-lowest)' }}>
+        <button type="button" onClick={() => setZoom(z => clampLayoutZoom(parseFloat((z - 0.1).toFixed(2))))}
+          style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid var(--color-outline)', background: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--color-on-surface)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          −
+        </button>
+        {LAYOUT_ZOOM_PRESETS.map(z => (
+          <button key={z} type="button" onClick={() => setZoom(z)}
+            style={{ padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: zoom === z ? 700 : 400, border: `1px solid ${zoom === z ? 'var(--color-primary)' : 'var(--color-outline)'}`, background: zoom === z ? 'rgba(0,88,190,0.08)' : 'none', color: zoom === z ? 'var(--color-primary)' : 'var(--color-on-surface-variant)', cursor: 'pointer' }}>
+            {Math.round(z * 100)}%
+          </button>
+        ))}
+        <button type="button" onClick={() => setZoom(z => clampLayoutZoom(parseFloat((z + 0.1).toFixed(2))))}
+          style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid var(--color-outline)', background: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--color-on-surface)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          +
+        </button>
+        <button type="button" onClick={() => {
+          if (!canvasAreaRef.current) return;
+          const r = canvasAreaRef.current.getBoundingClientRect();
+          setZoom(computeLayoutFitZoom(r.width, r.height));
+          setPanOffset({ x: 0, y: 0 });
+        }} style={{ padding: '3px 8px', borderRadius: 4, fontSize: 11, border: '1px solid var(--color-outline)', background: 'none', color: 'var(--color-on-surface-variant)', cursor: 'pointer' }}>
+          ⊡ Fit
+        </button>
+        <span style={{ fontSize: 11, color: 'var(--color-on-surface-variant)', minWidth: 32 }}>
+          {Math.round(zoom * 100)}%
+        </span>
+        <span style={{ fontSize: 10, color: 'var(--color-on-surface-variant)', marginLeft: 8 }}>
+          Ctrl+scroll to zoom · Space+drag to pan
+        </span>
       </div>
     </div>
   );
@@ -1304,29 +1391,31 @@ export default function Step4Generation() {
       {activeStep4Tab === 'layout' && (
         comicPageMode === 'panel' && (state === 3 || state === 4 || state === 5) && step4PanelsByPage.length > 0 ? (
           /* ── PANEL CANVAS STUDIO ── */
-          <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 360px)', minHeight: 560 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 560 }}>
             {/* Page navigation bar */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 16px', borderBottom: '1px solid #E5E7EB', background: '#FAFAFA', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', borderBottom: '1px solid #E5E7EB', background: '#F8F9FA', flexShrink: 0 }}>
               <button type="button"
                 onClick={() => setStudioPage((p) => Math.max(1, p - 1))}
                 disabled={studioPage <= 1}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-                <span className="material-symbols-outlined text-sm">chevron_left</span>Prev
+                style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: studioPage > 1 ? 'pointer' : 'default', fontSize: 14, fontWeight: 500, color: studioPage > 1 ? '#374151' : '#C9CCD0', padding: '4px 8px' }}>
+                <span style={{ fontSize: 16, lineHeight: 1 }}>‹</span> Prev
               </button>
-              <div className="flex items-center gap-2">
-                {step4PanelsByPage.map(([pn]) => (
-                  <button key={pn} type="button" onClick={() => setStudioPage(pn)}
-                    className={`w-2 h-2 rounded-full transition-all ${studioPage === pn ? 'bg-primary scale-125' : 'bg-gray-300 hover:bg-gray-400'}`} />
-                ))}
-                <span className="text-xs text-on-surface-variant font-medium ml-1">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {step4PanelsByPage.map(([pn]) => (
+                    <button key={pn} type="button" onClick={() => setStudioPage(pn)}
+                      style={{ width: pn === studioPage ? 12 : 8, height: pn === studioPage ? 12 : 8, borderRadius: '50%', border: 'none', background: pn === studioPage ? '#2563EB' : '#D1D5DB', cursor: 'pointer', padding: 0, transition: 'all 0.15s' }} />
+                  ))}
+                </div>
+                <span style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>
                   Page {studioPage} of {step4PanelsByPage.length}
                 </span>
               </div>
               <button type="button"
                 onClick={() => setStudioPage((p) => Math.min(step4PanelsByPage.length, p + 1))}
                 disabled={studioPage >= step4PanelsByPage.length}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-                Next<span className="material-symbols-outlined text-sm">chevron_right</span>
+                style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: studioPage < step4PanelsByPage.length ? 'pointer' : 'default', fontSize: 14, fontWeight: 500, color: studioPage < step4PanelsByPage.length ? '#374151' : '#C9CCD0', padding: '4px 8px' }}>
+                Next <span style={{ fontSize: 16, lineHeight: 1 }}>›</span>
               </button>
             </div>
             {/* Canvas + Sidebar */}

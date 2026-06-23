@@ -1,3 +1,68 @@
+## SESSION: 2026-06-23 — Canvas Studio + Sidebar Redesign (Step 4)
+
+### ✅ COMPLETED — Canvas Studio for Step 4 Layout Tab
+
+Implemented the full canvas studio view inside `Step4Generation.tsx` Layout tab.
+
+**New constant `LAYOUT_PANEL_RECTS`** (added after `LAYOUT_SVGS`):
+- Maps all 14+ layout names → array of `{x,y,w,h}` bounding boxes in 48×64 coordinate space
+- Used by `LayoutPageCanvas` to absolutely-position panel slots
+
+**`LayoutPageCanvas` component (line ~663):**
+- Gray canvas background (`#E8E8E8`) fills the left side, white 360×480 comic page centered
+- Panel slots absolutely-positioned using `LAYOUT_PANEL_RECTS` percentages (`rect.x/48*100%` etc.)
+- Slot states: idle (gray placeholder + "click to generate"), loading (spinner), error (⚠ retry), has-image (img fill)
+- P{n} badge top-left of each slot
+
+**Canvas studio activated when:**
+`comicPageMode === 'panel' && (state === 3 || state === 4 || state === 5) && step4PanelsByPage.length > 0`
+- Shows: page nav bar (← Prev / dot indicators / Next →) + canvas + sidebar
+- Else: shows legacy generation dashboard (state machine + page images)
+
+**`studioPage` state added** (`useState(1)`) — tracks current page in canvas view.
+
+**Dead code removed:**
+- `PanelCard` function (~218 lines) — canvas slots replace the panel grid
+- `LayoutWireframe` function — replaced by `LAYOUT_PANEL_RECTS`
+- `PanelReaction` type
+- `approvedPanelIds`, `setApprovedPanelIds`, `panelItemReactions`, `setPanelItemReactions` state
+- `copyProjectJson`, `downloadProjectJson` from context destructure
+
+---
+
+### ✅ COMPLETED — LayoutStudioSidebar Redesign (BubbleSidebar-consistent)
+
+Rewrote `LayoutStudioSidebar` to visually match `DialogueEditor`'s `BubbleSidebar`:
+
+**Section 1 — "LAYOUT TEMPLATE"** (mirrors "DRAG TO ADD BUBBLE"):
+- Header row: uppercase bold "Layout Template" + "✨ AI Suggest" link (right)
+- AI reason callout shown below header when suggestion active
+- 4-column grid of template cards: SVG wireframe icon (28×37px) + truncated name
+- Selected card: blue border (`#4F46E5`) + `#EEF2FF` bg + blue checkmark dot top-right
+- Suggested (non-selected): muted indigo border + tinted background
+
+**Section 2 — Action button** (mirrors "Auto-import from script" outlined blue button):
+- Idle: `border: 1.5px solid #4F46E5`, transparent bg, "⚡ Generate All Panels" / "Regen Remaining"
+- Generating: progress bar card + "Pause Generation" outlined button
+- Paused: amber status card + "Resume Generation" outlined button
+- Done: green "✓ All N panels generated!" banner
+- Extras: "Clean images" `sfxMode` checkbox + "Switch to Full Page mode →" text link
+
+**Section 3 — "PAGE SUMMARY"** (mirrors page summary in BubbleSidebar):
+- Status dot (emerald/amber/red/gray) + `PanelScriptCard` for each panel on current page
+- Cards are collapsible (user expands to see shot type, dialogue/sfx, image prompt)
+
+**Props change:**
+- Removed: `hasDimensions` (no longer needed)
+- Added: `artStyle: string` (forwarded to `PanelScriptCard`)
+- Mode toggle: removed from prominent 2-button grid → simplified to "Switch to Full Page mode →" text link
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/components/studio-steps/Step4Generation.tsx` — canvas studio (LAYOUT_PANEL_RECTS, LayoutPageCanvas, canvas studio render, dead code removal) + LayoutStudioSidebar full redesign
+
+---
+
 ## SESSION: 2026-06-21 (continued — wizard restructure + canvas editor spec)
 
 ### ✅ COMPLETED — Wizard Restructure: Steps 4 + 5 Split + Mode Modal
