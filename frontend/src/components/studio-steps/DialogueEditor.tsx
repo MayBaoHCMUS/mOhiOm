@@ -1839,44 +1839,6 @@ export default function DialogueEditor({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
 
-      {/* Toolbar */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '8px 16px', borderBottom: '1px solid var(--color-outline)', flexShrink: 0,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--color-primary)' }}>chat_bubble</span>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-on-surface)' }}>Dialogue Editor</span>
-          <span style={{
-            fontSize: 11, padding: '2px 8px', borderRadius: 12, fontWeight: 600,
-            background: filledCount === allPanels.length ? '#E1F5EE' : 'rgba(0,88,190,0.08)',
-            color: filledCount === allPanels.length ? '#085041' : 'var(--color-primary)',
-          }}>
-            {filledCount}/{allPanels.length}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button type="button" onClick={onAutoImport}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px',
-              borderRadius: 20, border: '1px solid var(--color-primary)',
-              background: 'rgba(0,88,190,0.05)', color: 'var(--color-primary)',
-              fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>bolt</span>
-            Auto-import
-          </button>
-          <button type="button" onClick={onExport}
-            style={{
-              padding: '5px 14px', borderRadius: 20, border: 'none',
-              background: 'var(--color-primary)', color: 'white',
-              fontSize: 12, fontWeight: 700, cursor: 'pointer',
-            }}>
-            Go to Export →
-          </button>
-        </div>
-      </div>
-
       {/* Page navigation bar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', borderBottom: '1px solid #E5E7EB', background: '#F8F9FA', flexShrink: 0 }}>
         <button type="button"
