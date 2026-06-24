@@ -58,11 +58,42 @@ interface DialogueEditorProps {
 // ── Layout constants (mirrors Step4Generation) ────────────────────────────────
 
 const LAYOUT_ROW_STRUCTURES: Record<string, number[][]> = {
+  // old names (kept for backward compat with saved projects)
   splash: [[0]], stacked: [[0],[1]], side_by_side: [[0,1]],
   three_rows: [[0],[1],[2]], top_wide: [[0],[1,2]], bottom_wide: [[0,1],[2]],
   grid_2x2: [[0,1],[2,3]], top_wide_3: [[0],[1,2,3]], bottom_wide_3: [[0,1,2],[3]],
   four_rows: [[0],[1],[2],[3]], wide_2x2: [[0],[1,2],[3,4]], '2x2_wide': [[0,1],[2,3],[4]],
   grid_3x2: [[0,1,2],[3,4,5]], grid_2x3: [[0,1],[2,3],[4,5]],
+  // new manga layout names
+  full_bleed: [[0]],
+  diagonal_split_2: [[0,1]],
+  one_large_two_small: [[0],[1,2]],
+  two_small_one_large: [[0,1],[2]],
+  three_panels_row: [[0,1,2]],
+  diagonal_3_panels: [[0],[1,2]],
+  cinematic_strips: [[0],[1],[2]],
+  action_dynamic_4: [[0,1],[2,3]],
+  splash_top: [[0],[1,2,3]],
+  splash_bottom: [[0,1,2],[3]],
+  asymmetric_4: [[0,1],[2,3]],
+  vertical_flow: [[0,1],[2,3]],
+  manga_classic_5: [[0,1],[2,3],[4]],
+};
+
+type PanelBBox = { l: number; t: number; w: number; h: number };
+// Layouts where CSS grid can't express the geometry — use absolute positioning instead.
+// Values are percentages derived from LAYOUT_PANEL_RECTS (48×64 space): l=x/48*100, t=y/64*100, etc.
+const ABSOLUTE_LAYOUT_BBOXES: Record<string, PanelBBox[]> = {
+  diagonal_split_2:    [{l:4.2,t:3.1,w:62.5,h:93.8}, {l:54.2,t:3.1,w:41.7,h:93.8}],
+  one_large_two_small: [{l:4.2,t:3.1,w:54.2,h:93.8}, {l:64.6,t:3.1,w:31.3,h:43.8}, {l:64.6,t:51.6,w:31.3,h:45.3}],
+  two_small_one_large: [{l:4.2,t:3.1,w:31.3,h:43.8}, {l:4.2,t:51.6,w:31.3,h:45.3}, {l:41.7,t:3.1,w:54.2,h:93.8}],
+  diagonal_3_panels:   [{l:4.2,t:3.1,w:91.7,h:37.5}, {l:4.2,t:43.8,w:41.7,h:53.1}, {l:39.6,t:43.8,w:56.3,h:53.1}],
+  action_dynamic_4:    [{l:4.2,t:3.1,w:39.6,h:43.8}, {l:56.3,t:3.1,w:39.6,h:43.8}, {l:4.2,t:51.6,w:39.6,h:45.3}, {l:56.3,t:51.6,w:39.6,h:45.3}],
+  splash_top:          [{l:4.2,t:3.1,w:91.7,h:53.1}, {l:4.2,t:60.9,w:25.0,h:35.9}, {l:37.5,t:60.9,w:25.0,h:35.9}, {l:70.8,t:60.9,w:25.0,h:35.9}],
+  splash_bottom:       [{l:4.2,t:3.1,w:25.0,h:35.9}, {l:37.5,t:3.1,w:25.0,h:35.9}, {l:70.8,t:3.1,w:25.0,h:35.9}, {l:4.2,t:43.8,w:91.7,h:53.1}],
+  asymmetric_4:        [{l:4.2,t:3.1,w:52.1,h:56.3}, {l:62.5,t:3.1,w:33.3,h:25.0}, {l:62.5,t:32.8,w:33.3,h:26.6}, {l:4.2,t:64.1,w:91.7,h:32.8}],
+  vertical_flow:       [{l:4.2,t:3.1,w:27.1,h:43.8}, {l:37.5,t:3.1,w:58.3,h:43.8}, {l:4.2,t:53.1,w:50.0,h:43.8}, {l:60.4,t:53.1,w:35.4,h:43.8}],
+  manga_classic_5:     [{l:4.2,t:3.1,w:56.3,h:34.4}, {l:66.7,t:3.1,w:29.2,h:34.4}, {l:4.2,t:42.2,w:31.3,h:25.0}, {l:41.7,t:42.2,w:54.2,h:25.0}, {l:4.2,t:71.9,w:91.7,h:25.0}],
 };
 
 const BASE_PAGE_W = 600;
@@ -588,13 +619,14 @@ interface PanelCellProps {
   onContextMenu: (panelId: string, bubbleId: string, x: number, y: number) => void;
   onEditStart: (panelId: string, bubbleId: string) => void;
   onEditEnd: () => void;
+  absoluteStyle?: React.CSSProperties;
 }
 
 function PanelCell({
   panel, panelIndex, imageUrl, bubbles, layoutRows,
   selectedBubbleId, editingBubbleId, zoom,
   onBubbleSelect, onBubbleDeselect, onBubbleAdd, onBubbleUpdate, onDragCommit, onContextMenu,
-  onEditStart, onEditEnd,
+  onEditStart, onEditEnd, absoluteStyle,
 }: PanelCellProps) {
   const cellRef = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -730,8 +762,8 @@ function PanelCell({
     <div
       ref={cellRef}
       style={{
-        ...gridPlacement,
-        position: 'relative',
+        ...(absoluteStyle ?? gridPlacement),
+        position: absoluteStyle ? 'absolute' : 'relative',
         overflow: 'hidden',
         border: isHovered && !selectedBubbleId
           ? '2px solid rgba(99,102,241,0.5)'
@@ -1901,26 +1933,26 @@ export default function DialogueEditor({
           }}>
             {/* Page (white comic page with panel grid) */}
             <div style={{ position: 'relative' }}>
-              <div style={buildGridStyle(layoutRows)}>
-              {currentPanels.map((panel, idx) => (
-                <PanelCell
-                  key={panel.id}
-                  panel={panel}
-                  panelIndex={idx}
-                  imageUrl={panelStates[panel.id]?.imageUrl ?? null}
-                  bubbles={panelBubbles[panel.id] ?? []}
-                  layoutRows={layoutRows}
-                  selectedBubbleId={selectedBubble?.panelId === panel.id ? selectedBubble.bubbleId : null}
-                  editingBubbleId={selectedBubble?.panelId === panel.id ? editingBubbleId : null}
-                  zoom={zoom}
-                  onBubbleSelect={(pId, bId) => { setSelectedBubble({ panelId: pId, bubbleId: bId }); setEditingBubbleId(null); }}
-                  onBubbleDeselect={() => { setSelectedBubble(null); setEditingBubbleId(null); }}
-                  onBubbleAdd={addBubble}
-                  onBubbleUpdate={updateBubble}
-                  onDragCommit={flushSave}
-                  onContextMenu={(pId, bId, x, y) => { setContextMenu({ panelId: pId, bubbleId: bId, x, y }); }}
-                  onEditStart={(_, bId) => setEditingBubbleId(bId)}
-                  onEditEnd={() => {
+              {(() => {
+                const absBboxes = ABSOLUTE_LAYOUT_BBOXES[layoutName];
+                const sharedPanelProps = (panel: Step4Panel, idx: number) => ({
+                  key: panel.id,
+                  panel,
+                  panelIndex: idx,
+                  imageUrl: panelStates[panel.id]?.imageUrl ?? null,
+                  bubbles: panelBubbles[panel.id] ?? [],
+                  layoutRows,
+                  selectedBubbleId: selectedBubble?.panelId === panel.id ? selectedBubble.bubbleId : null,
+                  editingBubbleId: selectedBubble?.panelId === panel.id ? editingBubbleId : null,
+                  zoom,
+                  onBubbleSelect: (pId: string, bId: string) => { setSelectedBubble({ panelId: pId, bubbleId: bId }); setEditingBubbleId(null); },
+                  onBubbleDeselect: () => { setSelectedBubble(null); setEditingBubbleId(null); },
+                  onBubbleAdd: addBubble,
+                  onBubbleUpdate: updateBubble,
+                  onDragCommit: flushSave,
+                  onContextMenu: (pId: string, bId: string, x: number, y: number) => { setContextMenu({ panelId: pId, bubbleId: bId, x, y }); },
+                  onEditStart: (_: string, bId: string) => setEditingBubbleId(bId),
+                  onEditEnd: () => {
                     if (editingBubbleId && selectedBubble) {
                       const b = (panelBubbles[selectedBubble.panelId] ?? []).find(x => x.id === editingBubbleId);
                       if (b && !b.dialogue?.trim()) {
@@ -1929,10 +1961,29 @@ export default function DialogueEditor({
                       }
                     }
                     setEditingBubbleId(null);
-                  }}
-                />
-              ))}
-              </div>
+                  },
+                });
+                if (absBboxes) {
+                  return (
+                    <div style={{ position: 'relative', width: BASE_PAGE_W, height: BASE_PAGE_H, background: 'white' }}>
+                      {currentPanels.map((panel, idx) => {
+                        const bb = absBboxes[idx];
+                        const absoluteStyle: React.CSSProperties | undefined = bb
+                          ? { position: 'absolute', left: `${bb.l}%`, top: `${bb.t}%`, width: `${bb.w}%`, height: `${bb.h}%` }
+                          : undefined;
+                        return <PanelCell {...sharedPanelProps(panel, idx)} absoluteStyle={absoluteStyle} />;
+                      })}
+                    </div>
+                  );
+                }
+                return (
+                  <div style={buildGridStyle(layoutRows)}>
+                    {currentPanels.map((panel, idx) => (
+                      <PanelCell {...sharedPanelProps(panel, idx)} />
+                    ))}
+                  </div>
+                );
+              })()}
               {/* Cross-panel bubble overlay — sits above all panels */}
               <PageBubbleLayer
                 panels={currentPanels}

@@ -524,56 +524,58 @@ function GenerationProgressBar({
 }// ── Layout template constants (mirrors backend LAYOUT_TEMPLATES) ──────────────
 
 const TEMPLATES_BY_COUNT: Record<number, string[]> = {
-  1: ['splash'],
-  2: ['stacked', 'side_by_side'],
-  3: ['three_rows', 'top_wide', 'bottom_wide'],
-  4: ['grid_2x2', 'top_wide_3', 'bottom_wide_3', 'four_rows'],
-  5: ['wide_2x2', '2x2_wide'],
-  6: ['grid_3x2', 'grid_2x3'],
+  1: ['full_bleed'],
+  2: ['diagonal_split_2'],
+  3: ['three_panels_row', 'one_large_two_small', 'two_small_one_large', 'diagonal_3_panels', 'cinematic_strips'],
+  4: ['grid_2x2', 'action_dynamic_4', 'splash_top', 'splash_bottom', 'asymmetric_4', 'vertical_flow'],
+  5: ['manga_classic_5'],
+  6: ['cinematic_strips'],
 };
 
 const LAYOUT_DISPLAY_NAMES_MAP: Record<string, string> = {
-  splash: 'Full Splash', stacked: 'Stacked', side_by_side: 'Side by Side',
-  three_rows: 'Three Rows', top_wide: 'Wide Top', bottom_wide: 'Wide Bottom',
-  grid_2x2: '2×2 Grid', top_wide_3: 'Wide + Three', bottom_wide_3: 'Three + Wide',
-  four_rows: 'Four Rows', wide_2x2: 'Wide + 2×2', '2x2_wide': '2×2 + Wide',
-  grid_3x2: '3-Col Grid', grid_2x3: '2-Col Grid',
+  full_bleed: 'Full Bleed', diagonal_split_2: 'Diagonal Split',
+  one_large_two_small: 'Feature Left', two_small_one_large: 'Feature Right',
+  three_panels_row: 'Three Row', diagonal_3_panels: 'Diagonal 3',
+  cinematic_strips: 'Cinematic', grid_2x2: '2×2 Grid',
+  action_dynamic_4: 'Action ✕', splash_top: 'Splash Top',
+  splash_bottom: 'Splash Bottom', asymmetric_4: 'Asymmetric',
+  vertical_flow: 'Flow', manga_classic_5: 'Classic 5',
 };
 
 // SVG panel rects for each template (48×64 viewport)
 const LAYOUT_SVGS: Record<string, React.ReactNode> = {
-  splash:        <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>,
-  stacked:       <><rect x="2" y="2"  width="44" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="44" height="28" rx="1" fill="currentColor"/></>,
-  side_by_side:  <><rect x="2"  y="2" width="20" height="60" rx="1" fill="currentColor"/><rect x="26" y="2" width="20" height="60" rx="1" fill="currentColor"/></>,
-  three_rows:    <><rect x="2" y="2"  width="44" height="17" rx="1" fill="currentColor"/><rect x="2" y="23" width="44" height="17" rx="1" fill="currentColor"/><rect x="2" y="44" width="44" height="18" rx="1" fill="currentColor"/></>,
-  top_wide:      <><rect x="2" y="2"  width="44" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="34" width="20" height="28" rx="1" fill="currentColor"/></>,
-  bottom_wide:   <><rect x="2" y="2"  width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="2" width="20" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="44" height="28" rx="1" fill="currentColor"/></>,
-  grid_2x2:      <><rect x="2"  y="2"  width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="2"  width="20" height="28" rx="1" fill="currentColor"/><rect x="2"  y="34" width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="34" width="20" height="28" rx="1" fill="currentColor"/></>,
-  top_wide_3:    <><rect x="2" y="2"  width="44" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="12" height="28" rx="1" fill="currentColor"/><rect x="18" y="34" width="12" height="28" rx="1" fill="currentColor"/><rect x="34" y="34" width="12" height="28" rx="1" fill="currentColor"/></>,
-  bottom_wide_3: <><rect x="2" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="18" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="34" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="44" height="28" rx="1" fill="currentColor"/></>,
-  four_rows:     <><rect x="2" y="2"  width="44" height="12" rx="1" fill="currentColor"/><rect x="2" y="18" width="44" height="12" rx="1" fill="currentColor"/><rect x="2" y="34" width="44" height="12" rx="1" fill="currentColor"/><rect x="2" y="50" width="44" height="12" rx="1" fill="currentColor"/></>,
-  wide_2x2:      <><rect x="2" y="2"  width="44" height="17" rx="1" fill="currentColor"/><rect x="2" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="2" y="44" width="20" height="18" rx="1" fill="currentColor"/><rect x="26" y="44" width="20" height="18" rx="1" fill="currentColor"/></>,
-  '2x2_wide':    <><rect x="2" y="2"  width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="2"  width="20" height="17" rx="1" fill="currentColor"/><rect x="2" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="2" y="44" width="44" height="18" rx="1" fill="currentColor"/></>,
-  grid_3x2:      <><rect x="2"  y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="18" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="34" y="2"  width="12" height="28" rx="1" fill="currentColor"/><rect x="2"  y="34" width="12" height="28" rx="1" fill="currentColor"/><rect x="18" y="34" width="12" height="28" rx="1" fill="currentColor"/><rect x="34" y="34" width="12" height="28" rx="1" fill="currentColor"/></>,
-  grid_2x3:      <><rect x="2"  y="2"  width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="2"  width="20" height="17" rx="1" fill="currentColor"/><rect x="2"  y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="26" y="23" width="20" height="17" rx="1" fill="currentColor"/><rect x="2"  y="44" width="20" height="18" rx="1" fill="currentColor"/><rect x="26" y="44" width="20" height="18" rx="1" fill="currentColor"/></>,
+  full_bleed:        <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>,
+  diagonal_split_2:  <><polygon points="2,2 32,2 24,62 2,62" fill="currentColor"/><polygon points="34,2 46,2 46,62 26,62" fill="currentColor"/></>,
+  one_large_two_small: <><rect x="2" y="2" width="26" height="60" rx="1" fill="currentColor"/><rect x="31" y="2" width="15" height="28" rx="1" fill="currentColor"/><rect x="31" y="33" width="15" height="29" rx="1" fill="currentColor"/></>,
+  two_small_one_large: <><rect x="2" y="2" width="15" height="28" rx="1" fill="currentColor"/><rect x="2" y="33" width="15" height="29" rx="1" fill="currentColor"/><rect x="20" y="2" width="26" height="60" rx="1" fill="currentColor"/></>,
+  three_panels_row:  <><rect x="2" y="2" width="12" height="60" rx="1" fill="currentColor"/><rect x="17" y="2" width="14" height="60" rx="1" fill="currentColor"/><rect x="34" y="2" width="12" height="60" rx="1" fill="currentColor"/></>,
+  diagonal_3_panels: <><rect x="2" y="2" width="44" height="24" rx="1" fill="currentColor"/><polygon points="2,28 22,28 17,62 2,62" fill="currentColor"/><polygon points="24,28 46,28 46,62 19,62" fill="currentColor"/></>,
+  cinematic_strips:  <><rect x="2" y="2" width="44" height="17" rx="1" fill="currentColor"/><rect x="2" y="23" width="44" height="17" rx="1" fill="currentColor"/><rect x="2" y="44" width="44" height="18" rx="1" fill="currentColor"/></>,
+  grid_2x2:          <><rect x="2" y="2" width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="2" width="20" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="34" width="20" height="28" rx="1" fill="currentColor"/></>,
+  action_dynamic_4:  <><polygon points="2,2 21,2 18,30 2,30" fill="currentColor"/><polygon points="27,2 46,2 46,30 29,30" fill="currentColor"/><polygon points="2,33 18,33 21,62 2,62" fill="currentColor"/><polygon points="29,33 46,33 46,62 27,62" fill="currentColor"/></>,
+  splash_top:        <><rect x="2" y="2" width="44" height="34" rx="1" fill="currentColor"/><rect x="2" y="39" width="12" height="23" rx="1" fill="currentColor"/><rect x="18" y="39" width="12" height="23" rx="1" fill="currentColor"/><rect x="34" y="39" width="12" height="23" rx="1" fill="currentColor"/></>,
+  splash_bottom:     <><rect x="2" y="2" width="12" height="23" rx="1" fill="currentColor"/><rect x="18" y="2" width="12" height="23" rx="1" fill="currentColor"/><rect x="34" y="2" width="12" height="23" rx="1" fill="currentColor"/><rect x="2" y="28" width="44" height="34" rx="1" fill="currentColor"/></>,
+  asymmetric_4:      <><rect x="2" y="2" width="25" height="36" rx="1" fill="currentColor"/><rect x="30" y="2" width="16" height="16" rx="1" fill="currentColor"/><rect x="30" y="21" width="16" height="17" rx="1" fill="currentColor"/><rect x="2" y="41" width="44" height="21" rx="1" fill="currentColor"/></>,
+  vertical_flow:     <><rect x="2" y="2" width="13" height="28" rx="1" fill="currentColor"/><rect x="18" y="2" width="28" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="24" height="28" rx="1" fill="currentColor"/><rect x="29" y="34" width="17" height="28" rx="1" fill="currentColor"/></>,
+  manga_classic_5:   <><rect x="2" y="2" width="27" height="22" rx="1" fill="currentColor"/><rect x="32" y="2" width="14" height="22" rx="1" fill="currentColor"/><rect x="2" y="27" width="15" height="16" rx="1" fill="currentColor"/><rect x="20" y="27" width="26" height="16" rx="1" fill="currentColor"/><rect x="2" y="46" width="44" height="16" rx="1" fill="currentColor"/></>,
 };
 
-// Panel bounding boxes in 48×64 coordinate space — mirrors LAYOUT_SVGS rect positions
+// Panel bounding boxes in 48×64 coordinate space — mirrors LAYOUT_SVGS positions (polygons use bbox)
 const LAYOUT_PANEL_RECTS: Record<string, Array<{ x: number; y: number; w: number; h: number }>> = {
-  splash:        [{ x:2,  y:2,  w:44, h:60 }],
-  stacked:       [{ x:2,  y:2,  w:44, h:28 }, { x:2,  y:34, w:44, h:28 }],
-  side_by_side:  [{ x:2,  y:2,  w:20, h:60 }, { x:26, y:2,  w:20, h:60 }],
-  three_rows:    [{ x:2,  y:2,  w:44, h:17 }, { x:2,  y:23, w:44, h:17 }, { x:2,  y:44, w:44, h:18 }],
-  top_wide:      [{ x:2,  y:2,  w:44, h:28 }, { x:2,  y:34, w:20, h:28 }, { x:26, y:34, w:20, h:28 }],
-  bottom_wide:   [{ x:2,  y:2,  w:20, h:28 }, { x:26, y:2,  w:20, h:28 }, { x:2,  y:34, w:44, h:28 }],
-  grid_2x2:      [{ x:2,  y:2,  w:20, h:28 }, { x:26, y:2,  w:20, h:28 }, { x:2,  y:34, w:20, h:28 }, { x:26, y:34, w:20, h:28 }],
-  top_wide_3:    [{ x:2,  y:2,  w:44, h:28 }, { x:2,  y:34, w:12, h:28 }, { x:18, y:34, w:12, h:28 }, { x:34, y:34, w:12, h:28 }],
-  bottom_wide_3: [{ x:2,  y:2,  w:12, h:28 }, { x:18, y:2,  w:12, h:28 }, { x:34, y:2,  w:12, h:28 }, { x:2,  y:34, w:44, h:28 }],
-  four_rows:     [{ x:2,  y:2,  w:44, h:12 }, { x:2,  y:18, w:44, h:12 }, { x:2,  y:34, w:44, h:12 }, { x:2,  y:50, w:44, h:12 }],
-  wide_2x2:      [{ x:2,  y:2,  w:44, h:17 }, { x:2,  y:23, w:20, h:17 }, { x:26, y:23, w:20, h:17 }, { x:2,  y:44, w:20, h:18 }, { x:26, y:44, w:20, h:18 }],
-  '2x2_wide':    [{ x:2,  y:2,  w:20, h:17 }, { x:26, y:2,  w:20, h:17 }, { x:2,  y:23, w:20, h:17 }, { x:26, y:23, w:20, h:17 }, { x:2,  y:44, w:44, h:18 }],
-  grid_3x2:      [{ x:2,  y:2,  w:12, h:28 }, { x:18, y:2,  w:12, h:28 }, { x:34, y:2,  w:12, h:28 }, { x:2,  y:34, w:12, h:28 }, { x:18, y:34, w:12, h:28 }, { x:34, y:34, w:12, h:28 }],
-  grid_2x3:      [{ x:2,  y:2,  w:20, h:17 }, { x:26, y:2,  w:20, h:17 }, { x:2,  y:23, w:20, h:17 }, { x:26, y:23, w:20, h:17 }, { x:2,  y:44, w:20, h:18 }, { x:26, y:44, w:20, h:18 }],
+  full_bleed:        [{ x:2,  y:2,  w:44, h:60 }],
+  diagonal_split_2:  [{ x:2,  y:2,  w:30, h:60 }, { x:26, y:2,  w:20, h:60 }],
+  one_large_two_small: [{ x:2,  y:2,  w:26, h:60 }, { x:31, y:2,  w:15, h:28 }, { x:31, y:33, w:15, h:29 }],
+  two_small_one_large: [{ x:2,  y:2,  w:15, h:28 }, { x:2,  y:33, w:15, h:29 }, { x:20, y:2,  w:26, h:60 }],
+  three_panels_row:  [{ x:2,  y:2,  w:12, h:60 }, { x:17, y:2,  w:14, h:60 }, { x:34, y:2,  w:12, h:60 }],
+  diagonal_3_panels: [{ x:2,  y:2,  w:44, h:24 }, { x:2,  y:28, w:20, h:34 }, { x:19, y:28, w:27, h:34 }],
+  cinematic_strips:  [{ x:2,  y:2,  w:44, h:17 }, { x:2,  y:23, w:44, h:17 }, { x:2,  y:44, w:44, h:18 }],
+  grid_2x2:          [{ x:2,  y:2,  w:20, h:28 }, { x:26, y:2,  w:20, h:28 }, { x:2,  y:34, w:20, h:28 }, { x:26, y:34, w:20, h:28 }],
+  action_dynamic_4:  [{ x:2,  y:2,  w:19, h:28 }, { x:27, y:2,  w:19, h:28 }, { x:2,  y:33, w:19, h:29 }, { x:27, y:33, w:19, h:29 }],
+  splash_top:        [{ x:2,  y:2,  w:44, h:34 }, { x:2,  y:39, w:12, h:23 }, { x:18, y:39, w:12, h:23 }, { x:34, y:39, w:12, h:23 }],
+  splash_bottom:     [{ x:2,  y:2,  w:12, h:23 }, { x:18, y:2,  w:12, h:23 }, { x:34, y:2,  w:12, h:23 }, { x:2,  y:28, w:44, h:34 }],
+  asymmetric_4:      [{ x:2,  y:2,  w:25, h:36 }, { x:30, y:2,  w:16, h:16 }, { x:30, y:21, w:16, h:17 }, { x:2,  y:41, w:44, h:21 }],
+  vertical_flow:     [{ x:2,  y:2,  w:13, h:28 }, { x:18, y:2,  w:28, h:28 }, { x:2,  y:34, w:24, h:28 }, { x:29, y:34, w:17, h:28 }],
+  manga_classic_5:   [{ x:2,  y:2,  w:27, h:22 }, { x:32, y:2,  w:14, h:22 }, { x:2,  y:27, w:15, h:16 }, { x:20, y:27, w:26, h:16 }, { x:2,  y:46, w:44, h:16 }],
 };
 
 function LayoutPickerPanel({
@@ -682,7 +684,7 @@ function LayoutPageCanvas({
   layoutName: string;
   onGeneratePanel: (panel: Step4Panel) => void;
 }) {
-  const [zoom, setZoom] = useState(0.75);
+  const [zoom, setZoom] = useState(1.0);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const canvasAreaRef = useRef<HTMLDivElement>(null);
   const spaceDownRef = useRef(false);
@@ -1151,7 +1153,7 @@ export default function Step4Generation() {
     hasInitializedLayoutsRef.current = true;
     for (const [pageNumber, panels] of step4PanelsByPage) {
       if (!pageLayoutNames[pageNumber]) {
-        const defaultLayout = TEMPLATES_BY_COUNT[panels.length]?.[0] ?? 'stacked';
+        const defaultLayout = TEMPLATES_BY_COUNT[panels.length]?.[0] ?? 'grid_2x2';
         setPageLayout(pageNumber, defaultLayout, panels);
       }
     }
@@ -1423,7 +1425,7 @@ export default function Step4Generation() {
               const currentPageEntry = step4PanelsByPage.find(([n]) => n === studioPage) ?? step4PanelsByPage[0];
               const currentPageNum = currentPageEntry?.[0] ?? 1;
               const currentPagePanels = currentPageEntry?.[1] ?? [];
-              const currentLayoutName = pageLayoutNames[currentPageNum] ?? TEMPLATES_BY_COUNT[currentPagePanels.length]?.[0] ?? 'stacked';
+              const currentLayoutName = pageLayoutNames[currentPageNum] ?? TEMPLATES_BY_COUNT[currentPagePanels.length]?.[0] ?? 'grid_2x2';
               return (
                 <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
                   <LayoutPageCanvas

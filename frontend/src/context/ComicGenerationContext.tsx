@@ -3,6 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   geminiApi,
+  comicLayoutApi,
   analyzeStoryStructuredStream,
   characterDesignsStructuredStream,
   panelScriptStructuredStream,
@@ -1930,18 +1931,14 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
 
     try {
       const sorted = [...panelsOnPage].sort((a, b) => a.panelNumber - b.panelNumber);
-      const res = await geminiApi.getLayoutDimensions({
-        panels: sorted.map((p) => ({
-          panel_number: p.panelNumber,
-          shot_type: p.shotType ?? 'medium shot',
-        })),
+      const res = await comicLayoutApi.confirm({
+        panel_count: sorted.length,
         layout_name: layoutName,
-        style,
       });
       const dimMap: Record<string, { width: number; height: number }> = {};
-      for (const dim of res.data.dimensions) {
-        const panel = sorted.find((p) => p.panelNumber === dim.panel_number);
-        if (panel) dimMap[panel.id] = { width: dim.width, height: dim.height };
+      for (let i = 0; i < sorted.length; i++) {
+        const cp = res.data.panels[i];
+        if (cp && sorted[i]) dimMap[sorted[i].id] = { width: cp.sd_width, height: cp.sd_height };
       }
       setPagePanelDimensions((prev) => ({ ...prev, [pageNumber]: dimMap }));
       setPageLayoutNames((prev) => ({ ...prev, [pageNumber]: res.data.layout_name }));

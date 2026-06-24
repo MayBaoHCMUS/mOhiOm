@@ -1,3 +1,94 @@
+## SESSION: 2026-06-25 — DialogueEditor Position Bug Fix + Layout Template Expansion Plan
+
+### ✅ COMPLETED — DialogueEditor Absolute Positioning Bug Fix
+
+**Root cause:** In `DialogueEditor.tsx`, the `PanelCell` root div had:
+```tsx
+style={{
+  ...(absoluteStyle ?? gridPlacement),  // spreads position: 'absolute' from absoluteStyle
+  position: 'relative',                 // BUG: overrode 'absolute' → all panels flowed in document order
+  overflow: 'hidden',
+}}
+```
+The hardcoded `position: 'relative'` silently overwrote the `position: 'absolute'` spread from
+`absoluteStyle`, causing all absolutely-positioned panels (action_dynamic_4, asymmetric_4, etc.)
+to render in normal document flow — P1 huge, P2/P3/P4 stacked below or invisible.
+
+**Fix (single line change):**
+```tsx
+position: absoluteStyle ? 'absolute' : 'relative',
+```
+
+**File changed:** `frontend/src/components/studio-steps/DialogueEditor.tsx`
+
+---
+
+### 🎯 NEXT SESSION — Expand Layout Templates (26 total = 14 existing + 12 new)
+
+**Full plan saved at:** `/Users/thuongnguyen/.claude/plans/i-remember-i-implemented-federated-thompson.md`
+
+#### Summary of changes needed:
+
+**1. `backend/comic/layout/layout_templates.py`**
+Add 12 new `@classmethod` methods to `MangaLayoutTemplates` and register in `get_all()`.
+All use `_rect(id, x1, y1, x2-x1, y2-y1, shot)` — pure rectangles, no polygons.
+
+New templates (group):
+- `single` (standard) — 1 panel, margins only
+- `horizontal_duo` (standard) — 2 equal horizontal strips
+- `vertical_trio` (standard) — 3 equal vertical columns
+- `grid_2x3` (standard) — 2×3 grid, 6 panels
+- `hero_left` (hero) — tall left + 3 stacked right
+- `hero_right` (hero) — 3 stacked left + tall right
+- `wide_duo` (hero) — wide top + 2 bottom side-by-side
+- `widescreen_pair` (cinematic) — 2 equal horizontal strips
+- `widescreen_trio` (cinematic) — 3 equal horizontal strips
+- `film_strip` (cinematic) — 4 equal vertical columns
+- `t_shape` (dynamic) — wide top + 3 equal columns bottom
+- `l_shape` (dynamic) — tall left + 2 stacked right
+
+Exact `_rect()` calls with coordinates are in the plan file.
+
+**2. `backend/comic/layout/panel_dimension_calculator.py`** (NEW file)
+```python
+def calc_flux_dimensions(panel: PanelDefinition, page_w=1240, page_h=1754,
+                         min_dim=256, max_dim=1024) -> tuple[int, int]:
+    x_pct, y_pct, w_pct, h_pct = panel.bbox
+    raw_w = w_pct / 100.0 * page_w
+    raw_h = h_pct / 100.0 * page_h
+    return (max(min_dim, min(max_dim, round(raw_w/8)*8)),
+            max(min_dim, min(max_dim, round(raw_h/8)*8)))
+```
+
+**3. `frontend/src/components/studio-steps/Step4Generation.tsx`**
+- `TEMPLATES_BY_COUNT`: add 12 new templates to correct count buckets; fix `6:` → `['grid_2x3']`
+- `LAYOUT_DISPLAY_NAMES_MAP`: add 12 display names
+- `LAYOUT_SVGS`: add 12 entries (48×64 viewBox, all `<rect>` shapes)
+- `LAYOUT_PANEL_RECTS`: add 12 entries in 48×64 space (exact values in plan file)
+- Remove inline `LayoutPickerPanel`; import `LayoutTemplatePicker` from new file
+
+**4. `frontend/src/components/studio-steps/LayoutTemplatePicker.tsx`** (NEW file)
+Extract `LayoutPickerPanel` + add group filter tabs:
+- Tabs: `All | Standard | Hero | Cinematic | Dynamic`
+- `LAYOUT_GROUPS` constant maps 18 spec templates to groups; old 8 show in "All" only
+- Scrollable grid: `overflow-y-auto max-h-[320px]`
+- Pill style — active: `bg-[#EFF6FF] text-[#2563EB] border-[#BFDBFE]`; inactive: `bg-transparent text-[#6B7280] border-[#E5E7EB]`
+- Same props as current `LayoutPickerPanel`
+
+**5. `frontend/src/components/studio-steps/DialogueEditor.tsx`**
+Add to `LAYOUT_ROW_STRUCTURES`:
+- CSS grid: `single:[[0]]`, `horizontal_duo/widescreen_pair:[[0],[1]]`, `vertical_trio:[[0,1,2]]`, `widescreen_trio:[[0],[1],[2]]`, `film_strip:[[0,1,2,3]]`, `grid_2x3:[[0,1],[2,3],[4,5]]`
+- Non-grid (absolute mode): `hero_left/hero_right/wide_duo/t_shape/l_shape: [[0]]`
+
+Add to `ABSOLUTE_LAYOUT_BBOXES` (5 layouts — exact %s in plan file):
+`hero_left`, `hero_right`, `wide_duo`, `t_shape`, `l_shape`
+
+#### Notes:
+- `widescreen_pair` = `horizontal_duo` geometrically — differ only in group
+- 14 existing templates ALL kept; old 8 without groups appear in "All" tab only
+
+---
+
 ## SESSION: 2026-06-23 — Canvas Studio + Sidebar Redesign (Step 4)
 
 ### ✅ COMPLETED — Canvas Studio for Step 4 Layout Tab
