@@ -911,7 +911,7 @@ function LayoutStudioSidebar({
               {pageNumber}/{totalPages}
             </span>
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 240, overflowY: 'auto' }}>
             {panels.map((panel) => {
               const ps = panelStates[panel.id] ?? null;
               const hasImage = !!ps?.imageUrl;
