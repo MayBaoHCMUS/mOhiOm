@@ -390,6 +390,105 @@ class MangaLayoutTemplates:
             cls._rect("p4", 55 + G / 2, 48 + G / 2, 45 - M - G / 2, 52 - M - G / 2, "CLOSE-UP"),
         ]
 
+    # ── NEW RECTANGULAR LAYOUTS ────────────────────────────────────────────────
+
+    @classmethod
+    def single(cls) -> List[PanelDefinition]:
+        return [cls._rect("p1", 1.5, 1.5, 97.0, 97.0, "ESTABLISHING")]
+
+    @classmethod
+    def horizontal_duo(cls) -> List[PanelDefinition]:
+        return [
+            cls._rect("p1", 1.5,  1.5,  97.0, 48.0, "MEDIUM"),
+            cls._rect("p2", 1.5,  50.5, 97.0, 48.0, "CLOSE-UP"),
+        ]
+
+    @classmethod
+    def vertical_trio(cls) -> List[PanelDefinition]:
+        return [
+            cls._rect("p1", 1.5,  1.5, 31.5, 97.0, "CLOSE-UP"),
+            cls._rect("p2", 34.0, 1.5, 32.0, 97.0, "MEDIUM"),
+            cls._rect("p3", 67.0, 1.5, 31.5, 97.0, "WIDE"),
+        ]
+
+    @classmethod
+    def grid_2x3(cls) -> List[PanelDefinition]:
+        return [
+            cls._rect("p1", 1.5,  1.5,  48.0, 31.5, "ESTABLISHING"),
+            cls._rect("p2", 50.5, 1.5,  48.0, 31.5, "MEDIUM"),
+            cls._rect("p3", 1.5,  34.0, 48.0, 32.0, "CLOSE-UP"),
+            cls._rect("p4", 50.5, 34.0, 48.0, 32.0, "MEDIUM-WIDE"),
+            cls._rect("p5", 1.5,  67.0, 48.0, 31.5, "WIDE"),
+            cls._rect("p6", 50.5, 67.0, 48.0, 31.5, "CLOSE-UP"),
+        ]
+
+    @classmethod
+    def hero_left(cls) -> List[PanelDefinition]:
+        return [
+            cls._rect("p1", 1.5,  1.5,  58.5, 97.0, "ESTABLISHING"),
+            cls._rect("p2", 61.0, 1.5,  37.5, 31.5, "CLOSE-UP"),
+            cls._rect("p3", 61.0, 34.0, 37.5, 32.0, "MEDIUM"),
+            cls._rect("p4", 61.0, 67.0, 37.5, 31.5, "WIDE"),
+        ]
+
+    @classmethod
+    def hero_right(cls) -> List[PanelDefinition]:
+        return [
+            cls._rect("p1", 1.5,  1.5,  37.5, 31.5, "CLOSE-UP"),
+            cls._rect("p2", 1.5,  34.0, 37.5, 32.0, "MEDIUM"),
+            cls._rect("p3", 1.5,  67.0, 37.5, 31.5, "WIDE"),
+            cls._rect("p4", 40.0, 1.5,  58.5, 97.0, "ESTABLISHING"),
+        ]
+
+    @classmethod
+    def wide_duo(cls) -> List[PanelDefinition]:
+        return [
+            cls._rect("p1", 1.5,  1.5,  97.0, 53.5, "ESTABLISHING"),
+            cls._rect("p2", 1.5,  56.0, 48.0, 42.5, "MEDIUM"),
+            cls._rect("p3", 50.5, 56.0, 48.0, 42.5, "CLOSE-UP"),
+        ]
+
+    @classmethod
+    def widescreen_pair(cls) -> List[PanelDefinition]:
+        return [
+            cls._rect("p1", 1.5, 1.5,  97.0, 48.0, "WIDE"),
+            cls._rect("p2", 1.5, 50.5, 97.0, 48.0, "WIDE"),
+        ]
+
+    @classmethod
+    def widescreen_trio(cls) -> List[PanelDefinition]:
+        return [
+            cls._rect("p1", 1.5, 1.5,  97.0, 30.5, "WIDE"),
+            cls._rect("p2", 1.5, 33.0, 97.0, 33.0, "MEDIUM"),
+            cls._rect("p3", 1.5, 67.0, 97.0, 31.5, "CLOSE-UP"),
+        ]
+
+    @classmethod
+    def film_strip(cls) -> List[PanelDefinition]:
+        return [
+            cls._rect("p1", 1.5,  1.5, 23.0, 97.0, "CLOSE-UP"),
+            cls._rect("p2", 25.5, 1.5, 23.0, 97.0, "MEDIUM"),
+            cls._rect("p3", 49.5, 1.5, 23.5, 97.0, "MEDIUM"),
+            cls._rect("p4", 74.0, 1.5, 24.5, 97.0, "WIDE"),
+        ]
+
+    @classmethod
+    def t_shape(cls) -> List[PanelDefinition]:
+        return [
+            cls._rect("p1", 1.5,  1.5,  97.0, 33.5, "ESTABLISHING"),
+            cls._rect("p2", 1.5,  36.0, 31.5, 62.5, "CLOSE-UP"),
+            cls._rect("p3", 34.0, 36.0, 32.0, 62.5, "MEDIUM"),
+            cls._rect("p4", 67.0, 36.0, 31.5, 62.5, "WIDE"),
+        ]
+
+    @classmethod
+    def l_shape(cls) -> List[PanelDefinition]:
+        return [
+            cls._rect("p1", 1.5,  1.5,  58.5, 97.0, "ESTABLISHING"),
+            cls._rect("p2", 61.0, 1.5,  37.5, 48.0, "CLOSE-UP"),
+            cls._rect("p3", 61.0, 50.5, 37.5, 48.0, "MEDIUM"),
+        ]
+
     # ── REGISTRY ───────────────────────────────────────────────────────────────
 
     @classmethod
@@ -413,6 +512,19 @@ class MangaLayoutTemplates:
             "cinematic_strips":    cls.cinematic_strips,
             "asymmetric_4":        cls.asymmetric_4,
             "vertical_flow":       cls.vertical_flow,
+            # New rectangular
+            "single":              cls.single,
+            "horizontal_duo":      cls.horizontal_duo,
+            "vertical_trio":       cls.vertical_trio,
+            "grid_2x3":            cls.grid_2x3,
+            "hero_left":           cls.hero_left,
+            "hero_right":          cls.hero_right,
+            "wide_duo":            cls.wide_duo,
+            "widescreen_pair":     cls.widescreen_pair,
+            "widescreen_trio":     cls.widescreen_trio,
+            "film_strip":          cls.film_strip,
+            "t_shape":             cls.t_shape,
+            "l_shape":             cls.l_shape,
         }
 
     @classmethod

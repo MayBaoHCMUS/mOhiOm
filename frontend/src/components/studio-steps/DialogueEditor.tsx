@@ -78,6 +78,19 @@ const LAYOUT_ROW_STRUCTURES: Record<string, number[][]> = {
   asymmetric_4: [[0,1],[2,3]],
   vertical_flow: [[0,1],[2,3]],
   manga_classic_5: [[0,1],[2,3],[4]],
+  // New rectangular layouts — CSS grid compatible
+  single:          [[0]],
+  horizontal_duo:  [[0],[1]],
+  widescreen_pair: [[0],[1]],
+  vertical_trio:   [[0,1,2]],
+  widescreen_trio: [[0],[1],[2]],
+  film_strip:      [[0,1,2,3]],
+  // Non-grid — absolute rendering takes over (ABSOLUTE_LAYOUT_BBOXES)
+  hero_left:  [[0]],
+  hero_right: [[0]],
+  wide_duo:   [[0]],
+  t_shape:    [[0]],
+  l_shape:    [[0]],
 };
 
 type PanelBBox = { l: number; t: number; w: number; h: number };
@@ -94,6 +107,34 @@ const ABSOLUTE_LAYOUT_BBOXES: Record<string, PanelBBox[]> = {
   asymmetric_4:        [{l:4.2,t:3.1,w:52.1,h:56.3}, {l:62.5,t:3.1,w:33.3,h:25.0}, {l:62.5,t:32.8,w:33.3,h:26.6}, {l:4.2,t:64.1,w:91.7,h:32.8}],
   vertical_flow:       [{l:4.2,t:3.1,w:27.1,h:43.8}, {l:37.5,t:3.1,w:58.3,h:43.8}, {l:4.2,t:53.1,w:50.0,h:43.8}, {l:60.4,t:53.1,w:35.4,h:43.8}],
   manga_classic_5:     [{l:4.2,t:3.1,w:56.3,h:34.4}, {l:66.7,t:3.1,w:29.2,h:34.4}, {l:4.2,t:42.2,w:31.3,h:25.0}, {l:41.7,t:42.2,w:54.2,h:25.0}, {l:4.2,t:71.9,w:91.7,h:25.0}],
+  hero_left:  [
+    {l:1.5,  t:1.5,  w:58.5, h:97.0},
+    {l:61.0, t:1.5,  w:37.5, h:31.5},
+    {l:61.0, t:34.0, w:37.5, h:32.0},
+    {l:61.0, t:67.0, w:37.5, h:31.5},
+  ],
+  hero_right: [
+    {l:1.5,  t:1.5,  w:37.5, h:31.5},
+    {l:1.5,  t:34.0, w:37.5, h:32.0},
+    {l:1.5,  t:67.0, w:37.5, h:31.5},
+    {l:40.0, t:1.5,  w:58.5, h:97.0},
+  ],
+  wide_duo: [
+    {l:1.5,  t:1.5,  w:97.0, h:53.5},
+    {l:1.5,  t:56.0, w:48.0, h:42.5},
+    {l:50.5, t:56.0, w:48.0, h:42.5},
+  ],
+  t_shape: [
+    {l:1.5,  t:1.5,  w:97.0, h:33.5},
+    {l:1.5,  t:36.0, w:31.5, h:62.5},
+    {l:34.0, t:36.0, w:32.0, h:62.5},
+    {l:67.0, t:36.0, w:31.5, h:62.5},
+  ],
+  l_shape: [
+    {l:1.5,  t:1.5,  w:58.5, h:97.0},
+    {l:61.0, t:1.5,  w:37.5, h:48.0},
+    {l:61.0, t:50.5, w:37.5, h:48.0},
+  ],
 };
 
 const BASE_PAGE_W = 600;

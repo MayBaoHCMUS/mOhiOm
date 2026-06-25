@@ -8,6 +8,7 @@ import { bubblesApi, comicLayoutApi } from '@/services/api';
 import type { BubbleDataPayload } from '@/services/api';
 import DialogueEditor, { type PanelBubbles, type SingleBubble, type BubbleType } from '@/components/studio-steps/DialogueEditor';
 import Markdown from '@/components/Markdown';
+import { LayoutTemplatePicker } from '@/components/studio-steps/LayoutTemplatePicker';
 
 type State = 1 | 2 | 3 | 4 | 5;
 
@@ -523,16 +524,20 @@ function GenerationProgressBar({
   );
 }// ── Layout template constants (mirrors backend LAYOUT_TEMPLATES) ──────────────
 
-const TEMPLATES_BY_COUNT: Record<number, string[]> = {
-  1: ['full_bleed'],
-  2: ['diagonal_split_2'],
-  3: ['three_panels_row', 'one_large_two_small', 'two_small_one_large', 'diagonal_3_panels', 'cinematic_strips'],
-  4: ['grid_2x2', 'action_dynamic_4', 'splash_top', 'splash_bottom', 'asymmetric_4', 'vertical_flow'],
+export const TEMPLATES_BY_COUNT: Record<number, string[]> = {
+  1: ['full_bleed', 'single'],
+  2: ['diagonal_split_2', 'horizontal_duo', 'widescreen_pair'],
+  3: ['three_panels_row', 'one_large_two_small', 'two_small_one_large',
+      'diagonal_3_panels', 'cinematic_strips', 'vertical_trio', 'wide_duo',
+      'widescreen_trio', 'l_shape'],
+  4: ['grid_2x2', 'action_dynamic_4', 'splash_top', 'splash_bottom',
+      'asymmetric_4', 'vertical_flow', 'hero_left', 'hero_right',
+      'film_strip', 't_shape'],
   5: ['manga_classic_5'],
-  6: ['cinematic_strips'],
+  6: ['grid_2x3'],
 };
 
-const LAYOUT_DISPLAY_NAMES_MAP: Record<string, string> = {
+export const LAYOUT_DISPLAY_NAMES_MAP: Record<string, string> = {
   full_bleed: 'Full Bleed', diagonal_split_2: 'Diagonal Split',
   one_large_two_small: 'Feature Left', two_small_one_large: 'Feature Right',
   three_panels_row: 'Three Row', diagonal_3_panels: 'Diagonal 3',
@@ -540,10 +545,14 @@ const LAYOUT_DISPLAY_NAMES_MAP: Record<string, string> = {
   action_dynamic_4: 'Action ✕', splash_top: 'Splash Top',
   splash_bottom: 'Splash Bottom', asymmetric_4: 'Asymmetric',
   vertical_flow: 'Flow', manga_classic_5: 'Classic 5',
+  single: 'Single', horizontal_duo: 'Horiz Duo', vertical_trio: 'Vert Trio',
+  grid_2x3: '2×3 Grid', hero_left: 'Hero Left', hero_right: 'Hero Right',
+  wide_duo: 'Wide + Duo', widescreen_pair: 'Wide Pair', widescreen_trio: 'Wide Trio',
+  film_strip: 'Film Strip', t_shape: 'T-Shape', l_shape: 'L-Shape',
 };
 
 // SVG panel rects for each template (48×64 viewport)
-const LAYOUT_SVGS: Record<string, React.ReactNode> = {
+export const LAYOUT_SVGS: Record<string, React.ReactNode> = {
   full_bleed:        <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>,
   diagonal_split_2:  <><polygon points="2,2 32,2 24,62 2,62" fill="currentColor"/><polygon points="34,2 46,2 46,62 26,62" fill="currentColor"/></>,
   one_large_two_small: <><rect x="2" y="2" width="26" height="60" rx="1" fill="currentColor"/><rect x="31" y="2" width="15" height="28" rx="1" fill="currentColor"/><rect x="31" y="33" width="15" height="29" rx="1" fill="currentColor"/></>,
@@ -558,10 +567,22 @@ const LAYOUT_SVGS: Record<string, React.ReactNode> = {
   asymmetric_4:      <><rect x="2" y="2" width="25" height="36" rx="1" fill="currentColor"/><rect x="30" y="2" width="16" height="16" rx="1" fill="currentColor"/><rect x="30" y="21" width="16" height="17" rx="1" fill="currentColor"/><rect x="2" y="41" width="44" height="21" rx="1" fill="currentColor"/></>,
   vertical_flow:     <><rect x="2" y="2" width="13" height="28" rx="1" fill="currentColor"/><rect x="18" y="2" width="28" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="24" height="28" rx="1" fill="currentColor"/><rect x="29" y="34" width="17" height="28" rx="1" fill="currentColor"/></>,
   manga_classic_5:   <><rect x="2" y="2" width="27" height="22" rx="1" fill="currentColor"/><rect x="32" y="2" width="14" height="22" rx="1" fill="currentColor"/><rect x="2" y="27" width="15" height="16" rx="1" fill="currentColor"/><rect x="20" y="27" width="26" height="16" rx="1" fill="currentColor"/><rect x="2" y="46" width="44" height="16" rx="1" fill="currentColor"/></>,
+  single:          <rect x="1" y="1" width="46" height="62" rx="1" fill="currentColor"/>,
+  horizontal_duo:  <><rect x="1" y="1" width="46" height="30" rx="1" fill="currentColor"/><rect x="1" y="33" width="46" height="30" rx="1" fill="currentColor"/></>,
+  vertical_trio:   <><rect x="1" y="1" width="14" height="62" rx="1" fill="currentColor"/><rect x="17" y="1" width="14" height="62" rx="1" fill="currentColor"/><rect x="33" y="1" width="14" height="62" rx="1" fill="currentColor"/></>,
+  grid_2x3:        <><rect x="1" y="1" width="22" height="19" rx="1" fill="currentColor"/><rect x="25" y="1" width="22" height="19" rx="1" fill="currentColor"/><rect x="1" y="22" width="22" height="19" rx="1" fill="currentColor"/><rect x="25" y="22" width="22" height="19" rx="1" fill="currentColor"/><rect x="1" y="43" width="22" height="20" rx="1" fill="currentColor"/><rect x="25" y="43" width="22" height="20" rx="1" fill="currentColor"/></>,
+  hero_left:       <><rect x="1" y="1" width="27" height="62" rx="1" fill="currentColor"/><rect x="30" y="1" width="17" height="19" rx="1" fill="currentColor"/><rect x="30" y="22" width="17" height="19" rx="1" fill="currentColor"/><rect x="30" y="43" width="17" height="20" rx="1" fill="currentColor"/></>,
+  hero_right:      <><rect x="1" y="1" width="17" height="19" rx="1" fill="currentColor"/><rect x="1" y="22" width="17" height="19" rx="1" fill="currentColor"/><rect x="1" y="43" width="17" height="20" rx="1" fill="currentColor"/><rect x="20" y="1" width="27" height="62" rx="1" fill="currentColor"/></>,
+  wide_duo:        <><rect x="1" y="1" width="46" height="33" rx="1" fill="currentColor"/><rect x="1" y="36" width="22" height="27" rx="1" fill="currentColor"/><rect x="25" y="36" width="22" height="27" rx="1" fill="currentColor"/></>,
+  widescreen_pair: <><rect x="1" y="1" width="46" height="30" rx="1" fill="currentColor"/><rect x="1" y="33" width="46" height="30" rx="1" fill="currentColor"/></>,
+  widescreen_trio: <><rect x="1" y="1" width="46" height="19" rx="1" fill="currentColor"/><rect x="1" y="22" width="46" height="20" rx="1" fill="currentColor"/><rect x="1" y="44" width="46" height="19" rx="1" fill="currentColor"/></>,
+  film_strip:      <><rect x="1" y="1" width="10" height="62" rx="1" fill="currentColor"/><rect x="13" y="1" width="10" height="62" rx="1" fill="currentColor"/><rect x="25" y="1" width="10" height="62" rx="1" fill="currentColor"/><rect x="37" y="1" width="10" height="62" rx="1" fill="currentColor"/></>,
+  t_shape:         <><rect x="1" y="1" width="46" height="20" rx="1" fill="currentColor"/><rect x="1" y="23" width="14" height="40" rx="1" fill="currentColor"/><rect x="17" y="23" width="14" height="40" rx="1" fill="currentColor"/><rect x="33" y="23" width="14" height="40" rx="1" fill="currentColor"/></>,
+  l_shape:         <><rect x="1" y="1" width="27" height="62" rx="1" fill="currentColor"/><rect x="30" y="1" width="17" height="30" rx="1" fill="currentColor"/><rect x="30" y="33" width="17" height="30" rx="1" fill="currentColor"/></>,
 };
 
 // Panel bounding boxes in 48×64 coordinate space — mirrors LAYOUT_SVGS positions (polygons use bbox)
-const LAYOUT_PANEL_RECTS: Record<string, Array<{ x: number; y: number; w: number; h: number }>> = {
+export const LAYOUT_PANEL_RECTS: Record<string, Array<{ x: number; y: number; w: number; h: number }>> = {
   full_bleed:        [{ x:2,  y:2,  w:44, h:60 }],
   diagonal_split_2:  [{ x:2,  y:2,  w:30, h:60 }, { x:26, y:2,  w:20, h:60 }],
   one_large_two_small: [{ x:2,  y:2,  w:26, h:60 }, { x:31, y:2,  w:15, h:28 }, { x:31, y:33, w:15, h:29 }],
@@ -576,88 +597,21 @@ const LAYOUT_PANEL_RECTS: Record<string, Array<{ x: number; y: number; w: number
   asymmetric_4:      [{ x:2,  y:2,  w:25, h:36 }, { x:30, y:2,  w:16, h:16 }, { x:30, y:21, w:16, h:17 }, { x:2,  y:41, w:44, h:21 }],
   vertical_flow:     [{ x:2,  y:2,  w:13, h:28 }, { x:18, y:2,  w:28, h:28 }, { x:2,  y:34, w:24, h:28 }, { x:29, y:34, w:17, h:28 }],
   manga_classic_5:   [{ x:2,  y:2,  w:27, h:22 }, { x:32, y:2,  w:14, h:22 }, { x:2,  y:27, w:15, h:16 }, { x:20, y:27, w:26, h:16 }, { x:2,  y:46, w:44, h:16 }],
+  single:          [{ x:1,  y:1,  w:46, h:62 }],
+  horizontal_duo:  [{ x:1,  y:1,  w:46, h:31 }, { x:1,  y:32, w:46, h:31 }],
+  vertical_trio:   [{ x:1,  y:1,  w:15, h:62 }, { x:16, y:1,  w:15, h:62 }, { x:32, y:1,  w:15, h:62 }],
+  grid_2x3:        [{ x:1,  y:1,  w:23, h:20 }, { x:24, y:1,  w:23, h:20 }, { x:1,  y:22, w:23, h:20 },
+                    { x:24, y:22, w:23, h:20 }, { x:1,  y:43, w:23, h:20 }, { x:24, y:43, w:23, h:20 }],
+  hero_left:       [{ x:1,  y:1,  w:28, h:62 }, { x:29, y:1,  w:18, h:20 }, { x:29, y:22, w:18, h:20 }, { x:29, y:43, w:18, h:20 }],
+  hero_right:      [{ x:1,  y:1,  w:18, h:20 }, { x:1,  y:22, w:18, h:20 }, { x:1,  y:43, w:18, h:20 }, { x:19, y:1,  w:28, h:62 }],
+  wide_duo:        [{ x:1,  y:1,  w:46, h:34 }, { x:1,  y:36, w:23, h:27 }, { x:24, y:36, w:23, h:27 }],
+  widescreen_pair: [{ x:1,  y:1,  w:46, h:31 }, { x:1,  y:32, w:46, h:31 }],
+  widescreen_trio: [{ x:1,  y:1,  w:46, h:20 }, { x:1,  y:22, w:46, h:21 }, { x:1,  y:44, w:46, h:19 }],
+  film_strip:      [{ x:1,  y:1,  w:11, h:62 }, { x:12, y:1,  w:11, h:62 }, { x:24, y:1,  w:11, h:62 }, { x:36, y:1,  w:11, h:62 }],
+  t_shape:         [{ x:1,  y:1,  w:46, h:21 }, { x:1,  y:23, w:15, h:40 }, { x:16, y:23, w:15, h:40 }, { x:32, y:23, w:15, h:40 }],
+  l_shape:         [{ x:1,  y:1,  w:28, h:62 }, { x:29, y:1,  w:18, h:31 }, { x:29, y:32, w:18, h:31 }],
 };
 
-function LayoutPickerPanel({
-  panelCount,
-  selectedLayout,
-  onSelect,
-  suggestion,
-  isSuggLoading,
-  onGetSuggestion,
-}: {
-  panelCount: number;
-  selectedLayout: string;
-  onSelect: (name: string) => void;
-  suggestion: { suggested: string; reason: string } | null;
-  isSuggLoading: boolean;
-  onGetSuggestion: () => void;
-}) {
-  const options = TEMPLATES_BY_COUNT[panelCount] ?? [];
-
-  return (
-    <div className="space-y-3">
-      {/* AI Suggest button */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <button type="button" onClick={onGetSuggestion} disabled={isSuggLoading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 transition-colors disabled:opacity-50">
-          {isSuggLoading
-            ? <><span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />Thinking…</>
-            : '✨ AI Suggest Layout'}
-        </button>
-        {suggestion && (
-          <span className="text-xs text-on-surface-variant">
-            → <span className="font-semibold text-on-surface">{LAYOUT_DISPLAY_NAMES_MAP[suggestion.suggested] ?? suggestion.suggested}</span>
-          </span>
-        )}
-      </div>
-      {suggestion?.reason && (
-        <p className="text-[11px] text-on-surface-variant bg-surface-container px-3 py-2 rounded-xl leading-relaxed">
-          💡 {suggestion.reason}
-        </p>
-      )}
-
-      {/* Template card grid */}
-      {options.length > 0 && (
-        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-          {options.map((name) => {
-            const isSelected = selectedLayout === name;
-            const isSuggested = suggestion?.suggested === name && !isSelected;
-            return (
-              <button key={name} type="button" onClick={() => onSelect(name)}
-                className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${
-                  isSelected
-                    ? 'border-primary bg-primary/10'
-                    : isSuggested
-                    ? 'border-primary/40 bg-primary/5'
-                    : 'border-outline-variant/20 hover:border-primary/30 hover:bg-surface-container-low'
-                }`}>
-                {isSelected && (
-                  <span className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-primary flex items-center justify-center">
-                    <span className="text-white text-[8px] font-bold leading-none">✓</span>
-                  </span>
-                )}
-                {isSuggested && (
-                  <span className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-primary/40 flex items-center justify-center">
-                    <span className="text-white text-[8px] font-bold leading-none">✨</span>
-                  </span>
-                )}
-                <svg viewBox="0 0 48 64" className="w-8 h-[42px]" fill="none" xmlns="http://www.w3.org/2000/svg"
-                  style={{ color: isSelected ? 'var(--color-primary)' : 'var(--color-outline-variant)' }}>
-                  {LAYOUT_SVGS[name] ?? <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>}
-                </svg>
-                <span className="text-[10px] font-semibold text-on-surface-variant leading-tight text-center line-clamp-1">
-                  {LAYOUT_DISPLAY_NAMES_MAP[name] ?? name}
-                </span>
-                <span className="text-[9px] text-outline">{panelCount}p</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
 
 
 
@@ -858,7 +812,6 @@ function LayoutStudioSidebar({
   onGetSuggestion: () => void;
   artStyle: string;
 }) {
-  const options = TEMPLATES_BY_COUNT[panels.length] ?? [];
   const isAllDone = panelStats.total > 0 && panelStats.done >= panelStats.total && !isImageGenerating;
   const donePct = panelStats.total > 0 ? Math.round((panelStats.done / panelStats.total) * 100) : 0;
 
@@ -868,51 +821,17 @@ function LayoutStudioSidebar({
 
         {/* ── LAYOUT TEMPLATE ── (mirrors "DRAG TO ADD BUBBLE" section) */}
         <div style={{ padding: '16px 12px 12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#374151', textTransform: 'uppercase', margin: 0 }}>
-              Layout Template
-            </p>
-            <button type="button" onClick={onGetSuggestion} disabled={isSuggLoading}
-              style={{ fontSize: 11, color: '#4F46E5', fontWeight: 600, background: 'none', border: 'none', cursor: isSuggLoading ? 'default' : 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 3, opacity: isSuggLoading ? 0.5 : 1 }}>
-              {isSuggLoading
-                ? <><span className="w-3 h-3 border border-gray-300 border-t-indigo-600 rounded-full animate-spin" />Thinking…</>
-                : '✨ AI Suggest'}
-            </button>
-          </div>
-          {suggestion?.reason && (
-            <p style={{ fontSize: 11, color: '#6B7280', background: '#F3F4F6', borderRadius: 8, padding: '6px 10px', marginBottom: 10, lineHeight: 1.5 }}>
-              💡 {suggestion.reason}
-            </p>
-          )}
-          {/* Template cards — same visual style as bubble type buttons */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-            {options.map((name) => {
-              const isSelected = layoutName === name;
-              const isSugg = suggestion?.suggested === name && !isSelected;
-              return (
-                <button key={name} type="button" onClick={() => onSelectLayout(name)}
-                  style={{
-                    position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center',
-                    gap: 3, padding: '8px 4px 6px', borderRadius: 10,
-                    border: `2px solid ${isSelected ? '#4F46E5' : isSugg ? 'rgba(79,70,229,0.4)' : '#E5E7EB'}`,
-                    background: isSelected ? '#EEF2FF' : isSugg ? 'rgba(79,70,229,0.04)' : '#F9FAFB',
-                    cursor: 'pointer', transition: 'all 0.12s',
-                  }}>
-                  {isSelected && (
-                    <span style={{ position: 'absolute', top: 3, right: 3, width: 12, height: 12, borderRadius: '50%', background: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span className="material-symbols-outlined text-white" style={{ fontSize: 8 }}>check</span>
-                    </span>
-                  )}
-                  <svg viewBox="0 0 48 64" style={{ width: 28, height: 37, color: isSelected ? '#4F46E5' : '#9CA3AF' }} fill="none">
-                    {LAYOUT_SVGS[name] ?? <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>}
-                  </svg>
-                  <span style={{ fontSize: 9, fontWeight: 600, color: isSelected ? '#4F46E5' : '#6B7280', lineHeight: 1.2, textAlign: 'center', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {LAYOUT_DISPLAY_NAMES_MAP[name] ?? name}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#374151', textTransform: 'uppercase', margin: '0 0 10px' }}>
+            Layout Template
+          </p>
+          <LayoutTemplatePicker
+            panelCount={panels.length}
+            selectedLayout={layoutName}
+            onSelect={onSelectLayout}
+            suggestion={suggestion}
+            isSuggLoading={isSuggLoading}
+            onGetSuggestion={onGetSuggestion}
+          />
         </div>
 
         <div style={{ height: 1, background: '#E5E7EB' }} />
