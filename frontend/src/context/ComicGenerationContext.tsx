@@ -11,7 +11,7 @@ import {
   toApiError,
 } from '@/services/api';
 import type { FullProjectSave, CloudProjectListItem, CharacterSummary } from '@/services/api';
-import { exportAsZip, exportAsPdf } from '@/lib/export';
+import { exportAsZip, exportAsPdf, exportAsEpub } from '@/lib/export';
 import type { ExportPage } from '@/lib/export';
 
 export type StepKey = 1 | 2 | 3 | 4 | 5;
@@ -581,6 +581,7 @@ export interface ComicGenerationContextValue {
   downloadProjectJson: () => void;
   exportZip: (includeMetadata: boolean) => Promise<void>;
   exportPdf: (includeMetadata: boolean) => Promise<void>;
+  exportEpub: (includeMetadata: boolean) => Promise<void>;
   exportStatus: 'idle' | 'exporting' | 'error';
   getStep2PromptList: () => string[];
   getSelectedCharacterReferences: () => Array<{
@@ -2474,6 +2475,18 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
   }, [step4.data, projectId]);
 
+  const exportEpub = useCallback(async (includeMetadata: boolean) => {
+    if (!step4.data) return;
+    setExportStatus('exporting');
+    try {
+      const pages = buildExportPages(step4.data);
+      await exportAsEpub(pages, { includeMetadata, projectId: projectId || 'comic' });
+      setExportStatus('idle');
+    } catch {
+      setExportStatus('error');
+    }
+  }, [step4.data, projectId]);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -3074,6 +3087,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     downloadProjectJson,
     exportZip,
     exportPdf,
+    exportEpub,
     exportStatus,
     getStep2PromptList,
     getSelectedCharacterReferences,

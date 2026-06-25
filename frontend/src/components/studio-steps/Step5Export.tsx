@@ -19,6 +19,7 @@ export default function Step5Export() {
     handleApprove,
     exportZip,
     exportPdf,
+    exportEpub,
     exportStatus,
     saveToCloud,
     cloudSaveStatus,
@@ -200,7 +201,7 @@ export default function Step5Export() {
           {/* Download section */}
           <div className="space-y-4">
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Download</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <button type="button"
                 onClick={() => exportPdf(includeMetadata)}
                 disabled={!hasImages || exportStatus === 'exporting'}
@@ -225,7 +226,19 @@ export default function Step5Export() {
                 <p className="text-sm font-bold text-gray-900 mt-2">Image Pack</p>
                 <p className="text-xs text-gray-400 mt-0.5">All pages as PNG ZIP</p>
               </button>
-              <label className="col-span-2 flex items-center gap-2.5 cursor-pointer select-none">
+              <button type="button"
+                onClick={() => exportEpub(includeMetadata)}
+                disabled={!hasImages || exportStatus === 'exporting'}
+                className={`text-left p-4 rounded-2xl border-2 transition-all ${
+                  !hasImages || exportStatus === 'exporting'
+                    ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
+                    : 'border-gray-200 hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
+                }`}>
+                <span className="text-2xl">📚</span>
+                <p className="text-sm font-bold text-gray-900 mt-2">EPUB</p>
+                <p className="text-xs text-gray-400 mt-0.5">E-reader, mobile</p>
+              </button>
+              <label className="col-span-3 flex items-center gap-2.5 cursor-pointer select-none">
                 <input type="checkbox" checked={includeMetadata} onChange={(e) => setIncludeMetadata(e.target.checked)} className="w-4 h-4 rounded accent-indigo-600" />
                 <span className="text-sm text-gray-700">Include panel script (dialogue, shot types, prompts)</span>
               </label>
@@ -241,7 +254,7 @@ export default function Step5Export() {
                 const disabled = !hasPanelsWithImages || exportingDialogue;
                 return (
                   <button type="button" onClick={handleExportWithDialogue} disabled={disabled}
-                    className={`col-span-2 flex items-start gap-3 p-4 rounded-2xl border-2 transition-all text-left ${
+                    className={`col-span-3 flex items-start gap-3 p-4 rounded-2xl border-2 transition-all text-left ${
                       disabled
                         ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
                         : 'border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50/50 cursor-pointer'

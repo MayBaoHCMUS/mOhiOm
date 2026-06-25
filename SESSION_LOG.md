@@ -1,3 +1,219 @@
+## SESSION: 2026-06-25 (continued) — PDF / EPUB Export Feature Plan
+
+### 🎯 NEXT SESSION — PDF + EPUB Export Upgrade
+
+#### Context
+
+Current state:
+- `jspdf` (v4.2.1) + `jszip` (v3.10.1) already installed.
+- `frontend/src/lib/export.ts` has `exportAsZip` and `exportAsPdf` (jsPDF, A4 fixed size).
+- Context (`ComicGenerationContext.tsx`) exposes `exportZip(includeMetadata)` and `exportPdf(includeMetadata)`.
+- `Step5Export.tsx` has PDF + ZIP buttons wired to context.
+- `pdf-lib` NOT installed. `epubjs` NOT needed (we build EPUB manually with jszip).
+
+**Key difference from reference spec:** Our images are stored as full data URLs (`data:image/png;base64,...`) in `pageStates[pageId].imageUrl`, not raw base64. The existing `stripDataPrefix()` helper in `export.ts` already handles stripping the prefix before processing.
+
+#### What changes
+
+**Install:**
+```bash
+cd frontend && npm install pdf-lib
+```
+(`jszip` already installed; `epubjs` is a reader library — not needed.)
+
+---
+
+**File 1 — `frontend/src/lib/export.ts`**
+
+1. Remove `import jsPDF from 'jspdf'` → add `import { PDFDocument } from 'pdf-lib'`.
+
+2. **Replace `exportAsPdf`** (currently uses jsPDF at fixed A4 210×297mm) with a `pdf-lib` version that preserves actual image dimensions:
+```typescript
+export async function exportAsPdf(pages: ExportPage[], opts: ExportOpts): Promise<void> {
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.setTitle(opts.projectId);
+  pdfDoc.setAuthor('mOhiOm AI');
+  pdfDoc.setCreationDate(new Date());
+
+  for (const page of pages) {
+    const { base64 } = stripDataPrefix(page.imageUrl);
+    const imgBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    const pngImage = await pdfDoc.embedPng(imgBytes);
+    const pdfPage = pdfDoc.addPage([pngImage.width, pngImage.height]);
+    pdfPage.drawImage(pngImage, { x: 0, y: 0, width: pngImage.width, height: pngImage.height });
+  }
+
+  // optional metadata appendix page omitted (image-based comic — text page not useful for pdf-lib)
+
+  const pdfBytes = await pdfDoc.save();
+  triggerDownload(new Blob([pdfBytes], { type: 'application/pdf' }), `comic-${opts.projectId}.pdf`);
+}
+```
+
+3. **Add `exportAsEpub`** (built manually with jszip — no epubjs):
+```typescript
+export async function exportAsEpub(pages: ExportPage[], opts: ExportOpts): Promise<void> {
+  const zip  = new JSZip();
+  const safe = opts.projectId.replace(/[^\w]/g, '_').slice(0, 64);
+  const title = opts.projectId;
+  const uid  = `urn:uuid:${crypto.randomUUID()}`;
+  const now  = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+  // mimetype — MUST be first, MUST NOT be compressed
+  zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
+
+  zip.folder('META-INF')!.file('container.xml',
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">' +
+    '<rootfiles><rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/>' +
+    '</rootfiles></container>'
+  );
+
+  const epub = zip.folder('EPUB')!;
+  const imgs = epub.folder('images')!;
+
+  const manifestItems: string[] = [];
+  const spineItems: string[] = [];
+  const navItems: string[] = [];
+
+  pages.forEach((page, i) => {
+    const n = String(i + 1).padStart(2, '0');
+    const imgFile = `page_${n}.png`;
+    const xhtmlFile = `page_${n}.xhtml`;
+    const chTitle = `Page ${i + 1}`;
+
+    const { base64 } = stripDataPrefix(page.imageUrl);
+    imgs.file(imgFile, base64, { base64: true });
+
+    epub.file(xhtmlFile,
+      `<?xml version="1.0" encoding="utf-8"?>` +
+      `<html xmlns="http://www.w3.org/1999/xhtml">` +
+      `<head><title>${chTitle}</title>` +
+      `<style>body{margin:0;padding:0}img{width:100%;height:auto;display:block}</style></head>` +
+      `<body><img src="images/${imgFile}" alt="${chTitle}"/></body></html>`
+    );
+
+    manifestItems.push(
+      `<item id="img${n}" href="images/${imgFile}" media-type="image/png"/>`,
+      `<item id="ch${n}" href="${xhtmlFile}" media-type="application/xhtml+xml"/>`
+    );
+    spineItems.push(`<itemref idref="ch${n}"/>`);
+    navItems.push(`<li><a href="${xhtmlFile}">${chTitle}</a></li>`);
+  });
+
+  epub.file('content.opf',
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">` +
+    `<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">` +
+    `<dc:identifier id="uid">${uid}</dc:identifier>` +
+    `<dc:title>${title}</dc:title>` +
+    `<dc:language>en</dc:language>` +
+    `<dc:creator>mOhiOm AI</dc:creator>` +
+    `<meta property="dcterms:modified">${now}</meta>` +
+    `</metadata>` +
+    `<manifest>` +
+    `<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>` +
+    manifestItems.join('') +
+    `</manifest>` +
+    `<spine>${spineItems.join('')}</spine>` +
+    `</package>`
+  );
+
+  epub.file('nav.xhtml',
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">` +
+    `<head><title>Table of Contents</title></head>` +
+    `<body><nav epub:type="toc"><ol>${navItems.join('')}</ol></nav></body></html>`
+  );
+
+  const epubBytes = await zip.generateAsync({
+    type: 'uint8array',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 },
+  });
+  triggerDownload(new Blob([epubBytes], { type: 'application/epub+zip' }), `${safe}.epub`);
+}
+```
+
+4. **Update `triggerDownload`** to revoke the blob URL after 60s (currently revokes immediately):
+```typescript
+function triggerDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+```
+
+---
+
+**File 2 — `frontend/src/context/ComicGenerationContext.tsx`**
+
+Add `exportEpub` alongside `exportZip` / `exportPdf`:
+
+```typescript
+// in interface ComicGenerationContextValue:
+exportEpub: (includeMetadata: boolean) => Promise<void>;
+
+// in provider body (mirrors exportPdf pattern):
+const exportEpub = useCallback(async (includeMetadata: boolean) => {
+  if (!step4.data) return;
+  setExportStatus('exporting');
+  try {
+    const pages = buildExportPages(step4.data);
+    await exportAsEpub(pages, { includeMetadata, projectId });
+    setExportStatus('idle');
+  } catch { setExportStatus('error'); }
+}, [step4.data, projectId]);
+
+// add to context value object:
+exportEpub,
+```
+
+Also add `exportAsEpub` to the import from `'@/lib/export'`.
+
+---
+
+**File 3 — `frontend/src/components/studio-steps/Step5Export.tsx`**
+
+Add an EPUB button next to PDF and ZIP. Pull `exportEpub` from context. Same loading/disabled pattern as the other two buttons.
+
+UI addition in the export card row:
+```tsx
+<button
+  onClick={() => exportEpub(includeMetadata)}
+  disabled={!hasImages || exportStatus === 'exporting'}
+  className={...same style as PDF/ZIP buttons...}
+>
+  {/* book icon */}
+  <p className="text-sm font-bold text-gray-900 mt-2">EPUB</p>
+  <p className="text-xs text-gray-500">E-reader, mobile</p>
+</button>
+```
+
+---
+
+#### Critical notes
+
+- `pdf-lib` replaces `jspdf` for PDF only. Remove `jspdf` import from `export.ts` after migration but keep the package (may be used elsewhere — check first with `grep -r "jspdf"` before removing).
+- EPUB `mimetype` file MUST be first in the ZIP and use `compression: 'STORE'` — violating this makes Apple Books / Kindle reject the file.
+- `exportAsEpub` uses `crypto.randomUUID()` — available in all modern browsers (Chrome 92+, Safari 15.4+).
+- `stripDataPrefix()` already exists in `export.ts` — reuse it in both new functions. Don't duplicate.
+- No backend changes needed. All export runs in the browser.
+- Run `npx tsc --noEmit` after changes — `pdf-lib` types are bundled with the package.
+
+#### Verification
+1. PDF: open exported file — each page fills the page exactly at image native resolution (no A4 letterboxing).
+2. ZIP: open archive — files named `page_01.png`, `page_02.png`, etc.
+3. EPUB: open in Calibre or Apple Books — all pages visible, TOC lists each page, no validation errors.
+4. Zero TS errors after migration.
+
+---
+
 ## SESSION: 2026-06-25 — DialogueEditor Position Bug Fix + Layout Template Expansion Plan
 
 ### ✅ COMPLETED — DialogueEditor Absolute Positioning Bug Fix
