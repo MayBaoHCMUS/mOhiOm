@@ -12,6 +12,7 @@ import {
 } from '@/services/api';
 import type { FullProjectSave, CloudProjectListItem, CharacterSummary } from '@/services/api';
 import { exportAsZip, exportAsPdf, exportAsEpub } from '@/lib/export';
+import { trackEvent } from '@/lib/analytics';
 import type { ExportPage } from '@/lib/export';
 
 export type StepKey = 1 | 2 | 3 | 4 | 5;
@@ -881,6 +882,13 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       ? imageDataUri.split(',')[1] ?? ''
       : imageDataUri;
     if (!b64) return;
+    trackEvent({
+      type:          'character_save',
+      story_id:      projectId || 'unknown',
+      style:         imageGenStyle || 'manga',
+      duration_ms:   0,
+      has_character: true,
+    });
     fetch('/api/image-proxy/characters', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -891,7 +899,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         reference_image_b64: b64,
       }),
     }).catch(() => {});
-  }, [localImageApiUrl, projectId]);
+  }, [localImageApiUrl, projectId, imageGenStyle]);
 
   const setStepState = (step: StepKey, updater: (prev: StepState<unknown>) => StepState<unknown>) => {
     if (step === 1) setStep1((prev) => updater(prev as StepState<unknown>) as StepState<Step1Result>);
@@ -2008,6 +2016,14 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
               height: panelDimensions?.height,
             };
             const imageUrl = await fetchImageFromAI(cleanPrompt, localImageApiUrl || undefined, effectiveSettings);
+            trackEvent({
+              type:          'panel',
+              story_id:      projectId || 'unknown',
+              style:         imageGenStyle || 'manga',
+              duration_ms:   0,
+              has_character: !!firstCharName,
+              ip_scale:      ipAdapterScale,
+            });
             return {
               id: panel.id,
               status: 'success' as const,
@@ -2457,11 +2473,20 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     try {
       const pages = buildExportPages(step4.data);
       await exportAsZip(pages, { includeMetadata, projectId: projectId || 'comic' });
+      trackEvent({
+        type:          'export',
+        story_id:      projectId || 'unknown',
+        style:         imageGenStyle || 'manga',
+        duration_ms:   0,
+        has_character: false,
+        export_format: 'zip',
+        page_count:    pages.length,
+      });
       setExportStatus('idle');
     } catch {
       setExportStatus('error');
     }
-  }, [step4.data, projectId]);
+  }, [step4.data, projectId, imageGenStyle]);
 
   const exportPdf = useCallback(async (includeMetadata: boolean) => {
     if (!step4.data) return;
@@ -2469,11 +2494,20 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     try {
       const pages = buildExportPages(step4.data);
       await exportAsPdf(pages, { includeMetadata, projectId: projectId || 'comic' });
+      trackEvent({
+        type:          'export',
+        story_id:      projectId || 'unknown',
+        style:         imageGenStyle || 'manga',
+        duration_ms:   0,
+        has_character: false,
+        export_format: 'pdf',
+        page_count:    pages.length,
+      });
       setExportStatus('idle');
     } catch {
       setExportStatus('error');
     }
-  }, [step4.data, projectId]);
+  }, [step4.data, projectId, imageGenStyle]);
 
   const exportEpub = useCallback(async (includeMetadata: boolean) => {
     if (!step4.data) return;
@@ -2481,11 +2515,20 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     try {
       const pages = buildExportPages(step4.data);
       await exportAsEpub(pages, { includeMetadata, projectId: projectId || 'comic' });
+      trackEvent({
+        type:          'export',
+        story_id:      projectId || 'unknown',
+        style:         imageGenStyle || 'manga',
+        duration_ms:   0,
+        has_character: false,
+        export_format: 'epub',
+        page_count:    pages.length,
+      });
       setExportStatus('idle');
     } catch {
       setExportStatus('error');
     }
-  }, [step4.data, projectId]);
+  }, [step4.data, projectId, imageGenStyle]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

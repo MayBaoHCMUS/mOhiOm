@@ -16,6 +16,7 @@ const WORKFLOW = [
 const TOOLS = [
   { href: '/studio/my-stories',    label: 'My Stories',   icon: 'library_books' },
   { href: '/studio/layout-engine', label: 'Layout Engine', icon: 'grid_view' },
+  { href: '/studio/analytics',     label: 'Analytics',    icon: 'bar_chart' },
   { href: '/settings',             label: 'Settings',      icon: 'settings' },
 ];
 
