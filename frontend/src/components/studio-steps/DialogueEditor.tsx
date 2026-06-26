@@ -48,6 +48,7 @@ export interface DialoguePanelData {
 interface DialogueEditorProps {
   panelsByPage: [number, Step4Panel[]][];
   panelStates: Record<string, Step4PanelState>;
+  pageStates: Record<string, Step4PanelState>;
   panelBubbles: Record<string, PanelBubbles>;
   pageLayoutNames: Record<number, string>;
   onSaveBubbles: (panelId: string, bubbles: PanelBubbles) => void;
@@ -647,6 +648,7 @@ interface PanelCellProps {
   panel: Step4Panel;
   panelIndex: number;
   imageUrl: string | null;
+  hasPageImage?: boolean;
   bubbles: PanelBubbles;
   layoutRows: number[][];
   selectedBubbleId: string | null;
@@ -664,7 +666,7 @@ interface PanelCellProps {
 }
 
 function PanelCell({
-  panel, panelIndex, imageUrl, bubbles, layoutRows,
+  panel, panelIndex, imageUrl, hasPageImage, bubbles, layoutRows,
   selectedBubbleId, editingBubbleId, zoom,
   onBubbleSelect, onBubbleDeselect, onBubbleAdd, onBubbleUpdate, onDragCommit, onContextMenu,
   onEditStart, onEditEnd, absoluteStyle,
@@ -808,8 +810,8 @@ function PanelCell({
         overflow: 'hidden',
         border: isHovered && !selectedBubbleId
           ? '2px solid rgba(99,102,241,0.5)'
-          : '2px solid #1a1a1a',
-        background: '#1a1a1a',
+          : hasPageImage ? '1px solid rgba(255,255,255,0.15)' : '2px solid #1a1a1a',
+        background: hasPageImage ? 'transparent' : '#1a1a1a',
         cursor: 'crosshair',
       }}
       onMouseEnter={() => setIsHovered(true)}
@@ -839,12 +841,12 @@ function PanelCell({
           draggable={false}
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
         />
-      ) : (
+      ) : !hasPageImage ? (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 4 }}>
           <span className="material-symbols-outlined" style={{ color: 'rgba(255,255,255,0.18)', fontSize: 28 }}>crop_original</span>
           <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 10 }}>P{panel.panelNumber}</span>
         </div>
-      )}
+      ) : null}
 
       {/* Non-selected bubbles SVG overlay */}
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
@@ -1692,7 +1694,7 @@ function ContextMenu({ x, y, isCrossPanel, onBringFront, onSendBack, onDuplicate
 // ── Main DialogueEditor component ─────────────────────────────────────────────
 
 export default function DialogueEditor({
-  panelsByPage, panelStates, panelBubbles, pageLayoutNames,
+  panelsByPage, panelStates, pageStates, panelBubbles, pageLayoutNames,
   onSaveBubbles, onExport, onAutoImport,
 }: DialogueEditorProps) {
   const pageIds = panelsByPage.map(([n]) => n);
@@ -1714,6 +1716,8 @@ export default function DialogueEditor({
     () => panelsByPage.find(([n]) => n === currentPage)?.[1] ?? [],
     [panelsByPage, currentPage],
   );
+
+  const currentPageImageUrl = pageStates[`page-${currentPage}`]?.imageUrl ?? null;
 
   const selectedBubbleObj = useMemo(() => {
     if (!selectedBubble) return null;
@@ -1981,6 +1985,7 @@ export default function DialogueEditor({
                   panel,
                   panelIndex: idx,
                   imageUrl: panelStates[panel.id]?.imageUrl ?? null,
+                  hasPageImage: !!currentPageImageUrl,
                   bubbles: panelBubbles[panel.id] ?? [],
                   layoutRows,
                   selectedBubbleId: selectedBubble?.panelId === panel.id ? selectedBubble.bubbleId : null,
@@ -2007,6 +2012,15 @@ export default function DialogueEditor({
                 if (absBboxes) {
                   return (
                     <div style={{ position: 'relative', width: BASE_PAGE_W, height: BASE_PAGE_H, background: 'white' }}>
+                      {currentPageImageUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={currentPageImageUrl}
+                          alt=""
+                          draggable={false}
+                          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none' }}
+                        />
+                      )}
                       {currentPanels.map((panel, idx) => {
                         const bb = absBboxes[idx];
                         const absoluteStyle: React.CSSProperties | undefined = bb
@@ -2018,10 +2032,21 @@ export default function DialogueEditor({
                   );
                 }
                 return (
-                  <div style={buildGridStyle(layoutRows)}>
-                    {currentPanels.map((panel, idx) => (
-                      <PanelCell {...sharedPanelProps(panel, idx)} />
-                    ))}
+                  <div style={{ position: 'relative' }}>
+                    {currentPageImageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={currentPageImageUrl}
+                        alt=""
+                        draggable={false}
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none' }}
+                      />
+                    )}
+                    <div style={buildGridStyle(layoutRows)}>
+                      {currentPanels.map((panel, idx) => (
+                        <PanelCell {...sharedPanelProps(panel, idx)} />
+                      ))}
+                    </div>
                   </div>
                 );
               })()}

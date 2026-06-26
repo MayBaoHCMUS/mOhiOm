@@ -7,6 +7,7 @@ import type { Step4Panel, PanelVersion } from '@/context/ComicGenerationContext'
 import { bubblesApi, comicLayoutApi } from '@/services/api';
 import type { BubbleDataPayload } from '@/services/api';
 import DialogueEditor, { type PanelBubbles, type SingleBubble, type BubbleType } from '@/components/studio-steps/DialogueEditor';
+import GenerationModeModal from '@/components/GenerationModeModal';
 import Markdown from '@/components/Markdown';
 import { LayoutTemplatePicker } from '@/components/studio-steps/LayoutTemplatePicker';
 
@@ -892,11 +893,6 @@ function LayoutStudioSidebar({
                 </div>
                 <p style={{ fontSize: 11, color: '#6B7280', lineHeight: 1.4, margin: 0 }}>Clean images (no embedded text)</p>
               </label>
-              {/* Mode toggle — compact link */}
-              <button type="button" onClick={() => onSetPageMode(comicPageMode === 'panel' ? 'page' : 'panel')}
-                style={{ fontSize: 11, color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
-                Switch to {comicPageMode === 'panel' ? 'Full Page' : 'Panel by Panel'} mode →
-              </button>
             </div>
           )}
         </div>
@@ -962,6 +958,9 @@ export default function Step4Generation() {
     pageLayoutNames,
     pagePanelDimensions,
     setPageLayout,
+    comicPageMode: contextComicPageMode,
+    setComicPageMode: setContextComicPageMode,
+    resetComicPageMode,
   } = useComicGeneration();
 
   const [isPaused, setIsPaused] = useState(false);
@@ -976,9 +975,10 @@ export default function Step4Generation() {
   const [showConfetti] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
-  // ── Generation mode ───────────────────────────────────────────────────────
+  // ── Generation mode (driven from context; modal shows when null) ──────────
   type ComicPageMode = 'page' | 'panel';
-  const [comicPageMode, setComicPageMode] = useState<ComicPageMode>('page');
+  const comicPageMode: ComicPageMode = contextComicPageMode ?? 'page';
+  const setComicPageMode = setContextComicPageMode;
 
   // ── Bubble dialogue state ─────────────────────────────────────────────────
   const [panelBubbles, setPanelBubbles] = useState<Record<string, PanelBubbles>>({});
@@ -1228,6 +1228,7 @@ export default function Step4Generation() {
   ).length;
 
   return (
+    <>
     <section className="text-on-surface pb-20">
 
       {/* ── Header ── */}
@@ -1477,46 +1478,22 @@ export default function Step4Generation() {
             if (state >= 3 && !isGenerating) {
               return (
                 <div className="rounded-2xl border border-outline-variant/10 bg-white p-5 space-y-4">
-                  <div>
-                    <p className="text-sm font-bold text-on-surface">Generation Mode</p>
-                    <p className="text-xs text-[#6B7280] mt-0.5">{panelCount} panels · Est. ~{estMin} min</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {([
-                      { mode: 'page' as ComicPageMode, icon: 'auto_awesome_mosaic', title: 'Full Page', desc1: 'One image per page', desc2: 'Faster · Less precise' },
-                      { mode: 'panel' as ComicPageMode, icon: 'dashboard', title: 'Panel by Panel', desc1: 'One image per panel', desc2: 'Slower · More precise' },
-                    ] as const).map(({ mode, icon, title, desc1, desc2 }) => {
-                      const active = comicPageMode === mode;
-                      return (
-                        <button key={mode} type="button" onClick={() => setComicPageMode(mode)}
-                          style={{ height: 108, border: `2px solid ${active ? '#4F46E5' : '#E5E7EB'}`, background: active ? '#EEF2FF' : '#FFFFFF' }}
-                          className="relative rounded-xl p-3 text-left transition-all hover:border-[#4F46E5]/50 focus:outline-none">
-                          <span className="material-symbols-outlined" style={{ fontSize: 24, color: active ? '#4F46E5' : '#6B7280', display: 'block', marginBottom: 6 }}>{icon}</span>
-                          <p style={{ fontSize: 14, fontWeight: 700, color: active ? '#4F46E5' : '#111827', lineHeight: 1.2 }}>{title}</p>
-                          <p style={{ fontSize: 12, color: '#6B7280', lineHeight: 1.4, marginTop: 2 }}>{desc1}</p>
-                          <p style={{ fontSize: 12, color: '#6B7280', lineHeight: 1.4 }}>{desc2}</p>
-                          {active && (
-                            <span className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: '#4F46E5' }}>
-                              <span className="material-symbols-outlined text-white" style={{ fontSize: 12 }}>check</span>
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <label className="flex items-start gap-3 cursor-pointer select-none group">
-                    <div className="flex-none mt-0.5">
-                      <input type="checkbox" checked={sfxMode === 'manual'} onChange={(e) => setSfxMode(e.target.checked ? 'manual' : 'auto')} className="sr-only" />
-                      <div className="w-4 h-4 rounded border-2 flex items-center justify-center transition-colors"
-                        style={{ borderColor: sfxMode === 'manual' ? '#4F46E5' : '#D1D5DB', background: sfxMode === 'manual' ? '#4F46E5' : '#FFFFFF' }}>
-                        {sfxMode === 'manual' && <span className="material-symbols-outlined text-white" style={{ fontSize: 11 }}>check</span>}
-                      </div>
-                    </div>
+                  {/* Selected mode summary */}
+                  <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-on-surface leading-snug">Clean images (no dialogue/SFX text embedded)</p>
-                      <p className="text-xs text-[#6B7280] mt-0.5">Add text manually in Comic Editor after export</p>
+                      <p className="text-sm font-bold text-on-surface">
+                        {comicPageMode === 'page' ? 'Full Page' : 'Panel by Panel'}
+                      </p>
+                      <p className="text-xs text-[#6B7280] mt-0.5">{panelCount} panels · Est. ~{estMin} min</p>
                     </div>
-                  </label>
+                    <button
+                      type="button"
+                      onClick={() => resetComicPageMode()}
+                      className="text-xs text-[#6B7280] hover:text-primary transition-colors underline underline-offset-2"
+                    >
+                      Change
+                    </button>
+                  </div>
                   {step4.error && <p className="text-sm text-red-500">{step4.error}</p>}
                   <button type="button"
                     onClick={comicPageMode === 'page' ? handleStartFullGeneration : handleStartPanelGeneration}
@@ -1652,6 +1629,7 @@ export default function Step4Generation() {
         <DialogueEditor
           panelsByPage={step4PanelsByPage}
           panelStates={step4.data?.panelStates ?? {}}
+          pageStates={step4.data?.pageStates ?? {}}
           panelBubbles={panelBubbles}
           pageLayoutNames={pageLayoutNames}
           onSaveBubbles={(panelId, bubbles) => {
@@ -1772,5 +1750,8 @@ export default function Step4Generation() {
         </div>
       </div>
     </section>
+
+    {contextComicPageMode === null && <GenerationModeModal />}
+    </>
   );
 }
