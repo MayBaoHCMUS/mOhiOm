@@ -1,6 +1,6 @@
 # THESIS PREPARATION — mOhiOm: AI-Powered Comic Generation System
 > **Tài liệu chuẩn bị luận văn kỹ thuật phần mềm**
-> Cập nhật: 2026-06-23 | Tác giả: Thuong Nguyen
+> Cập nhật: 2026-06-27 | Tác giả: Thuong Nguyen
 
 ---
 
@@ -52,7 +52,8 @@ vấn đề nhất quán nhân vật (character consistency) vẫn còn hạn ch
 - Frontend: Next.js 14 (App Router), TypeScript strict mode, Tailwind CSS
 - LLM: Google Gemini 2.5 Flash (có fallback sang 9Router/OpenAI-compatible)
 - Image Gen: Stable Diffusion 1.5 + IP-Adapter Plus Face + ControlNet (server ngoài)
-- Xuất: ZIP ảnh, PDF, JSON
+- Xuất: ZIP ảnh, PDF (pdf-lib), EPUB, JSON
+- Analytics: client-side dashboard (Chart.js + localStorage)
 
 **Ngoài phạm vi:**
 - Training lại mô hình AI (sử dụng API sẵn có)
@@ -67,6 +68,9 @@ vấn đề nhất quán nhân vật (character consistency) vẫn còn hạn ch
 3. **Cơ chế nhất quán nhân vật** — đăng ký reference image lên SD server theo tên nhân vật, inject vào mỗi lần generate
 4. **Streaming UX** — SSE (Server-Sent Events) cho phép người dùng thấy kết quả LLM theo thời gian thực
 5. **Dataset đánh giá** — hệ thống thu thập rating nhân vật, rating panel, analytics events phục vụ đánh giá chất lượng
+6. **Hai chế độ sinh ảnh** — Full Mode (một ảnh composite/trang) và Panel Mode (một ảnh/panel), người dùng chọn khi bước vào Step 4
+7. **Auto-retry cơ chế** — mỗi lần gọi image API tự động retry tối đa 3 lần (delay 3s) trước khi báo lỗi
+8. **Client-side analytics** — dashboard thống kê phiên làm việc (panels sinh, export rate, style distribution) lưu trong localStorage
 
 ### 1.6 Cấu trúc luận văn
 
@@ -404,8 +408,16 @@ với kịch bản panel cấp độ chi tiết và dialogue editor SVG native.
 - Resize, reposition, rotate bubbles
 - Cross-panel bubbles
 - Export ZIP (các trang PNG)
-- Export PDF (A4 portrait)
+- Export PDF (pdf-lib, native image dimensions, không letterbox A4)
+- Export EPUB (jszip, chuẩn EPUB 3.0 cho e-reader)
 - Export JSON (project snapshot)
+
+#### UC-11: Analytics Dashboard (`/studio/analytics`)
+- Xem KPI: panels generated, stories created, avg time/panel, character ref usage, export count, export rate
+- Biểu đồ phân phối: style distribution (doughnut), mood distribution (bar), panels/ngày (line)
+- Date range filter: 7 ngày / 30 ngày / All time
+- Clear analytics data
+- Dữ liệu lưu cục bộ trong localStorage (không cần backend)
 
 #### UC-08: Quản lý project
 - Lưu project lên cloud (MongoDB)
@@ -936,16 +948,17 @@ START
                 └─────────┘                             │
                     │ user clicks Generate               │
                     ▼                                    │
-                ┌─────────┐                             │
-                │ loading │──── timeout(120s) ──────────▶│
-                └─────────┘    SD server error          │(reset to idle)
-                    │                                    │
-           ┌────────┴────────┐                          │
-           │                 │                          │
-           ▼                 ▼                          │
-       ┌─────────┐       ┌─────────┐                   │
-       │ success │       │  error  │──Retry──────────── ┘
-       └─────────┘       └─────────┘
+                ┌─────────┐  attempt 1 fails             │
+                │ loading │──────────────── retry 2 ────▶│ (max 3 attempts, 3s apart)
+                └─────────┘  all 3 fail   SD server error│
+                    │            │                        │(reset to idle)
+                    │            ▼                        │
+           ┌────────┘       ┌─────────┐                  │
+           │                │  error  │──Retry──────────── ┘
+           ▼                └─────────┘
+       ┌─────────┐
+       │ success │
+       └─────────┘
            │
            ▼
        ┌──────────┐
@@ -959,6 +972,14 @@ START
        │ success │ (new imageUrl)
        └─────────┘
 ```
+
+**Hai chế độ sinh ảnh (`comicPageMode`):**
+```
+null           → GenerationModeModal hiển thị (user chưa chọn)
+'page'         → Full Mode: 1 ảnh composite/trang → lưu vào pageStates["page-N"]
+'panel'        → Panel Mode: 1 ảnh/panel → lưu vào panelStates[panel.id]
+```
+`comicPageMode` reset về `null` khi Step 3 regenerate hoặc user click "Change" → modal mở lại.
 
 **Trạng thái toàn bộ pipeline (Step State Machine):**
 ```
@@ -1366,8 +1387,9 @@ Note: sidebar visual style is consistent with DialogueEditor BubbleSidebar:
 | Axios | 1.6.0 | HTTP client |
 | Framer Motion | 11.0 | Animations |
 | Lucide React | 0.445 | Icon library |
-| jszip | 3.10.1 | ZIP export |
-| jspdf | 4.2.1 | PDF export |
+| jszip | 3.10.1 | ZIP + EPUB export |
+| pdf-lib | ≥1.17.1 | PDF export (replaces jsPDF, preserves native image size) |
+| chart.js | ≥4.0 | Analytics dashboard charts (doughnut, bar, line) |
 | react-markdown | 9.0.1 | Markdown renderer |
 | MongoDB | 7.0 | Database |
 | Docker | — | Container deployment |
@@ -1608,11 +1630,13 @@ function MangaBubbleSVG({ bubble, displayW, displayH }) {
 4. User có thể review và regenerate từng panel
 
 **Step 4 — Image Generation:**
-1. User chọn layout template → `confirm` API trả về panel slots với bbox + sd_dimensions
-2. Canvas hiển thị wireframe theo bbox
-3. Với mỗi panel: frontend build prompt từ `aiImagePrompt` + composition hints
+1. Khi user vào Step 4 lần đầu, `GenerationModeModal` hiện (comicPageMode = null) → user chọn Full Mode hoặc Panel Mode
+2. **Panel Mode:** User chọn layout template → `confirm` API trả về panel slots với bbox + sd_dimensions → Canvas hiển thị wireframe theo bbox
+3. Với mỗi panel/trang: frontend build prompt từ `aiImagePrompt` + composition hints
 4. Gọi `/api/image-proxy` → SD server `/generate-page` với character_name
-5. Kết quả là base64 PNG cho từng panel
+5. Mỗi API call được wrap trong `withRetry(3 attempts, 3s delay)` — tự retry khi lỗi transient
+6. **Full Mode:** 1 ảnh composite/trang lưu trong `pageStates["page-N"]`; **Panel Mode:** 1 ảnh/panel lưu trong `panelStates[panel.id]`
+7. Kết quả là base64 PNG data URL
 
 **Step 5 — Dialogue & Export:**
 1. User mở dialogue editor, drag bubble từ palette vào panel
@@ -1850,6 +1874,8 @@ Không có load testing tool configured. Giới hạn thiết kế:
 2. SSE streaming UX — feedback real-time làm giảm perceived wait time đáng kể
 3. Hệ thống bố cục polygon linh hoạt — 14+ mẫu, hỗ trợ diagonal panels
 4. TypeScript strict + Pydantic v2 — type safety end-to-end
+5. Auto-retry cơ chế — giảm failure rate thực tế do lỗi mạng/API tạm thời
+6. Hai chế độ sinh ảnh — Full Mode (nhanh hơn, layout đồng nhất) và Panel Mode (kiểm soát từng panel)
 
 **Hạn chế:**
 1. IP-Adapter consistency vẫn còn noise — giải quyết 70-80% consistency, không 100%
@@ -1868,7 +1894,10 @@ Không có load testing tool configured. Giới hạn thiết kế:
 3. **Layout engine**: 14+ manga layout templates với polygon precision và diagonal support
 4. **Character consistency**: IP-Adapter integration via character name registration
 5. **Community features**: gallery, ratings, analytics
-6. **Codebase chất lượng**: ~8000 LOC frontend TypeScript, ~5000 LOC backend Python, zero TS errors
+6. **Dual generation modes**: Full Mode (composite page) và Panel Mode (per-panel), với automatic 3-attempt retry
+7. **Export đa dạng**: ZIP, PDF (pdf-lib, native resolution), EPUB (chuẩn EPUB 3.0)
+8. **Client-side analytics**: Chart.js dashboard theo dõi panels generated, export rate, style/mood distribution
+9. **Codebase chất lượng**: ~8500 LOC frontend TypeScript, ~5000 LOC backend Python, zero TS errors
 
 ### 7.2 Hạn chế của hệ thống
 
@@ -2010,5 +2039,5 @@ GEMINI_MAX_QUEUE_WAIT_SECONDS=8
 
 ---
 
-*Tài liệu này được tạo tự động từ codebase thực tế của hệ thống mOhiOm tính đến ngày 2026-06-22.*
+*Tài liệu này được tạo tự động từ codebase thực tế của hệ thống mOhiOm tính đến ngày 2026-06-27.*
 *Các con số về thời gian xử lý, điểm chất lượng là ước tính — cần bổ sung số liệu thực nghiệm.*

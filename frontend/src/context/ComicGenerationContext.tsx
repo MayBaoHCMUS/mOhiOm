@@ -211,6 +211,18 @@ const emptyStepState = <T,>(locked: boolean): StepState<T> => ({
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts: number, retryDelayMs: number): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try { return await fn() }
+    catch (e) {
+      lastErr = e
+      if (attempt < maxAttempts - 1) await sleep(retryDelayMs)
+    }
+  }
+  throw lastErr
+}
+
 const fetchImageFromAI = async (
   imagePrompt: string,
   localImageApiUrl?: string,
@@ -2015,7 +2027,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
               width: panelDimensions?.width,
               height: panelDimensions?.height,
             };
-            const imageUrl = await fetchImageFromAI(cleanPrompt, localImageApiUrl || undefined, effectiveSettings);
+            const imageUrl = await withRetry(
+              () => fetchImageFromAI(cleanPrompt, localImageApiUrl || undefined, effectiveSettings),
+              3,
+              3000
+            );
             trackEvent({
               type:          'panel',
               story_id:      projectId || 'unknown',
@@ -2121,7 +2137,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
               storyId: projectId,
               style: imageGenStyle,
             };
-            const imageUrl = await fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings);
+            const imageUrl = await withRetry(
+              () => fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings),
+              3,
+              3000
+            );
             return { pageId, status: 'success' as const, imageUrl, error: null };
           } catch (error) {
             const message = error instanceof Error ? error.message : 'Image generation failed.';

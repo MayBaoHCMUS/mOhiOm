@@ -1,3 +1,127 @@
+## SESSION: 2026-06-27 — Analytics Dashboard, UI Fixes, Generation Mode Popup, Auto-retry
+
+### ✅ COMPLETED
+
+#### 1. Client-side Analytics Dashboard (`/studio/analytics`)
+
+**New file `frontend/src/lib/analytics.ts`:**
+- `GenerateEvent` interface: `{ id, ts, type, story_id, style, mood?, intensity?, duration_ms, has_character, ip_scale?, export_format?, page_count?, panel_count? }`
+- `trackEvent()` — writes to `localStorage["comic_events"]`, capped at 500 events
+- `getEvents(filters?)` — filters by type / story_id / since
+- `clearEvents()` — wipes localStorage key
+- `computeMetrics(events)` — returns `DashboardMetrics`: `{ total_panels, total_stories, avg_gen_ms, style_dist, mood_dist, char_usage_pct, export_count, export_rate_pct, daily_counts }`
+
+**New file `frontend/src/components/AnalyticsDashboard.tsx`:**
+- `'use client'` component using Chart.js (`import { Chart, registerables } from 'chart.js'` + `Chart.register(...registerables)`)
+- Range selector: 7d / 30d / All time
+- 6 KPI cards: Panels generated, Stories created, Avg time/panel, Character ref usage%, Exports, Export rate%
+- `DoughnutChart` (style distribution) + `BarChart` (mood distribution) + `LineChart` (panels/day)
+- "Clear data" button with `window.confirm('Clear all analytics data?')`
+- All text in English
+
+**New file `frontend/src/app/studio/analytics/page.tsx`:**
+- Matches other studio pages: `<StudioSidebar />` + `<StudioTopBar />` + `<main className="ml-[var(--studio-sidebar-width)] pt-24 px-8 pb-12 min-h-screen">`
+
+**`trackEvent` calls added to `ComicGenerationContext.tsx`:**
+- `generatePanelImages`: tracks `type: 'panel'` after each successful image
+- `exportZip` / `exportPdf` / `exportEpub`: tracks `type: 'export'` with format
+- `saveCharacterToServer`: tracks `type: 'character_save'`
+
+**`StudioSidebar.tsx`:** Added `{ href: '/studio/analytics', label: 'Analytics', icon: 'bar_chart' }` to `TOOLS` array.
+
+---
+
+#### 2. Dialogue Tab Black Panels Fix (Full Mode)
+
+**Problem:** In Full Mode (`comicPageMode === 'page'`), composite page images are stored in `pageStates["page-N"]`. `DialogueEditor` only received `panelStates` (always empty in Full Mode), so all panels showed black placeholder.
+
+**Fix in `DialogueEditor.tsx`:**
+- Added `pageStates: Record<string, Step4PanelState>` to `DialogueEditorProps`
+- Added `hasPageImage?: boolean` to `PanelCellProps`
+- `PanelCell` when `hasPageImage`: `background: 'transparent'`, `border: '1px solid rgba(255,255,255,0.15)'`, no placeholder icon
+- Page container renders absolutely-positioned `<img>` as first child when `currentPageImageUrl` is set (NOT CSS `backgroundImage` — that conflicted with the `background` shorthand, causing pages 2+ to show nothing)
+
+**Fix in `Step4Generation.tsx`:** Added `pageStates={step4.data?.pageStates ?? {}}` to `<DialogueEditor>` props.
+
+---
+
+#### 3. Generation Mode Popup (enter Step 4 → choose mode)
+
+**Wired `GenerationModeModal.tsx` to context `comicPageMode`:**
+- `comicPageMode` starts as `null` in context; modal fires when `contextComicPageMode === null`
+- Step4Generation: replaced local `comicPageMode` state with `comicPageMode: comicPageMode ?? 'page'` from context
+- Renders `{contextComicPageMode === null && <GenerationModeModal />}` at top of return
+- Modal confirm button calls `setComicPageMode(selected)` → sets context (non-null) → modal disappears
+- Modal also has `sfxMode`/`setSfxMode` "Clean images" checkbox
+
+---
+
+#### 4. Removed Redundant Inline "Generation Mode" Section
+
+The "Ready to start" sidebar panel that had the two big mode-selection cards + Clean images checkbox + Generate button was cleaned up:
+- **Before:** Full mode-picker UI duplicating the popup (2 big cards, checkbox, mode toggle link)
+- **After:** Compact summary row: `Full Page / Panel by Panel` mode name + `[Change]` link (calls `resetComicPageMode()` → modal re-opens) + estimate + Generate button
+
+**Also removed:** "Switch to … mode →" compact link from the per-panel sidebar character section.
+
+---
+
+#### 5. Removed "Layout Engine" from Sidebar
+
+`StudioSidebar.tsx` — deleted `{ href: '/studio/layout-engine', label: 'Layout Engine', icon: 'grid_view' }` from `TOOLS` array. The route/page still exists; no nav link.
+
+---
+
+#### 6. Analytics Page — All English
+
+All Vietnamese text in `AnalyticsDashboard.tsx` and `analytics.ts` replaced with English:
+- Range buttons: `Tất cả` → `All time`, `30 ngày` → `30d`, `7 ngày` → `7d`
+- Button: `Xoá data` → `Clear data`
+- Confirm: `Xoá toàn bộ analytics data?` → `Clear all analytics data?`
+- Empty state: `Chưa có dữ liệu...` → `No data yet. Generate some panels...`
+- KPI labels: `Panels sinh` → `Panels generated`, `Stories tạo` → `Stories created`, `Avg thời gian/panel` → `Avg time / panel`, `Dùng character ref` → `Character ref usage`
+- Chart title: `Panels sinh theo ngày` → `Panels generated per day`
+- Weekday locale: `"vi-VN"` → `"en-US"` in `computeMetrics` daily_counts
+
+---
+
+#### 7. Automatic Retry on Image Generation Failure
+
+**Problem:** When "Generate All Pages/Panels" ran, any failed panel/page got `status: 'error'` and the loop moved on. Users had to manually click "Retry failed" after the run.
+
+**Fix in `ComicGenerationContext.tsx`:**
+- Added `withRetry<T>(fn, maxAttempts, retryDelayMs)` async helper after `sleep`
+- Wrapped `fetchImageFromAI` in `generatePanelImages` with `withRetry(..., 3, 3000)` — 3 total attempts, 3s between retries
+- Wrapped `fetchImageFromAI` in `generatePageImages` with same `withRetry(..., 3, 3000)`
+- Panel/page stays at `status: 'loading'` during retries; only flips to `status: 'error'` after all 3 attempts fail
+- No new state fields, no UI changes needed
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+**New files:**
+- `frontend/src/lib/analytics.ts`
+- `frontend/src/components/AnalyticsDashboard.tsx`
+- `frontend/src/app/studio/analytics/page.tsx`
+
+**Modified:**
+- `frontend/src/context/ComicGenerationContext.tsx` — `trackEvent` calls, `withRetry` helper, `fetchImageFromAI` wrapped in both generation loops; `imageGenStyle` added to export dep arrays
+- `frontend/src/components/studio-steps/Step4Generation.tsx` — modal trigger, simplified "ready" panel, `pageStates` prop passed to `DialogueEditor`, removed mode-toggle link
+- `frontend/src/components/studio-steps/DialogueEditor.tsx` — `pageStates` prop, `hasPageImage` support, `<img>` background for Full Mode pages
+- `frontend/src/components/StudioSidebar.tsx` — added Analytics, removed Layout Engine
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **CSS `backgroundImage` vs `<img>`**: Using CSS `backgroundImage` in the same `style` object as `background: 'transparent'` causes the shorthand to reset backgroundImage on React re-renders affecting pages 2+. Using an absolutely-positioned `<img>` element avoids this entirely.
+- **`comicPageMode` null trigger**: The popup shows whenever `contextComicPageMode === null`. `resetComicPageMode()` sets it back to null; `setComicPageMode(mode)` dismisses it. Step 3 regeneration also resets to null.
+- **`withRetry` applies to both generation functions**: single-panel regenerate (`handleRegenerateSinglePanel`) also calls `generatePanelImages` → also gets automatic retry for free.
+- **Analytics data is local-only**: `localStorage["comic_events"]` — no backend involvement. Clears on browser data wipe. Max 500 events stored.
+
+---
+
 ## SESSION: 2026-06-25 (continued) — PDF / EPUB Export Feature Plan
 
 ### 🎯 NEXT SESSION — PDF + EPUB Export Upgrade

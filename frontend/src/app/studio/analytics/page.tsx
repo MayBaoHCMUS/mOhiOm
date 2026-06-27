@@ -9,7 +9,7 @@ export default function AnalyticsPage() {
     <div className="min-h-screen bg-surface text-on-surface">
       <StudioSidebar />
       <StudioTopBar />
-      <main className="ml-[var(--studio-sidebar-width)] pt-24 px-8 pb-12 min-h-screen">
+      <main className="ml-[var(--studio-sidebar-width)] pt-24 min-h-screen">
         <AnalyticsDashboard />
       </main>
     </div>
