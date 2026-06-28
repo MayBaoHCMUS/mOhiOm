@@ -1,14 +1,17 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import type { Step4PanelState } from '@/context/ComicGenerationContext';
+import { GenerationCompleteDialog } from '@/components/GenerationCompleteDialog';
 import { apiClient, bubblesApi } from '@/services/api';
 import { exportWithDialogueAsZip } from '@/lib/bubbles/exportComposite';
 import type { CompositePanel } from '@/lib/bubbles/exportComposite';
 import type { PanelBubbles } from '@/components/studio-steps/DialogueEditor';
 
 export default function Step5Export() {
+  const router = useRouter();
   const {
     step4,
     step4PanelsByPage,
@@ -28,6 +31,8 @@ export default function Step5Export() {
     jsonCopied,
     setActiveStep,
   } = useComicGeneration();
+
+  const [showEditorDialog, setShowEditorDialog] = useState(true);
 
   const [panelBubbles, setPanelBubbles] = useState<Record<string, PanelBubbles>>({});
   const bubblesLoadedRef = useRef(false);
@@ -137,7 +142,30 @@ export default function Step5Export() {
     (s) => (s as Step4PanelState).status === 'success' && (s as Step4PanelState).imageUrl
   );
 
+  const pageCount = step4PanelsByPage.length
+
   return (
+    <>
+    {showEditorDialog && (
+      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div className="w-full max-w-sm mx-4">
+          <GenerationCompleteDialog
+            pageCount={pageCount}
+            onOpenEditor={async () => {
+              await saveToCloud()
+              const setup = (() => {
+                try { return JSON.parse(localStorage.getItem('mohiom-story-setup') ?? '{}') } catch { return {} }
+              })()
+              const title = setup.storyTitle || ''
+              const url = `/studio/editor?project=${encodeURIComponent(projectId)}${title ? `&title=${encodeURIComponent(title)}` : ''}`
+              router.push(url)
+            }}
+            onSkipToExport={() => setShowEditorDialog(false)}
+          />
+        </div>
+      </div>
+    )}
+
     <section className="text-on-surface pb-20">
       {/* ── Header ── */}
       <div className="flex flex-wrap items-start justify-between gap-4 px-1 pt-1 mb-6">
@@ -335,5 +363,6 @@ export default function Step5Export() {
         </div>
       </div>
     </section>
+    </>
   );
 }

@@ -295,3 +295,16 @@ class LayoutDimensionsResponse(BaseModel):
     page_width: int = 1200
     page_height: int = 1600
 
+
+class ProjectImageEntry(BaseModel):
+    image_key: str   # "panel:p1-n1" or "page:page-1"
+    image_data: str  # base64 data URL
+
+
+class ProjectImagesSaveRequest(BaseModel):
+    images: List[ProjectImageEntry]
+
+
+class ProjectImagesResponse(BaseModel):
+    images: List[ProjectImageEntry]
+

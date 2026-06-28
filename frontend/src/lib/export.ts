@@ -1,5 +1,7 @@
 import JSZip from 'jszip';
 import { PDFDocument } from 'pdf-lib';
+import type { ComicMetadata } from './metadata';
+import { buildFilename } from './metadata';
 
 export interface ExportPanel {
   panelNumber: number;
@@ -18,6 +20,7 @@ export interface ExportPage {
 interface ExportOpts {
   includeMetadata: boolean;
   projectId: string;
+  meta?: ComicMetadata;
 }
 
 function triggerDownload(blob: Blob, filename: string): void {
@@ -45,9 +48,23 @@ function sanitizeFilename(name: string): string {
     .slice(0, 64) || 'comic';
 }
 
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function stemFor(opts: ExportOpts): string {
+  return opts.meta ? buildFilename(opts.meta) : sanitizeFilename(opts.projectId);
+}
+
 export async function exportAsZip(pages: ExportPage[], opts: ExportOpts): Promise<void> {
+  const stem = stemFor(opts);
   const zip = new JSZip();
-  const folder = zip.folder(sanitizeFilename(opts.projectId)) ?? zip;
+  const folder = zip.folder(stem) ?? zip;
 
   for (const page of pages) {
     const { base64 } = stripDataPrefix(page.imageUrl);
@@ -79,13 +96,31 @@ export async function exportAsZip(pages: ExportPage[], opts: ExportOpts): Promis
     compression: 'DEFLATE',
     compressionOptions: { level: 6 },
   });
-  triggerDownload(blob, `${sanitizeFilename(opts.projectId)}.zip`);
+  triggerDownload(blob, `${stem}.zip`);
+}
+
+export async function exportAsCbz(pages: ExportPage[], opts: ExportOpts): Promise<void> {
+  const stem = stemFor(opts)
+  const zip  = new JSZip()
+  for (const page of pages) {
+    const { base64 } = stripDataPrefix(page.imageUrl)
+    zip.file(`page_${String(page.pageNumber).padStart(3, '0')}.png`, base64, { base64: true })
+  }
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } })
+  triggerDownload(blob, `${stem}.cbz`)
 }
 
 export async function exportAsPdf(pages: ExportPage[], opts: ExportOpts): Promise<void> {
+  const stem = stemFor(opts);
+  const meta = opts.meta;
   const pdfDoc = await PDFDocument.create();
-  pdfDoc.setTitle(opts.projectId);
-  pdfDoc.setAuthor('mOhiOm AI');
+
+  pdfDoc.setTitle(meta?.title || opts.projectId);
+  pdfDoc.setAuthor(meta?.author || '');
+  pdfDoc.setSubject(meta?.description || '');
+  pdfDoc.setKeywords([meta?.series, meta?.volume].filter(Boolean) as string[]);
+  pdfDoc.setCreator('ComicGen AI');
+  pdfDoc.setProducer('ComicGen AI');
   pdfDoc.setCreationDate(new Date());
 
   for (const page of pages) {
@@ -103,16 +138,17 @@ export async function exportAsPdf(pages: ExportPage[], opts: ExportOpts): Promis
   const pdfBytes = await pdfDoc.save();
   triggerDownload(
     new Blob([pdfBytes as unknown as Uint8Array<ArrayBuffer>], { type: 'application/pdf' }),
-    `${sanitizeFilename(opts.projectId)}.pdf`
+    `${stem}.pdf`
   );
 }
 
 export async function exportAsEpub(pages: ExportPage[], opts: ExportOpts): Promise<void> {
-  const zip = new JSZip();
-  const safe = sanitizeFilename(opts.projectId);
-  const title = opts.projectId;
+  const stem = stemFor(opts);
+  const meta = opts.meta;
   const uid = `urn:uuid:${crypto.randomUUID()}`;
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+  const zip = new JSZip();
 
   // mimetype — MUST be first, MUST NOT be compressed
   zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
@@ -158,16 +194,24 @@ export async function exportAsEpub(pages: ExportPage[], opts: ExportOpts): Promi
     navItems.push(`<li><a href="${xhtmlFile}">${chTitle}</a></li>`);
   }
 
+  const metaXml = [
+    `<dc:identifier id="uid">${uid}</dc:identifier>`,
+    `<dc:title>${escapeXml(meta?.title || opts.projectId)}</dc:title>`,
+    `<dc:language>${escapeXml(meta?.language || 'vi')}</dc:language>`,
+    meta?.author      ? `<dc:creator>${escapeXml(meta.author)}</dc:creator>`           : '',
+    meta?.description ? `<dc:description>${escapeXml(meta.description)}</dc:description>` : '',
+    meta?.publisher   ? `<dc:publisher>${escapeXml(meta.publisher)}</dc:publisher>`     : '',
+    meta?.series      ? `<dc:relation>${escapeXml(meta.series)}</dc:relation>`          : '',
+    `<dc:date>${meta?.year || new Date().getFullYear()}</dc:date>`,
+    `<meta property="dcterms:modified">${now}</meta>`,
+  ].filter(Boolean).join('');
+
   epub.file(
     'content.opf',
     `<?xml version="1.0" encoding="utf-8"?>` +
     `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">` +
     `<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">` +
-    `<dc:identifier id="uid">${uid}</dc:identifier>` +
-    `<dc:title>${title}</dc:title>` +
-    `<dc:language>en</dc:language>` +
-    `<dc:creator>mOhiOm AI</dc:creator>` +
-    `<meta property="dcterms:modified">${now}</meta>` +
+    metaXml +
     `</metadata>` +
     `<manifest>` +
     `<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>` +
@@ -192,6 +236,6 @@ export async function exportAsEpub(pages: ExportPage[], opts: ExportOpts): Promi
   });
   triggerDownload(
     new Blob([epubBytes as unknown as Uint8Array<ArrayBuffer>], { type: 'application/epub+zip' }),
-    `${safe}.epub`
+    `${stem}.epub`
   );
 }

@@ -51,6 +51,7 @@ interface DialogueEditorProps {
   pageStates: Record<string, Step4PanelState>;
   panelBubbles: Record<string, PanelBubbles>;
   pageLayoutNames: Record<number, string>;
+  comicPageMode: 'page' | 'panel';
   onSaveBubbles: (panelId: string, bubbles: PanelBubbles) => void;
   onExport: () => void;
   onAutoImport: () => void;
@@ -138,8 +139,8 @@ const ABSOLUTE_LAYOUT_BBOXES: Record<string, PanelBBox[]> = {
   ],
 };
 
-const BASE_PAGE_W = 600;
-const BASE_PAGE_H = BASE_PAGE_W * (297 / 210); // A4 portrait ratio
+export const BASE_PAGE_W = 600;
+export const BASE_PAGE_H = BASE_PAGE_W * (297 / 210); // A4 portrait ratio
 const ZOOM_PRESETS = [0.5, 0.75, 1.0];
 const MIN_BUBBLE_W = 60;
 const MIN_BUBBLE_H = 40;
@@ -317,7 +318,7 @@ function dirFromVector(dx: number, dy: number): TailDir {
 
 // ── Manga SVG Bubble Renderer ─────────────────────────────────────────────────
 
-interface BubbleSVGProps {
+export interface BubbleSVGProps {
   bubble: SingleBubble;
   w: number;
   h: number;
@@ -360,7 +361,7 @@ function buildCloudPath(w: number, h: number): string {
   return `M ${w*0.18} ${h*0.75} C ${w*0.04} ${h*0.75},${w*0.02} ${h*0.55},${w*0.10} ${h*0.48} C ${w*0.06} ${h*0.28},${w*0.22} ${h*0.18},${w*0.32} ${h*0.26} C ${w*0.33} ${h*0.10},${w*0.47} ${h*0.04},${w*0.50} ${h*0.08} C ${w*0.53} ${h*0.04},${w*0.67} ${h*0.10},${w*0.68} ${h*0.26} C ${w*0.78} ${h*0.18},${w*0.94} ${h*0.28},${w*0.90} ${h*0.48} C ${w*0.98} ${h*0.55},${w*0.96} ${h*0.75},${w*0.82} ${h*0.75} C ${w*0.80} ${h*0.88},${w*0.62} ${h*0.94},${w*0.50} ${h*0.90} C ${w*0.38} ${h*0.94},${w*0.20} ${h*0.88},${w*0.18} ${h*0.75} Z`;
 }
 
-function MangaBubbleSVG({ bubble, w, h, dimmed }: BubbleSVGProps) {
+export function MangaBubbleSVG({ bubble, w, h, dimmed }: BubbleSVGProps) {
   const { bubbleType: type, tailDir, dialogue, fontSize, rotation } = bubble;
 
   if (type === 'none' || (isNoneText(dialogue) && type !== 'sfx')) return null;
@@ -833,8 +834,8 @@ function PanelCell({
         onBubbleAdd(panel.id, normX, normY, type);
       }}
     >
-      {/* Panel image */}
-      {imageUrl ? (
+      {/* Panel image — suppressed in Full Page mode (page image is the background) */}
+      {imageUrl && !hasPageImage ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={imageUrl} alt=""
@@ -1694,7 +1695,7 @@ function ContextMenu({ x, y, isCrossPanel, onBringFront, onSendBack, onDuplicate
 // ── Main DialogueEditor component ─────────────────────────────────────────────
 
 export default function DialogueEditor({
-  panelsByPage, panelStates, pageStates, panelBubbles, pageLayoutNames,
+  panelsByPage, panelStates, pageStates, panelBubbles, pageLayoutNames, comicPageMode,
   onSaveBubbles, onExport, onAutoImport,
 }: DialogueEditorProps) {
   const pageIds = panelsByPage.map(([n]) => n);
@@ -1717,7 +1718,12 @@ export default function DialogueEditor({
     [panelsByPage, currentPage],
   );
 
-  const currentPageImageUrl = pageStates[`page-${currentPage}`]?.imageUrl ?? null;
+  // Only show the full-page composite when the user is in Full Page mode.
+  // In Panel mode, pageStates may still hold a stale image from a previous generation
+  // so we ignore it and let the individual panel images from panelStates show instead.
+  const currentPageImageUrl = comicPageMode === 'page'
+    ? (pageStates[`page-${currentPage}`]?.imageUrl ?? null)
+    : null;
 
   const selectedBubbleObj = useMemo(() => {
     if (!selectedBubble) return null;

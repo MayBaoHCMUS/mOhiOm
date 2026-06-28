@@ -11,6 +11,11 @@ async def lifespan(app: FastAPI):
     """Manage application lifespan: startup and shutdown events."""
     # Startup
     mongo_db.connect()
+    mongo_db.get_database()["project_images"].create_index(
+        [("user_id", 1), ("project_id", 1), ("image_key", 1)],
+        unique=True,
+        background=True,
+    )
     yield
     # Shutdown
     mongo_db.disconnect()

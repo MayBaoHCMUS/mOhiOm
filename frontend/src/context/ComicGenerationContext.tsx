@@ -10,7 +10,7 @@ import {
   projectsApi,
   toApiError,
 } from '@/services/api';
-import type { FullProjectSave, CloudProjectListItem, CharacterSummary } from '@/services/api';
+import type { FullProjectSave, CloudProjectListItem, CharacterSummary, ProjectImageEntry } from '@/services/api';
 import { exportAsZip, exportAsPdf, exportAsEpub } from '@/lib/export';
 import { trackEvent } from '@/lib/analytics';
 import type { ExportPage } from '@/lib/export';
@@ -702,8 +702,12 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     const pending = window.localStorage.getItem('mohiom-pending-load');
     if (!pending) return;
     window.localStorage.removeItem('mohiom-pending-load');
-    projectsApi.load(pending).then((res) => {
-      restoreFromFullSave(res.data as unknown as Record<string, unknown>);
+    Promise.all([
+      projectsApi.load(pending),
+      projectsApi.loadImages(pending).catch(() => ({ data: { images: [] as ProjectImageEntry[] } })),
+    ]).then(([projectRes, imagesRes]) => {
+      const result = restoreFromFullSave(projectRes.data as unknown as Record<string, unknown>);
+      if (result.success) applyLoadedImages(imagesRes.data.images);
     }).catch(() => { /* silently ignore if project was deleted */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1983,23 +1987,30 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       setStep4((prev) => {
         if (!prev.data) return prev;
         const nextStates = { ...prev.data.panelStates };
+        const nextPageStates = { ...prev.data.pageStates };
         batch.forEach((panel) => {
           const prevState = nextStates[panel.id];
           nextStates[panel.id] = {
             ...(prevState ?? {}),
             status: 'loading',
-            imageUrl: prevState?.imageUrl || null,
+            imageUrl: null,
             error: null,
             versions: prevState?.versions ?? [],
             pendingUrl: null,
             pendingFeedback: '',
           };
+          // Clear the full-page composite for this page so it doesn't overlay panel images
+          const pageKey = `page-${panel.pageNumber}`;
+          if (nextPageStates[pageKey]) {
+            nextPageStates[pageKey] = { ...nextPageStates[pageKey], imageUrl: null };
+          }
         });
         return {
           ...prev,
           data: {
             ...prev.data,
             panelStates: nextStates,
+            pageStates: nextPageStates,
           },
         };
       });
@@ -2102,18 +2113,25 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       setStep4((prev) => {
         if (!prev.data) return prev;
         const nextPageStates = { ...prev.data.pageStates };
+        const nextPanelStates = { ...prev.data.panelStates };
         batch.forEach(([pageNumber]) => {
           const pageId = `page-${pageNumber}`;
           nextPageStates[pageId] = {
             status: 'loading',
-            imageUrl: prev.data!.pageStates[pageId]?.imageUrl ?? null,
+            imageUrl: null,
             error: null,
             versions: prev.data!.pageStates[pageId]?.versions ?? [],
             pendingUrl: null,
             pendingFeedback: '',
           };
+          // Clear individual panel images for this page so they don't show under the new full-page composite
+          Object.keys(nextPanelStates).forEach((panelId) => {
+            if (prev.data!.panels.find(p => p.id === panelId && p.pageNumber === pageNumber)) {
+              nextPanelStates[panelId] = { ...nextPanelStates[panelId], imageUrl: null };
+            }
+          });
         });
-        return { ...prev, data: { ...prev.data, pageStates: nextPageStates } };
+        return { ...prev, data: { ...prev.data, pageStates: nextPageStates, panelStates: nextPanelStates } };
       });
 
       const results = await Promise.all(
@@ -2260,7 +2278,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     const currentState = step4.data.pageStates[pageId];
     const currentImageUrl = currentState?.imageUrl ?? null;
 
-    // Save current image to version history and set page to loading
+    // Save current image to version history, set page to loading, and clear stale panel images
     setStep4((prev) => {
       if (!prev.data) return prev;
       const prevState = prev.data.pageStates[pageId];
@@ -2268,10 +2286,17 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       const newVersions = currentImageUrl
         ? [...existingVersions, { imageUrl: currentImageUrl, feedback: prevState?.pendingFeedback ?? '' }].slice(-4)
         : existingVersions;
+      const nextPanelStates = { ...prev.data.panelStates };
+      Object.keys(nextPanelStates).forEach((panelId) => {
+        if (prev.data!.panels.find(p => p.id === panelId && p.pageNumber === pageNumber)) {
+          nextPanelStates[panelId] = { ...nextPanelStates[panelId], imageUrl: null };
+        }
+      });
       return {
         ...prev,
         data: {
           ...prev.data,
+          panelStates: nextPanelStates,
           pageStates: {
             ...prev.data.pageStates,
             [pageId]: {
@@ -2738,6 +2763,29 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     setActiveStep(0);
   };
 
+  const applyLoadedImages = (images: ProjectImageEntry[]) => {
+    if (!images.length) return;
+    const panelUpdates: Record<string, string> = {};
+    const pageUpdates: Record<string, string> = {};
+    for (const { image_key, image_data } of images) {
+      if (image_key.startsWith('panel:')) panelUpdates[image_key.slice(6)] = image_data;
+      else if (image_key.startsWith('page:')) pageUpdates[image_key.slice(5)] = image_data;
+    }
+    const blank: Step4PanelState = { status: 'idle', imageUrl: null, error: null, versions: [], pendingUrl: null, pendingFeedback: '' };
+    setStep4((prev) => {
+      if (!prev.data) return prev;
+      const nextPanel = { ...prev.data.panelStates };
+      for (const [k, url] of Object.entries(panelUpdates)) {
+        nextPanel[k] = { ...(nextPanel[k] ?? blank), status: 'success', imageUrl: url };
+      }
+      const nextPage = { ...prev.data.pageStates };
+      for (const [k, url] of Object.entries(pageUpdates)) {
+        nextPage[k] = { ...(nextPage[k] ?? blank), status: 'success', imageUrl: url };
+      }
+      return { ...prev, data: { ...prev.data, panelStates: nextPanel, pageStates: nextPage } };
+    });
+  };
+
   // Restore from full-save format (produced by buildFullSave / cloud save).
   const restoreFromFullSave = (json: Record<string, unknown>): { success: boolean; error?: string } => {
     try {
@@ -2949,6 +2997,27 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
   };
 
+  const collectImagesToSave = (): ProjectImageEntry[] => {
+    if (!step4.data) return [];
+    const entries: ProjectImageEntry[] = [];
+    // Save only the images that match the active generation mode so the Dialogue tab,
+    // the cloud save, and the editor all reflect exactly the same images.
+    if (comicPageMode === 'page') {
+      for (const [key, state] of Object.entries(step4.data.pageStates)) {
+        if (state.status === 'success' && state.imageUrl) {
+          entries.push({ image_key: `page:${key}`, image_data: state.imageUrl });
+        }
+      }
+    } else {
+      for (const [key, state] of Object.entries(step4.data.panelStates)) {
+        if (state.status === 'success' && state.imageUrl) {
+          entries.push({ image_key: `panel:${key}`, image_data: state.imageUrl });
+        }
+      }
+    }
+    return entries;
+  };
+
   const buildFullSave = (): FullProjectSave => {
     const nowIso = new Date().toISOString();
     const step2irData = step2ImageReview.data
@@ -3005,7 +3074,14 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     setCloudSaveStatus('saving');
     setCloudSaveError(null);
     try {
-      await projectsApi.save(buildFullSave());
+      const fullSave = buildFullSave();
+      const images = collectImagesToSave();
+      if (images.length > 0) {
+        projectsApi.saveImages(projectId, images).catch((err) => {
+          console.warn('[saveToCloud] Image upload failed (best-effort):', err);
+        });
+      }
+      await projectsApi.save(fullSave);
       setCloudSaveStatus('saved');
       window.setTimeout(() => setCloudSaveStatus('idle'), 2000);
     } catch (err) {
@@ -3016,8 +3092,13 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
 
   const loadFromCloud = async (cloudProjectId: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await projectsApi.load(cloudProjectId);
-      return restoreFromFullSave(response.data as unknown as Record<string, unknown>);
+      const [projectRes, imagesRes] = await Promise.all([
+        projectsApi.load(cloudProjectId),
+        projectsApi.loadImages(cloudProjectId).catch(() => ({ data: { images: [] as ProjectImageEntry[] } })),
+      ]);
+      const result = restoreFromFullSave(projectRes.data as unknown as Record<string, unknown>);
+      if (result.success) applyLoadedImages(imagesRes.data.images);
+      return result;
     } catch (err) {
       return { success: false, error: toApiError(err).message };
     }

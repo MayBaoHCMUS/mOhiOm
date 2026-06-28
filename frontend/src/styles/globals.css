@@ -141,3 +141,8 @@
 .animate-slide-down {
   animation: slide-down 400ms ease-out forwards;
 }
+
+@keyframes nudgeLeft {
+  0%, 100% { transform: translateX(0); }
+  50%       { transform: translateX(-3px); }
+}

@@ -1210,6 +1210,7 @@ export default function Step4Generation() {
     prevAllImgDoneRef.current = isAllDone;
   }, [activeStats, isImageGenerating]);
 
+
   // Tab helpers
   const isTabLocked = useCallback((tab: Step4Tab) => {
     if (tab === 'layout') return false;
@@ -1624,6 +1625,7 @@ export default function Step4Generation() {
         )
       )}
 
+
       {/* ═══════════ TAB 2 — DIALOGUE ═══════════ */}
       {activeStep4Tab === 'dialogue' && (
         <DialogueEditor
@@ -1632,6 +1634,7 @@ export default function Step4Generation() {
           pageStates={step4.data?.pageStates ?? {}}
           panelBubbles={panelBubbles}
           pageLayoutNames={pageLayoutNames}
+          comicPageMode={comicPageMode}
           onSaveBubbles={(panelId, bubbles) => {
             setPanelBubbles((prev) => ({ ...prev, [panelId]: bubbles }));
             if (projectId) {

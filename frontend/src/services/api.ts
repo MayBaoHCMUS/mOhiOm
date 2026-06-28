@@ -1084,6 +1084,15 @@ export interface FullProjectSave {
   steps: Record<string, unknown>;
 }
 
+export interface ProjectImageEntry {
+  image_key: string;
+  image_data: string;
+}
+
+export interface ProjectImagesResponse {
+  images: ProjectImageEntry[];
+}
+
 export interface CloudProjectListItem {
   project_id: string;
   saved_at: string;
@@ -1151,6 +1160,15 @@ export const projectsApi = {
     apiClient.get<CloudProjectListItem[]>("/projects/"),
   load: (projectId: string) =>
     apiClient.get<FullProjectSave>(`/projects/${encodeURIComponent(projectId)}`),
+  saveImages: (projectId: string, images: ProjectImageEntry[]) =>
+    apiClient.post<{ saved: number; message: string }>(
+      `/projects/${encodeURIComponent(projectId)}/images`,
+      { images }
+    ),
+  loadImages: (projectId: string) =>
+    apiClient.get<ProjectImagesResponse>(
+      `/projects/${encodeURIComponent(projectId)}/images`
+    ),
   delete: (projectId: string) =>
     apiClient.delete<{ message: string }>(`/projects/${encodeURIComponent(projectId)}`),
   characters: () =>
