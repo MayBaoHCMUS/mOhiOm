@@ -29,7 +29,9 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     img.crossOrigin = 'anonymous'
     img.onload  = () => resolve(img)
     img.onerror = () => reject(new Error('loadImage failed'))
-    img.src = src.startsWith('data:') ? src : `data:image/png;base64,${src}`
+    img.src = (src.startsWith('data:') || src.startsWith('blob:') || src.startsWith('http'))
+      ? src
+      : `data:image/png;base64,${src}`
   })
 }
 

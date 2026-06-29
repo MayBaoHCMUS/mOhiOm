@@ -1,178 +1,422 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
 import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
+import { projectsApi } from '@/services/api';
+import type { CloudProjectListItem } from '@/services/api';
+import { publishComic, buildShareUrl, getComicStats, unpublishComic } from '@/lib/publish';
+import { recomposePages, DEFAULT_BORDER_CONFIG } from '@/lib/borderComposer';
+import { TEMPLATES_BY_COUNT } from '@/components/studio-steps/Step4Generation';
 
-const previewPages = [
-  {
-    title: 'Cover Page',
-    index: '01',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAC4q6IruAlr0sg7bOT6prawLzzEfnvyNTUbOOZkRqhkgJtJYwqjVTYbmisR0Fzn2QodSiYX1EW_oBbGHUBFW5aZHf9X9CW7fFSYJ1Sl1z7tzwNHyCWNq_lxCofX6CEK3Ukrzw84F6E9dYoel1FCJctYrEsIIAJ1ZQ2S_v1VwPyjihnSCCgt__71BrhT62QJGwUIhdFaRa64SnGHUIC9gSvMOVCBcQxkXk8BqWWr7ZlBRS4rICLufH5L-Gb8F1hW3fWbjmIXGDWbVE',
-  },
-  {
-    title: 'The Arrival',
-    index: '02',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuCThBhZQMWXztVGrIzWKG3oxtwNCyKD88Y8Topmo8BIjK0uWKsNnAGlVSArKD9GIAMfzeyq3OCG8Wv9GMq-WmEqub88mcCY0DfPDdPSIQ_TEMGUeeRKiXNRKPgmnw6Swi63VA5Mdas7BklK0iRy8QfJrbmLtyDswDrqD6Hn_LFmXF2FJdT-tGdrtt7sOBESJGYZs0wWpPvLEjUjUpJWKSzHaggn9aYX6RaQrmxA_XGQmYxzEnpRibTw9OS1r24kjyW6LzeY7lCLQ8w',
-    grid: true,
-  },
-  {
-    title: 'Cosmic Convergence',
-    index: '03',
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAut6JEyTJ5CMlPe-HNPBA1UvXwuUEitZ0BTZT3OnRmfUdo-a35Q5L2BRcZzRLf6JJg6N9DNWPqxwLNmWmyBU1ipk_Nqr-zCUK4BrAfDXqSEqACqVCyD3Oo17JcLNJFzqEmJ93tpeZKLji5xp6K3qz1xj6ArHtKZ9PF_vpOa3yHcQaGIBhJqzgvZzdC67B18Jtag_hz3eUbGfyQWTxg5i0nrLXHxtgzxponyVz3ats5gI37ShuojEUSOC0zAyhOzNXf6kYK6jmfPzM',
-  },
-];
+const SESSION_KEY = 'mohiom-image-api-url';
 
-export default function ExportPublishPage() {
+interface PublishedInfo {
+  comicId: string;
+  readerUrl: string;
+  readCount: number | null;
+}
+
+interface CardState {
+  status: 'idle' | 'loading-images' | 'composing' | 'publishing' | 'done' | 'error';
+  error?: string;
+  published?: PublishedInfo;
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function ComicCard({
+  project,
+  apiUrl,
+  cardState,
+  onPublish,
+  onUnpublish,
+}: {
+  project: CloudProjectListItem;
+  apiUrl: string;
+  cardState: CardState;
+  onPublish: (projectId: string) => void;
+  onUnpublish: (projectId: string, comicId: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const shareUrl = cardState.published
+    ? buildShareUrl(apiUrl, cardState.published.readerUrl)
+    : null;
+
+  function copyLink() {
+    if (!shareUrl) return;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  const busy = cardState.status === 'loading-images' || cardState.status === 'composing' || cardState.status === 'publishing';
+  const canPublish = !!apiUrl.trim() && !busy;
+
+  return (
+    <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+      {/* Card header */}
+      <div className="px-5 py-4 border-b border-outline-variant/10">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[13px] font-bold text-on-surface truncate" title={project.project_id}>
+              {project.project_id}
+            </p>
+            <p className="text-[11px] text-on-surface-variant mt-0.5">
+              {project.genre ?? 'Comic'} · {formatDate(project.saved_at)}
+            </p>
+          </div>
+          <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+            Step 4 ✓
+          </span>
+        </div>
+      </div>
+
+      {/* Card body */}
+      <div className="px-5 py-4 space-y-3">
+        {cardState.status === 'idle' && (
+          <button
+            type="button"
+            onClick={() => onPublish(project.project_id)}
+            disabled={!canPublish}
+            className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold border transition-all ${
+              canPublish
+                ? 'border-primary text-primary hover:bg-primary/5'
+                : 'border-outline-variant/30 text-on-surface-variant/50 cursor-not-allowed'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">public</span>
+            Publish to Web Reader
+          </button>
+        )}
+
+        {busy && (
+          <div className="flex items-center justify-center gap-2.5 py-2.5 text-[13px] text-primary">
+            <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />
+            {cardState.status === 'loading-images' ? 'Loading images…'
+              : cardState.status === 'composing' ? 'Composing pages…'
+              : 'Publishing…'}
+          </div>
+        )}
+
+        {cardState.status === 'error' && (
+          <div className="space-y-2">
+            <p className="text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+              {cardState.error ?? 'Publish failed'}
+            </p>
+            <button
+              type="button"
+              onClick={() => onPublish(project.project_id)}
+              disabled={!canPublish}
+              className="w-full py-2 rounded-xl text-[12px] font-semibold border border-red-300 text-red-600 hover:bg-red-50 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {cardState.status === 'done' && shareUrl && (
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700">
+              <span className="material-symbols-outlined text-base">check_circle</span>
+              Published
+              {cardState.published?.readCount !== null && cardState.published?.readCount !== undefined && (
+                <span className="ml-auto text-on-surface-variant font-normal">
+                  {cardState.published.readCount} {cardState.published.readCount === 1 ? 'read' : 'reads'}
+                </span>
+              )}
+            </div>
+
+            <div className="flex gap-1.5">
+              <input
+                type="text"
+                value={shareUrl}
+                readOnly
+                onFocus={e => e.target.select()}
+                className="flex-1 min-w-0 px-2.5 py-1.5 text-[11px] font-mono bg-surface-container border border-outline-variant/30 rounded-lg text-on-surface-variant outline-none overflow-hidden text-ellipsis"
+              />
+              <button
+                type="button"
+                onClick={copyLink}
+                className={`shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+                  copied
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                    : 'border-outline-variant/40 text-on-surface-variant hover:bg-surface-container-low'
+                }`}
+              >
+                {copied ? '✓' : 'Copy'}
+              </button>
+              <a
+                href={shareUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-outline-variant/40 text-on-surface-variant hover:bg-surface-container-low transition-colors"
+                title="Open reader"
+              >
+                ↗
+              </a>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onUnpublish(project.project_id, cardState.published!.comicId)}
+              className="text-[11px] text-red-500 hover:underline bg-transparent border-none cursor-pointer p-0"
+            >
+              Remove from public access
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function PublishPage() {
+  const [apiUrl, setApiUrl] = useState('');
+  const [projects, setProjects] = useState<CloudProjectListItem[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [cardStates, setCardStates] = useState<Record<string, CardState>>({});
+
+  useEffect(() => {
+    const stored = window.sessionStorage.getItem(SESSION_KEY);
+    if (stored) setApiUrl(stored.replace(/\/$/, ''));
+  }, []);
+
+  function handleUrlChange(val: string) {
+    const trimmed = val.replace(/\/$/, '');
+    setApiUrl(trimmed);
+    if (trimmed) window.sessionStorage.setItem(SESSION_KEY, trimmed);
+    else window.sessionStorage.removeItem(SESSION_KEY);
+  }
+
+  useEffect(() => {
+    setLoadingProjects(true);
+    projectsApi.list()
+      .then(res => setProjects(res.data.filter(p => p.has_step4)))
+      .catch(() => setProjects([]))
+      .finally(() => setLoadingProjects(false));
+  }, []);
+
+  function setCard(projectId: string, patch: Partial<CardState>) {
+    setCardStates(prev => ({
+      ...prev,
+      [projectId]: { ...((prev[projectId] ?? { status: 'idle' }) as CardState), ...patch },
+    }));
+  }
+
+  const handlePublish = useCallback(async (projectId: string) => {
+    if (!apiUrl.trim()) return;
+    setCard(projectId, { status: 'loading-images', error: undefined });
+    try {
+      const [projectRes, imagesRes] = await Promise.all([
+        projectsApi.load(projectId),
+        projectsApi.loadImages(projectId),
+      ]);
+      const allImages = imagesRes.data.images;
+
+      // Full-page mode: page:page-1, page:page-2 … (generated in Full Page mode)
+      const pageEntries = allImages
+        .filter(e => e.image_key.startsWith('page:'))
+        .sort((a, b) => {
+          const numA = parseInt(a.image_key.replace('page:page-', ''), 10) || 0;
+          const numB = parseInt(b.image_key.replace('page:page-', ''), 10) || 0;
+          return numA - numB;
+        });
+
+      let pages: string[];
+
+      if (pageEntries.length > 0) {
+        pages = pageEntries.map(e => e.image_data);
+      } else {
+        // Panel-by-panel mode: compose individual panel images into full pages
+        // using the saved panel structure (pageNumber / panelNumber ordering).
+        const steps = (projectRes.data.steps ?? {}) as Record<string, unknown>;
+        const step4Data = (steps.step4 ?? {}) as Record<string, unknown>;
+        const panels = Array.isArray(step4Data.panels)
+          ? (step4Data.panels as Array<{ id: string; pageNumber: number; panelNumber: number }>)
+          : [];
+
+        const imageMap: Record<string, string> = {};
+        for (const { image_key, image_data } of allImages) {
+          if (image_key.startsWith('panel:')) imageMap[image_key.slice(6)] = image_data;
+        }
+
+        const byPage = new Map<number, Array<{ id: string; panelNumber: number }>>();
+        for (const p of panels) {
+          const arr = byPage.get(p.pageNumber) ?? [];
+          arr.push({ id: p.id, panelNumber: p.panelNumber });
+          byPage.set(p.pageNumber, arr);
+        }
+
+        const allPanelImages: string[][] = [];
+        const allLayouts: string[] = [];
+        for (const pageNum of Array.from(byPage.keys()).sort((a, b) => a - b)) {
+          const panelList = byPage.get(pageNum)!.sort((a, b) => a.panelNumber - b.panelNumber);
+          const imgs = panelList.map(p => imageMap[p.id]).filter(Boolean);
+          if (imgs.length > 0) {
+            allPanelImages.push(imgs);
+            allLayouts.push((TEMPLATES_BY_COUNT[imgs.length] ?? TEMPLATES_BY_COUNT[1])?.[0] ?? 'single');
+          }
+        }
+
+        if (!allPanelImages.length) {
+          setCard(projectId, { status: 'error', error: 'No page images found. Save your project with images first.' });
+          return;
+        }
+
+        setCard(projectId, { status: 'composing' });
+        const b64Pages = await recomposePages(allPanelImages, allLayouts, DEFAULT_BORDER_CONFIG);
+        pages = b64Pages.map(b64 => `data:image/png;base64,${b64}`);
+      }
+
+      if (!pages.length) {
+        setCard(projectId, { status: 'error', error: 'No page images found. Save your project with images first.' });
+        return;
+      }
+
+      setCard(projectId, { status: 'publishing' });
+      const result = await publishComic(apiUrl, pages, projectId, '');
+
+      let readCount: number | null = null;
+      try {
+        const stats = await getComicStats(apiUrl, result.comic_id);
+        readCount = stats.read_count;
+      } catch { /* noop */ }
+
+      setCard(projectId, {
+        status: 'done',
+        published: { comicId: result.comic_id, readerUrl: result.reader_url, readCount },
+      });
+    } catch (err) {
+      setCard(projectId, { status: 'error', error: err instanceof Error ? err.message : 'Publish failed' });
+    }
+  }, [apiUrl]);
+
+  const handleUnpublish = useCallback(async (projectId: string, comicId: string) => {
+    if (!window.confirm('Remove this comic from public access?')) return;
+    try {
+      await unpublishComic(apiUrl, comicId);
+      setCard(projectId, { status: 'idle', published: undefined });
+    } catch { /* noop */ }
+  }, [apiUrl]);
+
+  const publishedProjects  = projects.filter(p => cardStates[p.project_id]?.status === 'done');
+  const unpublishedProjects = projects.filter(p => cardStates[p.project_id]?.status !== 'done');
+
   return (
     <div className="min-h-screen bg-surface text-on-surface">
       <StudioSidebar />
       <StudioTopBar />
 
-      <div className="flex h-screen pt-24 ml-[var(--studio-sidebar-width)]">
-        <aside className="w-72 shrink-0 bg-surface-container-low flex flex-col gap-2 p-4">
-          <div className="px-4 py-6 mb-4">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center overflow-hidden">
-                <img
-                  className="w-full h-full object-cover"
-                  alt="Export cover"
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuAvk0TqOcuuhWM4urnHoOrCpPMU_7Ixy_xpqvHl8U0SI2-8gDiQqpMfSOgoTXRj1pfM92Ud9CeRDQNbr3nSlSPtoogQQQcvcJux1UC34lcZ6EHDaJRL5WBuomjVyQTutk_i4nR4W7xBxOHj5Wqdmt5gmfh03e-E0icvvFa4WKmb94QNMEvXz6ZbeQ0QlnAzEg7rDF92F1R9Iv2gKFG27bkHKEz9dyCLZNp4JX4pEQ9Nxqp8m7KmHLOnlVhFpNZ9_PJT7DIhvEr_5lg"
-                />
-              </div>
+      <main className="pt-24 pb-16 px-8 ml-[var(--studio-sidebar-width)]">
+        <div className="max-w-4xl mx-auto">
+
+          {/* Header */}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-on-surface">Publish</h1>
+            <p className="text-sm text-on-surface-variant mt-1">
+              Share your comics as a public web reader link
+            </p>
+          </div>
+
+          {/* Server URL */}
+          <div className="bg-surface-container-low border border-outline-variant/20 rounded-2xl p-6 mb-8">
+            <div className="flex items-start gap-3 mb-4">
+              <span className="material-symbols-outlined text-primary mt-0.5">language</span>
               <div>
-                <h2 className="text-sm font-bold leading-none">Export Studio</h2>
-                <span className="text-[10px] text-on-surface-variant">V1.2 Final Draft</span>
-              </div>
-            </div>
-          </div>
-          <nav className="flex flex-col gap-1">
-            {[
-              { label: 'Format', icon: 'file_present' },
-              { label: 'Quality', icon: 'high_quality' },
-              { label: 'Metadata', icon: 'label' },
-            ].map((item) => (
-              <div key={item.label} className="text-on-surface-variant px-4 py-3 flex items-center gap-3 hover:bg-surface-container-high transition-colors duration-200 cursor-pointer rounded-lg">
-                <span className="material-symbols-outlined">{item.icon}</span>
-                <span className="leading-relaxed">{item.label}</span>
-              </div>
-            ))}
-            <div className="bg-white text-primary shadow-sm rounded-lg mx-2 px-4 py-3 flex items-center gap-3 transition-colors duration-200 cursor-pointer">
-              <span className="material-symbols-outlined">rocket_launch</span>
-              <span className="leading-relaxed font-semibold">Distribution</span>
-            </div>
-          </nav>
-          <div className="mt-auto p-2">
-            <button className="w-full py-3 bg-gradient-to-br from-primary to-primary-container text-white rounded-xl font-bold shadow-lg shadow-primary/20 scale-95 active:scale-90 transition-all duration-200">
-              Batch Export
-            </button>
-          </div>
-        </aside>
-
-        <main className="flex-1 mr-80 overflow-y-auto hide-scrollbar p-12 bg-surface-container-low">
-          <div className="max-w-4xl mx-auto space-y-16 pb-32">
-            {previewPages.map((page) => (
-              <div key={page.index} className="bg-surface-container-lowest rounded-xl overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.08)] transform hover:-translate-y-1 transition-transform duration-500">
-                {page.grid ? (
-                  <div className="p-8">
-                    <div className="grid grid-cols-2 grid-rows-3 gap-4 aspect-[3/4]">
-                      <div className="col-span-2 row-span-1 rounded-lg overflow-hidden relative group">
-                        <img className="w-full h-full object-cover" alt="Preview" src={page.image} />
-                      </div>
-                      <div className="col-span-1 row-span-1 rounded-lg overflow-hidden">
-                        <img className="w-full h-full object-cover" alt="Preview" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD_EoHF244oUNw6bUrYoQiqNP4iECLfxJypjMKrFP8qgvomsjd6GM_ufq4Cms79IrMr-krHpvwiPla5kSn9ZnhiHfQoA1wfJ7vv74Nz57QFXoeJjkOZq25vAmgbpiA3VzViu5RF_1AjQ_G06HSwcFu7AhjuJl4DOEO0i_Yaft1HdO3f970obnmsQtCoCk7ajtfu2S94EZaUyl43bMNRdtse1mMW8qq64Mak6aYpo5YV62_xWwS7FUHL_r3IwxxuoYRMT3-1U40aeWg" />
-                      </div>
-                      <div className="col-span-1 row-span-2 rounded-lg overflow-hidden">
-                        <img className="w-full h-full object-cover" alt="Preview" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC5T-L8Bv6id_1Z8KP5VD_RMp3iNpY1fVDbXy2HFCCu3OKeQ5Xli8_aPZ331tKud3YC44ApXbDus1KZQIcM1XHN0BwjYmnFybPFjnP3kJFd5b7Fjwy2qpV3v8J306wFICm3i2zBWn-7Ibn1iNCNtPiYZ9a4UeRjHP9rlnH4XD3PmKWO5gleuK_ei-wDLN4Cm7hSyPVg4E05thiGXCf-JuOqgRkY7e5IfUZjiuGEkQ1PwxigizsTVBa2NN_BSpF5j-pmuP1eAM2EkPw" />
-                      </div>
-                      <div className="col-span-1 row-span-1 rounded-lg overflow-hidden">
-                        <img className="w-full h-full object-cover" alt="Preview" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAdzBuN3RjzM1VOGaNjnmPwhv3X72lTA0AWij7CkVAdbw_EK2bXi9xLkcZGuKOm8JcmgaPLG-M8DLUL41p5HoV7mSQ6VEsNfmXiLJCFj_45FDRF_IUgeuKaiYuhIIErn5aXIxIcU3mM7tEwncnn9MyKUJljm7lpj7K9ap2aXv3vOJ9iA1K0swxnBTcHbrgZAsWxw4K-mL4_-_QPfB1PJmoXbAWMbZGIxaCQyIrMvSKQFeev5UYJhb5NgPP2CfwmGSY5R-FvBQnslxk" />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <img className="w-full aspect-[3/4] object-cover" alt={page.title} src={page.image} />
-                )}
-                <div className="p-4 flex justify-between items-center bg-white/60 backdrop-blur-md">
-                  <span className="text-xs font-bold tracking-widest text-on-surface-variant uppercase">{page.title}</span>
-                  <span className="text-xs text-on-surface-variant">{page.index}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </main>
-
-        <aside className="fixed right-0 top-0 h-screen w-80 bg-surface-container-lowest pt-24 px-6 border-l border-outline-variant/10 shadow-[-20px_0_40px_rgba(0,0,0,0.02)]">
-          <div className="space-y-8">
-            <button className="w-full bg-primary text-on-primary px-6 py-3 rounded-full font-semibold hover:opacity-80 transition-all scale-95 active:scale-90 duration-200">
-              Publish
-            </button>
-            <div>
-              <h3 className="text-xl font-extrabold tracking-tight mb-6">Export Settings</h3>
-              <div className="space-y-4">
-                {['Include Cover Page', 'High Resolution (300 DPI)'].map((label) => (
-                  <label key={label} className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative flex items-center">
-                      <input checked className="peer h-5 w-5 rounded-md border-outline-variant bg-surface-container-low text-primary focus:ring-primary/20 transition-all cursor-pointer appearance-none border-2 checked:bg-primary checked:border-primary" type="checkbox" readOnly />
-                      <span className="material-symbols-outlined absolute text-white scale-0 peer-checked:scale-75 transition-transform pointer-events-none" style={{ fontSize: '16px' }}>
-                        check
-                      </span>
-                    </div>
-                    <span className="text-sm font-medium text-on-surface/80 group-hover:text-on-surface transition-colors">{label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-3 pt-6 border-t border-outline-variant/20">
-              <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-4">Final Delivery</p>
-              {[
-                { label: 'Download as PDF', icon: 'picture_as_pdf' },
-                { label: 'Download as CBZ', icon: 'folder_zip' },
-                { label: 'Export as PNG Images', icon: 'image' },
-              ].map((item) => (
-                <button key={item.label} className="w-full flex items-center justify-between px-5 py-4 bg-surface-container-low hover:bg-surface-container-high text-on-surface-variant rounded-xl font-semibold transition-all group active:scale-[0.98]">
-                  <div className="flex items-center gap-3">
-                    <span className="material-symbols-outlined text-primary">{item.icon}</span>
-                    <span>{item.label}</span>
-                  </div>
-                  <span className="material-symbols-outlined opacity-0 group-hover:opacity-100 transition-opacity">download</span>
-                </button>
-              ))}
-            </div>
-            <div className="pt-8">
-              <div className="bg-primary/5 rounded-2xl p-6 border border-primary/10">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="material-symbols-outlined text-primary text-sm">auto_awesome</span>
-                  <span className="text-xs font-bold text-primary">Pro Tip</span>
-                </div>
-                <p className="text-xs leading-relaxed text-on-surface-variant">
-                  CBZ is the standard for comic readers. Use PDF for easier sharing with printers or casual readers.
+                <p className="text-[13px] font-bold text-on-surface">Web Reader Server URL</p>
+                <p className="text-[11px] text-on-surface-variant mt-0.5">
+                  Your Cloudflare tunnel URL — the same server used for image generation in Step 1.
                 </p>
               </div>
             </div>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={apiUrl}
+                onChange={e => handleUrlChange(e.target.value)}
+                placeholder="https://xxxx.trycloudflare.com"
+                className="field flex-1 font-mono text-sm"
+              />
+              {apiUrl && (
+                <a
+                  href={apiUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-outline-variant/40 text-[13px] text-on-surface-variant hover:bg-surface-container transition-colors"
+                >
+                  <span className="material-symbols-outlined text-base">open_in_new</span>
+                  Test
+                </a>
+              )}
+            </div>
+            {!apiUrl && (
+              <p className="text-[11px] text-amber-600 mt-2.5 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm">warning</span>
+                Enter the server URL above to enable publishing.
+              </p>
+            )}
           </div>
-        </aside>
-      </div>
 
-      <div className="fixed bottom-0 left-[var(--studio-sidebar-width)] right-0 z-[60] bg-white/90 backdrop-blur-xl px-12 py-6 border-t border-outline-variant/10 flex items-center justify-between shadow-[0_-10px_30px_rgba(0,0,0,0.03)]">
-        <div className="flex-1 max-w-2xl">
-          <div className="flex justify-between items-center mb-3">
-            <span className="text-sm font-bold text-on-surface-variant">Generating final file...</span>
-            <span className="text-sm font-extrabold text-primary">75%</span>
-          </div>
-          <div className="h-2 w-full bg-surface-container-highest rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-primary to-primary-container w-[75%] rounded-full shadow-[0_0_10px_rgba(0,88,190,0.3)]"></div>
-          </div>
+          {/* Comics */}
+          {loadingProjects ? (
+            <div className="flex items-center justify-center py-16 text-on-surface-variant gap-3">
+              <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              Loading your comics…
+            </div>
+          ) : projects.length === 0 ? (
+            <div className="text-center py-16 text-on-surface-variant">
+              <span className="material-symbols-outlined text-5xl mb-3 block text-outline">auto_stories</span>
+              <p className="text-[14px] font-medium">No comics with generated images yet</p>
+              <p className="text-[12px] mt-1">Complete Step 4 (Generate) and save your project first.</p>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {publishedProjects.length > 0 && (
+                <section>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3">
+                    Published ({publishedProjects.length})
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {publishedProjects.map(p => (
+                      <ComicCard
+                        key={p.project_id}
+                        project={p}
+                        apiUrl={apiUrl}
+                        cardState={cardStates[p.project_id] ?? { status: 'idle' }}
+                        onPublish={handlePublish}
+                        onUnpublish={handleUnpublish}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              <section>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3">
+                  Ready to publish ({unpublishedProjects.length})
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {unpublishedProjects.map(p => (
+                    <ComicCard
+                      key={p.project_id}
+                      project={p}
+                      apiUrl={apiUrl}
+                      cardState={cardStates[p.project_id] ?? { status: 'idle' }}
+                      onPublish={handlePublish}
+                      onUnpublish={handleUnpublish}
+                    />
+                  ))}
+                </div>
+              </section>
+            </div>
+          )}
+
         </div>
-        <div className="ml-12 flex gap-4">
-          <button className="px-8 py-3 rounded-full text-sm font-bold text-on-surface-variant hover:text-on-surface transition-colors">
-            Cancel
-          </button>
-          <button className="px-10 py-3 rounded-full bg-surface-container-highest text-on-surface-variant/50 font-bold text-sm cursor-not-allowed">
-            Waiting for Render
-          </button>
-        </div>
-      </div>
+      </main>
     </div>
   );
 }

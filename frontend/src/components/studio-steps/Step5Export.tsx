@@ -138,9 +138,13 @@ export default function Step5Export() {
     }
   }, [step4PanelsByPage, step4.data, panelBubbles, projectId]);
 
-  const hasImages = Object.values(step4.data?.pageStates ?? {}).some(
-    (s) => (s as Step4PanelState).status === 'success' && (s as Step4PanelState).imageUrl
-  );
+  const hasImages =
+    Object.values(step4.data?.pageStates ?? {}).some(
+      (s) => (s as Step4PanelState).status === 'success' && (s as Step4PanelState).imageUrl
+    ) ||
+    Object.values(step4.data?.panelStates ?? {}).some(
+      (s) => (s as Step4PanelState).status === 'success' && (s as Step4PanelState).imageUrl
+    );
 
   const pageCount = step4PanelsByPage.length
 
@@ -231,7 +235,7 @@ export default function Step5Export() {
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Download</p>
             <div className="grid grid-cols-3 gap-3">
               <button type="button"
-                onClick={() => exportPdf(includeMetadata)}
+                onClick={() => exportPdf(includeMetadata, panelBubbles)}
                 disabled={!hasImages || exportStatus === 'exporting'}
                 className={`text-left p-4 rounded-2xl border-2 transition-all ${
                   !hasImages || exportStatus === 'exporting'
@@ -243,7 +247,7 @@ export default function Step5Export() {
                 <p className="text-xs text-gray-400 mt-0.5">Full comic, print-ready</p>
               </button>
               <button type="button"
-                onClick={() => exportZip(includeMetadata)}
+                onClick={() => exportZip(includeMetadata, panelBubbles)}
                 disabled={!hasImages || exportStatus === 'exporting'}
                 className={`text-left p-4 rounded-2xl border-2 transition-all ${
                   !hasImages || exportStatus === 'exporting'
@@ -255,7 +259,7 @@ export default function Step5Export() {
                 <p className="text-xs text-gray-400 mt-0.5">All pages as PNG ZIP</p>
               </button>
               <button type="button"
-                onClick={() => exportEpub(includeMetadata)}
+                onClick={() => exportEpub(includeMetadata, panelBubbles)}
                 disabled={!hasImages || exportStatus === 'exporting'}
                 className={`text-left p-4 rounded-2xl border-2 transition-all ${
                   !hasImages || exportStatus === 'exporting'

@@ -22,7 +22,8 @@ import {
 } from 'lucide-react'
 import { useComicGeneration } from '@/context/ComicGenerationContext'
 import type { Step4Panel, Step4PanelState } from '@/context/ComicGenerationContext'
-import { BASE_PAGE_W } from '@/components/studio-steps/DialogueEditor'
+import { BASE_PAGE_W, MangaBubbleSVG } from '@/components/studio-steps/DialogueEditor'
+import type { PanelBubbles } from '@/components/studio-steps/DialogueEditor'
 import {
   LAYOUT_PANEL_RECTS,
   TEMPLATES_BY_COUNT,
@@ -43,6 +44,8 @@ import { exportAsZip, exportAsPdf, exportAsEpub, exportAsCbz } from '@/lib/expor
 import type { ExportPage } from '@/lib/export'
 import { loadMetadata, type ComicMetadata } from '@/lib/metadata'
 import { MetadataEditor } from '@/components/MetadataEditor'
+import { PublishButton } from '@/components/PublishButton'
+import { bubblesApi } from '@/services/api'
 import type { CloudProjectListItem } from '@/services/api'
 
 type ExportFormat   = 'pdf' | 'cbz' | 'png' | 'epub'
@@ -521,6 +524,7 @@ function WatermarkDragHandle({
 function EditorCanvas({
   panels,
   panelStates,
+  panelBubbles,
   pageImageUrl,
   layoutName,
   displayOrder,
@@ -531,6 +535,7 @@ function EditorCanvas({
 }: {
   panels:             Step4Panel[]
   panelStates:        Record<string, Step4PanelState>
+  panelBubbles?:      Record<string, PanelBubbles>
   pageImageUrl:       string | null
   layoutName:         string
   displayOrder:       string[]
@@ -640,6 +645,27 @@ function EditorCanvas({
                     )}
                   </div>
                 )}
+                {/* Bubble overlays — read-only preview */}
+                {(panelBubbles?.[panel.id] ?? []).map(b => {
+                  const panelW = rect.w / PBW * CANVAS_W
+                  const panelH = rect.h / PBH * CANVAS_H
+                  return (
+                    <div
+                      key={b.id}
+                      style={{
+                        position: 'absolute',
+                        left: b.bubblePosition.x * panelW - b.bubbleSize.w / 2,
+                        top:  b.bubblePosition.y * panelH - b.bubbleSize.h / 2,
+                        width: b.bubbleSize.w,
+                        height: b.bubbleSize.h,
+                        zIndex: b.zIndex,
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      <MangaBubbleSVG bubble={b} w={b.bubbleSize.w} h={b.bubbleSize.h} />
+                    </div>
+                  )
+                })}
               </div>
             )
           })
@@ -857,6 +883,20 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ── load dialogue bubbles from MongoDB ──────────────────────────
+  const [panelBubbles, setPanelBubbles] = useState<Record<string, PanelBubbles>>({})
+  const bubblesLoadedForRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!projectId || bubblesLoadedForRef.current === projectId) return
+    bubblesLoadedForRef.current = projectId
+    bubblesApi.getForComic(projectId).then(res => {
+      const map: Record<string, PanelBubbles> = {}
+      for (const doc of res.data) map[doc.panelId] = doc.bubbles as PanelBubbles
+      if (Object.keys(map).length > 0) setPanelBubbles(map)
+    }).catch(() => {})
+  }, [projectId])
+
   // ── local state ─────────────────────────────────────────────────
   const [selectedPage, setSelectedPage] = useState(1)
   // Divider pages: selectedDivider is the afterPage value of the active divider
@@ -934,6 +974,14 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
   const activeRecomposedPage = recomposedPages !== null && currentPageIndex >= 0
     ? recomposedPages[currentPageIndex] ?? null
     : null
+
+  // Raw success page images — used for PublishButton disabled check
+  const rawPageImages = useMemo(() =>
+    Object.values(step4.data?.pageStates ?? {})
+      .filter(s => (s as Step4PanelState).status === 'success' && (s as Step4PanelState).imageUrl)
+      .map(s => (s as Step4PanelState).imageUrl as string),
+    [step4.data?.pageStates],
+  )
 
   // ── Live border preview on the main canvas ───────────────────────────────
   const [borderPreviewB64, setBorderPreviewB64] = useState<string | null>(null)
@@ -1162,6 +1210,7 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
               <EditorCanvas
                 panels={panelsOnCurrentPage}
                 panelStates={panelStates}
+                panelBubbles={panelBubbles}
                 pageImageUrl={
                   // Priority: pn preview (border baked in, no wm) →
                   // live border preview → applied border → raw full-page → null (panel grid)
@@ -1269,6 +1318,21 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
                 onDeleteWatermark={(id) => setWatermarks(prev => prev.filter(w => w.id !== id))}
                 onChangeMetadata={setMetadata}
               />
+              {activeSection === 'info' && (
+                <div className="px-3 pb-5 pt-3 border-t border-outline-variant/20">
+                  <p className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
+                    Publish
+                  </p>
+                  <PublishButton
+                    pageImages={rawPageImages}
+                    metadata={metadata}
+                    getExportPages={async () => (await buildExportPages()).map(p => p.imageUrl)}
+                  />
+                  <p className="text-[10px] text-on-surface-variant mt-2 leading-relaxed">
+                    Creates a shareable web-reader link. Valid until the server restarts.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

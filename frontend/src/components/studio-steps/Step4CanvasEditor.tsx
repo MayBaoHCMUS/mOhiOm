@@ -1034,7 +1034,14 @@ export default function Step4CanvasEditor() {
       }
     }
     setPanelBubbles(prev => ({ ...prev, ...bubbles }));
-  }, [step4PanelsByPage]);
+    // Persist every auto-imported panel to MongoDB so navigation to Step 5
+    // or Save to Cloud picks them up (saveBubbles is only called on manual edits).
+    if (projectId) {
+      for (const [panelId, panelBubbleList] of Object.entries(bubbles)) {
+        bubblesApi.upsert(panelId, projectId, panelBubbleList as BubbleDataPayload[]).catch(() => {});
+      }
+    }
+  }, [step4PanelsByPage, projectId]);
 
   const saveBubbles = useCallback((panelId: string, bubbles: PanelBubbles) => {
     setPanelBubbles(prev => ({ ...prev, [panelId]: bubbles }));

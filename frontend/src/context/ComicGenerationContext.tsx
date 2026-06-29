@@ -12,8 +12,11 @@ import {
 } from '@/services/api';
 import type { FullProjectSave, CloudProjectListItem, CharacterSummary, ProjectImageEntry } from '@/services/api';
 import { exportAsZip, exportAsPdf, exportAsEpub } from '@/lib/export';
+import { recomposePages, DEFAULT_BORDER_CONFIG } from '@/lib/borderComposer';
+import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
 import { trackEvent } from '@/lib/analytics';
 import type { ExportPage } from '@/lib/export';
+import type { SingleBubble } from '@/components/studio-steps/DialogueEditor';
 
 export type StepKey = 1 | 2 | 3 | 4 | 5;
 export type WizardStepKey = 0 | StepKey;
@@ -592,9 +595,9 @@ export interface ComicGenerationContextValue {
   rejectPanelRegen: (pageNumber: number) => void;
   copyProjectJson: () => Promise<void>;
   downloadProjectJson: () => void;
-  exportZip: (includeMetadata: boolean) => Promise<void>;
-  exportPdf: (includeMetadata: boolean) => Promise<void>;
-  exportEpub: (includeMetadata: boolean) => Promise<void>;
+  exportZip: (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => Promise<void>;
+  exportPdf: (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => Promise<void>;
+  exportEpub: (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => Promise<void>;
   exportStatus: 'idle' | 'exporting' | 'error';
   getStep2PromptList: () => string[];
   getSelectedCharacterReferences: () => Array<{
@@ -2486,37 +2489,109 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
 
   const [exportStatus, setExportStatus] = useState<'idle' | 'exporting' | 'error'>('idle');
 
-  function buildExportPages(data: { panels: Step4Panel[]; pageStates: Record<string, Step4PanelState> }): ExportPage[] {
+  async function buildExportPages(
+    data: {
+      panels: Step4Panel[];
+      pageStates: Record<string, Step4PanelState>;
+      panelStates: Record<string, Step4PanelState>;
+    },
+    panelBubbles?: Record<string, SingleBubble[]>,
+  ): Promise<ExportPage[]> {
     const byPage = new Map<number, Step4Panel[]>();
     for (const panel of data.panels) {
       const arr = byPage.get(panel.pageNumber) ?? [];
       arr.push(panel);
       byPage.set(panel.pageNumber, arr);
     }
-    const pages: ExportPage[] = [];
-    for (const [pageNumber, panels] of Array.from(byPage.entries()).sort(([a], [b]) => a - b)) {
-      const state = data.pageStates[`page-${pageNumber}`];
-      if (!state || state.status !== 'success' || !state.imageUrl) continue;
-      pages.push({
-        pageNumber,
-        imageUrl: state.imageUrl,
-        panels: panels.map((pan) => ({
-          panelNumber: pan.panelNumber,
-          contextLabel: pan.contextLabel,
-          shotType: pan.shotType,
-          dialogueSfx: pan.dialogueSfx,
-          aiImagePrompt: pan.aiImagePrompt,
-        })),
-      });
+
+    const sortedByPage = Array.from(byPage.entries()).sort(([a], [b]) => a - b);
+
+    // Full-page mode: page images already composited (generated in "Full Page" mode)
+    const hasPageImages = sortedByPage.some(([pageNumber]) => {
+      const s = data.pageStates[`page-${pageNumber}`];
+      return s?.status === 'success' && s.imageUrl;
+    });
+
+    if (hasPageImages) {
+      const pages: ExportPage[] = [];
+      for (const [pageNumber, panels] of sortedByPage) {
+        const state = data.pageStates[`page-${pageNumber}`];
+        if (!state || state.status !== 'success' || !state.imageUrl) continue;
+        pages.push({
+          pageNumber,
+          imageUrl: state.imageUrl,
+          panels: panels.map((pan) => ({
+            panelNumber: pan.panelNumber,
+            contextLabel: pan.contextLabel,
+            shotType: pan.shotType,
+            dialogueSfx: pan.dialogueSfx,
+            aiImagePrompt: pan.aiImagePrompt,
+          })),
+        });
+      }
+      return pages;
     }
-    return pages;
+
+    // Panel-by-panel mode: compose individual panel images into full pages on the fly.
+    const LAYOUT_FALLBACKS: Record<number, string> = {
+      1: 'single', 2: 'horizontal_duo', 3: 'three_panels_row',
+      4: 'grid_2x2', 5: 'splash_top', 6: 'grid_2x3',
+    };
+    const allPanelImages: string[][] = [];
+    const allLayouts: string[] = [];
+    const pageNumbers: number[] = [];
+
+    for (const [pageNumber, panelList] of sortedByPage) {
+      const sorted = [...panelList].sort((a, b) => a.panelNumber - b.panelNumber);
+      const rawImgs = sorted.map(p => {
+        const url = data.panelStates[p.id]?.imageUrl;
+        return url ? { id: p.id, url } : null;
+      }).filter(Boolean) as Array<{ id: string; url: string }>;
+      if (!rawImgs.length) continue;
+
+      // Composite bubbles onto each panel image when panelBubbles are provided
+      const imgs: string[] = await Promise.all(rawImgs.map(async ({ id, url }) => {
+        const bubbles = panelBubbles?.[id];
+        if (bubbles?.length) {
+          try {
+            const blob = await compositePanelToBlob(url, bubbles);
+            return URL.createObjectURL(blob);
+          } catch { /* fallback to raw image */ }
+        }
+        return url;
+      }));
+
+      allPanelImages.push(imgs);
+      // Use the layout the user chose in the editor; fall back to a sensible default by count
+      allLayouts.push(pageLayoutNames[pageNumber] ?? LAYOUT_FALLBACKS[imgs.length] ?? 'single');
+      pageNumbers.push(pageNumber);
+    }
+
+    if (!allPanelImages.length) return [];
+
+    // Collect any object URLs we created for composited panels so we can revoke them after
+    const blobUrls = allPanelImages.flat().filter(u => u.startsWith('blob:'));
+    const b64Pages = await recomposePages(allPanelImages, allLayouts, DEFAULT_BORDER_CONFIG);
+    blobUrls.forEach(u => URL.revokeObjectURL(u));
+
+    return b64Pages.map((b64, i) => ({
+      pageNumber: pageNumbers[i],
+      imageUrl: `data:image/png;base64,${b64}`,
+      panels: (byPage.get(pageNumbers[i]) ?? []).map((pan) => ({
+        panelNumber: pan.panelNumber,
+        contextLabel: pan.contextLabel,
+        shotType: pan.shotType,
+        dialogueSfx: pan.dialogueSfx,
+        aiImagePrompt: pan.aiImagePrompt,
+      })),
+    }));
   }
 
-  const exportZip = useCallback(async (includeMetadata: boolean) => {
+  const exportZip = useCallback(async (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => {
     if (!step4.data) return;
     setExportStatus('exporting');
     try {
-      const pages = buildExportPages(step4.data);
+      const pages = await buildExportPages(step4.data, panelBubbles);
       await exportAsZip(pages, { includeMetadata, projectId: projectId || 'comic' });
       trackEvent({
         type:          'export',
@@ -2533,11 +2608,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
   }, [step4.data, projectId, imageGenStyle]);
 
-  const exportPdf = useCallback(async (includeMetadata: boolean) => {
+  const exportPdf = useCallback(async (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => {
     if (!step4.data) return;
     setExportStatus('exporting');
     try {
-      const pages = buildExportPages(step4.data);
+      const pages = await buildExportPages(step4.data, panelBubbles);
       await exportAsPdf(pages, { includeMetadata, projectId: projectId || 'comic' });
       trackEvent({
         type:          'export',
@@ -2554,11 +2629,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
   }, [step4.data, projectId, imageGenStyle]);
 
-  const exportEpub = useCallback(async (includeMetadata: boolean) => {
+  const exportEpub = useCallback(async (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => {
     if (!step4.data) return;
     setExportStatus('exporting');
     try {
-      const pages = buildExportPages(step4.data);
+      const pages = await buildExportPages(step4.data, panelBubbles);
       await exportAsEpub(pages, { includeMetadata, projectId: projectId || 'comic' });
       trackEvent({
         type:          'export',

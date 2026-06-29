@@ -1044,7 +1044,12 @@ export default function Step4Generation() {
       }
     }
     setPanelBubbles((prev) => ({ ...prev, ...bubbles }));
-  }, [step4PanelsByPage]);
+    if (projectId) {
+      for (const [panelId, panelBubbleList] of Object.entries(bubbles)) {
+        bubblesApi.upsert(panelId, projectId, panelBubbleList as BubbleDataPayload[]).catch(() => {});
+      }
+    }
+  }, [step4PanelsByPage, projectId]);
 
   const handleSuggestLayout = useCallback(async (pageNumber: number, panels: Step4Panel[]) => {
     setLayoutSuggestLoading((prev) => ({ ...prev, [pageNumber]: true }));
