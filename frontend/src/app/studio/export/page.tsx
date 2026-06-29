@@ -3,11 +3,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
-import { projectsApi } from '@/services/api';
+import { projectsApi, bubblesApi } from '@/services/api';
 import type { CloudProjectListItem } from '@/services/api';
 import { publishComic, buildShareUrl, getComicStats, unpublishComic } from '@/lib/publish';
 import { recomposePages, DEFAULT_BORDER_CONFIG } from '@/lib/borderComposer';
-import { TEMPLATES_BY_COUNT } from '@/components/studio-steps/Step4Generation';
+import type { BorderConfig } from '@/lib/borderComposer';
+import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
 
 const SESSION_KEY = 'mohiom-image-api-url';
 
@@ -211,11 +212,18 @@ export default function PublishPage() {
     if (!apiUrl.trim()) return;
     setCard(projectId, { status: 'loading-images', error: undefined });
     try {
-      const [projectRes, imagesRes] = await Promise.all([
+      const [projectRes, imagesRes, bubblesRes] = await Promise.all([
         projectsApi.load(projectId),
         projectsApi.loadImages(projectId),
+        bubblesApi.getForComic(projectId).catch(() => ({ data: [] })),
       ]);
       const allImages = imagesRes.data.images;
+
+      // Build bubble map: panelId → SingleBubble[]
+      const bubbleMap: Record<string, unknown[]> = {};
+      for (const doc of bubblesRes.data) {
+        if (doc.panelId && Array.isArray(doc.bubbles)) bubbleMap[doc.panelId] = doc.bubbles;
+      }
 
       // Full-page mode: page:page-1, page:page-2 … (generated in Full Page mode)
       const pageEntries = allImages
@@ -229,15 +237,21 @@ export default function PublishPage() {
       let pages: string[];
 
       if (pageEntries.length > 0) {
+        // Full Page mode — bubbles are already baked into the AI-generated image
         pages = pageEntries.map(e => e.image_data);
       } else {
-        // Panel-by-panel mode: compose individual panel images into full pages
-        // using the saved panel structure (pageNumber / panelNumber ordering).
+        // Panel-by-panel mode: composite bubbles onto panels, then compose pages.
         const steps = (projectRes.data.steps ?? {}) as Record<string, unknown>;
-        const step4Data = (steps.step4 ?? {}) as Record<string, unknown>;
+        const step4Wrapper = (steps.step4 ?? {}) as Record<string, unknown>;
+        const step4Data = (step4Wrapper.data ?? {}) as Record<string, unknown>;
         const panels = Array.isArray(step4Data.panels)
           ? (step4Data.panels as Array<{ id: string; pageNumber: number; panelNumber: number }>)
           : [];
+
+        const imageGenSettings = (projectRes.data.image_gen_settings ?? {}) as Record<string, unknown>;
+        const savedLayouts = (imageGenSettings.page_layout_names ?? {}) as Record<string, string>;
+        const savedBorderCfg = (imageGenSettings.border_config ?? {}) as Partial<BorderConfig>;
+        const borderConfig: BorderConfig = { ...DEFAULT_BORDER_CONFIG, ...savedBorderCfg };
 
         const imageMap: Record<string, string> = {};
         for (const { image_key, image_data } of allImages) {
@@ -251,14 +265,38 @@ export default function PublishPage() {
           byPage.set(p.pageNumber, arr);
         }
 
+        const LAYOUT_FALLBACKS: Record<number, string> = {
+          1: 'single', 2: 'horizontal_duo', 3: 'three_panels_row',
+          4: 'grid_2x2', 5: 'splash_top', 6: 'grid_2x3',
+        };
+
+        setCard(projectId, { status: 'composing' });
+
         const allPanelImages: string[][] = [];
         const allLayouts: string[] = [];
         for (const pageNum of Array.from(byPage.keys()).sort((a, b) => a - b)) {
           const panelList = byPage.get(pageNum)!.sort((a, b) => a.panelNumber - b.panelNumber);
-          const imgs = panelList.map(p => imageMap[p.id]).filter(Boolean);
-          if (imgs.length > 0) {
-            allPanelImages.push(imgs);
-            allLayouts.push((TEMPLATES_BY_COUNT[imgs.length] ?? TEMPLATES_BY_COUNT[1])?.[0] ?? 'single');
+          const imgs = await Promise.all(panelList.map(async ({ id }) => {
+            const rawUrl = imageMap[id];
+            if (!rawUrl) return '';
+            const bubbles = bubbleMap[id];
+            if (bubbles?.length) {
+              try {
+                const blob = await compositePanelToBlob(rawUrl, bubbles as Parameters<typeof compositePanelToBlob>[1]);
+                return await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(reader.result as string);
+                  reader.onerror = reject;
+                  reader.readAsDataURL(blob);
+                });
+              } catch { /* fallback to raw */ }
+            }
+            return rawUrl;
+          }));
+          const validImgs = imgs.filter(Boolean);
+          if (validImgs.length > 0) {
+            allPanelImages.push(validImgs);
+            allLayouts.push(savedLayouts[String(pageNum)] ?? LAYOUT_FALLBACKS[validImgs.length] ?? 'single');
           }
         }
 
@@ -267,8 +305,7 @@ export default function PublishPage() {
           return;
         }
 
-        setCard(projectId, { status: 'composing' });
-        const b64Pages = await recomposePages(allPanelImages, allLayouts, DEFAULT_BORDER_CONFIG);
+        const b64Pages = await recomposePages(allPanelImages, allLayouts, borderConfig);
         pages = b64Pages.map(b64 => `data:image/png;base64,${b64}`);
       }
 

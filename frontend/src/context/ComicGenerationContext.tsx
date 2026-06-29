@@ -3168,12 +3168,10 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     try {
       const fullSave = buildFullSave();
       const images = collectImagesToSave();
-      if (images.length > 0) {
-        projectsApi.saveImages(projectId, images).catch((err) => {
-          console.warn('[saveToCloud] Image upload failed (best-effort):', err);
-        });
-      }
       await projectsApi.save(fullSave);
+      if (images.length > 0) {
+        await projectsApi.saveImages(projectId, images);
+      }
       setCloudSaveStatus('saved');
       window.setTimeout(() => setCloudSaveStatus('idle'), 2000);
     } catch (err) {
