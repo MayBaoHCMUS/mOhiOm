@@ -22,6 +22,7 @@ export default function Step5Export() {
     handleApprove,
     exportZip,
     exportPdf,
+    exportPrintPdf,
     exportEpub,
     exportStatus,
     saveToCloud,
@@ -244,7 +245,19 @@ export default function Step5Export() {
                 }`}>
                 <span className="text-2xl">📄</span>
                 <p className="text-sm font-bold text-gray-900 mt-2">PDF Comic</p>
-                <p className="text-xs text-gray-400 mt-0.5">Full comic, print-ready</p>
+                <p className="text-xs text-gray-400 mt-0.5">Standard screen PDF</p>
+              </button>
+              <button type="button"
+                onClick={() => exportPrintPdf(includeMetadata, panelBubbles)}
+                disabled={!hasImages || exportStatus === 'exporting'}
+                className={`text-left p-4 rounded-2xl border-2 transition-all ${
+                  !hasImages || exportStatus === 'exporting'
+                    ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
+                    : 'border-gray-200 hover:border-indigo-400/40 hover:bg-indigo-50/50 cursor-pointer'
+                }`}>
+                <span className="text-2xl">🖨</span>
+                <p className="text-sm font-bold text-gray-900 mt-2">Print-ready PDF</p>
+                <p className="text-xs text-gray-400 mt-0.5">300 DPI · bleed · crop marks</p>
               </button>
               <button type="button"
                 onClick={() => exportZip(includeMetadata, panelBubbles)}

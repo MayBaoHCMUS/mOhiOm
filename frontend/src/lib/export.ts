@@ -21,6 +21,7 @@ interface ExportOpts {
   includeMetadata: boolean;
   projectId: string;
   meta?: ComicMetadata;
+  printReady?: boolean;
 }
 
 export function triggerDownload(blob: Blob, filename: string): void {
@@ -110,6 +111,69 @@ export async function exportAsCbz(pages: ExportPage[], opts: ExportOpts): Promis
   triggerDownload(blob, `${stem}.cbz`)
 }
 
+// 3mm bleed at 300 DPI
+const BLEED_PX  = 35;
+// crop mark length (fits within bleed, from trim corner outward)
+const MARK_LEN  = 25;
+// 0.5pt at 300 DPI ≈ 2px
+const MARK_W    = 2;
+
+function loadImageEl(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload  = () => resolve(img);
+    img.onerror = reject;
+    img.src = src.startsWith('data:') || src.startsWith('blob:') || src.startsWith('http')
+      ? src : `data:image/png;base64,${src}`;
+  });
+}
+
+async function addBleedAndCropMarks(imageUrl: string): Promise<string> {
+  const img = await loadImageEl(imageUrl);
+  const pw = img.naturalWidth;
+  const ph = img.naturalHeight;
+  const cw = pw + 2 * BLEED_PX;
+  const ch = ph + 2 * BLEED_PX;
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext('2d')!;
+
+  // Fill bleed with white
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Draw page image at bleed offset
+  ctx.drawImage(img, BLEED_PX, BLEED_PX, pw, ph);
+
+  // Crop marks at trim corners
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth   = MARK_W;
+  ctx.lineCap     = 'square';
+
+  const corners = [
+    { cx: BLEED_PX,      cy: BLEED_PX,      dx: -1, dy: -1 },
+    { cx: BLEED_PX + pw, cy: BLEED_PX,      dx:  1, dy: -1 },
+    { cx: BLEED_PX,      cy: BLEED_PX + ph, dx: -1, dy:  1 },
+    { cx: BLEED_PX + pw, cy: BLEED_PX + ph, dx:  1, dy:  1 },
+  ] as const;
+
+  for (const { cx, cy, dx, dy } of corners) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + dx * MARK_LEN, cy);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx, cy + dy * MARK_LEN);
+    ctx.stroke();
+  }
+
+  return canvas.toDataURL('image/png');
+}
+
 export async function exportAsPdf(pages: ExportPage[], opts: ExportOpts): Promise<void> {
   const stem = stemFor(opts);
   const meta = opts.meta;
@@ -124,21 +188,31 @@ export async function exportAsPdf(pages: ExportPage[], opts: ExportOpts): Promis
   pdfDoc.setCreationDate(new Date());
 
   for (const page of pages) {
-    const { base64, mimeType } = stripDataPrefix(page.imageUrl);
+    let imageUrl = page.imageUrl;
+    if (opts.printReady) {
+      imageUrl = await addBleedAndCropMarks(imageUrl);
+    }
+
+    const { base64, mimeType } = stripDataPrefix(imageUrl);
     const imgBytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
 
     const pngImage = mimeType.includes('jpeg') || mimeType.includes('jpg')
       ? await pdfDoc.embedJpg(imgBytes)
       : await pdfDoc.embedPng(imgBytes);
 
-    const pdfPage = pdfDoc.addPage([pngImage.width, pngImage.height]);
-    pdfPage.drawImage(pngImage, { x: 0, y: 0, width: pngImage.width, height: pngImage.height });
+    // Print-ready: size page in points so image renders at 300 DPI
+    const ptW = opts.printReady ? pngImage.width  / 300 * 72 : pngImage.width;
+    const ptH = opts.printReady ? pngImage.height / 300 * 72 : pngImage.height;
+
+    const pdfPage = pdfDoc.addPage([ptW, ptH]);
+    pdfPage.drawImage(pngImage, { x: 0, y: 0, width: ptW, height: ptH });
   }
 
   const pdfBytes = await pdfDoc.save();
+  const filename  = opts.printReady ? `${stem}_print_300dpi.pdf` : `${stem}.pdf`;
   triggerDownload(
     new Blob([pdfBytes as unknown as Uint8Array<ArrayBuffer>], { type: 'application/pdf' }),
-    `${stem}.pdf`
+    filename
   );
 }
 

@@ -598,6 +598,7 @@ export interface ComicGenerationContextValue {
   downloadProjectJson: () => void;
   exportZip: (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => Promise<void>;
   exportPdf: (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => Promise<void>;
+  exportPrintPdf: (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => Promise<void>;
   exportEpub: (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => Promise<void>;
   exportStatus: 'idle' | 'exporting' | 'error';
   getStep2PromptList: () => string[];
@@ -2633,6 +2634,27 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
   }, [step4.data, projectId, imageGenStyle]);
 
+  const exportPrintPdf = useCallback(async (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => {
+    if (!step4.data) return;
+    setExportStatus('exporting');
+    try {
+      const pages = await buildExportPages(step4.data, panelBubbles);
+      await exportAsPdf(pages, { includeMetadata, projectId: projectId || 'comic', printReady: true });
+      trackEvent({
+        type:          'export',
+        story_id:      projectId || 'unknown',
+        style:         imageGenStyle || 'manga',
+        duration_ms:   0,
+        has_character: false,
+        export_format: 'pdf',
+        page_count:    pages.length,
+      });
+      setExportStatus('idle');
+    } catch {
+      setExportStatus('error');
+    }
+  }, [step4.data, projectId, imageGenStyle]);
+
   const exportEpub = useCallback(async (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => {
     if (!step4.data) return;
     setExportStatus('exporting');
@@ -3321,6 +3343,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     downloadProjectJson,
     exportZip,
     exportPdf,
+    exportPrintPdf,
     exportEpub,
     exportStatus,
     getStep2PromptList,
