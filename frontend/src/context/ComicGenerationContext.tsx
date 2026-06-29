@@ -13,6 +13,7 @@ import {
 import type { FullProjectSave, CloudProjectListItem, CharacterSummary, ProjectImageEntry } from '@/services/api';
 import { exportAsZip, exportAsPdf, exportAsEpub } from '@/lib/export';
 import { recomposePages, DEFAULT_BORDER_CONFIG } from '@/lib/borderComposer';
+import type { BorderConfig } from '@/lib/borderComposer';
 import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
 import { trackEvent } from '@/lib/analytics';
 import type { ExportPage } from '@/lib/export';
@@ -611,6 +612,8 @@ export interface ComicGenerationContextValue {
   loadMockCharacterReview: () => void;
   loadMockPipeline: () => void;
   loadProjectJson: (json: Record<string, unknown>) => { success: boolean; error?: string };
+  borderConfig: BorderConfig;
+  setBorderConfig: React.Dispatch<React.SetStateAction<BorderConfig>>;
   cloudSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
   cloudSaveError: string | null;
   saveToCloud: () => Promise<void>;
@@ -660,6 +663,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   const [setupValidation, setSetupValidation] = useState<SetupValidationState | null>(null);
   const [setupSubmitAttempted, setSetupSubmitAttempted] = useState(false);
   const [streamingText, setStreamingText] = useState('');
+  const [borderConfig, setBorderConfig] = useState<BorderConfig>(DEFAULT_BORDER_CONFIG);
   const [cloudSaveStatus, setCloudSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [cloudSaveError, setCloudSaveError] = useState<string | null>(null);
   const [fromStorySetup, setFromStorySetup] = useState(false);
@@ -2901,6 +2905,18 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         }
         setPageLayoutNames(restored);
       }
+      if (imageGenSettings.border_config && typeof imageGenSettings.border_config === 'object') {
+        const bc = imageGenSettings.border_config as Record<string, unknown>;
+        setBorderConfig(prev => ({
+          ...prev,
+          ...(typeof bc.borderColor === 'string'  ? { borderColor: bc.borderColor }  : {}),
+          ...(typeof bc.borderWidth === 'number'   ? { borderWidth: bc.borderWidth }  : {}),
+          ...(typeof bc.gutterColor === 'string'   ? { gutterColor: bc.gutterColor }  : {}),
+          ...(typeof bc.gutterWidth === 'number'   ? { gutterWidth: bc.gutterWidth }  : {}),
+          ...(typeof bc.pageMargin  === 'number'   ? { pageMargin:  bc.pageMargin  }  : {}),
+          ...(typeof bc.pageBg      === 'string'   ? { pageBg:      bc.pageBg      }  : {}),
+        }));
+      }
 
       const s1Data = toRecord(s1.data);
       setStep1({
@@ -3134,6 +3150,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         ip_adapter_scale: ipAdapterScale,
         controlnet_scale: controlnetScale,
         page_layout_names: pageLayoutNames,
+        border_config: borderConfig,
       },
       steps: {
         step1: { data: step1.data, isApproved: step1.isApproved, lastUpdated: step1.lastUpdated },
@@ -3315,6 +3332,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     loadMockCharacterReview,
     loadMockPipeline,
     loadProjectJson,
+    borderConfig,
+    setBorderConfig,
     cloudSaveStatus,
     cloudSaveError,
     saveToCloud,

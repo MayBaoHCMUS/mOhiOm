@@ -38,13 +38,13 @@ import type { PageNumberConfig } from '@/lib/pageNumbering'
 import { applyWatermark, createWatermark, DEFAULT_WATERMARK_TEMPLATE } from '@/lib/watermark'
 import type { WatermarkConfig, WatermarkTemplate } from '@/lib/watermark'
 import { DEFAULT_BORDER_CONFIG, previewBorderStyle, recomposePages } from '@/lib/borderComposer'
+import { compositePanelToBlob } from '@/lib/bubbles/exportComposite'
 import type { BorderConfig } from '@/lib/borderComposer'
 import { PAGE_W, PAGE_H } from '@/lib/layoutTemplates'
 import { exportAsZip, exportAsPdf, exportAsEpub, exportAsCbz } from '@/lib/export'
 import type { ExportPage } from '@/lib/export'
 import { loadMetadata, type ComicMetadata } from '@/lib/metadata'
 import { MetadataEditor } from '@/components/MetadataEditor'
-import { PublishButton } from '@/components/PublishButton'
 import { bubblesApi } from '@/services/api'
 import type { CloudProjectListItem } from '@/services/api'
 
@@ -862,6 +862,11 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
     step4PanelsByPage,
     loadFromCloud,
     projectId,
+    pageLayoutNames,
+    borderConfig,
+    setBorderConfig,
+    saveToCloud,
+    cloudSaveStatus,
   } = useComicGeneration()
 
   const panels      = step4.data?.panels ?? []
@@ -910,7 +915,6 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
   const [pnConfig,           setPnConfig]           = useState<PageNumberConfig>(DEFAULT_PAGE_NUMBER_CONFIG)
   const [watermarks,         setWatermarks]         = useState<WatermarkConfig[]>([])
   const [wmTemplate,         setWmTemplate]         = useState<WatermarkTemplate>(DEFAULT_WATERMARK_TEMPLATE)
-  const [borderConfig,       setBorderConfig]       = useState<BorderConfig>(DEFAULT_BORDER_CONFIG)
   const [recomposedPages,    setRecomposedPages]    = useState<string[] | null>(null)
   const [metadata,           setMetadata]           = useState<ComicMetadata>(() => {
     const stored = loadMetadata()
@@ -948,9 +952,8 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
     [step4PanelsByPage, pageStates],
   )
 
-  // Panel images + layout keys for each page — used by border style recomposer.
-  // In Full Page mode, treat each full-page image as a single panel with 'single' layout.
-  const allPanelImages = useMemo(() => {
+  // Raw panel images per page (no bubbles) — used as base before compositing.
+  const rawPanelImages = useMemo(() => {
     if (isPageMode) {
       return step4PanelsByPage.map(([page]) => {
         const img = pageStates[`page-${page}`]?.imageUrl
@@ -962,12 +965,65 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
     )
   }, [isPageMode, step4PanelsByPage, panelStates, pageStates])
 
+  // Panel images with bubbles composited in — async because compositePanelToBlob is canvas-based.
+  const [allPanelImages, setAllPanelImages] = useState<string[][]>([])
+  useEffect(() => {
+    let cancelled = false
+    async function composite() {
+      if (isPageMode || Object.keys(panelBubbles).length === 0) {
+        if (!cancelled) setAllPanelImages(rawPanelImages)
+        return
+      }
+      const composed = await Promise.all(
+        step4PanelsByPage.map(async ([, panels], pageIdx) => {
+          const raw = rawPanelImages[pageIdx] ?? []
+          return Promise.all(
+            panels.map(async (panel, i) => {
+              const url = raw[i]
+              if (!url) return ''
+              const bubbles = panelBubbles[panel.id]
+              if (!bubbles?.length) return url
+              try {
+                const blob = await compositePanelToBlob(url, bubbles)
+                return await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader()
+                  reader.onload = () => resolve(reader.result as string)
+                  reader.onerror = reject
+                  reader.readAsDataURL(blob)
+                })
+              } catch { return url }
+            })
+          )
+        })
+      )
+      if (!cancelled) setAllPanelImages(composed.map(page => page.filter(Boolean)))
+    }
+    void composite()
+    return () => { cancelled = true }
+  }, [rawPanelImages, panelBubbles, isPageMode, step4PanelsByPage])
+
   const allLayouts = useMemo(() => {
     if (isPageMode) {
       return step4PanelsByPage.map(() => 'full_bleed')
     }
-    return step4PanelsByPage.map(([, panels]) => defaultLayout(panels.length))
-  }, [isPageMode, step4PanelsByPage])
+    return step4PanelsByPage.map(([pageNumber, panels]) =>
+      pageLayoutNames[pageNumber] ?? defaultLayout(panels.length)
+    )
+  }, [isPageMode, step4PanelsByPage, pageLayoutNames])
+
+  // ── auto-recompose when a saved borderConfig is restored from cloud ──────────
+  const autoRecomposeRef = useRef<string | null>(null)
+  useEffect(() => {
+    const key = projectId ?? ''
+    if (!key || autoRecomposeRef.current === key) return
+    if (!allPanelImages.length || allPanelImages.every(p => p.length === 0)) return
+    const isDefault = JSON.stringify(borderConfig) === JSON.stringify(DEFAULT_BORDER_CONFIG)
+    if (isDefault) { autoRecomposeRef.current = key; return }
+    autoRecomposeRef.current = key
+    recomposePages(allPanelImages, allLayouts, borderConfig)
+      .then(pages => setRecomposedPages(pages))
+      .catch(() => {})
+  }, [projectId, allPanelImages, allLayouts, borderConfig])
 
   // Recomposed page for the currently selected panel page
   const currentPageIndex = step4PanelsByPage.findIndex(([p]) => p === selectedPage)
@@ -975,13 +1031,6 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
     ? recomposedPages[currentPageIndex] ?? null
     : null
 
-  // Raw success page images — used for PublishButton disabled check
-  const rawPageImages = useMemo(() =>
-    Object.values(step4.data?.pageStates ?? {})
-      .filter(s => (s as Step4PanelState).status === 'success' && (s as Step4PanelState).imageUrl)
-      .map(s => (s as Step4PanelState).imageUrl as string),
-    [step4.data?.pageStates],
-  )
 
   // ── Live border preview on the main canvas ───────────────────────────────
   const [borderPreviewB64, setBorderPreviewB64] = useState<string | null>(null)
@@ -1318,21 +1367,6 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
                 onDeleteWatermark={(id) => setWatermarks(prev => prev.filter(w => w.id !== id))}
                 onChangeMetadata={setMetadata}
               />
-              {activeSection === 'info' && (
-                <div className="px-3 pb-5 pt-3 border-t border-outline-variant/20">
-                  <p className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider mb-2">
-                    Publish
-                  </p>
-                  <PublishButton
-                    pageImages={rawPageImages}
-                    metadata={metadata}
-                    getExportPages={async () => (await buildExportPages()).map(p => p.imageUrl)}
-                  />
-                  <p className="text-[10px] text-on-surface-variant mt-2 leading-relaxed">
-                    Creates a shareable web-reader link. Valid until the server restarts.
-                  </p>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -1355,6 +1389,30 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
               </span>
             )}
           </div>
+
+          {/* Save to Cloud */}
+          {projectId && (
+            <button
+              type="button"
+              onClick={() => saveToCloud()}
+              disabled={cloudSaveStatus === 'saving'}
+              className={`h-9 px-4 rounded-xl border text-[12px] font-medium flex items-center gap-1.5 shrink-0 transition-colors ${
+                cloudSaveStatus === 'saved'
+                  ? 'border-emerald-500 text-emerald-600 bg-emerald-50'
+                  : cloudSaveStatus === 'saving'
+                    ? 'border-outline-variant text-on-surface-variant opacity-60 cursor-not-allowed'
+                    : 'border-outline-variant text-on-surface-variant hover:border-outline hover:text-on-surface'
+              }`}
+            >
+              {cloudSaveStatus === 'saving' ? (
+                <><Loader2 size={13} className="animate-spin" />Saving…</>
+              ) : cloudSaveStatus === 'saved' ? (
+                <><CheckCircle size={13} />Saved</>
+              ) : (
+                <>☁ Save to Cloud</>
+              )}
+            </button>
+          )}
 
           {/* Format pills */}
           <div className="flex items-center gap-1.5">
