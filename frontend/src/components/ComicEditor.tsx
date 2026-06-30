@@ -78,6 +78,59 @@ interface DividerPage {
   b64: string
 }
 
+// ── Gradient system (matches Home + Publish pages) ─────────────────
+const PROJECT_GRADIENTS_EDITOR = [
+  'from-violet-900 via-purple-800 to-indigo-900',
+  'from-slate-900 via-blue-900 to-cyan-900',
+  'from-rose-900 via-pink-800 to-fuchsia-900',
+  'from-amber-900 via-orange-800 to-red-900',
+  'from-emerald-900 via-teal-800 to-cyan-900',
+  'from-indigo-900 via-violet-800 to-purple-900',
+]
+function gradientForProject(id: string) {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
+  return PROJECT_GRADIENTS_EDITOR[hash % PROJECT_GRADIENTS_EDITOR.length]
+}
+
+const EDITOR_ACCENT_COLORS = [
+  '#7C3AED', '#0891B2', '#059669', '#DC2626',
+  '#D97706', '#2563EB', '#DB2777', '#65A30D',
+]
+function editorAccentFor(id: string): string {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
+  return EDITOR_ACCENT_COLORS[hash % EDITOR_ACCENT_COLORS.length]
+}
+
+const formatEditorTitle = (slug: string): string =>
+  slug.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+
+function formatEditorDate(iso: string): string {
+  const date = new Date(iso)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+  if (diffMins < 1)   return 'just now'
+  if (diffMins < 60)  return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7)   return `${diffDays}d ago`
+  return date.toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric',
+    ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
+  })
+}
+
+const EDITOR_STEP_BADGES = [
+  { label: 'S1', key: 'has_step1' as const, title: 'Story Setup' },
+  { label: 'S2', key: 'has_step2' as const, title: 'Story Breakdown' },
+  { label: 'S3', key: 'has_step2_images' as const, title: 'Designs & References' },
+  { label: 'S4', key: 'has_step3' as const, title: 'Panel Script' },
+  { label: 'S5', key: 'has_step4' as const, title: 'Image Generation' },
+]
+
 // ── Project picker ─────────────────────────────────────────────────
 function ProjectPicker({
   onSelect, onGoPipeline,
@@ -97,65 +150,151 @@ function ProjectPicker({
       .finally(() => setLoading(false))
   }, [listCloudProjects])
 
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center p-10 bg-surface-container-low">
-      <div className="w-full max-w-2xl">
-        <h2 className="text-2xl font-bold text-on-surface mb-1">Open a project to edit</h2>
-        <p className="text-sm text-on-surface-variant mb-8">
-          Projects with completed image generation (Step 4) appear below.
-        </p>
+  async function openProject(id: string) {
+    setLoadingId(id)
+    await onSelect(id)
+    setLoadingId(null)
+  }
 
-        {loading ? (
-          <div className="flex items-center gap-3 text-on-surface-variant py-12">
-            <Loader2 size={18} className="animate-spin" />
-            Loading cloud projects…
-          </div>
-        ) : projects.length === 0 ? (
-          <div className="text-center py-16">
-            <Layers size={40} className="mx-auto mb-4 text-outline-variant" />
-            <p className="font-semibold text-on-surface">No completed projects yet</p>
-            <p className="text-sm text-on-surface-variant mt-1 mb-6">
-              Complete the Comic Pipeline first, then come back here to edit.
-            </p>
-            <button
-              onClick={onGoPipeline}
-              className="px-5 py-2.5 rounded-xl bg-primary text-on-primary text-sm font-semibold"
-            >
-              Go to Pipeline →
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {projects.map(p => (
-              <div
-                key={p.project_id}
-                className="group bg-surface-container-lowest border border-outline-variant/30 rounded-2xl p-4 hover:border-primary/40 transition-all"
-              >
-                <div className="aspect-[3/4] bg-surface-container-high rounded-xl mb-3 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-3xl text-outline-variant">
-                    auto_stories
-                  </span>
-                </div>
-                <p className="text-sm font-bold text-on-surface truncate mb-3">
-                  {p.project_id.replace(/_/g, ' ')}
-                </p>
-                <button
-                  disabled={loadingId !== null}
-                  onClick={async () => {
-                    setLoadingId(p.project_id)
-                    await onSelect(p.project_id)
-                    setLoadingId(null)
-                  }}
-                  className="w-full py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
-                >
-                  {loadingId === p.project_id && <Loader2 size={11} className="animate-spin" />}
-                  Open
-                </button>
-              </div>
-            ))}
+  return (
+    <div className="flex flex-col bg-white flex-1 overflow-y-auto">
+
+      {/* Page header — #F8FAFF band */}
+      <div style={{ background: '#F8FAFF', borderBottom: '1px solid #E5E7EB', padding: '28px 32px 24px 32px', flexShrink: 0 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, color: '#111827', margin: 0, marginBottom: 4, lineHeight: 1.2 }}>
+          Comic Editor
+        </h1>
+        <p style={{ fontSize: 13, color: '#6B7280', margin: 0 }}>
+          Open a project to continue editing your comic
+        </p>
+      </div>
+
+      {/* Content */}
+      <div className="px-8 py-8 flex-1">
+
+        {/* Section header */}
+        {!loading && (
+          <div className="flex items-baseline justify-between mb-5">
+            <div>
+              <p className="text-[18px] font-semibold text-on-surface">Your Projects</p>
+              <p className="text-[12px] text-on-surface-variant mt-0.5">
+                Projects with completed image generation are ready to edit
+              </p>
+            </div>
+            {projects.length > 0 && (
+              <span className="text-[12px] text-on-surface-variant bg-surface-container px-2.5 py-0.5 rounded-full shrink-0">
+                {projects.length} project{projects.length !== 1 ? 's' : ''}
+              </span>
+            )}
           </div>
         )}
 
+        {/* Loading */}
+        {loading && (
+          <div className="flex items-center gap-3 text-on-surface-variant py-16">
+            <Loader2 size={18} className="animate-spin" />
+            Loading cloud projects…
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!loading && projects.length === 0 && (
+          <div className="flex flex-col items-center text-center mt-16 max-w-sm mx-auto">
+            <Layers size={40} className="text-outline-variant mb-4" />
+            <p className="text-[18px] font-semibold text-on-surface mb-2">No projects ready to edit</p>
+            <p className="text-[13px] text-on-surface-variant leading-relaxed">
+              Complete image generation in the Comic Pipeline to unlock a project for editing here.
+            </p>
+            <button
+              type="button"
+              onClick={onGoPipeline}
+              className="mt-6 px-6 py-2.5 rounded-xl bg-primary text-on-primary text-[13px] font-semibold hover:bg-primary/90 transition-colors"
+            >
+              Go to Comic Pipeline →
+            </button>
+          </div>
+        )}
+
+        {/* Card grid */}
+        {!loading && projects.length > 0 && (
+          <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
+            {projects.map(p => {
+              const gradient = gradientForProject(p.project_id)
+              const accent = editorAccentFor(p.project_id)
+              const displayTitle = formatEditorTitle(p.project_id)
+              const genre = p.genre?.split('/')[0].split(',')[0].trim()
+              const isLoading = loadingId === p.project_id
+
+              return (
+                <div
+                  key={p.project_id}
+                  onClick={() => openProject(p.project_id)}
+                  className="group bg-surface-container-lowest border border-outline-variant/20 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:translate-y-[-2px] transition-all cursor-pointer"
+                >
+                  {/* Gradient thumbnail */}
+                  <div className={`relative h-[72px] bg-gradient-to-br ${gradient} flex flex-col justify-between p-3`}>
+                    {genre && (
+                      <span className="self-start text-[9px] font-bold uppercase tracking-[0.06em] text-white bg-black/30 rounded px-1.5 py-0.5">
+                        {genre}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.90)', textShadow: '0 1px 3px rgba(0,0,0,0.30)', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {displayTitle}
+                    </span>
+                  </div>
+
+                  {/* Card body */}
+                  <div className="px-4 py-3" style={{ borderLeft: `4px solid ${accent}` }}>
+                    {/* Title + slug */}
+                    <div className="mb-1">
+                      <p className="text-[13px] font-bold text-on-surface truncate" title={p.project_id}>
+                        {displayTitle}
+                      </p>
+                      <span style={{ fontSize: 10, color: '#D1D5DB', fontFamily: 'monospace', letterSpacing: '0.02em' }}>
+                        {p.project_id}
+                      </span>
+                    </div>
+
+                    {/* Subtitle: genre · relative date */}
+                    <p className="text-[11px] text-on-surface-variant mb-2.5"
+                      title={new Date(p.saved_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}>
+                      {[genre, `Last saved ${formatEditorDate(p.saved_at)}`].filter(Boolean).join(' · ')}
+                    </p>
+
+                    {/* Step badges S1–S5 */}
+                    <div className="flex items-center gap-1 mb-3">
+                      {EDITOR_STEP_BADGES.map(({ label, key, title }) => {
+                        const done = !!p[key]
+                        return (
+                          <span key={label} title={`${title}${done ? ' ✓' : ''}`} style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            width: 26, height: 20, borderRadius: 10, fontSize: 9, fontWeight: 700,
+                            ...(done
+                              ? { background: '#DCFCE7', color: '#16A34A', border: 'none' }
+                              : { background: 'transparent', color: '#D1D5DB', border: '1.5px solid #E5E7EB' }),
+                          }}>
+                            {label}
+                          </span>
+                        )
+                      })}
+                    </div>
+
+                    {/* Open button */}
+                    <button
+                      type="button"
+                      disabled={loadingId !== null}
+                      onClick={e => { e.stopPropagation(); openProject(p.project_id) }}
+                      className="w-full h-9 rounded-xl border-[1.5px] border-primary text-primary text-[13px] font-semibold hover:bg-primary/5 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      {isLoading && <Loader2 size={12} className="animate-spin" />}
+                      {isLoading ? 'Opening…' : 'Open in Editor'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -873,6 +1012,7 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
   const panelStates = useMemo(() => step4.data?.panelStates ?? {}, [step4.data?.panelStates])
   const pageStates  = useMemo(() => step4.data?.pageStates  ?? {}, [step4.data?.pageStates])
   const hasProject  = panels.length > 0
+  const [forcePicker, setForcePicker] = useState(false)
 
   // ── auto-load from URL param ─────────────────────────────────────
   const [autoLoading,  setAutoLoading]  = useState(!!initialProjectId)
@@ -1229,13 +1369,33 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
         </div>
       )}
 
-      {!autoLoading && !autoLoadErr && !hasProject ? (
+      {!autoLoading && !autoLoadErr && (!hasProject || forcePicker) ? (
         <ProjectPicker
-          onSelect={handleLoadProject}
+          onSelect={async (id) => { setForcePicker(false); await handleLoadProject(id) }}
           onGoPipeline={() => router.push('/studio')}
         />
       ) : !autoLoading && !autoLoadErr && (
         <>
+        {/* Editor top bar — back button + project breadcrumb */}
+        <div className="flex items-center gap-2 px-3 h-9 border-b border-outline-variant/20 bg-surface shrink-0">
+          <button
+            type="button"
+            onClick={() => setForcePicker(true)}
+            className="flex items-center gap-1.5 text-[12px] text-on-surface-variant hover:text-on-surface transition-colors"
+          >
+            <ArrowLeft size={13} />
+            All Projects
+          </button>
+          {projectId && (
+            <>
+              <span className="text-[12px] text-outline-variant/60">/</span>
+              <span className="text-[12px] font-medium text-on-surface truncate max-w-[200px]">
+                {projectId.replace(/_/g, ' ')}
+              </span>
+            </>
+          )}
+        </div>
+
         <div className="flex flex-1 overflow-hidden">
           {/* Left page strip */}
           <PageStrip

@@ -11,15 +11,14 @@ const PRE_PRODUCTION = [
 ];
 
 const POST_PRODUCTION = [
-  { href: '/studio/editor',  label: 'Comic Editor',    icon: 'edit_note' },
-  { href: '/studio/publish', label: 'Publish', icon: 'ios_share' },
+  { href: '/studio/editor',  label: 'Comic Editor', icon: 'edit_note' },
+  { href: '/studio/publish', label: 'Publish',      icon: 'ios_share' },
 ];
 
 const LIBRARY = [
-  { href: '/studio/my-stories',  label: 'My Stories', icon: 'library_books' },
-  { href: '/studio/analytics',   label: 'Analytics',  icon: 'bar_chart' },
+  { href: '/studio/my-stories', label: 'My Stories', icon: 'library_books' },
+  { href: '/studio/analytics',  label: 'Analytics',  icon: 'bar_chart' },
 ];
-
 
 export default function StudioSidebar() {
   const pathname = usePathname();
@@ -87,7 +86,7 @@ export default function StudioSidebar() {
         isCollapsed ? 'px-2 py-4' : 'p-4'
       }`}
     >
-      {/* Zone A — Brand + collapse toggle (unchanged) */}
+      {/* Zone A — Brand + collapse toggle */}
       <div className={`mb-6 ${isCollapsed ? 'px-1 pt-2' : 'px-2 pt-4'}`}>
         <div className="flex items-start justify-between">
           <div className={isCollapsed ? 'flex flex-col items-center gap-1' : ''}>
@@ -126,7 +125,7 @@ export default function StudioSidebar() {
       {/* Zone B — Navigation */}
       <nav className="flex-1 overflow-y-auto mt-2 space-y-5 hide-scrollbar">
 
-        {/* FIX 2: Comic Pipeline — blue gradient featured card */}
+        {/* Comic Pipeline — blue gradient featured card */}
         <div>
           <Link
             href="/studio"
@@ -144,25 +143,19 @@ export default function StudioSidebar() {
         {/* PRE-PRODUCTION */}
         <div>
           {sectionLabel('Pre-Production')}
-          <div className="space-y-0.5">
-            {navItems(PRE_PRODUCTION)}
-          </div>
+          <div className="space-y-0.5">{navItems(PRE_PRODUCTION)}</div>
         </div>
 
         {/* POST-PRODUCTION */}
         <div>
           {sectionLabel('Post-Production')}
-          <div className="space-y-0.5">
-            {navItems(POST_PRODUCTION)}
-          </div>
+          <div className="space-y-0.5">{navItems(POST_PRODUCTION)}</div>
         </div>
 
         {/* LIBRARY */}
         <div>
           {sectionLabel('Library')}
-          <div className="space-y-0.5">
-            {navItems(LIBRARY)}
-          </div>
+          <div className="space-y-0.5">{navItems(LIBRARY)}</div>
         </div>
 
       </nav>

@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { Globe } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ExternalLink, FolderOpen, Plus } from 'lucide-react';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
-import { projectsApi } from '@/services/api';
 import type { CloudProjectListItem } from '@/services/api';
 
 interface Props {
@@ -11,27 +12,79 @@ interface Props {
   onClose: () => void;
 }
 
-const StepBadge = ({ label, active }: { label: string; active: boolean }) => (
-  <span
-    className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-      active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'
-    }`}
-  >
-    {label}
-  </span>
-);
+// Step badge mapping: backend field → 1-indexed display label
+const PIPELINE_STEP_BADGES: Array<{
+  label: string;
+  title: string;
+  key: keyof CloudProjectListItem;
+}> = [
+  { label: 'S1', title: 'Story Setup',           key: 'has_step1' },
+  { label: 'S2', title: 'Story Breakdown',        key: 'has_step2' },
+  { label: 'S3', title: 'Designs & References',   key: 'has_step2_images' },
+  { label: 'S4', title: 'Panel Script',           key: 'has_step3' },
+  { label: 'S5', title: 'Image Generation',       key: 'has_step4' },
+];
 
-const formatDate = (iso: string) => {
+const PROJECT_COLORS = [
+  '#7C3AED', '#0891B2', '#059669', '#DC2626',
+  '#D97706', '#2563EB', '#DB2777', '#65A30D',
+];
+
+const getProjectColor = (id: string): string => {
+  const idx = id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % PROJECT_COLORS.length;
+  return PROJECT_COLORS[idx];
+};
+
+const formatProjectTitle = (slug: string): string =>
+  slug.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+const formatProjectDate = (iso: string): string => {
   try {
-    return new Date(iso).toLocaleString();
+    const date = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1)   return 'Just now';
+    if (diffMins < 60)  return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7)   return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+    });
   } catch {
     return iso;
   }
 };
 
+const fullTimestamp = (iso: string): string => {
+  try {
+    return new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+  } catch {
+    return iso;
+  }
+};
+
+type SortKey = 'recent' | 'name' | 'steps';
+
+const sortProjects = (list: CloudProjectListItem[], key: SortKey): CloudProjectListItem[] => {
+  const copy = [...list];
+  if (key === 'recent') return copy.sort((a, b) => b.saved_at.localeCompare(a.saved_at));
+  if (key === 'name')   return copy.sort((a, b) => formatProjectTitle(a.project_id).localeCompare(formatProjectTitle(b.project_id)));
+  if (key === 'steps') {
+    const count = (p: CloudProjectListItem) =>
+      PIPELINE_STEP_BADGES.filter(({ key: k }) => !!p[k]).length;
+    return copy.sort((a, b) => count(b) - count(a));
+  }
+  return copy;
+};
+
 export default function ProjectsDrawer({ isOpen, onClose }: Props) {
+  const router = useRouter();
   const {
-    step3,
     cloudSaveStatus,
     cloudSaveError,
     saveToCloud,
@@ -43,8 +96,9 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
   const [isFetching, setIsFetching] = useState(false);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>('recent');
+
+  const sorted = useMemo(() => sortProjects(projects, sortKey), [projects, sortKey]);
 
   const fetchProjects = useCallback(async () => {
     setIsFetching(true);
@@ -52,7 +106,7 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
       const list = await listCloudProjects();
       setProjects(list);
     } catch {
-      // silently ignore list failures
+      // silently ignore
     } finally {
       setIsFetching(false);
     }
@@ -79,64 +133,77 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
     }
   };
 
-  const handlePublish = async (projectId: string, isPublic: boolean) => {
-    setPublishingId(projectId);
-    // Optimistic update
-    setProjects((prev) => prev.map((p) => p.project_id === projectId ? { ...p, is_public: isPublic } : p));
-    try {
-      await projectsApi.publishProject(projectId, isPublic);
-    } catch {
-      // Revert on error
-      setProjects((prev) => prev.map((p) => p.project_id === projectId ? { ...p, is_public: !isPublic } : p));
-    } finally {
-      setPublishingId(null);
-    }
-  };
-
-  const canSave = !!step3.data;
-
   if (!isOpen) return null;
 
   return (
     <>
       <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
 
-      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white z-50 shadow-2xl flex flex-col">
+      <div
+        style={{ minWidth: 440, maxWidth: 520, width: '90vw' }}
+        className="fixed right-0 top-0 h-full bg-white z-50 shadow-2xl flex flex-col"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-          <h2 className="text-lg font-semibold">My Projects</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-xl hover:bg-gray-100 transition-colors"
-            aria-label="Close"
-          >
-            <span className="material-symbols-outlined text-gray-600">close</span>
-          </button>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: 0 }}>My Projects</h2>
+          <div className="flex items-center gap-2">
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+              style={{
+                height: 30,
+                padding: '0 8px',
+                border: '1px solid #E5E7EB',
+                borderRadius: 6,
+                fontSize: 12,
+                color: '#374151',
+                background: '#FFFFFF',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="recent">Recent</option>
+              <option value="name">Name A–Z</option>
+              <option value="steps">Most complete</option>
+            </select>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+              aria-label="Close"
+            >
+              <span className="material-symbols-outlined text-gray-600 text-lg">close</span>
+            </button>
+          </div>
         </div>
 
         {/* Save current project */}
-        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+        <div className="px-5 py-4 border-b border-gray-100 bg-gray-50">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-medium text-gray-900">Save current project</p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {canSave
-                  ? 'Steps 1–3 complete — ready to save.'
-                  : 'Complete at least step 3 to save.'}
+              <p style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: 0, marginBottom: 2 }}>
+                Save current project
+              </p>
+              <p style={{ fontSize: 12, color: '#6B7280', margin: 0 }}>
+                Save your current pipeline progress.
               </p>
             </div>
             <button
               type="button"
               onClick={handleSave}
-              disabled={!canSave || cloudSaveStatus === 'saving'}
-              className={`px-4 py-2 rounded-2xl text-sm font-semibold transition-transform flex-shrink-0 ${
-                !canSave || cloudSaveStatus === 'saving'
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : cloudSaveStatus === 'saved'
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : 'bg-gray-900 text-white hover:scale-105'
-              }`}
+              disabled={cloudSaveStatus === 'saving'}
+              style={{
+                height: 36,
+                padding: '0 20px',
+                background: cloudSaveStatus === 'saved' ? '#D1FAE5' : '#2563EB',
+                color: cloudSaveStatus === 'saved' ? '#065F46' : '#FFFFFF',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: cloudSaveStatus === 'saving' ? 'not-allowed' : 'pointer',
+                flexShrink: 0,
+                opacity: cloudSaveStatus === 'saving' ? 0.6 : 1,
+              }}
             >
               {cloudSaveStatus === 'saving' ? 'Saving…' : cloudSaveStatus === 'saved' ? 'Saved!' : 'Save'}
             </button>
@@ -147,85 +214,203 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
         </div>
 
         {/* Project list */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="flex-1 overflow-y-auto px-5 py-4">
           {loadError ? (
-            <div className="mb-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div>
+            <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div>
           ) : null}
 
           {isFetching ? (
-            <p className="text-sm text-gray-500 text-center py-8">Loading…</p>
-          ) : projects.length === 0 ? (
-            <div className="text-center py-12">
-              <span className="material-symbols-outlined text-4xl text-gray-300">folder_open</span>
-              <p className="mt-3 text-sm text-gray-500">No saved projects yet.</p>
-              <p className="text-xs text-gray-400 mt-1">Save a project above to see it here.</p>
+            <p className="text-sm text-gray-400 text-center py-10">Loading…</p>
+          ) : sorted.length === 0 ? (
+            /* Empty state */
+            <div style={{ padding: '40px 24px', textAlign: 'center' }}>
+              <FolderOpen size={36} color="#D1D5DB" style={{ margin: '0 auto 16px' }} />
+              <p style={{ fontSize: 16, fontWeight: 600, color: '#374151', margin: 0, marginBottom: 6 }}>
+                No projects yet
+              </p>
+              <p style={{ fontSize: 13, color: '#6B7280', margin: 0 }}>
+                Start a new project to begin creating your comic.
+              </p>
+              <button
+                type="button"
+                onClick={() => { onClose(); router.push('/studio'); }}
+                style={{
+                  marginTop: 20,
+                  height: 40,
+                  padding: '0 24px',
+                  background: '#2563EB',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Plus size={15} />
+                Start new project
+              </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
-              {projects.map((p) => (
-                <div
-                  key={p.project_id}
-                  className="rounded-xl bg-white border border-gray-100 p-4 hover:border-gray-200 hover:bg-gray-50 transition-colors"
-                >
-                  {/* Title */}
-                  <p className="font-semibold text-sm text-gray-900 truncate mb-1.5">{p.project_id}</p>
+            <div className="flex flex-col gap-2.5">
+              {sorted.map((p) => {
+                const color = getProjectColor(p.project_id);
+                const isLoading = loadingId === p.project_id;
+                const hasStep5 = !!p.has_step4;
 
-                  {/* Date + step badges */}
-                  <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mb-3">
-                    <span className="text-xs text-gray-400">{formatDate(p.saved_at)}</span>
-                    <span className="text-gray-200 text-xs">·</span>
-                    <div className="flex gap-1.5">
-                      <StepBadge label="S1" active={p.has_step1} />
-                      <StepBadge label="S2" active={p.has_step2} />
-                      <StepBadge label="Img" active={p.has_step2_images} />
-                      <StepBadge label="S3" active={p.has_step3} />
-                      <StepBadge label="S4" active={p.has_step4} />
-                    </div>
-                  </div>
+                return (
+                  <div
+                    key={p.project_id}
+                    style={{
+                      border: '1px solid #E5E7EB',
+                      borderLeft: `4px solid ${color}`,
+                      borderRadius: 10,
+                      padding: '14px 16px',
+                      background: `color-mix(in srgb, ${color} 3%, #FFFFFF)`,
+                    }}
+                  >
+                    {/* Title + slug */}
+                    <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0, marginBottom: 1 }}>
+                      {formatProjectTitle(p.project_id)}
+                    </p>
+                    <p style={{ fontSize: 10, color: '#D1D5DB', fontFamily: 'monospace', letterSpacing: '0.02em', margin: 0, marginBottom: 8 }}>
+                      {p.project_id}
+                    </p>
 
-                  {/* Action buttons */}
-                  <div className="flex items-center gap-2">
-                    {deleteConfirmId === p.project_id ? (
-                      <button
-                        type="button"
-                        onClick={() => setDeleteConfirmId(null)}
-                        className="px-4 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                    {/* Date + genre */}
+                    <div className="flex items-center gap-2 flex-wrap" style={{ marginBottom: 8 }}>
+                      <span
+                        style={{ fontSize: 12, color: '#9CA3AF' }}
+                        title={fullTimestamp(p.saved_at)}
                       >
-                        Cancel
-                      </button>
-                    ) : (
+                        Last saved {formatProjectDate(p.saved_at)}
+                      </span>
+                      {p.genre && (
+                        <>
+                          <span style={{ color: '#D1D5DB', fontSize: 11 }}>·</span>
+                          <span style={{ fontSize: 11, color: '#9CA3AF' }}>{p.genre}</span>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Step badges S1–S5 */}
+                    <div className="flex items-center gap-1" style={{ marginBottom: 12 }}>
+                      {PIPELINE_STEP_BADGES.map(({ label, title, key }) => {
+                        const isComplete = !!p[key];
+                        return (
+                          <span
+                            key={label}
+                            title={`Step ${label.slice(1)}: ${title}${isComplete ? ' ✓' : ''}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: 28,
+                              height: 22,
+                              borderRadius: 11,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              letterSpacing: '0.02em',
+                              ...(isComplete
+                                ? { background: '#DCFCE7', color: '#16A34A', border: 'none' }
+                                : { background: 'transparent', color: '#D1D5DB', border: '1.5px solid #E5E7EB' }),
+                            }}
+                          >
+                            {label}
+                          </span>
+                        );
+                      })}
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <button
                         type="button"
                         onClick={() => handleLoad(p.project_id)}
-                        disabled={loadingId === p.project_id}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                          loadingId === p.project_id
-                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-100'
-                            : 'bg-white text-gray-700 border-gray-200 hover:border-blue-400 hover:text-blue-600'
-                        }`}
+                        disabled={isLoading}
+                        style={{
+                          height: 34,
+                          padding: '0 16px',
+                          background: '#FFFFFF',
+                          color: isLoading ? '#9CA3AF' : '#2563EB',
+                          border: `1.5px solid ${isLoading ? '#E5E7EB' : '#2563EB'}`,
+                          borderRadius: 8,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          cursor: isLoading ? 'not-allowed' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                        onMouseEnter={(e) => { if (!isLoading) (e.currentTarget as HTMLButtonElement).style.background = '#EFF6FF'; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#FFFFFF'; }}
                       >
-                        {loadingId === p.project_id ? 'Loading…' : 'Load'}
+                        {isLoading
+                          ? <><span className="animate-spin inline-block w-3 h-3 border-2 border-gray-300 border-t-gray-600 rounded-full" />Opening…</>
+                          : 'Open Project'
+                        }
                       </button>
-                    )}
-                    {p.has_step4 && (
-                      <button
-                        type="button"
-                        title={p.is_public ? 'Remove from Gallery' : 'Publish to Gallery'}
-                        disabled={publishingId === p.project_id}
-                        onClick={() => handlePublish(p.project_id, !p.is_public)}
-                        className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                          p.is_public
-                            ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                            : 'bg-blue-600 text-white hover:bg-blue-700'
-                        } ${publishingId === p.project_id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      >
-                        <Globe size={11} />
-                        {p.is_public ? 'Published' : 'Publish'}
-                      </button>
-                    )}
+
+                      {hasStep5 && (
+                        <Link
+                          href={`/studio/publish?project=${encodeURIComponent(p.project_id)}`}
+                          onClick={onClose}
+                          style={{
+                            fontSize: 12,
+                            color: '#2563EB',
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.textDecoration = 'underline'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.textDecoration = 'none'; }}
+                        >
+                          <ExternalLink size={11} />
+                          Publish →
+                        </Link>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
+
+              {/* Start new project */}
+              <button
+                type="button"
+                onClick={() => { onClose(); router.push('/studio'); }}
+                style={{
+                  width: '100%',
+                  height: 44,
+                  background: 'transparent',
+                  border: '1.5px dashed #D1D5DB',
+                  borderRadius: 10,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  fontSize: 13,
+                  color: '#6B7280',
+                  cursor: 'pointer',
+                  marginTop: 4,
+                }}
+                onMouseEnter={(e) => {
+                  const btn = e.currentTarget as HTMLButtonElement;
+                  btn.style.borderColor = '#2563EB';
+                  btn.style.color = '#2563EB';
+                }}
+                onMouseLeave={(e) => {
+                  const btn = e.currentTarget as HTMLButtonElement;
+                  btn.style.borderColor = '#D1D5DB';
+                  btn.style.color = '#6B7280';
+                }}
+              >
+                <Plus size={15} />
+                Start new project
+              </button>
             </div>
           )}
         </div>

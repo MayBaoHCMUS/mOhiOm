@@ -8,12 +8,45 @@ import StudioTopBar from '@/components/StudioTopBar';
 import { useStoryLibrary } from '@/hooks/useStoryLibrary';
 import type { SavedStory } from '@/hooks/useStoryLibrary';
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
 function wordCount(text: string) {
   return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+const STORY_GRADIENTS = [
+  'from-violet-900 via-purple-800 to-indigo-900',
+  'from-slate-900 via-blue-900 to-cyan-900',
+  'from-rose-900 via-pink-800 to-fuchsia-900',
+  'from-amber-900 via-orange-800 to-red-900',
+  'from-emerald-900 via-teal-800 to-cyan-900',
+  'from-indigo-900 via-violet-800 to-purple-900',
+];
+const STORY_ACCENT_COLORS = [
+  '#7C3AED', '#0891B2', '#059669', '#DC2626',
+  '#D97706', '#2563EB', '#DB2777', '#65A30D',
+];
+function hashId(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h;
+}
+const storyGradient = (id: string) => STORY_GRADIENTS[hashId(id) % STORY_GRADIENTS.length];
+const storyAccent   = (id: string) => STORY_ACCENT_COLORS[hashId(id) % STORY_ACCENT_COLORS.length];
+
+function formatRelativeDate(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffMins < 1)   return 'just now';
+  if (diffMins < 60)  return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7)   return `${diffDays}d ago`;
+  return date.toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric',
+    ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
+  });
 }
 
 export default function MyStoriesPage() {
@@ -47,24 +80,29 @@ export default function MyStoriesPage() {
       <StudioSidebar />
       <StudioTopBar />
 
-      <main className="pt-24 pb-16 px-8 max-w-[1400px] mx-auto ml-[var(--studio-sidebar-width)]">
-      <div className="max-w-5xl">
-        {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-on-surface">My Stories</h1>
-            <p className="text-sm text-on-surface-variant mt-1">
-              {stories.length} saved stor{stories.length !== 1 ? 'ies' : 'y'}
-            </p>
+      <main className="ml-[var(--studio-sidebar-width)] pt-24 min-h-screen flex flex-col">
+
+        {/* Page header band */}
+        <div style={{ background: '#F8FAFF', borderBottom: '1px solid #E5E7EB', padding: '28px 32px 24px 32px', flexShrink: 0 }}>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h1 style={{ fontSize: 28, fontWeight: 700, color: '#111827', margin: 0, marginBottom: 4, lineHeight: 1.2 }}>My Stories</h1>
+              <p style={{ fontSize: 13, color: '#6B7280', margin: 0 }}>
+                {stories.length} saved stor{stories.length !== 1 ? 'ies' : 'y'}
+              </p>
+            </div>
+            <Link
+              href="/studio/story-setup"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-primary text-on-primary text-sm font-bold hover:opacity-90 shrink-0"
+            >
+              <span className="material-symbols-outlined text-base">add</span>
+              New Story
+            </Link>
           </div>
-          <Link
-            href="/studio/story-setup"
-            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-primary text-on-primary text-sm font-bold hover:opacity-90"
-          >
-            <span className="material-symbols-outlined text-base">add</span>
-            New Story
-          </Link>
         </div>
+
+        {/* Content */}
+        <div className="px-8 py-8 pb-16 flex-1">
 
         {/* Search */}
         {stories.length > 0 && (
@@ -112,65 +150,78 @@ export default function MyStoriesPage() {
 
         {/* Story grid */}
         {filtered.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 20 }}>
             {filtered.map((story) => {
               const wc = wordCount(story.adaptedStory ?? story.storyText);
+              const genre = story.genre?.split('/')[0].split(',')[0].trim();
+              const grad = storyGradient(story.id);
+              const accent = storyAccent(story.id);
               return (
                 <div
                   key={story.id}
-                  className="bg-surface-container-lowest rounded-3xl border border-outline-variant/10 p-5 flex flex-col gap-3 hover:shadow-md transition-shadow"
+                  className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:translate-y-[-2px] transition-all"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-on-surface truncate">{story.title || 'Untitled'}</p>
-                      {story.genre && (
-                        <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-semibold">
-                          {story.genre}
-                        </span>
-                      )}
+                  {/* Gradient thumbnail */}
+                  <div className={`relative h-[72px] bg-gradient-to-br ${grad} flex flex-col justify-between p-3`}>
+                    {genre && (
+                      <span className="self-start text-[9px] font-bold uppercase tracking-[0.06em] text-white bg-black/30 rounded px-1.5 py-0.5">
+                        {genre}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.90)', textShadow: '0 1px 3px rgba(0,0,0,0.30)', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {story.title || 'Untitled'}
+                    </span>
+                  </div>
+
+                  {/* Card body */}
+                  <div className="px-4 py-3 flex flex-col gap-2" style={{ borderLeft: `4px solid ${accent}` }}>
+                    {/* Title + word count */}
+                    <div>
+                      <p className="text-[13px] font-bold text-on-surface truncate">{story.title || 'Untitled'}</p>
+                      <p className="text-[11px] text-on-surface-variant"
+                        title={new Date(story.savedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}>
+                        {[genre && `${wc.toLocaleString()} words`, `Last saved ${formatRelativeDate(story.savedAt)}`].filter(Boolean).join(' · ')}
+                      </p>
                     </div>
-                  </div>
 
-                  <p className="text-xs text-on-surface-variant line-clamp-3 leading-relaxed">
-                    {(story.adaptedStory ?? story.storyText).slice(0, 200)}…
-                  </p>
+                    {/* Story excerpt */}
+                    <p className="text-[11px] text-on-surface-variant line-clamp-2 leading-relaxed">
+                      {(story.adaptedStory ?? story.storyText).slice(0, 150)}…
+                    </p>
 
-                  <div className="flex items-center justify-between text-[11px] text-on-surface-variant/70 mt-auto pt-2 border-t border-outline-variant/10">
-                    <span>{wc.toLocaleString()} words</span>
-                    <span>{formatDate(story.savedAt)}</span>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleLoadInSetup(story)}
-                      className="flex-1 py-2 rounded-xl text-xs font-bold bg-primary text-on-primary hover:opacity-90"
-                    >
-                      Load in Setup
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => duplicate(story.id)}
-                      title="Duplicate"
-                      className="px-3 py-2 rounded-xl text-xs bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest"
-                    >
-                      <span className="material-symbols-outlined text-sm">content_copy</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDelete(story)}
-                      title="Delete"
-                      className="px-3 py-2 rounded-xl text-xs bg-surface-container-high text-error hover:bg-error/10"
-                    >
-                      <span className="material-symbols-outlined text-sm">delete</span>
-                    </button>
+                    {/* Actions */}
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleLoadInSetup(story)}
+                        className="flex-1 h-9 rounded-xl border-[1.5px] border-primary text-primary text-[13px] font-semibold hover:bg-primary/5 transition-colors"
+                      >
+                        Load in Setup
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => duplicate(story.id)}
+                        title="Duplicate"
+                        className="w-9 h-9 rounded-xl flex items-center justify-center bg-surface-container text-on-surface-variant hover:bg-surface-container-high transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-sm">content_copy</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(story)}
+                        title="Delete"
+                        className="w-9 h-9 rounded-xl flex items-center justify-center bg-surface-container text-error hover:bg-error/10 transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-sm">delete</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
         )}
-      </div>
+        </div>{/* /content */}
       </main>
 
       {/* Delete confirm modal */}

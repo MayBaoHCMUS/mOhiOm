@@ -1,5 +1,6 @@
 'use client';
 
+import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 import StudioSidebar from '@/components/StudioSidebar';
@@ -13,7 +14,7 @@ import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
 import { downloadSocialPack, PLATFORMS } from '@/lib/socialPack';
 import { recordPublish } from '@/lib/publishHistory';
 import {
-  AlertTriangle, CheckCircle2, ChevronDown, EyeOff, ExternalLink,
+  AlertTriangle, CheckCircle2, ChevronDown, Eye, EyeOff, ExternalLink,
   MoreHorizontal, RefreshCw,
 } from 'lucide-react';
 
@@ -36,22 +37,126 @@ function gradientFor(id: string) {
   return PROJECT_GRADIENTS[hash % PROJECT_GRADIENTS.length];
 }
 
-// FIX 1: derive step badge from available has_stepN fields
+// Step badge uses 1-indexed display: has_step4 = step 5 in the pipeline UI
 function getMaxStep(p: CloudProjectListItem): number {
-  if (p.has_step4) return 4;
-  if (p.has_step3) return 3;
-  if (p.has_step2) return 2;
-  if (p.has_step1) return 1;
+  if (p.has_step4) return 5;
+  if (p.has_step3) return 4;
+  if (p.has_step2) return 3;
+  if (p.has_step1) return 2;
   return 0;
 }
 
-// FIX 7: title truncation — 24-char threshold
 function truncateTitle(title: string, maxLen = 24): string {
   return title.length > maxLen ? title.slice(0, maxLen - 2) + '…' : title;
 }
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+const formatProjectTitle = (slug: string): string =>
+  slug.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+function formatRelativeDate(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffMins < 1)   return 'just now';
+  if (diffMins < 60)  return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7)   return `${diffDays}d ago`;
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
+  });
+}
+
+const PROJECT_ACCENT_COLORS = [
+  '#7C3AED', '#0891B2', '#059669', '#DC2626',
+  '#D97706', '#2563EB', '#DB2777', '#65A30D',
+];
+
+function projectColorFor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return PROJECT_ACCENT_COLORS[hash % PROJECT_ACCENT_COLORS.length];
+}
+
+// Portal-based overflow menu — escapes overflow:hidden card boundary
+function PortalMenu({ isOpen, onClose, triggerRef, children }: {
+  isOpen: boolean;
+  onClose: () => void;
+  triggerRef: React.RefObject<HTMLButtonElement>;
+  children: React.ReactNode;
+}) {
+  const [pos, setPos] = useState({ top: 0, right: 0 });
+
+  useEffect(() => {
+    if (isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + window.scrollY + 6, right: window.innerWidth - rect.right });
+    }
+  }, [isOpen, triggerRef]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const h = (e: MouseEvent) => { if (!triggerRef.current?.contains(e.target as Node)) onClose(); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [isOpen, onClose, triggerRef]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, [isOpen, onClose]);
+
+  if (!isOpen || typeof document === 'undefined') return null;
+
+  return createPortal(
+    <>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 998 }} onClick={onClose} />
+      <div style={{
+        position: 'absolute', top: pos.top, right: pos.right, zIndex: 999,
+        background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 10,
+        boxShadow: '0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)',
+        minWidth: 220, padding: 4, whiteSpace: 'nowrap',
+      }}>
+        {children}
+      </div>
+    </>,
+    document.body
+  );
+}
+
+function MenuItemBtn({ icon, label, onClick, destructive }: {
+  icon: React.ReactNode; label: string; onClick: () => void; destructive?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+        height: 38, padding: '0 12px', background: 'transparent', border: 'none',
+        borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 400,
+        textAlign: 'left', whiteSpace: 'nowrap',
+        color: destructive ? '#DC2626' : '#374151',
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = destructive ? '#FEF2F2' : '#F9FAFB'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+    >
+      <span style={{ color: destructive ? '#DC2626' : '#6B7280', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+        {icon}
+      </span>
+      {label}
+    </button>
+  );
 }
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -400,7 +505,8 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
   const [unpublishing, setUnpublishing] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   const gradient = gradientFor(project.project_id);
   const maxStep = getMaxStep(project);
@@ -413,15 +519,6 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
   // FIX 6: time-aware read count
   const minutesSincePublish = pub?.publishedAt ? (Date.now() - pub.publishedAt) / 60000 : Infinity;
   const showJustPublished = minutesSincePublish < 10 && (pub?.readCount ?? 0) === 0;
-
-  // Close overflow menu on outside click
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowMenu(false);
-    }
-    if (showMenu) document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showMenu]);
 
   function copyLink() {
     if (!shareUrl) return;
@@ -453,56 +550,72 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
               {project.genre.split('/')[0].split(',')[0].trim()}
             </span>
           )}
-          <span className="text-[11px] text-white/75 leading-none truncate">{project.project_id}</span>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.90)', textShadow: '0 1px 3px rgba(0,0,0,0.30)', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatProjectTitle(project.project_id)}</span>
         </div>
 
         {/* Card body */}
-        <div className="px-4 py-3">
+        <div className="px-4 py-3" style={{ borderLeft: `4px solid ${projectColorFor(project.project_id)}` }}>
 
           {/* Title row */}
-          <div className="flex items-center justify-between gap-2 mb-1">
-            <p className="text-[13px] font-bold text-on-surface truncate min-w-0" title={project.project_id}>
-              {project.project_id}
-            </p>
-            <div className="flex items-center gap-1 shrink-0">
-              {/* FIX 1: Dynamic step badge */}
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <div className="min-w-0">
+              <p className="text-[13px] font-bold text-on-surface truncate" title={project.project_id}>
+                {formatProjectTitle(project.project_id)}
+              </p>
+              <span style={{ fontSize: 10, color: '#D1D5DB', fontFamily: 'monospace', letterSpacing: '0.02em' }}>
+                {project.project_id}
+              </span>
+            </div>
+            <div className="flex items-center gap-1 shrink-0 mt-0.5">
+              {/* Step badge — filled green */}
+              <span style={{
+                background: '#DCFCE7', color: '#16A34A', border: 'none',
+                fontWeight: 600, padding: '3px 8px', borderRadius: 12, fontSize: 11,
+                whiteSpace: 'nowrap',
+              }}>
                 Step {maxStep} ✓
               </span>
 
-              {/* FIX 5: ⋮ overflow menu (published cards only) */}
-              {isDone && shareUrl && (
-                <div className="relative" ref={menuRef}>
-                  <button type="button" onClick={() => setShowMenu(v => !v)}
-                    className="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors"
-                    aria-label="More options">
-                    <MoreHorizontal size={15} />
-                  </button>
-                  {showMenu && (
-                    <div className="absolute top-8 right-0 z-50 bg-surface border border-outline-variant/20 rounded-xl shadow-lg min-w-[200px] overflow-hidden py-1">
-                      <a href={shareUrl} target="_blank" rel="noopener noreferrer"
-                        onClick={() => setShowMenu(false)}
-                        className="flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-on-surface hover:bg-surface-container-low transition-colors">
-                        <ExternalLink size={14} />Open reader
-                      </a>
-                      <Link href={`/studio/editor?project=${encodeURIComponent(project.project_id)}`}
-                        onClick={() => setShowMenu(false)}
-                        className="flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-on-surface hover:bg-surface-container-low transition-colors">
-                        <span className="material-symbols-outlined text-[14px] leading-none">edit_note</span>
-                        Edit in Comic Editor
-                      </Link>
-                      <div className="h-px bg-surface-container-high mx-2 my-1" />
-                      <button type="button"
-                        onClick={() => { setShowMenu(false); setShowConfirm(true); }}
-                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50 transition-colors">
-                        <EyeOff size={14} />Remove from public access
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* ⋮ overflow menu via portal */}
+              <button
+                ref={menuButtonRef}
+                type="button"
+                onClick={() => setShowMenu(v => !v)}
+                aria-label="More options"
+                style={{
+                  width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: 'none', borderRadius: 4, cursor: 'pointer', transition: 'background 120ms, color 120ms',
+                  background: showMenu ? '#F3F4F6' : 'transparent',
+                  color: showMenu ? '#374151' : '#9CA3AF',
+                }}
+                onMouseEnter={(e) => { if (!showMenu) { (e.currentTarget as HTMLButtonElement).style.background = '#F3F4F6'; (e.currentTarget as HTMLButtonElement).style.color = '#374151'; } }}
+                onMouseLeave={(e) => { if (!showMenu) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = '#9CA3AF'; } }}
+              >
+                <MoreHorizontal size={15} />
+              </button>
+              <PortalMenu isOpen={showMenu} onClose={() => setShowMenu(false)} triggerRef={menuButtonRef}>
+                {isDone && shareUrl ? (
+                  <>
+                    <MenuItemBtn icon={<ExternalLink size={14} />} label="Open reader" onClick={() => { window.open(shareUrl, '_blank'); setShowMenu(false); }} />
+                    <Link href={`/studio/editor?project=${encodeURIComponent(project.project_id)}`} onClick={() => setShowMenu(false)}>
+                      <MenuItemBtn icon={<span className="material-symbols-outlined text-[14px] leading-none">edit_note</span>} label="Edit in Comic Editor" onClick={() => setShowMenu(false)} />
+                    </Link>
+                    <div style={{ height: 1, background: '#F3F4F6', margin: '4px 0' }} />
+                    <MenuItemBtn icon={<EyeOff size={14} />} label="Remove from public access" onClick={() => { setShowMenu(false); setShowConfirm(true); }} destructive />
+                  </>
+                ) : (
+                  <>
+                    <Link href={`/studio/editor?project=${encodeURIComponent(project.project_id)}`} onClick={() => setShowMenu(false)}>
+                      <MenuItemBtn icon={<span className="material-symbols-outlined text-[14px] leading-none">edit_note</span>} label="Edit in Comic Editor" onClick={() => setShowMenu(false)} />
+                    </Link>
+                    <Link href="/studio" onClick={() => setShowMenu(false)}>
+                      <MenuItemBtn icon={<span className="material-symbols-outlined text-[14px] leading-none">movie_creation</span>} label="View in Pipeline" onClick={() => setShowMenu(false)} />
+                    </Link>
+                  </>
+                )}
+              </PortalMenu>
 
-              {/* FIX 11: Chevron expand/collapse for published cards */}
+              {/* Chevron expand/collapse for published cards */}
               {isDone && (
                 <button type="button" onClick={() => setIsExpanded(v => !v)}
                   className="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors"
@@ -514,8 +627,9 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
           </div>
 
           {/* Subtitle */}
-          <p className="text-[11px] text-on-surface-variant mb-3">
-            {[project.genre?.split('/')[0].split(',')[0].trim(), formatDate(project.saved_at)].filter(Boolean).join(' · ')}
+          <p className="text-[11px] text-on-surface-variant mb-3"
+            title={new Date(project.saved_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}>
+            {[project.genre?.split('/')[0].split(',')[0].trim(), `Last saved ${formatRelativeDate(project.saved_at)}`].filter(Boolean).join(' · ')}
           </p>
 
           {/* ── Idle: publish button ── */}
@@ -565,10 +679,16 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
                       {pub.readCount} {pub.readCount === 1 ? 'read' : 'reads'}
                     </span>
                   ) : null}
-                  <button type="button" onClick={() => onRefreshStats(project.project_id)}
-                    title="Refresh read count"
-                    className="text-on-surface-variant hover:text-primary transition-colors group">
-                    <RefreshCw size={13} className="group-hover:rotate-180 transition-transform duration-300" />
+                  <button type="button"
+                    title="Refresh view count"
+                    aria-label="Refresh view count"
+                    onClick={() => {
+                      setIsRefreshing(true)
+                      onRefreshStats(project.project_id)
+                      setTimeout(() => setIsRefreshing(false), 600)
+                    }}
+                    className="inline-flex items-center justify-center p-0.5 rounded hover:bg-surface-container transition-colors group">
+                    <RefreshCw size={13} className={`transition-colors group-hover:text-primary ${isRefreshing ? 'animate-spin' : 'text-on-surface-variant'}`} style={{ animationDuration: '600ms' }} />
                   </button>
                 </span>
               </div>
@@ -626,8 +746,9 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
                     </div>
                     <IframeSnippet url={shareUrl} size={embedSize} />
                     <button type="button" onClick={() => setShowEmbedPreview(true)}
-                      className="w-full py-1.5 rounded-lg text-[11px] font-semibold border border-outline-variant/40 text-on-surface-variant hover:bg-surface-container-low transition-colors">
-                      Preview
+                      className="w-full py-1.5 rounded-lg text-[11px] font-semibold border border-outline-variant/40 text-on-surface-variant hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-1.5">
+                      <Eye size={13} />
+                      Preview embed
                     </button>
                   </div>
                 )}
@@ -661,7 +782,7 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
               <div>
                 <p className="text-[16px] font-bold text-on-surface">Remove from public access?</p>
                 <p className="text-[13px] text-on-surface-variant mt-2">
-                  Readers will immediately lose access to <strong>{truncateTitle(project.project_id)}</strong>. This cannot be undone without re-publishing.
+                  Readers will immediately lose access to <strong>{truncateTitle(formatProjectTitle(project.project_id))}</strong>. This cannot be undone without re-publishing.
                 </p>
               </div>
             </div>
@@ -1057,10 +1178,10 @@ export default function PublishPage() {
               <div className="space-y-8">
                 {publishedProjects.length > 0 && (
                   <section>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-on-surface-variant mb-3">
+                    <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#9CA3AF', marginTop: 28, marginBottom: 12 }}>
                       Published ({publishedProjects.length})
                     </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 20 }}>
                       {publishedProjects.map(p => (
                         <ComicCard
                           key={p.project_id}
@@ -1078,10 +1199,10 @@ export default function PublishPage() {
                 )}
 
                 <section>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-on-surface-variant mb-3">
+                  <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#9CA3AF', marginTop: 28, marginBottom: 12 }}>
                     Ready to publish ({unpublishedProjects.length})
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 20 }}>
                     {unpublishedProjects.map(p => (
                       <ComicCard
                         key={p.project_id}
