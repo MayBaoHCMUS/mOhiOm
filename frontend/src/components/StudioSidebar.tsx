@@ -16,8 +16,9 @@ const POST_PRODUCTION = [
 ];
 
 const LIBRARY = [
-  { href: '/studio/my-stories', label: 'My Stories', icon: 'library_books' },
-  { href: '/studio/analytics',  label: 'Analytics',  icon: 'bar_chart' },
+  { href: '/studio/my-stories',       label: 'My Stories',      icon: 'library_books' },
+  { href: '/studio/analytics',        label: 'Analytics',       icon: 'bar_chart' },
+  { href: '/studio/publish-history',  label: 'Publish History', icon: 'history' },
 ];
 
 const BOTTOM_NAV = [

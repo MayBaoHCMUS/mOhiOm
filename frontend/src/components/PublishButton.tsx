@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { publishComic } from '@/lib/publish'
+import { publishComic, buildShareUrl } from '@/lib/publish'
+import { recordPublish } from '@/lib/publishHistory'
 import { PublishDialog } from '@/components/PublishDialog'
 import { useComicGeneration } from '@/context/ComicGenerationContext'
 import type { ComicMetadata } from '@/lib/metadata'
@@ -35,6 +36,13 @@ export function PublishButton({ pageImages, metadata, getExportPages }: PublishB
       setReaderUrl(result.reader_url)
       setStatus('done')
       setShowDialog(true)
+      recordPublish({
+        comic_id:     result.comic_id,
+        reader_url:   buildShareUrl(localImageApiUrl, result.reader_url),
+        title:        metadata.title  || 'Comic',
+        page_count:   pageImages.length,
+        published_at: Date.now(),
+      })
     } catch (err) {
       console.error('Publish failed:', err)
       setStatus('error')

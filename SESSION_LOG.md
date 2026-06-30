@@ -1,3 +1,57 @@
+## SESSION: 2026-06-30 — Publish History (Read Count Analytics)
+
+### ✅ COMPLETED
+
+#### 1. Client-side Publish History (`/studio/publish-history`)
+
+**New file `frontend/src/lib/publishHistory.ts`:**
+- `PublishedComicRecord` interface: `{ comic_id, reader_url, title, page_count, published_at }`
+  - `reader_url` stores the **full absolute URL** (built at record time via `buildShareUrl`) so no API URL is needed at render time
+- `recordPublish(record)` — prepends to `localStorage["publish_history"]`, capped at 100 entries, newest first; noop in private browsing
+- `getPublishHistory()` — returns `[]` safely when localStorage is empty or disabled
+- `removeFromHistory(comicId)` — local-only removal; never calls DELETE on the server
+- `fetchLiveStats(apiUrl, comicIds)` — makes ONE request to `/admin/publish-stats` via the existing `/api/manga-proxy` (not N requests); returns `Map<string, number>` of `comic_id → read_count`
+
+**New file `frontend/src/components/PublishHistory.tsx`:**
+- `'use client'` component; reads `localImageApiUrl` from `ComicGenerationContext` for `fetchLiveStats`
+- Summary header: comic count + "N total reads" (via `useMemo` summing only comics present in `liveStats`)
+- Per-entry row: title, page count, publish date, live read count badge, external link icon, remove button
+- "Expired" detection: if `comic_id` is absent from `/admin/publish-stats` response after loading → shows "· expired (server restarted)" in red (Kaggle kernel restarted clears in-memory `_comics`)
+- Empty state shown when `history.length === 0`
+- Refresh button disabled while `loading === true`
+
+**New file `frontend/src/app/studio/publish-history/page.tsx`:**
+- Follows the same pattern as `/studio/analytics/page.tsx`: `<StudioSidebar />` + `<StudioTopBar />` + `<main className="ml-[var(--studio-sidebar-width)] pt-24 px-8 pb-12 min-h-screen">`
+
+**`frontend/src/components/PublishButton.tsx`:** Added `recordPublish()` call right after `setStatus('done')` + `setShowDialog(true)`. Stores full URL via `buildShareUrl(localImageApiUrl, result.reader_url)` at record time.
+
+**`frontend/src/components/StudioSidebar.tsx`:** Added `{ href: '/studio/publish-history', label: 'Publish History', icon: 'history' }` to the `LIBRARY` nav group (after Analytics).
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+**New files:**
+- `frontend/src/lib/publishHistory.ts`
+- `frontend/src/components/PublishHistory.tsx`
+- `frontend/src/app/studio/publish-history/page.tsx`
+
+**Modified:**
+- `frontend/src/components/PublishButton.tsx` — `recordPublish()` call after successful publish; added `buildShareUrl` import from `@/lib/publish`
+- `frontend/src/components/StudioSidebar.tsx` — "Publish History" added to LIBRARY nav group
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **One aggregate request**: `fetchLiveStats` always calls `/admin/publish-stats` once and filters client-side. This is correct even if localStorage history holds many entries — do NOT change to per-comic `/r/{id}/stats` calls.
+- **Full URL in `reader_url`**: `PublishedComicRecord.reader_url` stores the concatenated full URL (via `buildShareUrl`). `PublishHistory` uses `href={record.reader_url}` directly — no second `buildShareUrl` call needed.
+- **Proxy required**: The Kaggle server is behind a Cloudflare tunnel; direct browser fetch is blocked by CORS. `fetchLiveStats` calls `/api/manga-proxy` (same as all other Kaggle calls in `publish.ts`).
+- **CSS vars**: Component uses project's actual Material Design token names (`--color-surface-container`, `--color-surface-container-low`, `--color-on-surface`, `--color-on-surface-variant`, `--color-outline`), not the spec's `--surface-1` / `--text-primary` etc.
+- **`localImageApiUrl` required**: If the user hasn't configured the Image API URL in Step 1, `fetchLiveStats` returns an empty map (noop). History entries still display; read counts show "…" until configured.
+
+---
+
 ## SESSION: 2026-06-27 — Analytics Dashboard, UI Fixes, Generation Mode Popup, Auto-retry
 
 ### ✅ COMPLETED

@@ -6,12 +6,14 @@ import StudioTopBar from '@/components/StudioTopBar';
 import { projectsApi, bubblesApi } from '@/services/api';
 import type { CloudProjectListItem } from '@/services/api';
 import { publishComic, buildShareUrl, getComicStats, unpublishComic } from '@/lib/publish';
+import { recordPublish } from '@/lib/publishHistory';
 import { recomposePages, DEFAULT_BORDER_CONFIG } from '@/lib/borderComposer';
 import type { BorderConfig } from '@/lib/borderComposer';
 import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
 import { downloadSocialPack, PLATFORMS } from '@/lib/socialPack';
 
 const SESSION_KEY = 'mohiom-image-api-url';
+const CARD_STATES_KEY = 'mohiom-export-card-states';
 
 interface PublishedInfo {
   comicId: string;
@@ -357,6 +359,7 @@ function ComicCard({
   cardState,
   onPublish,
   onUnpublish,
+  onRefreshStats,
   getPages,
 }: {
   project: CloudProjectListItem;
@@ -364,6 +367,7 @@ function ComicCard({
   cardState: CardState;
   onPublish: (projectId: string) => void;
   onUnpublish: (projectId: string, comicId: string) => void;
+  onRefreshStats: (projectId: string) => void;
   getPages: (projectId: string) => Promise<string[]>;
 }) {
   const [copied, setCopied] = useState(false);
@@ -464,11 +468,21 @@ function ComicCard({
             <div className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700">
               <span className="material-symbols-outlined text-base">check_circle</span>
               Published
-              {cardState.published?.readCount !== null && cardState.published?.readCount !== undefined && (
-                <span className="ml-auto text-on-surface-variant font-normal">
-                  {cardState.published.readCount} {cardState.published.readCount === 1 ? 'read' : 'reads'}
-                </span>
-              )}
+              <span className="ml-auto flex items-center gap-1.5">
+                {cardState.published?.readCount !== null && cardState.published?.readCount !== undefined && (
+                  <span className="text-on-surface-variant font-normal">
+                    {cardState.published.readCount} {cardState.published.readCount === 1 ? 'read' : 'reads'}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onRefreshStats(project.project_id)}
+                  title="Refresh read count"
+                  className="text-on-surface-variant hover:text-on-surface transition-colors"
+                >
+                  <span className="material-symbols-outlined text-base">refresh</span>
+                </button>
+              </span>
             </div>
 
             {/* Tabs */}
@@ -618,7 +632,12 @@ export default function PublishPage() {
   const [apiUrl, setApiUrl] = useState('');
   const [projects, setProjects] = useState<CloudProjectListItem[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
-  const [cardStates, setCardStates] = useState<Record<string, CardState>>({});
+  const [cardStates, setCardStates] = useState<Record<string, CardState>>(() => {
+    try {
+      const saved = window.sessionStorage.getItem(CARD_STATES_KEY);
+      return saved ? (JSON.parse(saved) as Record<string, CardState>) : {};
+    } catch { return {}; }
+  });
   const pagesCache = useRef<Map<string, string[]>>(new Map());
 
   useEffect(() => {
@@ -642,10 +661,14 @@ export default function PublishPage() {
   }, []);
 
   function setCard(projectId: string, patch: Partial<CardState>) {
-    setCardStates(prev => ({
-      ...prev,
-      [projectId]: { ...((prev[projectId] ?? { status: 'idle' }) as CardState), ...patch },
-    }));
+    setCardStates(prev => {
+      const next = {
+        ...prev,
+        [projectId]: { ...((prev[projectId] ?? { status: 'idle' }) as CardState), ...patch },
+      };
+      try { window.sessionStorage.setItem(CARD_STATES_KEY, JSON.stringify(next)); } catch { /* noop */ }
+      return next;
+    });
   }
 
   const handlePublish = useCallback(async (projectId: string) => {
@@ -758,6 +781,14 @@ export default function PublishPage() {
       setCard(projectId, { status: 'publishing' });
       const result = await publishComic(apiUrl, pages, projectId, '');
 
+      recordPublish({
+        comic_id:     result.comic_id,
+        reader_url:   buildShareUrl(apiUrl, result.reader_url),
+        title:        projectId,
+        page_count:   result.page_count,
+        published_at: Date.now(),
+      });
+
       let readCount: number | null = null;
       try {
         const stats = await getComicStats(apiUrl, result.comic_id);
@@ -772,6 +803,15 @@ export default function PublishPage() {
       setCard(projectId, { status: 'error', error: err instanceof Error ? err.message : 'Publish failed' });
     }
   }, [apiUrl]);
+
+  const handleRefreshStats = useCallback(async (projectId: string) => {
+    const pub = cardStates[projectId]?.published;
+    if (!pub || !apiUrl.trim()) return;
+    try {
+      const stats = await getComicStats(apiUrl, pub.comicId);
+      setCard(projectId, { published: { ...pub, readCount: stats.read_count } });
+    } catch { /* noop */ }
+  }, [apiUrl, cardStates]);
 
   const handleUnpublish = useCallback(async (projectId: string, comicId: string) => {
     if (!window.confirm('Remove this comic from public access?')) return;
@@ -952,6 +992,7 @@ export default function PublishPage() {
                         cardState={cardStates[p.project_id] ?? { status: 'idle' }}
                         onPublish={handlePublish}
                         onUnpublish={handleUnpublish}
+                        onRefreshStats={handleRefreshStats}
                         getPages={getComposedPages}
                       />
                     ))}
@@ -972,6 +1013,7 @@ export default function PublishPage() {
                       cardState={cardStates[p.project_id] ?? { status: 'idle' }}
                       onPublish={handlePublish}
                       onUnpublish={handleUnpublish}
+                      onRefreshStats={handleRefreshStats}
                       getPages={getComposedPages}
                     />
                   ))}

@@ -13,10 +13,12 @@ import {
   CheckCircle,
   Clock,
   Download,
+  Eye,
   LayoutGrid,
   Minus,
   MoreVertical,
   PieChart,
+  RefreshCw,
   Smile,
   Upload,
   Users,
@@ -28,6 +30,11 @@ import {
   type DashboardMetrics,
   type GenerateEvent,
 } from '@/lib/analytics'
+import {
+  getPublishHistory,
+  fetchLiveStats,
+  type PublishedComicRecord,
+} from '@/lib/publishHistory'
 
 Chart.register(...registerables)
 
@@ -465,12 +472,38 @@ function ActivityLineChart({ data }: { data: { date: string; count: number }[] }
 
 // ── main dashboard ────────────────────────────────────────────────
 
+const PUBLISH_SESSION_KEY = 'mohiom-image-api-url'
+
 export function AnalyticsDashboard() {
   const [range, setRange] = useState<Range>(7)
   const [events, setEvents] = useState<GenerateEvent[]>([])
   const [prevEvents, setPrevEvents] = useState<GenerateEvent[]>([])
   const [showOverflow, setShowOverflow] = useState(false)
   const overflowRef = useRef<HTMLDivElement>(null)
+
+  const [publishHistory, setPublishHistory] = useState<PublishedComicRecord[]>([])
+  const [liveStats, setLiveStats] = useState<Map<string, number>>(new Map())
+  const [statsLoading, setStatsLoading] = useState(false)
+  const [publishApiUrl, setPublishApiUrl] = useState('')
+
+  async function loadLiveStats(url: string, records: PublishedComicRecord[]) {
+    setStatsLoading(true)
+    const ids = records.map(r => r.comic_id)
+    const map = await fetchLiveStats(url, ids)
+    setLiveStats(map)
+    setStatsLoading(false)
+  }
+
+  useEffect(() => {
+    const records = getPublishHistory()
+    setPublishHistory(records)
+    const url = window.sessionStorage.getItem(PUBLISH_SESSION_KEY) ?? ''
+    setPublishApiUrl(url)
+    if (url && records.length) {
+      loadLiveStats(url, records)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const { current, prev } = loadPeriodEvents(range)
@@ -745,6 +778,137 @@ export function AnalyticsDashboard() {
         <div style={{ padding: '0 32px 32px 32px' }}>
           <ChartCard>
             <ActivityLineChart data={metrics.daily_counts} />
+          </ChartCard>
+        </div>
+
+        {/* ── Zone 4: Publish Performance ── */}
+        <SectionHeader
+          title="Publish Performance"
+          subtitle="Live reader counts for your published comics"
+          rightElement={
+            publishHistory.length > 0 && publishApiUrl ? (
+              <HoverButton
+                onClick={() => loadLiveStats(publishApiUrl, publishHistory)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', height: 32 }}
+              >
+                <RefreshCw size={13} className={statsLoading ? 'animate-spin' : ''} />
+                Refresh
+              </HoverButton>
+            ) : undefined
+          }
+        />
+
+        <div style={{ padding: '0 32px 48px 32px' }}>
+          {/* Total readers KPI */}
+          {publishHistory.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <KPICard
+                icon={<Eye size={18} />}
+                iconBg="#F5F3FF" iconColor="#7C3AED"
+                value={
+                  statsLoading
+                    ? <span style={{ fontSize: 20, color: '#9CA3AF' }}>…</span>
+                    : !publishApiUrl
+                    ? <span style={{ fontSize: 20, color: '#9CA3AF' }}>—</span>
+                    : Array.from(liveStats.values()).reduce((s, v) => s + v, 0)
+                }
+                label="Total readers across all published comics"
+                trend={null}
+                ctaText="Publish history →"
+                ctaHref="/studio/publish-history"
+              />
+            </div>
+          )}
+
+          {/* Per-comic table */}
+          <ChartCard>
+            {publishHistory.length === 0 ? (
+              <EmptyState
+                icon={<Eye size={32} />}
+                text="No published comics yet"
+                subtext="Publish a comic from the Export page to see reader counts here"
+              />
+            ) : !publishApiUrl ? (
+              <div style={{ padding: '16px 0', display: 'flex', alignItems: 'center', gap: 10, color: '#6B7280', fontSize: 13 }}>
+                <span style={{ fontSize: 18 }}>ⓘ</span>
+                Enter your server URL on the Export page to load live reader counts.
+              </div>
+            ) : (
+              <div>
+                {/* Table header */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 60px 110px 80px 32px',
+                  gap: 8,
+                  paddingBottom: 8,
+                  borderBottom: '1px solid #F3F4F6',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#9CA3AF',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                }}>
+                  <span>Comic</span>
+                  <span style={{ textAlign: 'right' }}>Pages</span>
+                  <span>Published</span>
+                  <span style={{ textAlign: 'right' }}>Reads</span>
+                  <span />
+                </div>
+
+                {publishHistory.map(record => {
+                  const count = liveStats.get(record.comic_id)
+                  const isExpired = !statsLoading && publishApiUrl && !liveStats.has(record.comic_id) && liveStats.size > 0
+                  return (
+                    <div
+                      key={record.comic_id}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 60px 110px 80px 32px',
+                        gap: 8,
+                        padding: '10px 0',
+                        borderBottom: '1px solid #F9FAFB',
+                        alignItems: 'center',
+                        fontSize: 13,
+                        color: '#374151',
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {record.title || record.comic_id}
+                        </div>
+                        {isExpired && (
+                          <div style={{ fontSize: 11, color: '#DC2626', marginTop: 2 }}>expired (server restarted)</div>
+                        )}
+                      </div>
+                      <div style={{ textAlign: 'right', color: '#6B7280' }}>{record.page_count}</div>
+                      <div style={{ color: '#6B7280', fontSize: 12 }}>
+                        {new Date(record.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </div>
+                      <div style={{ textAlign: 'right', fontWeight: 600, color: isExpired ? '#9CA3AF' : '#111827' }}>
+                        {statsLoading
+                          ? <span style={{ color: '#9CA3AF' }}>…</span>
+                          : count !== undefined
+                          ? count
+                          : '—'}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <a
+                          href={record.reader_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Open reader"
+                          style={{ color: '#9CA3AF', fontSize: 14, textDecoration: 'none', lineHeight: 1 }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.color = '#2563EB' }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.color = '#9CA3AF' }}
+                        >
+                          ↗
+                        </a>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </ChartCard>
         </div>
       </div>
