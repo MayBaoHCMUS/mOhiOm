@@ -8,6 +8,7 @@ import CharacterLibraryModal from '@/components/CharacterLibraryModal';
 import GalleryModal from '@/components/GalleryModal';
 import Markdown from '@/components/Markdown';
 import { apiClient } from '@/services/api';
+import type { CharacterSummary } from '@/services/api';
 
 // ── Design section definitions ────────────────────────────────────────────────
 
@@ -250,10 +251,16 @@ function GenerationModePanel({
   value,
   onChange,
   disabled,
+  onPickReferenceFromLibrary,
+  onPickReferenceFromCommunity,
+  onUseAsCharacterImage,
 }: {
   value: ImageGenSettings;
   onChange: (s: ImageGenSettings) => void;
   disabled?: boolean;
+  onPickReferenceFromLibrary?: () => void;
+  onPickReferenceFromCommunity?: () => void;
+  onUseAsCharacterImage?: (base64: string) => void;
 }) {
   const [refName, setRefName]   = useState('');
   const [ctrlName, setCtrlName] = useState('');
@@ -311,14 +318,52 @@ function GenerationModePanel({
           <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
             Reference <span className="font-normal text-on-surface-variant/50 normal-case tracking-normal">(guides appearance)</span>
           </p>
+          {/* File upload */}
           <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-outline-variant/40 bg-surface-container px-3 py-2 text-xs text-on-surface-variant hover:border-primary/40 transition-colors">
             <span className="material-symbols-outlined text-base text-on-surface-variant/50">add_photo_alternate</span>
             <span className="truncate">{refName || 'Upload reference image'}</span>
             <input type="file" accept="image/*" className="hidden" disabled={disabled} onChange={handleRefFile} />
           </label>
+          {/* Library / Community alternative sources */}
+          {(onPickReferenceFromLibrary || onPickReferenceFromCommunity) && (
+            <div className="flex gap-1.5">
+              {onPickReferenceFromLibrary && (
+                <button
+                  type="button"
+                  onClick={onPickReferenceFromLibrary}
+                  disabled={disabled}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-outline-variant/30 bg-surface-container text-[11px] font-semibold text-on-surface-variant hover:text-on-surface hover:border-primary/40 transition-colors disabled:opacity-40"
+                >
+                  <span className="material-symbols-outlined text-[13px]">library_books</span>
+                  From Library
+                </button>
+              )}
+              {onPickReferenceFromCommunity && (
+                <button
+                  type="button"
+                  onClick={onPickReferenceFromCommunity}
+                  disabled={disabled}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-outline-variant/30 bg-surface-container text-[11px] font-semibold text-on-surface-variant hover:text-on-surface hover:border-primary/40 transition-colors disabled:opacity-40"
+                >
+                  <span className="material-symbols-outlined text-[13px]">public</span>
+                  Browse Community
+                </button>
+              )}
+            </div>
+          )}
+          {/* Preview + actions when reference is set */}
           {value.referenceImageBase64 && (
-            <div className="flex items-center gap-2">
-              <img src={`data:image/png;base64,${value.referenceImageBase64}`} alt="ref" className="h-10 w-10 rounded-xl object-cover" />
+            <div className="flex items-center gap-2 flex-wrap">
+              <img src={`data:image/png;base64,${value.referenceImageBase64}`} alt="ref" className="h-10 w-10 rounded-xl object-cover shrink-0" />
+              {onUseAsCharacterImage && (
+                <button
+                  type="button"
+                  onClick={() => onUseAsCharacterImage(value.referenceImageBase64!)}
+                  className="text-[11px] font-semibold text-primary hover:underline"
+                >
+                  Use as character image
+                </button>
+              )}
               <button type="button" onClick={() => { set({ referenceImageBase64: '' }); setRefName(''); }} className="text-[11px] text-red-500 hover:text-red-700">Remove</button>
             </div>
           )}
@@ -1183,6 +1228,9 @@ function ImageGenPanel({
   onApproveAnyway,
   onRegenInstead,
   ratingByVersion,
+  onPickReferenceFromLibrary,
+  onPickReferenceFromCommunity,
+  onUseAsCharacterImage,
 }: {
   character: {
     characterId:         string;
@@ -1217,6 +1265,9 @@ function ImageGenPanel({
   onApproveAnyway:     () => void;
   onRegenInstead:      () => void;
   ratingByVersion:     Record<number, string>;
+  onPickReferenceFromLibrary?: () => void;
+  onPickReferenceFromCommunity?: () => void;
+  onUseAsCharacterImage?: (base64: string) => void;
 }) {
   const isLoading        = character.status === 'loading';
   const isFailed         = character.status === 'error';
@@ -1337,7 +1388,14 @@ function ImageGenPanel({
       </div>
 
       {/* Generation mode */}
-      <GenerationModePanel value={settings} onChange={onUpdateSettings} disabled={isAnyGenerating} />
+      <GenerationModePanel
+        value={settings}
+        onChange={onUpdateSettings}
+        disabled={isAnyGenerating}
+        onPickReferenceFromLibrary={onPickReferenceFromLibrary}
+        onPickReferenceFromCommunity={onPickReferenceFromCommunity}
+        onUseAsCharacterImage={onUseAsCharacterImage}
+      />
 
       {/* Rating widget — only after at least one image exists */}
       {hasAnyImages && (
@@ -1452,6 +1510,9 @@ function CharacterAccordionCard({
   designMarkdown,
   projectId,
   onReactionChange,
+  onPickReferenceFromLibrary,
+  onPickReferenceFromCommunity,
+  onUseAsCharacterImage,
 }: {
   idx:                 number;
   character: {
@@ -1481,6 +1542,9 @@ function CharacterAccordionCard({
   designMarkdown:      string | null;
   projectId:           string;
   onReactionChange:    (charId: string, version: number, reaction: CharReaction | null) => void;
+  onPickReferenceFromLibrary?: () => void;
+  onPickReferenceFromCommunity?: () => void;
+  onUseAsCharacterImage?: (base64: string) => void;
 }) {
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [ratingByVersion, setRatingByVersion]   = useState<Record<number, CharReaction>>({});
@@ -1719,6 +1783,9 @@ function CharacterAccordionCard({
                   onApproveAnyway={handleApproveAnyway}
                   onRegenInstead={handleRegenInstead}
                   ratingByVersion={ratingByVersion}
+                  onPickReferenceFromLibrary={onPickReferenceFromLibrary}
+                  onPickReferenceFromCommunity={onPickReferenceFromCommunity}
+                  onUseAsCharacterImage={onUseAsCharacterImage}
                 />
               </div>
             </div>
@@ -1769,8 +1836,8 @@ export default function Step2Characters() {
     handleSelectCharacterCandidate,
     handleApproveCharacterReferences,
     handleRetryCharacterReferences,
+    addCandidateFromImage,
     getCooldownSeconds,
-    injectLibraryCharacters,
     setActiveStep,
     projectId,
   } = useComicGeneration();
@@ -1781,8 +1848,11 @@ export default function Step2Characters() {
   const [approvedCharIds, setApprovedCharIds]         = useState<Set<string>>(new Set());
   const [expandedCharIds, setExpandedCharIds]         = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab]                     = useState<'designs' | 'references'>('designs');
-  const [isLibraryOpen, setIsLibraryOpen]             = useState(false);
-  const [isGalleryOpen, setIsGalleryOpen]             = useState(false);
+  // null = closed; '__all__' = tab-level (applies to all chars); charId = per-character
+  const [libraryTargetCharId, setLibraryTargetCharId] = useState<string | null>(null);
+  const [galleryTargetCharId, setGalleryTargetCharId] = useState<string | null>(null);
+  const isLibraryOpen = libraryTargetCharId !== null;
+  const isGalleryOpen = galleryTargetCharId !== null;
   const [showRegenConfirm, setShowRegenConfirm]       = useState(false);
   const [showRegenAllConfirm, setShowRegenAllConfirm] = useState(false);
   const [showSelectionAlert, setShowSelectionAlert]   = useState(false);
@@ -2081,6 +2151,60 @@ export default function Step2Characters() {
     proceedWithApproval();
   }, [proceedWithApproval]);
 
+  // Fetch a remote image URL → raw base64 string (strips data: prefix)
+  const fetchImageBase64 = useCallback(async (url: string): Promise<string> => {
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve((reader.result as string).replace(/^data:image\/[^;]+;base64,/, ''));
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }, []);
+
+  // Library / Community picker → set referenceImageBase64 in charSettings.
+  // When targetCharId is '__all__', applies to all chars without a reference.
+  // When targetCharId is a specific charId, applies only to that character.
+  const handleAddReferenceFromPicker = useCallback(async (chars: CharacterSummary[]) => {
+    const picked = chars.find((c) => !!c.selected_image_url);
+    if (!picked?.selected_image_url) return;
+    const targetId = libraryTargetCharId ?? galleryTargetCharId;
+    try {
+      const base64 = await fetchImageBase64(picked.selected_image_url);
+      setCharSettings((prev) => {
+        const next = { ...prev };
+        const applyTo = targetId === '__all__'
+          ? characters.filter((c) => !next[c.characterId]?.referenceImageBase64)
+          : characters.filter((c) => c.characterId === targetId);
+        for (const char of applyTo) {
+          const id = char.characterId;
+          const existing = next[id];
+          next[id] = {
+            mode: existing?.mode === 1 ? 2 : (existing?.mode ?? 2),
+            referenceImageBase64: base64,
+            controlImageBase64: existing?.controlImageBase64 ?? '',
+            ipAdapterScale: existing?.ipAdapterScale ?? 0.7,
+            controlnetScale: existing?.controlnetScale ?? 0.8,
+            characterName: existing?.characterName ?? char.name,
+            storyId: existing?.storyId,
+            style: existing?.style,
+            width: existing?.width,
+            height: existing?.height,
+          };
+        }
+        return next;
+      });
+    } catch {
+      // silently ignore fetch failures
+    }
+  }, [libraryTargetCharId, galleryTargetCharId, characters, fetchImageBase64]);
+
+  // "Use as character image" — adds referenceImageBase64 as a new pipeline candidate and selects it
+  const handleUseAsCharacterImage = useCallback((charId: string, base64: string) => {
+    addCandidateFromImage(charId, `data:image/png;base64,${base64}`);
+  }, [addCandidateFromImage]);
+
   const switchToReferencesAndGenerate = useCallback(() => {
     setActiveTab('references');
     if (!step2ImageReview.data) {
@@ -2342,7 +2466,7 @@ export default function Step2Characters() {
               {/* From Library */}
               <button
                 type="button"
-                onClick={() => setIsLibraryOpen(true)}
+                onClick={() => setLibraryTargetCharId('__all__')}
                 disabled={isImageGenerating}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors disabled:opacity-40"
               >
@@ -2353,7 +2477,7 @@ export default function Step2Characters() {
               {/* Browse Community */}
               <button
                 type="button"
-                onClick={() => setIsGalleryOpen(true)}
+                onClick={() => setGalleryTargetCharId('__all__')}
                 disabled={isImageGenerating}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors disabled:opacity-40"
               >
@@ -2465,6 +2589,9 @@ export default function Step2Characters() {
                     designMarkdown={step2.data?.designMarkdown ?? null}
                     projectId={projectId ?? ''}
                     onReactionChange={handleReactionChange}
+                    onPickReferenceFromLibrary={() => setLibraryTargetCharId(charId)}
+                    onPickReferenceFromCommunity={() => setGalleryTargetCharId(charId)}
+                    onUseAsCharacterImage={(base64) => handleUseAsCharacterImage(charId, base64)}
                   />
                 );
               })}
@@ -2718,15 +2845,15 @@ export default function Step2Characters() {
 
       <CharacterLibraryModal
         isOpen={isLibraryOpen}
-        onClose={() => setIsLibraryOpen(false)}
+        onClose={() => setLibraryTargetCharId(null)}
         existingIds={existingCharacterIds}
-        onConfirm={injectLibraryCharacters}
+        onConfirm={handleAddReferenceFromPicker}
       />
       <GalleryModal
         isOpen={isGalleryOpen}
-        onClose={() => setIsGalleryOpen(false)}
+        onClose={() => setGalleryTargetCharId(null)}
         existingIds={existingCharacterIds}
-        onConfirm={injectLibraryCharacters}
+        onConfirm={handleAddReferenceFromPicker}
       />
 
       {charRegenModal && (

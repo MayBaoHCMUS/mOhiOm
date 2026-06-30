@@ -621,6 +621,7 @@ export interface ComicGenerationContextValue {
   loadFromCloud: (projectId: string) => Promise<{ success: boolean; error?: string }>;
   listCloudProjects: () => Promise<CloudProjectListItem[]>;
   injectLibraryCharacters: (chars: CharacterSummary[]) => void;
+  addCandidateFromImage: (characterId: string, imageDataUrl: string) => void;
   fromStorySetup: boolean;
   setFromStorySetup: (v: boolean) => void;
   fieldsAutoFilledFromAnalysis: boolean;
@@ -3221,6 +3222,33 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     return response.data;
   };
 
+  const addCandidateFromImage = (characterId: string, imageDataUrl: string) => {
+    const candidateId = crypto.randomUUID();
+    setStep2ImageReview((prev) => {
+      if (!prev.data) return prev;
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          characters: prev.data.characters.map((c) => {
+            if (c.characterId !== characterId) return c;
+            const newCandidate: CharacterImageCandidate = {
+              id: candidateId,
+              imageUrl: imageDataUrl,
+              createdAt: new Date().toISOString(),
+            };
+            return {
+              ...c,
+              status: 'success' as CharacterImageStatus,
+              candidates: [...c.candidates, newCandidate],
+              selectedCandidateId: candidateId,
+            };
+          }),
+        },
+      };
+    });
+  };
+
   const injectLibraryCharacters = (chars: CharacterSummary[]) => {
     const nowIso = new Date().toISOString();
     setStep2ImageReview((prev) => {
@@ -3361,6 +3389,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     loadFromCloud,
     listCloudProjects,
     injectLibraryCharacters,
+    addCandidateFromImage,
     fromStorySetup,
     setFromStorySetup,
     fieldsAutoFilledFromAnalysis,
