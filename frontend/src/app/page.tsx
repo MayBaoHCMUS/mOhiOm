@@ -32,9 +32,6 @@ export default function LandingPage() {
           <a href="#features" className="text-sm font-bold text-on-surface-variant hover:text-primary transition-colors">
             Features
           </a>
-          <a href="#pricing" className="text-sm font-bold text-on-surface-variant hover:text-primary transition-colors">
-            Pricing
-          </a>
           <Link
             href="/login"
             className="px-8 py-3 bg-on-surface text-surface rounded-full font-bold text-sm hover:scale-105 transition-transform active:scale-95 shadow-lg"
@@ -186,7 +183,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="pricing" className="py-48 text-center px-10">
+      <section className="py-48 text-center px-10">
         <h2 className="text-5xl md:text-7xl font-black tracking-tighter mb-12">
           The future of comics <br /> is <span className="text-primary italic">Now.</span>
         </h2>

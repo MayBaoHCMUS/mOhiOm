@@ -16,14 +16,12 @@ const POST_PRODUCTION = [
 ];
 
 const LIBRARY = [
-  { href: '/studio/my-stories',       label: 'My Stories',      icon: 'library_books' },
-  { href: '/studio/analytics',        label: 'Analytics',       icon: 'bar_chart' },
-  { href: '/studio/publish-history',  label: 'Publish History', icon: 'history' },
+  { href: '/studio/my-stories',  label: 'My Stories', icon: 'library_books' },
+  { href: '/studio/analytics',   label: 'Analytics',  icon: 'bar_chart' },
 ];
 
 const BOTTOM_NAV = [
   { href: '/settings', label: 'Settings', icon: 'settings' },
-  { href: '/pricing',  label: 'Pricing',  icon: 'payments' },
 ];
 
 export default function StudioSidebar() {
@@ -129,13 +127,15 @@ export default function StudioSidebar() {
       </Link>
 
       {/* Zone B — Navigation */}
-      <nav className="flex-1 overflow-y-auto mt-2 space-y-5">
+      <nav className="flex-1 overflow-y-hidden mt-2 space-y-5">
 
-        {/* Comic Pipeline — first, standalone */}
+        {/* FIX 2: Comic Pipeline — blue gradient featured card */}
         <div>
           <Link
             href="/studio"
-            className={navItemClass(isActive('/studio'))}
+            className={`flex items-center gap-3 rounded-xl overflow-hidden bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-blue-500 hover:to-indigo-500 transition-all duration-200 ${
+              isCollapsed ? 'justify-center px-2 py-3' : 'px-4 py-3'
+            }`}
             aria-current={isActive('/studio') ? 'page' : undefined}
             title={isCollapsed ? 'Comic Pipeline' : undefined}
           >
@@ -175,18 +175,6 @@ export default function StudioSidebar() {
         <div className="space-y-0.5">
           {navItems(BOTTOM_NAV)}
         </div>
-
-        <Link
-          className={`w-full bg-primary-container text-white rounded-xl font-semibold text-sm shadow-sm transition-transform active:scale-95 flex items-center justify-center gap-2 py-3 ${
-            isCollapsed ? '' : 'px-4'
-          }`}
-          href="/pricing"
-          title={isCollapsed ? 'Upgrade to Pro' : undefined}
-          aria-label={isCollapsed ? 'Upgrade to Pro' : undefined}
-        >
-          <span className="material-symbols-outlined text-base">workspace_premium</span>
-          <span className={isCollapsed ? 'sr-only' : ''}>Upgrade to Pro</span>
-        </Link>
 
         <Link
           href="/settings"
