@@ -12,7 +12,7 @@ const PRE_PRODUCTION = [
 
 const POST_PRODUCTION = [
   { href: '/studio/editor',  label: 'Comic Editor',    icon: 'edit_note' },
-  { href: '/studio/export',  label: 'Publish', icon: 'ios_share' },
+  { href: '/studio/publish', label: 'Publish', icon: 'ios_share' },
 ];
 
 const LIBRARY = [
@@ -20,9 +20,6 @@ const LIBRARY = [
   { href: '/studio/analytics',   label: 'Analytics',  icon: 'bar_chart' },
 ];
 
-const BOTTOM_NAV = [
-  { href: '/settings', label: 'Settings', icon: 'settings' },
-];
 
 export default function StudioSidebar() {
   const pathname = usePathname();
@@ -127,7 +124,7 @@ export default function StudioSidebar() {
       </Link>
 
       {/* Zone B — Navigation */}
-      <nav className="flex-1 overflow-y-hidden mt-2 space-y-5">
+      <nav className="flex-1 overflow-y-auto mt-2 space-y-5 hide-scrollbar">
 
         {/* FIX 2: Comic Pipeline — blue gradient featured card */}
         <div>
@@ -170,12 +167,8 @@ export default function StudioSidebar() {
 
       </nav>
 
-      {/* Zone C — Bottom: settings/pricing + upgrade + user */}
-      <div className="mt-auto pt-4 space-y-3">
-        <div className="space-y-0.5">
-          {navItems(BOTTOM_NAV)}
-        </div>
-
+      {/* Zone C — Bottom: user row (links to settings) */}
+      <div className="mt-auto pt-4">
         <Link
           href="/settings"
           className={`flex items-center gap-3 border-t border-outline-variant/30 hover:bg-surface-container-high rounded-xl transition-colors ${

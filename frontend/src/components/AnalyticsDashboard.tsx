@@ -720,7 +720,7 @@ export function AnalyticsDashboard() {
             label="Exports"
             trend={exportsTrend}
             ctaText="View exports →"
-            ctaHref="/studio/export"
+            ctaHref="/studio/publish"
           />
           <KPICard
             icon={<CheckCircle size={18} />}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { ExternalLink, RefreshCw, Trash2 } from 'lucide-react'
 import {
   getPublishHistory, removeFromHistory, fetchLiveStats,
   type PublishedComicRecord,
@@ -9,25 +10,24 @@ import {
 const SESSION_KEY = 'mohiom-image-api-url'
 
 export function PublishHistory() {
-  const localImageApiUrl = typeof window !== 'undefined'
-    ? (window.sessionStorage.getItem(SESSION_KEY) ?? '')
-    : ''
-
-  const [history,   setHistory]   = useState<PublishedComicRecord[]>([])
+  const [apiUrl, setApiUrl] = useState('')
+  const [history, setHistory] = useState<PublishedComicRecord[]>([])
   const [liveStats, setLiveStats] = useState<Map<string, number>>(new Map())
-  const [loading,   setLoading]   = useState(true)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const url = window.sessionStorage.getItem(SESSION_KEY) ?? ''
+    setApiUrl(url)
     const records = getPublishHistory()
     setHistory(records)
-    refreshStats(records)
+    refreshStats(url, records)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function refreshStats(records: PublishedComicRecord[]) {
+  async function refreshStats(url: string, records: PublishedComicRecord[]) {
     setLoading(true)
     const ids = records.map(r => r.comic_id)
-    const map = await fetchLiveStats(localImageApiUrl, ids)
+    const map = await fetchLiveStats(url, ids)
     setLiveStats(map)
     setLoading(false)
   }
@@ -44,114 +44,94 @@ export function PublishHistory() {
 
   if (!history.length) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-on-surface-variant)' }}>
-        <p style={{ fontSize: 13 }}>No published comics yet.</p>
-        <p style={{ fontSize: 11, marginTop: 6 }}>
-          Comics you publish from the Comic Editor will appear here.
+      <div className="flex flex-col items-center justify-center py-20 text-on-surface-variant">
+        <span className="material-symbols-outlined text-5xl mb-3 text-outline">history</span>
+        <p className="text-[14px] font-medium">No published comics yet</p>
+        <p className="text-[12px] mt-1 text-on-surface-variant/70">
+          Comics you publish from the{' '}
+          <a href="/studio/publish" className="text-primary hover:underline">Publish page</a>
+          {' '}will appear here.
         </p>
       </div>
     )
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '0 0 1rem' }}>
+    <div className="space-y-4">
 
-      {/* Summary header */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 16px',
-        background: 'var(--color-surface-container-low)',
-        borderRadius: 8,
-      }}>
+      {/* Summary bar */}
+      <div className="flex items-center justify-between bg-surface-container-low border border-outline-variant/20 rounded-2xl px-4 py-3">
         <div>
-          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-on-surface)' }}>
+          <p className="text-[13px] font-semibold text-on-surface">
             {history.length} published {history.length === 1 ? 'comic' : 'comics'}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--color-on-surface-variant)', marginTop: 2 }}>
+          </p>
+          <p className="text-[11px] text-on-surface-variant mt-0.5">
             {loading ? 'Loading read counts…' : `${totalReads} total reads`}
-          </div>
+            {!apiUrl && !loading && (
+              <span className="text-amber-600 ml-2">· Set server URL on Publish page to load counts</span>
+            )}
+          </p>
         </div>
         <button
-          onClick={() => refreshStats(history)}
+          type="button"
+          onClick={() => refreshStats(apiUrl, history)}
           disabled={loading}
-          style={{
-            fontSize: 11, padding: '5px 12px', borderRadius: 8,
-            border: '0.5px solid var(--color-outline)', background: 'transparent',
-            color: 'var(--color-on-surface)', cursor: loading ? 'not-allowed' : 'pointer',
-          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant/40 text-[11px] font-medium text-on-surface-variant hover:bg-surface-container transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
 
-      {/* List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {/* Records list */}
+      <div className="space-y-2">
         {history.map(record => {
           const readCount = liveStats.get(record.comic_id)
           const isExpired = !liveStats.has(record.comic_id) && !loading
+
           return (
-            <div
-              key={record.comic_id}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 14px',
-                background: 'var(--color-surface-container)',
-                border: '0.5px solid var(--color-outline)',
-                borderRadius: 8,
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontSize: 12, fontWeight: 500, color: 'var(--color-on-surface)',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                }}>
-                  {record.title}
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--color-on-surface-variant)', marginTop: 2 }}>
-                  {record.page_count} {record.page_count === 1 ? 'page' : 'pages'} · {new Date(record.published_at).toLocaleDateString()}
+            <div key={record.comic_id}
+              className="flex items-center gap-3 bg-surface-container-lowest border border-outline-variant/20 rounded-2xl px-4 py-3 hover:shadow-sm transition-shadow">
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-on-surface truncate">{record.title}</p>
+                <p className="text-[11px] text-on-surface-variant mt-0.5">
+                  {record.page_count} {record.page_count === 1 ? 'page' : 'pages'}
+                  {' · '}
+                  {new Date(record.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   {isExpired && (
-                    <span style={{ color: '#ef4444', marginLeft: 6 }}>
-                      · expired (server restarted)
-                    </span>
+                    <span className="text-red-500 ml-2">· expired (server restarted)</span>
                   )}
-                </div>
+                </p>
               </div>
 
+              {/* Read count */}
               {!isExpired && (
-                <div style={{ textAlign: 'center', minWidth: 50 }}>
-                  <div style={{ fontSize: 16, fontWeight: 500, color: 'var(--color-on-surface)' }}>
-                    {readCount ?? '…'}
-                  </div>
-                  <div style={{ fontSize: 9, color: 'var(--color-on-surface-variant)' }}>
+                <div className="text-center min-w-[44px] shrink-0">
+                  <p className="text-[16px] font-semibold text-on-surface leading-none">
+                    {loading ? '…' : (readCount ?? '—')}
+                  </p>
+                  <p className="text-[9px] text-on-surface-variant mt-0.5 uppercase tracking-wide">
                     {readCount === 1 ? 'read' : 'reads'}
-                  </div>
+                  </p>
                 </div>
               )}
 
+              {/* Open link */}
               {!isExpired && (
-                <a
-                  href={record.reader_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <a href={record.reader_url} target="_blank" rel="noopener noreferrer"
                   aria-label="Open reader"
-                  style={{
-                    fontSize: 14, color: 'var(--color-on-surface-variant)',
-                    textDecoration: 'none', padding: 4,
-                  }}
-                >
-                  <i className="ti ti-external-link" aria-hidden="true" />
+                  className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container transition-colors">
+                  <ExternalLink size={14} />
                 </a>
               )}
 
-              <button
-                onClick={() => handleRemove(record.comic_id)}
+              {/* Remove */}
+              <button type="button" onClick={() => handleRemove(record.comic_id)}
                 aria-label="Remove from history"
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: 'var(--color-on-surface-variant)', fontSize: 14, padding: 4,
-                }}
-              >
-                ✕
+                className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-on-surface-variant/40 hover:text-red-500 hover:bg-red-50 transition-colors">
+                <Trash2 size={13} />
               </button>
             </div>
           )
