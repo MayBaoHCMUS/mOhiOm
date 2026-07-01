@@ -14,10 +14,10 @@ import {
   fileToBase64,
   type AblationRunRecord, type ClipPairInput, type ClipScoreResultItem,
 } from '@/lib/evaluation'
+import { getImageApiUrl } from '@/lib/imageApiUrl'
 
 Chart.register(...registerables)
 
-const SESSION_KEY = 'mohiom-image-api-url'
 const STYLES = ['manga', 'realistic', 'cartoon', 'anime', 'watercolor', 'sketch']
 const SCALES = [0.0, 0.4, 0.6, 0.8]
 
@@ -36,8 +36,7 @@ export function EvaluationDashboard() {
   const [apiUrl, setApiUrl] = useState('')
 
   useEffect(() => {
-    const stored = window.sessionStorage.getItem(SESSION_KEY) ?? ''
-    setApiUrl(stored.replace(/\/$/, ''))
+    setApiUrl(getImageApiUrl())
   }, [])
 
   return (

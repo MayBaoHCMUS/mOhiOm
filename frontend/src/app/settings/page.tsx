@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
 import { useAuth } from '@/context/AuthContext';
-import { authApi, projectsApi, toApiError } from '@/services/api';
+import { authApi, projectsApi, settingsApi, toApiError } from '@/services/api';
+import type { TextGenMode, SaveTextGenConfigPayload, TextGenProvider } from '@/services/api';
+import { getImageApiUrl, setImageApiUrl } from '@/lib/imageApiUrl';
 import PasswordStrengthMeter from '@/components/PasswordStrengthMeter';
 
 // ─── Panel card ───────────────────────────────────────────────────────────────
@@ -116,6 +118,53 @@ export default function SettingsPage() {
   const [connectNotice, setConnectNotice] = useState('');
   const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
 
+  // Text generation (BYOK / model selection)
+  const [textGenMode, setTextGenMode] = useState<TextGenMode>('nine_router');
+  const [byokProvider, setByokProvider] = useState('');
+  const [byokProviders, setByokProviders] = useState<TextGenProvider[]>([]);
+  const [byokApiKey, setByokApiKey] = useState('');
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [nineRouterModel, setNineRouterModel] = useState('');
+  const [nineRouterModels, setNineRouterModels] = useState<string[]>([]);
+  const [localServerApiUrl, setLocalServerApiUrl] = useState('');
+  const [localServerModel, setLocalServerModel] = useState('');
+  const [textGenLoading, setTextGenLoading] = useState(true);
+  const [textGenSaving, setTextGenSaving] = useState(false);
+  const [textGenMsg, setTextGenMsg] = useState('');
+  const [textGenError, setTextGenError] = useState('');
+
+  // Image generation server URL
+  const [imageApiUrlValue, setImageApiUrlValue] = useState('');
+  const [imageApiUrlSaved, setImageApiUrlSaved] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    settingsApi.getNineRouterModels()
+      .then((r) => {
+        if (cancelled) return;
+        setNineRouterModels(r.data.models);
+        setNineRouterModel((prev) => prev || r.data.models[0] || '');
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    settingsApi.getTextGenProviders()
+      .then((r) => {
+        if (cancelled) return;
+        setByokProviders(r.data.providers);
+        setByokProvider((prev) => prev || r.data.providers[0]?.id || '');
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    setImageApiUrlValue(getImageApiUrl());
+  }, []);
+
   useEffect(() => {
     void refresh();
     projectsApi.stats()
@@ -137,6 +186,26 @@ export default function SettingsPage() {
       }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!user) { setTextGenLoading(false); return; }
+    settingsApi.getTextGenConfig()
+      .then((r) => {
+        const cfg = r.data;
+        setTextGenMode(cfg.mode);
+        setHasApiKey(cfg.has_api_key);
+        if (cfg.mode === 'byok') {
+          setByokProvider((prev) => cfg.provider || prev);
+        } else if (cfg.mode === 'nine_router') {
+          setNineRouterModel(cfg.model);
+        } else if (cfg.mode === 'local_server') {
+          setLocalServerApiUrl(cfg.api_url);
+          setLocalServerModel(cfg.model);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setTextGenLoading(false));
+  }, [user]);
 
   const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'Creator';
   const providers = user?.providers ?? [];
@@ -184,6 +253,55 @@ export default function SettingsPage() {
       setConnectNotice(`Could not start ${provider} connection: ${toApiError(err).message}`);
       setConnectingProvider(null);
     }
+  };
+
+  const handleSaveTextGenConfig = async () => {
+    setTextGenError('');
+    setTextGenMsg('');
+    setTextGenSaving(true);
+    try {
+      const payload: SaveTextGenConfigPayload =
+        textGenMode === 'byok'
+          ? { mode: 'byok', provider: byokProvider, api_key: byokApiKey }
+          : textGenMode === 'nine_router'
+          ? { mode: 'nine_router', model: nineRouterModel }
+          : { mode: 'local_server', api_url: localServerApiUrl, model: localServerModel };
+      const res = await settingsApi.saveTextGenConfig(payload);
+      setHasApiKey(res.data.has_api_key);
+      setByokApiKey('');
+      setTextGenMsg('Saved!');
+      setTimeout(() => setTextGenMsg(''), 2000);
+    } catch (err) {
+      setTextGenError(toApiError(err).message);
+    } finally {
+      setTextGenSaving(false);
+    }
+  };
+
+  const handleClearTextGenConfig = async () => {
+    setTextGenError('');
+    setTextGenSaving(true);
+    try {
+      await settingsApi.clearTextGenConfig();
+      setTextGenMode('nine_router');
+      setByokProvider(byokProviders[0]?.id || ''); setByokApiKey('');
+      setNineRouterModel(nineRouterModels[0] || '');
+      setHasApiKey(false);
+      setLocalServerApiUrl(''); setLocalServerModel('');
+      setTextGenMsg('Reset to default.');
+      setTimeout(() => setTextGenMsg(''), 2000);
+    } catch (err) {
+      setTextGenError(toApiError(err).message);
+    } finally {
+      setTextGenSaving(false);
+    }
+  };
+
+  const handleImageApiUrlChange = (val: string) => {
+    setImageApiUrlValue(val);
+    setImageApiUrl(val);
+    setImageApiUrlSaved(true);
+    setTimeout(() => setImageApiUrlSaved(false), 1500);
   };
 
   return (
@@ -446,17 +564,127 @@ export default function SettingsPage() {
             </div>
           </Panel>
 
-          {/* ── Developer ── */}
+          {/* ── Text Generation ── */}
           <Panel className="p-7">
-            <SectionLabel icon="api">Developer</SectionLabel>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-bold text-on-surface">API Keys</p>
-                <p className="text-xs text-on-surface-variant mt-0.5">Generate comics programmatically via the sandbox.</p>
+            <SectionLabel icon="api">Text Generation</SectionLabel>
+            {!user ? (
+              <p className="text-sm text-on-surface-variant">Sign in to configure your own text-generation provider.</p>
+            ) : textGenLoading ? (
+              <div className="h-24 bg-surface-container-high rounded-xl animate-pulse" />
+            ) : (
+              <div className="space-y-5">
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { key: 'nine_router', label: "App's built-in models" },
+                    { key: 'byok', label: 'Bring your own API key' },
+                    { key: 'local_server', label: 'My own local model server' },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setTextGenMode(opt.key)}
+                      className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-colors ${
+                        textGenMode === opt.key
+                          ? 'bg-primary text-white border-primary'
+                          : 'bg-surface-container text-on-surface-variant border-outline-variant/40 hover:bg-surface-container-high'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                {textGenMode === 'nine_router' && (
+                  <div>
+                    <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Model</label>
+                    <select
+                      value={nineRouterModel || nineRouterModels[0] || ''}
+                      onChange={(e) => setNineRouterModel(e.target.value)}
+                      className="field w-full"
+                    >
+                      {nineRouterModels.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <p className="mt-2 text-[11px] text-outline">Uses the app&apos;s own provider — just pick which model to request.</p>
+                  </div>
+                )}
+
+                {textGenMode === 'byok' && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Provider</label>
+                      <select
+                        value={byokProvider || byokProviders[0]?.id || ''}
+                        onChange={(e) => setByokProvider(e.target.value)}
+                        className="field w-full"
+                      >
+                        {byokProviders.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                      </select>
+                    </div>
+                    <Field
+                      label={hasApiKey ? 'API key (saved — leave blank to keep)' : 'API key'}
+                      type="password"
+                      value={byokApiKey}
+                      onChange={setByokApiKey}
+                      placeholder={hasApiKey ? '••••••••' : 'sk-…'}
+                    />
+                    <p className="text-[11px] text-outline">Paste the API key from your provider&apos;s dashboard — no URL or model needed.</p>
+                  </div>
+                )}
+
+                {textGenMode === 'local_server' && (
+                  <div className="space-y-3">
+                    <Field label="API URL" value={localServerApiUrl} onChange={setLocalServerApiUrl} placeholder="https://your-tunnel.trycloudflare.com" />
+                    <Field label="Model (optional)" value={localServerModel} onChange={setLocalServerModel} placeholder="llama3, gemma2…" />
+                  </div>
+                )}
+
+                {textGenError && (
+                  <p className="text-xs text-red-600 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">error</span>
+                    {textGenError}
+                  </p>
+                )}
+                {textGenMsg && (
+                  <p className="text-xs text-green-600 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">check_circle</span>
+                    {textGenMsg}
+                  </p>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveTextGenConfig}
+                    disabled={textGenSaving}
+                    className="px-4 py-2 rounded-lg text-sm font-bold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  >
+                    {textGenSaving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    onClick={handleClearTextGenConfig}
+                    disabled={textGenSaving}
+                    className="px-4 py-2 rounded-lg text-sm font-bold text-on-surface-variant hover:bg-surface-container-high transition-colors"
+                  >
+                    Reset to default
+                  </button>
+                </div>
               </div>
-              <button className="px-4 py-2 rounded-xl text-sm font-bold bg-surface-container text-primary hover:bg-surface-container-high transition-colors">
-                Manage Keys
-              </button>
+            )}
+          </Panel>
+
+          {/* ── Image Generation ── */}
+          <Panel className="p-7">
+            <SectionLabel icon="image">Image Generation</SectionLabel>
+            <div>
+              <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Image API URL</label>
+              <input
+                type="url"
+                value={imageApiUrlValue}
+                onChange={(e) => handleImageApiUrlChange(e.target.value)}
+                placeholder="https://xxxx.trycloudflare.com"
+                className="field w-full font-mono text-sm"
+              />
+              <p className="mt-2 text-[11px] text-outline">Your Cloudflare tunnel URL — used for image generation in Step 1 and publishing.</p>
+              {imageApiUrlSaved && <p className="mt-1 text-[11px] text-green-600">Saved</p>}
             </div>
           </Panel>
 

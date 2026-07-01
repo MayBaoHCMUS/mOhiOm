@@ -6,6 +6,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from datetime import datetime, timezone
 from app.config import settings
+from app.crypto_utils import decrypt_secret
+from app.deps import get_current_user_optional
+from app.providers import TEXT_GEN_PROVIDERS
 from app.rate_limit import PerUserRateLimiter, QueueFullError, RateLimitExceededError
 from app.services import GeminiService, GeminiServiceError
 from app.schemas import (
@@ -125,6 +128,42 @@ def _resolve_user_key(request: Request) -> str:
     return f"ip:{client_host}"
 
 
+async def _resolve_gemini_service(http_request: Request) -> GeminiService | None:
+    """Resolve the GeminiService for this request: the logged-in user's BYOK/model
+    override if configured, otherwise the shared default singleton."""
+    user = await get_current_user_optional(http_request)
+    if user:
+        cfg = user.get("text_gen_config")
+        if cfg:
+            mode = cfg.get("mode")
+            if mode == "byok":
+                provider_info = TEXT_GEN_PROVIDERS.get(cfg.get("provider", ""))
+                if provider_info:
+                    try:
+                        return GeminiService(
+                            override_url=provider_info["api_url"],
+                            override_api_key=decrypt_secret(cfg.get("api_key_encrypted", "")) or None,
+                            override_model=provider_info["model"],
+                        )
+                    except ValueError:
+                        pass
+            elif mode == "local_server" and cfg.get("api_url"):
+                try:
+                    return GeminiService(
+                        override_url=cfg["api_url"],
+                        override_api_key=None,
+                        override_model=cfg.get("model") or None,
+                    )
+                except ValueError:
+                    pass
+            elif mode == "nine_router" and cfg.get("model"):
+                try:
+                    return GeminiService(override_model=cfg["model"])
+                except (ValueError, ImportError):
+                    pass
+    return gemini_service
+
+
 async def _acquire_limit_token(request: Request):
     try:
         return await gemini_rate_limiter.acquire(_resolve_user_key(request))
@@ -146,7 +185,8 @@ async def _acquire_limit_token(request: Request):
 @router.post("/generate-text")
 async def generate_text(request: TextGenerationRequest, http_request: Request):
     """Generate text using Gemini API with optional streaming."""
-    if gemini_service is None:
+    svc = await _resolve_gemini_service(http_request)
+    if svc is None:
         raise HTTPException(status_code=500, detail=gemini_error_message)
 
     limit_token = await _acquire_limit_token(http_request)
@@ -155,7 +195,7 @@ async def generate_text(request: TextGenerationRequest, http_request: Request):
         if request.stream:
             async def stream_generator():
                 try:
-                    async for chunk in await gemini_service.generate_text(request.prompt, stream=True):
+                    async for chunk in await svc.generate_text(request.prompt, stream=True):
                         yield f"data: {chunk}\n\n"
                     yield "data: [DONE]\n\n"
                 except GeminiServiceError as e:
@@ -181,7 +221,7 @@ async def generate_text(request: TextGenerationRequest, http_request: Request):
                 }
             )
         else:
-            result = await gemini_service.generate_text(request.prompt, stream=False)
+            result = await svc.generate_text(request.prompt, stream=False)
             return {"generated_text": result}
     except GeminiServiceError as e:
         detail = (
@@ -200,7 +240,8 @@ async def generate_text(request: TextGenerationRequest, http_request: Request):
 @router.post("/analyze-story")
 async def analyze_story(request: StoryAnalysisRequest, http_request: Request):
     """Analyze a story for comic adaptation."""
-    if gemini_service is None:
+    svc = await _resolve_gemini_service(http_request)
+    if svc is None:
         raise HTTPException(
             status_code=500,
             detail=gemini_error_message
@@ -209,7 +250,7 @@ async def analyze_story(request: StoryAnalysisRequest, http_request: Request):
 
     limit_token = await _acquire_limit_token(http_request)
     try:
-        analysis = await gemini_service.generate_plot_analysis(
+        analysis = await svc.generate_plot_analysis(
             story_text=request.story_text,
             num_chapters=request.num_chapters,
             desired_main_characters=request.desired_main_characters,
@@ -249,7 +290,8 @@ async def analyze_story_structured(
     The entire pipeline runs in a single LLM call, so there is no silent gap
     that could trigger a Cloudflare 524 timeout.
     """
-    if gemini_service is None:
+    svc = await _resolve_gemini_service(http_request)
+    if svc is None:
         raise HTTPException(
             status_code=500,
             detail=gemini_error_message
@@ -264,7 +306,7 @@ async def analyze_story_structured(
         async def sse_generator():
             try:
                 last_updated = datetime.now(timezone.utc).isoformat()
-                async for event in gemini_service.generate_step1_stream(
+                async for event in svc.generate_step1_stream(
                     project_id=request.project_id,
                     story_text=request.story_text,
                     num_chapters=request.num_chapters,
@@ -315,7 +357,7 @@ async def analyze_story_structured(
     # Non-streaming fallback (kept for direct API / curl usage)
     try:
         last_updated = datetime.now(timezone.utc).isoformat()
-        analysis_markdown, structured_json = await gemini_service.generate_step1_combined(
+        analysis_markdown, structured_json = await svc.generate_step1_combined(
             project_id=request.project_id,
             story_text=request.story_text,
             num_chapters=request.num_chapters,
@@ -359,7 +401,8 @@ async def analyze_story_lightweight(request: LightweightAnalysisRequest, http_re
       data: {"type":"done","result":{...}}
       data: {"type":"error","message":"...","status_code":N}
     """
-    if gemini_service is None:
+    svc = await _resolve_gemini_service(http_request)
+    if svc is None:
         raise HTTPException(
             status_code=500,
             detail=gemini_error_message or "Gemini service is not available.",
@@ -371,7 +414,7 @@ async def analyze_story_lightweight(request: LightweightAnalysisRequest, http_re
 
     async def sse_generator():
         try:
-            async for event in gemini_service.analyze_story_lightweight_stream(
+            async for event in svc.analyze_story_lightweight_stream(
                 story_text=request.story_text,
                 genre_tone=request.genre_tone,
             ):
@@ -417,7 +460,8 @@ async def adapt_story(request: AdaptStoryRequest, http_request: Request):
       data: {"type":"done","adapted_story":"...","changes_summary":[...]}
       data: {"type":"error","message":"...","status_code":N}
     """
-    if gemini_service is None:
+    svc = await _resolve_gemini_service(http_request)
+    if svc is None:
         raise HTTPException(status_code=500, detail=gemini_error_message)
 
     limit_token = await _acquire_limit_token(http_request)
@@ -426,7 +470,7 @@ async def adapt_story(request: AdaptStoryRequest, http_request: Request):
 
     async def sse_generator():
         try:
-            async for event in gemini_service.generate_adapt_story_stream(
+            async for event in svc.generate_adapt_story_stream(
                 original_story=request.original_story,
                 creative_direction=request.creative_direction,
                 genre_tone=request.genre_tone,
@@ -474,12 +518,13 @@ async def generate_character_prompt(
     request: CharacterPromptRequest, http_request: Request
 ):
     """Generate image prompt for a character."""
-    if gemini_service is None:
+    svc = await _resolve_gemini_service(http_request)
+    if svc is None:
         raise HTTPException(status_code=500, detail=gemini_error_message)
 
     limit_token = await _acquire_limit_token(http_request)
     try:
-        prompt = await gemini_service.generate_character_prompts(
+        prompt = await svc.generate_character_prompts(
             request.character_description
         )
         return {"image_prompt": prompt}
@@ -504,7 +549,8 @@ async def generate_character_designs_structured(
     Generate Step 2 character design markdown + structured JSON.
     Streams when request.stream=True (SSE events: token / done / error).
     """
-    if gemini_service is None:
+    svc = await _resolve_gemini_service(http_request)
+    if svc is None:
         raise HTTPException(status_code=500, detail=gemini_error_message)
 
     limit_token = await _acquire_limit_token(http_request)
@@ -515,7 +561,7 @@ async def generate_character_designs_structured(
         async def sse_generator():
             try:
                 last_updated = datetime.now(timezone.utc).isoformat()
-                async for event in gemini_service.generate_step2_stream(
+                async for event in svc.generate_step2_stream(
                     project_id=request.project_id,
                     step1_json=request.step1_json,
                     desired_main_characters=request.desired_main_characters,
@@ -558,14 +604,14 @@ async def generate_character_designs_structured(
 
     try:
         last_updated = datetime.now(timezone.utc).isoformat()
-        design_markdown = await gemini_service.generate_step2_character_design_markdown(
+        design_markdown = await svc.generate_step2_character_design_markdown(
             step1_json=request.step1_json,
             desired_main_characters=request.desired_main_characters,
             genre_tone=request.genre_tone,
             art_style_reference=request.art_style_reference,
             special_requests=request.special_requests,
         )
-        structured_json = await gemini_service.generate_step2_structured_snapshot(
+        structured_json = await svc.generate_step2_structured_snapshot(
             project_id=request.project_id,
             step1_json=request.step1_json,
             desired_main_characters=request.desired_main_characters,
@@ -592,12 +638,13 @@ async def generate_character_designs_structured(
 @router.post("/panel-script")
 async def generate_panel_script(request: PanelScriptRequest, http_request: Request):
     """Generate panel script for a scene."""
-    if gemini_service is None:
+    svc = await _resolve_gemini_service(http_request)
+    if svc is None:
         raise HTTPException(status_code=500, detail=gemini_error_message)
 
     limit_token = await _acquire_limit_token(http_request)
     try:
-        script = await gemini_service.generate_panel_script(request.scene_description)
+        script = await svc.generate_panel_script(request.scene_description)
         return {"panel_script": script}
     except GeminiServiceError as e:
         detail = (
@@ -620,7 +667,8 @@ async def generate_panel_script_structured(
     Generate Step 3 panel script markdown + structured JSON.
     Streams when request.stream=True (SSE events: token / done / error).
     """
-    if gemini_service is None:
+    svc = await _resolve_gemini_service(http_request)
+    if svc is None:
         raise HTTPException(status_code=500, detail=gemini_error_message)
 
     limit_token = await _acquire_limit_token(http_request)
@@ -631,7 +679,7 @@ async def generate_panel_script_structured(
         async def sse_generator():
             try:
                 last_updated = datetime.now(timezone.utc).isoformat()
-                async for event in gemini_service.generate_step3_stream(
+                async for event in svc.generate_step3_stream(
                     project_id=request.project_id,
                     step1_json=request.step1_json,
                     step2_json=request.step2_json,
@@ -677,7 +725,7 @@ async def generate_panel_script_structured(
 
     try:
         last_updated = datetime.now(timezone.utc).isoformat()
-        script_markdown = await gemini_service.generate_step3_panel_script_markdown(
+        script_markdown = await svc.generate_step3_panel_script_markdown(
             step1_json=request.step1_json,
             step2_json=request.step2_json,
             num_chapters=request.num_chapters,
@@ -687,7 +735,7 @@ async def generate_panel_script_structured(
             max_panels_per_page=request.max_panels_per_page,
             special_requests=request.special_requests,
         )
-        structured_json = await gemini_service.generate_step3_structured_snapshot(
+        structured_json = await svc.generate_step3_structured_snapshot(
             project_id=request.project_id,
             step2_json=request.step2_json,
             num_chapters=request.num_chapters,

@@ -1262,6 +1262,42 @@ export const authApi = {
     apiClient.get<{ url: string }>(`/auth/oauth/${provider}/start`, { params: { mode } }),
 };
 
+export type TextGenMode = "byok" | "nine_router" | "local_server";
+
+export interface TextGenConfig {
+  mode: TextGenMode;
+  provider: string;
+  api_url: string;
+  model: string;
+  has_api_key: boolean;
+}
+
+export interface SaveTextGenConfigPayload {
+  mode: TextGenMode;
+  provider?: string;
+  api_url?: string;
+  model?: string;
+  api_key?: string;
+}
+
+export interface TextGenProvider {
+  id: string;
+  label: string;
+}
+
+export const settingsApi = {
+  getTextGenConfig: () => apiClient.get<TextGenConfig>("/settings/text-gen-config"),
+
+  saveTextGenConfig: (payload: SaveTextGenConfigPayload) =>
+    apiClient.put<TextGenConfig>("/settings/text-gen-config", payload),
+
+  clearTextGenConfig: () => apiClient.delete<TextGenConfig>("/settings/text-gen-config"),
+
+  getNineRouterModels: () => apiClient.get<{ models: string[] }>("/settings/nine-router-models"),
+
+  getTextGenProviders: () => apiClient.get<{ providers: TextGenProvider[] }>("/settings/text-gen-providers"),
+};
+
 export interface MangaComposePageRequest {
   panel_images: Record<string, string>;  // 'p1' | 'p2' | … → base64 PNG
   panel_count: number;

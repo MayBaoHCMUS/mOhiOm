@@ -6,8 +6,7 @@ import {
   getPublishHistory, removeFromHistory, fetchLiveStats,
   type PublishedComicRecord,
 } from '@/lib/publishHistory'
-
-const SESSION_KEY = 'mohiom-image-api-url'
+import { getImageApiUrl } from '@/lib/imageApiUrl'
 
 export function PublishHistory() {
   const [apiUrl, setApiUrl] = useState('')
@@ -16,7 +15,7 @@ export function PublishHistory() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const url = window.sessionStorage.getItem(SESSION_KEY) ?? ''
+    const url = getImageApiUrl()
     setApiUrl(url)
     const records = getPublishHistory()
     setHistory(records)

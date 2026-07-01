@@ -1,3 +1,137 @@
+## SESSION: 2026-07-01 — UI Consistency Pass + Per-Character Reference Image System
+
+### ✅ COMPLETED
+
+#### 1. Card Style Consistency — `/editor` and `/my-stories`
+
+Unified all project/story cards across the app to match the `/studio/publish` card style.
+
+**`frontend/src/components/ComicEditor.tsx` (ProjectPicker):**
+- Added `EDITOR_STEP_BADGES` array (S1–S5, matching `has_step1/2/2_images/3/4`)
+- Added `editorAccentFor(id)`, `formatEditorTitle(slug)`, `formatEditorDate(iso)` helpers
+- Card thumbnail: 72px gradient based on project ID hash
+- Card body: 4px solid colored `borderLeft`, formatted title + raw slug in 10px monospace, S1–S5 step badges (filled `#DCFCE7` green for complete, outlined for incomplete), relative date
+- Grid: `minmax(340px, 1fr)`
+
+**`frontend/src/app/studio/my-stories/page.tsx`:**
+- Added `STORY_GRADIENTS`, `STORY_ACCENT_COLORS`, `hashId()`, `storyGradient()`, `storyAccent()`, `formatRelativeDate()` helpers
+- Card thumbnail: 72px gradient, genre badge top-left, title bottom-left
+- Card body: 4px solid `borderLeft` via `storyAccent(id)`, title, relative date + word count
+- Grid: `minmax(340px, 1fr)`
+- Layout fixed: `ml-[var(--studio-sidebar-width)]` + `#F8FAFF` header band (removed conflicting `max-w-[1400px] mx-auto` + `max-w-5xl`)
+
+---
+
+#### 2. Publish Page — Portal Menu + Card Overhaul
+
+**`frontend/src/app/studio/publish/page.tsx`:**
+- Added `createPortal` from `react-dom` — overflow menu escapes card's `overflow:hidden` boundary
+- `PortalMenu` component: positions via `triggerRef.getBoundingClientRect()`, closes on Escape/click-outside, `min-width: 220px`
+- `MenuItemBtn` component with destructive variant
+- `formatProjectTitle(slug)` → Title Case; `formatRelativeDate(iso)` → relative dates
+- `PROJECT_ACCENT_COLORS` + `projectColorFor(id)` — deterministic color from project_id hash
+- Step badge: filled `background: '#DCFCE7'`, `fontWeight: 600`, no border
+- Thumbnail: formatted title in 13px, text-shadow for legibility
+- Card body: `borderLeft: 4px solid ${projectColorFor(id)}`, formatted title + raw slug
+- Subtitle: "Last saved Xh ago" relative format
+- ⋯ button: `menuButtonRef = useRef<HTMLButtonElement>`, shows `bg-[#F3F4F6]` when menu open
+- Grid: `repeat(auto-fill, minmax(340px, 1fr))`, section labels `marginTop: 28px`
+- Step badge display: `getMaxStep` returns 1-indexed (1–5); S5 = has_step4
+
+---
+
+#### 3. ProjectsDrawer — Full Overhaul
+
+**`frontend/src/components/ProjectsDrawer.tsx`:**
+- `PIPELINE_STEP_BADGES`: S1=`has_step1`, S2=`has_step2`, S3=`has_step2_images`, S4=`has_step3`, S5=`has_step4`
+- `getProjectColor(id)`, `formatProjectTitle(slug)`, `formatProjectDate(iso)`, `fullTimestamp(iso)` helpers
+- Sort control: Recent / Name A–Z / Most complete (via `sortProjects(list, key)`)
+- Cards: colored left border `4px solid ${color}`, tinted background via `color-mix(in srgb, color 3%, #FFFFFF)`, formatted title + slug, S1–S5 badges, relative date + genre
+- "Open Project" button (primary action), conditional "Publish →" link when has_step4
+- Empty state with `FolderOpen` icon + "Start new project" dashed button
+- Removed: `publishingId`, `deleteConfirmId`, `handlePublish`, `handleAddToReferencePool`
+- Save always enabled (removed `const canSave = !!step3.data` guard)
+- Width: `min-width: 440px, max-width: 520px, width: 90vw`
+
+---
+
+#### 4. Step 3 Reference Images — Library/Community as IP-Adapter (not pipeline characters)
+
+**`frontend/src/components/studio-steps/Step2Characters.tsx`:**
+
+Changed the behavior of "From Library" and "Browse Community" buttons in the References tab from `injectLibraryCharacters` (which added pipeline characters) to `handleAddReferenceFromPicker` which:
+- Fetches the selected image URL → base64
+- Applies to all pipeline characters without an existing `referenceImageBase64`
+- Switches those characters from mode 1 (Text) → mode 2 (+Ref) so the reference slot appears
+- Image shows up in each character's existing "Upload reference image" slot in `GenerationModePanel`
+
+---
+
+#### 5. Per-Character Reference Image: Library/Community Pickers + "Use as Character Image"
+
+**`frontend/src/context/ComicGenerationContext.tsx`:**
+- Added `addCandidateFromImage(characterId: string, imageDataUrl: string)`:
+  - Creates a new `CharacterImageCandidate` with `crypto.randomUUID()` id
+  - Appends candidate to that character's `candidates[]` in `step2ImageReview`
+  - Sets it as `selectedCandidateId`
+  - Sets character `status: 'success'`
+- Exported in context value + type declaration
+
+**`frontend/src/components/studio-steps/Step2Characters.tsx`:**
+
+Modal state refactored from `isLibraryOpen: boolean` / `isGalleryOpen: boolean` to:
+- `libraryTargetCharId: string | null` (`null` = closed, `'__all__'` = tab-level, `charId` = per-character)
+- `galleryTargetCharId: string | null` (same semantics)
+- `isLibraryOpen = libraryTargetCharId !== null` (derived)
+- `isGalleryOpen = galleryTargetCharId !== null` (derived)
+
+New handlers:
+- `fetchImageBase64(url)` — fetch URL → raw base64 (strips data: prefix)
+- `handleAddReferenceFromPicker(chars)` — async; uses `libraryTargetCharId ?? galleryTargetCharId` to determine scope: `'__all__'` = all chars without a ref; charId = only that character
+- `handleUseAsCharacterImage(charId, base64)` — calls `addCandidateFromImage(charId, 'data:image/png;base64,'+base64)`
+
+`GenerationModePanel` new props (optional):
+- `onPickReferenceFromLibrary?: () => void`
+- `onPickReferenceFromCommunity?: () => void`
+- `onUseAsCharacterImage?: (base64: string) => void`
+
+In reference section (when mode is +Ref or All), now shows:
+1. File upload label (unchanged)
+2. "From Library" + "Browse Community" pill buttons (if callbacks provided)
+3. When `referenceImageBase64` is set: thumbnail preview + "Use as character image" text button + "Remove"
+
+`ImageGenPanel` and `CharacterAccordionCard` both extended with the same 3 optional props and thread them down the chain.
+
+At call site (`CharacterAccordionCard` render in References tab):
+- `onPickReferenceFromLibrary={() => setLibraryTargetCharId(charId)}`
+- `onPickReferenceFromCommunity={() => setGalleryTargetCharId(charId)}`
+- `onUseAsCharacterImage={(base64) => handleUseAsCharacterImage(charId, base64)}`
+
+Tab-level "From Library" / "Browse Community" buttons remain — they set `'__all__'` as target and apply the reference to all chars without one.
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/context/ComicGenerationContext.tsx` — `addCandidateFromImage` function + type
+- `frontend/src/components/studio-steps/Step2Characters.tsx` — modal state refactor, `handleAddReferenceFromPicker`, `handleUseAsCharacterImage`, `fetchImageBase64`; `GenerationModePanel` / `ImageGenPanel` / `CharacterAccordionCard` new props; per-character Library/Community buttons + "Use as character image" in reference section
+- `frontend/src/app/studio/publish/page.tsx` — portal menu, card overhaul, formatters
+- `frontend/src/components/ProjectsDrawer.tsx` — full rewrite (sort, step badges, card style, remove publish/delete logic)
+- `frontend/src/components/ComicEditor.tsx` — card style consistency (gradient thumbnail, colored border, S1–S5 badges)
+- `frontend/src/app/studio/my-stories/page.tsx` — layout fix (`ml-[var(--studio-sidebar-width)]`), card style consistency
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **`addCandidateFromImage` uses data URL**: the imageUrl stored in `CharacterImageCandidate.imageUrl` is a `data:image/png;base64,...` string. The image grid already renders any URL in `<img src>` so it works without changes.
+- **Tab-level vs per-character**: `'__all__'` sentinel in `libraryTargetCharId`/`galleryTargetCharId` allows a single modal and handler to serve both scope levels. The `onConfirm` handler reads the target at call time (not at state-set time) so React batching doesn't cause stale closures.
+- **Reference slot visibility**: setting `referenceImageBase64` alone doesn't make the UI slot visible — mode must also be 2 (+Ref) or 4 (All). `handleAddReferenceFromPicker` upgrades mode 1 → 2 automatically.
+- **"Use as character image" is non-destructive**: it adds a NEW candidate (doesn't replace existing ones) and selects it. User can switch back to AI-generated candidates via the existing candidate selector.
+- **Pre-existing TS error**: `AnalyticsDashboard.tsx(409,29): error TS7006` remains — pre-existing, not introduced this session.
+
+---
+
 ## SESSION: 2026-06-30 — Publish History (Read Count Analytics)
 
 ### ✅ COMPLETED

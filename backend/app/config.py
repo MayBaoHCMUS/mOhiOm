@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     NINE_ROUTER_API_KEY: str = ""
     NINE_ROUTER_MODEL: str = "kr/claude-sonnet-4.5"
     NINE_ROUTER_TIMEOUT_SECONDS: float = 60.0
+    # Comma-separated list of models users can switch between in "nine_router" BYOK mode.
+    # Falls back to [NINE_ROUTER_MODEL] when blank.
+    NINE_ROUTER_AVAILABLE_MODELS: str = ""
 
     # CORS
     CORS_ORIGINS: List[str] = [

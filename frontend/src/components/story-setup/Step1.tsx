@@ -232,7 +232,6 @@ export default function Step1() {
     setMaxPanelsPerPage,
     setArtStyle,
     setSpecialRequests,
-    setLocalImageApiUrl,
     imageGenStyle,
     setImageGenStyle,
     getCooldownSeconds,
@@ -703,20 +702,17 @@ export default function Step1() {
             <p className="text-xs text-gray-600">Include medium, style, and color preference.</p>
           </div>
 
-          {/* Image API URL */}
+          {/* Image API URL — configured on the Settings page */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="block text-xs font-bold uppercase tracking-widest text-gray-500" htmlFor="pipeline-image-api">Image API URL</label>
-              <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-200 text-gray-500 rounded-full px-2 py-0.5">Optional</span>
+              <label className="block text-xs font-bold uppercase tracking-widest text-gray-500">Image API URL</label>
+              <Link href="/settings" className="text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:underline">
+                Edit in Settings
+              </Link>
             </div>
-            <input
-              id="pipeline-image-api"
-              value={localImageApiUrl}
-              onChange={(e) => setLocalImageApiUrl(e.target.value)}
-              className="w-full rounded-2xl bg-white px-4 py-3 text-sm focus:outline-none border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              placeholder="https://your-tunnel.loca.lt/generate"
-              disabled={isGenerating}
-            />
+            <p className="text-sm text-gray-700 truncate">
+              {localImageApiUrl || <span className="text-gray-400">Not configured</span>}
+            </p>
             <p className="text-xs text-gray-600">Local image generation endpoint. Required for image generation.</p>
           </div>
 

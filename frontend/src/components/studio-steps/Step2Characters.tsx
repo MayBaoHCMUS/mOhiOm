@@ -2463,31 +2463,6 @@ export default function Step2Characters() {
               {/* Divider */}
               <div className="w-px h-5 bg-outline-variant/20 mx-0.5 flex-shrink-0" />
 
-              {/* From Library */}
-              <button
-                type="button"
-                onClick={() => setLibraryTargetCharId('__all__')}
-                disabled={isImageGenerating}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors disabled:opacity-40"
-              >
-                <span className="material-symbols-outlined text-base">library_books</span>
-                From Library
-              </button>
-
-              {/* Browse Community */}
-              <button
-                type="button"
-                onClick={() => setGalleryTargetCharId('__all__')}
-                disabled={isImageGenerating}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors disabled:opacity-40"
-              >
-                <span className="material-symbols-outlined text-base">public</span>
-                Browse Community
-              </button>
-
-              {/* Divider */}
-              <div className="w-px h-5 bg-outline-variant/20 mx-0.5 flex-shrink-0" />
-
               {/* Reset */}
               <button
                 type="button"

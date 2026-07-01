@@ -35,6 +35,7 @@ import {
   fetchLiveStats,
   type PublishedComicRecord,
 } from '@/lib/publishHistory'
+import { getImageApiUrl } from '@/lib/imageApiUrl'
 
 Chart.register(...registerables)
 
@@ -472,8 +473,6 @@ function ActivityLineChart({ data }: { data: { date: string; count: number }[] }
 
 // ── main dashboard ────────────────────────────────────────────────
 
-const PUBLISH_SESSION_KEY = 'mohiom-image-api-url'
-
 export function AnalyticsDashboard() {
   const [range, setRange] = useState<Range>(7)
   const [events, setEvents] = useState<GenerateEvent[]>([])
@@ -497,7 +496,7 @@ export function AnalyticsDashboard() {
   useEffect(() => {
     const records = getPublishHistory()
     setPublishHistory(records)
-    const url = window.sessionStorage.getItem(PUBLISH_SESSION_KEY) ?? ''
+    const url = getImageApiUrl()
     setPublishApiUrl(url)
     if (url && records.length) {
       loadLiveStats(url, records)

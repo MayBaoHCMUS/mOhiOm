@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { projectsApi } from '@/services/api';
 import type { CharacterSummary, CloudProjectListItem } from '@/services/api';
+import { getImageApiUrl } from '@/lib/imageApiUrl';
 
 // ─── Static data ──────────────────────────────────────────────────────────────
 
@@ -242,10 +243,10 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
     setProjectId(defaultProjectId ?? '');
   }, [defaultProjectId]);
 
-  // Read API URL from sessionStorage
+  // Read API URL from the shared image-api-url setting
   useEffect(() => {
     if (!isOpen) return;
-    const stored = window.sessionStorage.getItem('mohiom-image-api-url');
+    const stored = getImageApiUrl();
     if (stored) setApiUrl(stored);
   }, [isOpen]);
 

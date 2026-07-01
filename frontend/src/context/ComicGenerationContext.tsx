@@ -16,6 +16,7 @@ import { recomposePages, DEFAULT_BORDER_CONFIG } from '@/lib/borderComposer';
 import type { BorderConfig } from '@/lib/borderComposer';
 import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
 import { trackEvent } from '@/lib/analytics';
+import { getImageApiUrl, setImageApiUrl } from '@/lib/imageApiUrl';
 import type { ExportPage } from '@/lib/export';
 import type { SingleBubble } from '@/components/studio-steps/DialogueEditor';
 
@@ -779,20 +780,14 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.sessionStorage.getItem('mohiom-image-api-url');
+    const stored = getImageApiUrl();
     if (stored) {
       setLocalImageApiUrl(stored);
     }
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!localImageApiUrl.trim()) {
-      window.sessionStorage.removeItem('mohiom-image-api-url');
-      return;
-    }
-    window.sessionStorage.setItem('mohiom-image-api-url', localImageApiUrl.trim());
+    setImageApiUrl(localImageApiUrl);
   }, [localImageApiUrl]);
 
   const stepMap: Record<StepKey, StepState<unknown>> = useMemo(

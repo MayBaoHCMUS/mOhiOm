@@ -13,12 +13,12 @@ import type { BorderConfig } from '@/lib/borderComposer';
 import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
 import { downloadSocialPack, PLATFORMS } from '@/lib/socialPack';
 import { recordPublish } from '@/lib/publishHistory';
+import { getImageApiUrl } from '@/lib/imageApiUrl';
 import {
   AlertTriangle, CheckCircle2, ChevronDown, Eye, EyeOff, ExternalLink,
   MoreHorizontal, RefreshCw,
 } from 'lucide-react';
 
-const SESSION_KEY = 'mohiom-image-api-url';
 const CARD_STATES_KEY = 'mohiom-export-card-states';
 
 // ── Gradient system (matches Home page) ────────────────────────────
@@ -807,7 +807,6 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
 // ── Publish Page ──────────────────────────────────────────────────────
 export default function PublishPage() {
   const [apiUrl, setApiUrl] = useState('');
-  const [urlExpanded, setUrlExpanded] = useState(false);
   const [projects, setProjects] = useState<CloudProjectListItem[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [cardStates, setCardStates] = useState<Record<string, CardState>>(() => {
@@ -819,20 +818,8 @@ export default function PublishPage() {
   const pagesCache = useRef<Map<string, string[]>>(new Map());
 
   useEffect(() => {
-    const stored = window.sessionStorage.getItem(SESSION_KEY);
-    if (stored) setApiUrl(stored.replace(/\/$/, ''));
+    setApiUrl(getImageApiUrl());
   }, []);
-
-  function handleUrlChange(val: string) {
-    const trimmed = val.replace(/\/$/, '');
-    setApiUrl(trimmed);
-    if (trimmed) {
-      window.sessionStorage.setItem(SESSION_KEY, trimmed);
-      setUrlExpanded(false);
-    } else {
-      window.sessionStorage.removeItem(SESSION_KEY);
-    }
-  }
 
   useEffect(() => {
     setLoadingProjects(true);
@@ -1092,8 +1079,6 @@ export default function PublishPage() {
   const publishedProjects   = projects.filter(p => cardStates[p.project_id]?.status === 'done');
   const unpublishedProjects = projects.filter(p => cardStates[p.project_id]?.status !== 'done');
 
-  const showUrlCard = !apiUrl || urlExpanded;
-
   return (
     <div className="min-h-screen bg-surface text-on-surface">
       <StudioSidebar />
@@ -1111,54 +1096,25 @@ export default function PublishPage() {
         <div className="px-8 py-8 pb-16 flex-1">
           <div className="max-w-4xl mx-auto">
 
-            {/* FIX 4: Server URL — collapsed status bar or full card */}
-            {showUrlCard ? (
-              <div className="bg-surface-container-low border border-outline-variant/20 rounded-2xl p-6 mb-8">
-                <div className="flex items-start gap-3 mb-4">
-                  <span className="material-symbols-outlined text-primary mt-0.5">language</span>
-                  <div>
-                    <p className="text-[13px] font-bold text-on-surface">Web Reader Server URL</p>
-                    <p className="text-[11px] text-on-surface-variant mt-0.5">
-                      Your Cloudflare tunnel URL — the same server used for image generation in Step 1.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={apiUrl}
-                    onChange={e => handleUrlChange(e.target.value)}
-                    placeholder="https://xxxx.trycloudflare.com"
-                    className="field flex-1 font-mono text-sm"
-                    autoFocus={urlExpanded}
-                  />
-                  {apiUrl && (
-                    <a href={apiUrl} target="_blank" rel="noopener noreferrer"
-                      className="shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-outline-variant/40 text-[13px] text-on-surface-variant hover:bg-surface-container transition-colors">
-                      <span className="material-symbols-outlined text-base">open_in_new</span>
-                      Test
-                    </a>
-                  )}
-                </div>
-                {!apiUrl && (
-                  <p className="text-[11px] text-amber-600 mt-2.5 flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-sm">warning</span>
-                    Enter the server URL above to enable publishing.
-                  </p>
-                )}
-              </div>
-            ) : (
-              /* FIX 4: Compact status bar when URL is set */
+            {/* Server URL — read-only status; configured on the Settings page */}
+            {apiUrl ? (
               <div className="flex items-center gap-2.5 h-10 px-4 bg-emerald-50 border border-emerald-200 rounded-xl mb-8">
                 <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
                 <span className="text-[13px] font-semibold text-emerald-700">Server connected</span>
                 <span className="text-[12px] text-on-surface-variant truncate max-w-[320px]">
                   · {apiUrl}
                 </span>
-                <button type="button" onClick={() => setUrlExpanded(true)}
-                  className="ml-auto text-[12px] text-primary hover:underline whitespace-nowrap shrink-0">
+                <Link href="/settings" className="ml-auto text-[12px] text-primary hover:underline whitespace-nowrap shrink-0">
                   Change →
-                </button>
+                </Link>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2.5 h-10 px-4 bg-amber-50 border border-amber-200 rounded-xl mb-8">
+                <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                <span className="text-[13px] font-semibold text-amber-700">No web reader server configured</span>
+                <Link href="/settings" className="ml-auto text-[12px] text-primary hover:underline whitespace-nowrap shrink-0">
+                  Configure in Settings →
+                </Link>
               </div>
             )}
 
