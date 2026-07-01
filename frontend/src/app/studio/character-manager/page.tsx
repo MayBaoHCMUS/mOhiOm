@@ -439,8 +439,7 @@ export default function CharacterManagerPage() {
   };
 
   const handleLoadProject = (projectId: string) => {
-    window.localStorage.setItem('mohiom-pending-load', projectId);
-    router.push('/studio');
+    router.push(`/studio?project=${encodeURIComponent(projectId)}`);
   };
 
   const handleSaved = (updated: CharacterSummary) => {

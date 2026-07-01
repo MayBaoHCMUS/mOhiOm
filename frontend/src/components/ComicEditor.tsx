@@ -1000,6 +1000,7 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
     step4,
     step4PanelsByPage,
     loadFromCloud,
+    clearProjectFromUrl,
     projectId,
     pageLayoutNames,
     borderConfig,
@@ -1380,7 +1381,7 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
         <div className="flex items-center gap-2 px-3 h-9 border-b border-outline-variant/20 bg-surface shrink-0">
           <button
             type="button"
-            onClick={() => setForcePicker(true)}
+            onClick={() => { setForcePicker(true); clearProjectFromUrl() }}
             className="flex items-center gap-1.5 text-[12px] text-on-surface-variant hover:text-on-surface transition-colors"
           >
             <ArrowLeft size={13} />

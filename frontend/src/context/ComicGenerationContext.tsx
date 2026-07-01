@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   geminiApi,
   comicLayoutApi,
@@ -620,6 +621,7 @@ export interface ComicGenerationContextValue {
   cloudSaveError: string | null;
   saveToCloud: () => Promise<void>;
   loadFromCloud: (projectId: string) => Promise<{ success: boolean; error?: string }>;
+  clearProjectFromUrl: () => void;
   listCloudProjects: () => Promise<CloudProjectListItem[]>;
   injectLibraryCharacters: (chars: CharacterSummary[]) => void;
   addCandidateFromImage: (characterId: string, imageDataUrl: string) => void;
@@ -636,7 +638,15 @@ export interface ComicGenerationContextValue {
 
 const ComicGenerationContext = createContext<ComicGenerationContextValue | null>(null);
 
-export function ComicGenerationProvider({ children }: { children: React.ReactNode }) {
+export function ComicGenerationProvider({
+  children,
+  initialProjectId,
+}: {
+  children: React.ReactNode;
+  initialProjectId?: string | null;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [projectId, setProjectId] = useState('three_little_pigs_manga_001');
   const [storyFile, setStoryFile] = useState<File | null>(null);
   const [storyText, setStoryText] = useState('');
@@ -706,21 +716,23 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     return () => window.clearInterval(timer);
   }, []);
 
-  // Auto-load a project queued from the dashboard via localStorage.
+  // Auto-load the project named by the ?project= URL param (set by dashboard/character-manager).
+  const initialLoadRanRef = useRef(false);
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const pending = window.localStorage.getItem('mohiom-pending-load');
-    if (!pending) return;
-    window.localStorage.removeItem('mohiom-pending-load');
-    Promise.all([
-      projectsApi.load(pending),
-      projectsApi.loadImages(pending).catch(() => ({ data: { images: [] as ProjectImageEntry[] } })),
-    ]).then(([projectRes, imagesRes]) => {
-      const result = restoreFromFullSave(projectRes.data as unknown as Record<string, unknown>);
-      if (result.success) applyLoadedImages(imagesRes.data.images);
-    }).catch(() => { /* silently ignore if project was deleted */ });
+    if (initialLoadRanRef.current) return;
+    initialLoadRanRef.current = true;
+    if (!initialProjectId) return;
+    loadFromCloud(initialProjectId).catch(() => { /* silently ignore if project was deleted */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep ?project=<id> in the URL in sync, but only when a project is explicitly opened via
+  // loadFromCloud — not for incidental projectId changes (typing a new ID, the Story Setup
+  // pre-fill restore below, etc.). Uses the current pathname rather than a hardcoded route since
+  // this provider is shared by both the pipeline (/studio) and the standalone editor (/studio/editor).
+  const lastSyncedProjectIdRef = useRef<string | null>(initialProjectId ?? null);
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
 
   // Import JSON queued from dashboard via localStorage.
   useEffect(() => {
@@ -3205,11 +3217,24 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         projectsApi.loadImages(cloudProjectId).catch(() => ({ data: { images: [] as ProjectImageEntry[] } })),
       ]);
       const result = restoreFromFullSave(projectRes.data as unknown as Record<string, unknown>);
-      if (result.success) applyLoadedImages(imagesRes.data.images);
+      if (result.success) {
+        applyLoadedImages(imagesRes.data.images);
+        if (lastSyncedProjectIdRef.current !== cloudProjectId) {
+          lastSyncedProjectIdRef.current = cloudProjectId;
+          router.replace(`${pathnameRef.current}?project=${encodeURIComponent(cloudProjectId)}`, { scroll: false });
+        }
+      }
       return result;
     } catch (err) {
       return { success: false, error: toApiError(err).message };
     }
+  };
+
+  // Clears ?project=<id> from the URL (e.g. "All Projects" back button) and resets the sync
+  // guard so re-opening the same project afterwards still updates the URL.
+  const clearProjectFromUrl = () => {
+    lastSyncedProjectIdRef.current = null;
+    router.replace(pathnameRef.current, { scroll: false });
   };
 
   const listCloudProjects = async (): Promise<CloudProjectListItem[]> => {
@@ -3382,6 +3407,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     cloudSaveError,
     saveToCloud,
     loadFromCloud,
+    clearProjectFromUrl,
     listCloudProjects,
     injectLibraryCharacters,
     addCandidateFromImage,

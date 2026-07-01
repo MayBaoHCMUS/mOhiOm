@@ -194,9 +194,13 @@ function WizardContent() {
   );
 }
 
-export default function TextToComicGenerator() {
+interface TextToComicGeneratorProps {
+  initialProjectId?: string | null;
+}
+
+export default function TextToComicGenerator({ initialProjectId }: TextToComicGeneratorProps = {}) {
   return (
-    <ComicGenerationProvider>
+    <ComicGenerationProvider initialProjectId={initialProjectId}>
       <WizardContent />
     </ComicGenerationProvider>
   );
