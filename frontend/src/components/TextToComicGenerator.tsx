@@ -9,13 +9,15 @@ import Step1Analysis from '@/components/studio-steps/Step1Analysis';
 import Step2Characters from '@/components/studio-steps/Step2Characters';
 import Step3Script from '@/components/studio-steps/Step3Script';
 import Step4Generation from '@/components/studio-steps/Step4Generation';
+import Step5Export from '@/components/studio-steps/Step5Export';
 
 const wizardSteps = [
-  { key: 0, label: 'Setup', subtitle: 'Project configuration', Component: Step0Setup },
-  { key: 1, label: 'Analysis', subtitle: 'Story breakdown', Component: Step1Analysis },
-  { key: 2, label: 'Characters', subtitle: 'Designs and references', Component: Step2Characters },
-  { key: 3, label: 'Script', subtitle: 'Panel-by-panel script', Component: Step3Script },
-  { key: 4, label: 'Generation', subtitle: 'Images and export', Component: Step4Generation },
+  { key: 0, label: 'Setup',      subtitle: 'Project configuration',      Component: Step0Setup },
+  { key: 1, label: 'Analysis',   subtitle: 'Story breakdown',            Component: Step1Analysis },
+  { key: 2, label: 'Characters', subtitle: 'Designs and references',     Component: Step2Characters },
+  { key: 3, label: 'Script',     subtitle: 'Panel-by-panel script',      Component: Step3Script },
+  { key: 4, label: 'Generate',   subtitle: 'Layout & image generation',  Component: Step4Generation },
+  { key: 5, label: 'Export',     subtitle: 'Export & finish',            Component: Step5Export },
 ] as const;
 
 function WizardContent() {
@@ -75,27 +77,27 @@ function WizardContent() {
       <StudioTopBar />
 
       <main className="ml-[var(--studio-sidebar-width)] pt-24 min-h-screen pb-28">
-        <div className="px-10 py-10 max-w-6xl mx-auto">
-          <section className="bg-white text-gray-900 rounded-3xl p-6">
+        <div className="px-4 sm:px-8 lg:px-10 py-6 lg:py-10 max-w-6xl mx-auto">
+          <section className="bg-white text-gray-900 rounded-3xl p-4 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.3em] text-gray-500">Comic Studio Wizard</p>
-                <h1 className="text-3xl font-semibold">Text-to-Comic Pipeline</h1>
+                <h1 className="text-2xl sm:text-3xl font-semibold">Text-to-Comic Pipeline</h1>
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-sm text-gray-600">Step {activeStep + 1} of {wizardSteps.length}</div>
               </div>
             </div>
 
-            <div className="mt-8">
-              <div className="flex items-start gap-4">
+            <div className="mt-6 sm:mt-8">
+              <div className="flex items-start gap-2 sm:gap-4 overflow-x-auto pb-2 hide-scrollbar">
                 {wizardSteps.map((step, index) => {
                   const isActive = step.key === activeStep;
                   const isComplete = step.key < activeStep;
                   const isLocked = step.key >= 1 && step.key !== activeStep && stepMap[step.key as StepKey]?.locked;
 
                   return (
-                    <div key={step.key} className="flex-1 min-w-[140px]">
+                    <div key={step.key} className="flex-1 min-w-[100px] sm:min-w-[120px]">
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
@@ -143,9 +145,9 @@ function WizardContent() {
       </main>
 
       {/* Sticky bottom navigation bar — hidden on steps that own their action bar */}
-      {activeStep !== 1 && activeStep !== 2 && activeStep !== 3 && activeStep !== 4 && <div className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
+      {activeStep !== 1 && activeStep !== 2 && activeStep !== 3 && activeStep !== 4 && activeStep !== 5 && <div className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
         style={{ left: 'var(--studio-sidebar-width)' }}>
-        <div className="px-10 py-4 max-w-6xl mx-auto flex items-center justify-between">
+        <div className="px-4 sm:px-8 lg:px-10 py-4 max-w-6xl mx-auto flex items-center justify-between">
           {/* Previous Step — hidden on Step 1, ghost on Steps 2–5 */}
           {activeStep > 0 ? (
             <button
@@ -192,9 +194,13 @@ function WizardContent() {
   );
 }
 
-export default function TextToComicGenerator() {
+interface TextToComicGeneratorProps {
+  initialProjectId?: string | null;
+}
+
+export default function TextToComicGenerator({ initialProjectId }: TextToComicGeneratorProps = {}) {
   return (
-    <ComicGenerationProvider>
+    <ComicGenerationProvider initialProjectId={initialProjectId}>
       <WizardContent />
     </ComicGenerationProvider>
   );

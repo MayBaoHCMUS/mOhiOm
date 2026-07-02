@@ -41,10 +41,6 @@ export default function StudioTopBar({ leftOffset = true }: StudioTopBarProps) {
         </div>
       </div>
       <div className="flex items-center gap-4">
-        <Link className="text-primary font-semibold text-sm" href="/pricing">
-          Pricing
-        </Link>
-        <div className="h-6 w-px bg-outline-variant/40"></div>
         <button className="hover:opacity-80 transition-opacity" aria-label="Notifications">
           <span className="material-symbols-outlined">notifications</span>
         </button>

@@ -187,6 +187,78 @@ export interface PanelImageResponse {
   image_data_url?: string;
 }
 
+export interface ComposePanelInput {
+  panel_number: number;
+  page_number: number;
+  shot_type?: string;
+  dialogue?: string | null;
+  image_data_url: string;
+}
+
+export interface ComposePageRequest {
+  panels: ComposePanelInput[];
+  style?: string;
+  layout?: number[][];          // explicit panel-index rows, e.g. [[0,1],[2]]
+  use_smart_layout?: boolean;   // let Gemini pick the best layout template
+}
+
+export interface ComposePageResponse {
+  status: string;
+  page_base64: string;
+  page_width: number;
+  page_height: number;
+  panel_count: number;
+  layout_name?: string;         // e.g. "2×2 Grid"
+}
+
+export interface AutoLayoutPanel {
+  panel_number: number;
+  shot_type?: string;
+  dialogue?: string | null;
+}
+
+export interface AutoLayoutRequest {
+  page_image_data_url: string;
+  panels: AutoLayoutPanel[];
+  style?: string;
+}
+
+export interface AutoLayoutResponse {
+  status: string;
+  page_base64: string;
+  page_width: number;
+  page_height: number;
+  panel_count: number;
+  detected_panels: number;
+}
+
+export interface LayoutDimensionsPanel {
+  panel_number: number;
+  shot_type?: string;
+}
+
+export interface LayoutDimensionsRequest {
+  panels: LayoutDimensionsPanel[];
+  layout_name: string;
+  style?: string;
+}
+
+export interface PanelCellDimension {
+  panel_index: number;
+  panel_number: number;
+  width: number;
+  height: number;
+}
+
+export interface LayoutDimensionsResponse {
+  status: string;
+  layout_name: string;
+  layout: number[][];
+  dimensions: PanelCellDimension[];
+  page_width: number;
+  page_height: number;
+}
+
 export const toApiError = (error: unknown): ApiErrorInfo => {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status ?? 0;
@@ -774,18 +846,16 @@ export const geminiApi = {
               onComplete(structuredJson || {});
               return;
             }
-            if (data.startsWith("[STRUCTURED_JSON]")) {
-              try {
-                structuredJson = JSON.parse(data.slice(17));
-              } catch {
-                // ignore parse errors
-              }
-              continue;
-            }
             try {
               const parsed = JSON.parse(data);
-              if (parsed.error) {
-                onError(parsed.error);
+              if (parsed.type === "token" && typeof parsed.content === "string") {
+                onChunk(parsed.content);
+              } else if (parsed.type === "done") {
+                structuredJson = (parsed.structured_json as Record<string, unknown>) ?? {};
+                onComplete(structuredJson);
+                return;
+              } else if (parsed.type === "error" || parsed.error) {
+                onError(parsed.message || parsed.error || "Unknown error");
                 return;
               }
             } catch {
@@ -855,18 +925,16 @@ export const geminiApi = {
               onComplete(structuredJson || {});
               return;
             }
-            if (data.startsWith("[STRUCTURED_JSON]")) {
-              try {
-                structuredJson = JSON.parse(data.slice(17));
-              } catch {
-                // ignore parse errors
-              }
-              continue;
-            }
             try {
               const parsed = JSON.parse(data);
-              if (parsed.error) {
-                onError(parsed.error);
+              if (parsed.type === "token" && typeof parsed.content === "string") {
+                onChunk(parsed.content);
+              } else if (parsed.type === "done") {
+                structuredJson = (parsed.structured_json as Record<string, unknown>) ?? {};
+                onComplete(structuredJson);
+                return;
+              } else if (parsed.type === "error" || parsed.error) {
+                onError(parsed.message || parsed.error || "Unknown error");
                 return;
               }
             } catch {
@@ -936,18 +1004,16 @@ export const geminiApi = {
               onComplete(structuredJson || {});
               return;
             }
-            if (data.startsWith("[STRUCTURED_JSON]")) {
-              try {
-                structuredJson = JSON.parse(data.slice(17));
-              } catch {
-                // ignore parse errors
-              }
-              continue;
-            }
             try {
               const parsed = JSON.parse(data);
-              if (parsed.error) {
-                onError(parsed.error);
+              if (parsed.type === "token" && typeof parsed.content === "string") {
+                onChunk(parsed.content);
+              } else if (parsed.type === "done") {
+                structuredJson = (parsed.structured_json as Record<string, unknown>) ?? {};
+                onComplete(structuredJson);
+                return;
+              } else if (parsed.type === "error" || parsed.error) {
+                onError(parsed.message || parsed.error || "Unknown error");
                 return;
               }
             } catch {
@@ -975,6 +1041,15 @@ export const geminiApi = {
 
   generatePanelImage: (payload: PanelImagePayload) =>
     apiClient.post<PanelImageResponse>("/gemini/generate-panel-image", payload),
+
+  composePage: (payload: ComposePageRequest) =>
+    apiClient.post<ComposePageResponse>("/gemini/compose-page", payload),
+
+  autoLayout: (payload: AutoLayoutRequest) =>
+    apiClient.post<AutoLayoutResponse>("/gemini/auto-layout", payload),
+
+  getLayoutDimensions: (payload: LayoutDimensionsRequest) =>
+    apiClient.post<LayoutDimensionsResponse>("/gemini/layout-dimensions", payload),
 
   health: () => apiClient.get("/gemini/health"),
 };
@@ -1007,6 +1082,15 @@ export interface FullProjectSave {
   user_inputs: Record<string, unknown>;
   image_gen_settings: Record<string, unknown>;
   steps: Record<string, unknown>;
+}
+
+export interface ProjectImageEntry {
+  image_key: string;
+  image_data: string;
+}
+
+export interface ProjectImagesResponse {
+  images: ProjectImageEntry[];
 }
 
 export interface CloudProjectListItem {
@@ -1076,6 +1160,15 @@ export const projectsApi = {
     apiClient.get<CloudProjectListItem[]>("/projects/"),
   load: (projectId: string) =>
     apiClient.get<FullProjectSave>(`/projects/${encodeURIComponent(projectId)}`),
+  saveImages: (projectId: string, images: ProjectImageEntry[]) =>
+    apiClient.post<{ saved: number; message: string }>(
+      `/projects/${encodeURIComponent(projectId)}/images`,
+      { images }
+    ),
+  loadImages: (projectId: string) =>
+    apiClient.get<ProjectImagesResponse>(
+      `/projects/${encodeURIComponent(projectId)}/images`
+    ),
   delete: (projectId: string) =>
     apiClient.delete<{ message: string }>(`/projects/${encodeURIComponent(projectId)}`),
   characters: () =>
@@ -1107,6 +1200,46 @@ export const galleryApi = {
     apiClient.get<GalleryComicDetail>(`/gallery/comics/${encodeURIComponent(projectId)}`),
 };
 
+// ─── Bubble data types ───────────────────────────────────────────────────────
+
+export interface BubbleDataPayload {
+  id: string;
+  dialogue: string | null;
+  bubbleType: string;
+  tailDir: string;
+  bubblePosition: { x: number; y: number };
+  bubbleSize: { w: number; h: number };
+  fontSize: number;
+  rotation: number;
+  opacity?: number;
+  fillColor?: string;
+  textColor?: string;
+  character?: string;
+  zIndex: number;
+  crossPanel?: boolean;
+}
+
+export interface PanelBubblesDoc {
+  panelId: string;
+  comicId: string;
+  bubbles: BubbleDataPayload[];
+}
+
+export const bubblesApi = {
+  getForComic: (comicId: string) =>
+    apiClient.get<PanelBubblesDoc[]>("/bubbles", { params: { comicId } }),
+  upsert: (panelId: string, comicId: string, bubbles: BubbleDataPayload[]) =>
+    apiClient.put<{ ok: boolean; panelId: string }>(`/bubbles/${encodeURIComponent(panelId)}`, {
+      panelId,
+      comicId,
+      bubbles,
+    }),
+  delete: (panelId: string, comicId: string) =>
+    apiClient.delete<{ ok: boolean; panelId: string }>(`/bubbles/${encodeURIComponent(panelId)}`, {
+      params: { comicId },
+    }),
+};
+
 export const authApi = {
   register: (payload: { first_name: string; last_name: string; email: string; password: string }) =>
     apiClient.post("/auth/register", payload),
@@ -1127,6 +1260,125 @@ export const authApi = {
 
   oauthStart: (provider: "google" | "github", mode: "login" | "register" | "connect") =>
     apiClient.get<{ url: string }>(`/auth/oauth/${provider}/start`, { params: { mode } }),
+};
+
+export type TextGenMode = "byok" | "nine_router" | "local_server";
+
+export interface TextGenConfig {
+  mode: TextGenMode;
+  provider: string;
+  api_url: string;
+  model: string;
+  has_api_key: boolean;
+}
+
+export interface SaveTextGenConfigPayload {
+  mode: TextGenMode;
+  provider?: string;
+  api_url?: string;
+  model?: string;
+  api_key?: string;
+}
+
+export interface TextGenProvider {
+  id: string;
+  label: string;
+}
+
+export const settingsApi = {
+  getTextGenConfig: () => apiClient.get<TextGenConfig>("/settings/text-gen-config"),
+
+  saveTextGenConfig: (payload: SaveTextGenConfigPayload) =>
+    apiClient.put<TextGenConfig>("/settings/text-gen-config", payload),
+
+  clearTextGenConfig: () => apiClient.delete<TextGenConfig>("/settings/text-gen-config"),
+
+  getNineRouterModels: () => apiClient.get<{ models: string[] }>("/settings/nine-router-models"),
+
+  getTextGenProviders: () => apiClient.get<{ providers: TextGenProvider[] }>("/settings/text-gen-providers"),
+};
+
+export interface MangaComposePageRequest {
+  panel_images: Record<string, string>;  // 'p1' | 'p2' | … → base64 PNG
+  panel_count: number;
+  layout_name?: string;   // template name | 'auto' | 'procedural'
+  style?: string;         // 'balanced' | 'feature' | 'dynamic' | 'cinematic'
+  scene_type?: string;    // 'action' | 'dialogue' | 'emotional' | 'establishing' | 'climax' | 'default'
+  mood?: string;          // 'tense' | 'calm' | 'dramatic' | 'neutral'
+  add_diagonals?: boolean;
+  seed?: number | null;
+  page_width?: number;
+  page_height?: number;
+}
+
+export interface MangaComposePageResponse {
+  success: boolean;
+  page_image_b64: string;
+  layout_used: string;
+  panels: Array<{
+    id: string;
+    bbox: [number, number, number, number];
+    polygon: [number, number][];
+    recommended_shot: string;
+    has_diagonal: boolean;
+    is_splash: boolean;
+    sd_width: number;
+    sd_height: number;
+  }>;
+}
+
+export interface SuggestLayoutRequest {
+  panel_count: number;
+  scene_type?: string;
+  panels?: Array<{ shot_type?: string; scene_type?: string }>;
+}
+
+export interface SuggestLayoutResponse {
+  suggested: string;
+  reason: string;
+  alternatives: string[];
+  panel_count: number;
+  scene_type_detected: string;
+}
+
+export interface ConfirmLayoutRequest {
+  panel_count: number;
+  layout_name: string;
+  page_width?: number;
+  page_height?: number;
+}
+
+export interface ConfirmedPanelDefinition {
+  id: string;
+  bbox: [number, number, number, number];
+  polygon: [number, number][];
+  recommended_shot: string;
+  has_diagonal: boolean;
+  is_splash: boolean;
+  sd_width: number;
+  sd_height: number;
+}
+
+export interface ConfirmLayoutResponse {
+  layout_name: string;
+  panel_count: number;
+  page_width: number;
+  page_height: number;
+  panels: ConfirmedPanelDefinition[];
+}
+
+export const comicLayoutApi = {
+  composePage: (payload: MangaComposePageRequest) =>
+    apiClient.post<MangaComposePageResponse>('/comic-layout/compose-page', payload),
+
+  suggest: (payload: SuggestLayoutRequest) =>
+    apiClient.post<SuggestLayoutResponse>('/comic-layout/suggest', payload),
+
+  confirm: (payload: ConfirmLayoutRequest) =>
+    apiClient.post<ConfirmLayoutResponse>('/comic-layout/confirm', payload),
+
+  getLayouts: () =>
+    apiClient.get<{ layouts: Record<string, { panel_count: number; has_diagonal: boolean; has_splash: boolean }> }>('/comic-layout/layouts'),
 };
 
 export default apiClient;

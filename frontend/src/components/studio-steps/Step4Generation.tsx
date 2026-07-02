@@ -3,10 +3,13 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
-import type { Step4Panel, Step4PanelState, PanelVersion } from '@/context/ComicGenerationContext';
-import { apiClient } from '@/services/api';
-import ProjectsDrawer from '@/components/ProjectsDrawer';
+import type { Step4Panel, PanelVersion } from '@/context/ComicGenerationContext';
+import { bubblesApi, comicLayoutApi } from '@/services/api';
+import type { BubbleDataPayload } from '@/services/api';
+import DialogueEditor, { type PanelBubbles, type SingleBubble, type BubbleType } from '@/components/studio-steps/DialogueEditor';
+import GenerationModeModal from '@/components/GenerationModeModal';
 import Markdown from '@/components/Markdown';
+import { LayoutTemplatePicker } from '@/components/studio-steps/LayoutTemplatePicker';
 
 type State = 1 | 2 | 3 | 4 | 5;
 
@@ -53,166 +56,8 @@ function PanelStatusDot({ status }: { status: string }) {
   return <span className="w-2 h-2 rounded-full bg-outline-variant flex-shrink-0" />;
 }
 
-// ── Header badge for panel card ───────────────────────────────────────────────
-function PanelHeaderBadge({ status }: { status: string }) {
-  if (status === 'loading') return (
-    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold">
-      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />⟳ Generating
-    </span>
-  );
-  if (status === 'error') return (
-    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-500 text-[10px] font-bold">
-      ✗ Error
-    </span>
-  );
-  if (status === 'success') return (
-    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600 text-[10px] font-bold">
-      ✓ Done
-    </span>
-  );
-  return null;
-}
 
-// ── Panel image area — 5 visual states ───────────────────────────────────────
-function PanelImageArea({
-  status,
-  imageUrl,
-  error,
-  queuePosition,
-  label,
-  onRegenerate,
-}: {
-  status: string;
-  imageUrl: string | null;
-  error: string | null;
-  queuePosition: number;
-  label: string;
-  onRegenerate: () => void;
-}) {
-  const [elapsed, setElapsed] = useState(0);
-  const startedAtRef = useRef<number | null>(null);
-  const [greenFlash, setGreenFlash] = useState(false);
-  const [appeared, setAppeared] = useState(false);
-  const prevStatusRef = useRef(status);
 
-  useEffect(() => {
-    if (status === 'loading') {
-      if (!startedAtRef.current) startedAtRef.current = Date.now();
-      const id = setInterval(() => {
-        setElapsed(Math.floor((Date.now() - startedAtRef.current!) / 1000));
-      }, 1000);
-      return () => clearInterval(id);
-    }
-    startedAtRef.current = null;
-    setElapsed(0);
-  }, [status]);
-
-  useEffect(() => {
-    if (prevStatusRef.current !== 'success' && status === 'success') {
-      setGreenFlash(true);
-      setAppeared(true);
-      const t = setTimeout(() => setGreenFlash(false), 600);
-      return () => clearTimeout(t);
-    }
-    prevStatusRef.current = status;
-  }, [status]);
-
-  const estRemaining = Math.max(0, 45 - elapsed);
-  const isNearFront = queuePosition <= 1;
-
-  /* STATE 4 — Success */
-  if (status === 'success' && imageUrl) {
-    return (
-      <div className={`relative rounded-lg overflow-hidden aspect-video border-2 transition-colors duration-500 ${greenFlash ? 'border-[#22C55E]' : 'border-transparent'} ${appeared ? 'animate-panel-appear' : ''}`}>
-        <Image src={imageUrl} alt={label} fill className="object-cover" unoptimized />
-        <div className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity duration-200 flex items-end justify-center pb-4 gap-2">
-          <button type="button" className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-white/20 text-white text-xs font-semibold backdrop-blur-sm hover:bg-white/30 transition-colors">
-            🔍 View full
-          </button>
-          <button type="button" onClick={onRegenerate} className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-white/20 text-white text-xs font-semibold backdrop-blur-sm hover:bg-white/30 transition-colors">
-            ↺ Redraw
-          </button>
-          <button type="button" className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500/80 text-white text-xs font-semibold backdrop-blur-sm hover:bg-emerald-600/80 transition-colors">
-            ✓
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  /* STATE 5 — Error */
-  if (status === 'error') {
-    return (
-      <div className="rounded-lg aspect-video border-2 border-dashed border-[#FCA5A5] bg-[#FEF2F2] flex flex-col items-center justify-center gap-2">
-        <span className="text-[#EF4444] text-2xl">⚠</span>
-        <p className="text-xs text-[#EF4444] font-medium">Image generation failed</p>
-        {error && <p className="text-[10px] text-red-400 max-w-[80%] text-center truncate">{error}</p>}
-        <button type="button" onClick={onRegenerate}
-          className="mt-1 flex items-center gap-1 px-3 py-1 rounded-full border border-[#EF4444] text-[#EF4444] text-xs font-semibold hover:bg-red-50 transition-colors">
-          ↺ Retry
-        </button>
-      </div>
-    );
-  }
-
-  /* STATE 3 — Actively generating */
-  if (status === 'loading') {
-    const pct = Math.min(100, Math.round((elapsed / 45) * 100));
-    return (
-      <div className="rounded-lg aspect-video border-2 bg-[#EEF2FF] animate-border-pulse flex flex-col items-center justify-center gap-2 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.04] pointer-events-none"
-          style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")" }} />
-        <span className="w-8 h-8 border-[3px] border-[#4F46E5]/30 border-t-[#4F46E5] rounded-full animate-spin" />
-        <p className="text-xs text-[#4F46E5] font-semibold">Generating...</p>
-        <div className="flex items-center gap-2">
-          <div className="h-1.5 w-20 rounded-full bg-[#4F46E5]/20 overflow-hidden">
-            <div className="h-full rounded-full bg-[#4F46E5] transition-[width] duration-1000"
-              style={{ width: `${pct}%` }} />
-          </div>
-          <span className="text-[10px] text-[#6366F1]">~{estRemaining}s remaining</span>
-        </div>
-      </div>
-    );
-  }
-
-  /* STATE 2 — Skeleton (near front of queue) */
-  if (isNearFront) {
-    return (
-      <div className="rounded-lg aspect-video overflow-hidden">
-        <div className="w-full h-full animate-shimmer"
-          style={{ background: 'linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%)', backgroundSize: '200% 100%' }} />
-      </div>
-    );
-  }
-
-  /* STATE 1 — Queued */
-  return (
-    <div className="rounded-lg aspect-video border-2 border-dashed border-[#CBD5E1] bg-[#F1F5F9] flex flex-col items-center justify-center gap-1">
-      <span className="w-5 h-5 rounded-full border-2 border-[#94A3B8] flex-shrink-0" />
-      <p className="text-xs text-[#94A3B8] font-medium">Panel queued</p>
-      <p className="text-[10px] text-[#94A3B8]">#{queuePosition + 1} in queue</p>
-    </div>
-  );
-}
-
-// ── Progress stats bar ────────────────────────────────────────────────────────
-function StatsBar({ total, success, loading: load, error }: { total: number; success: number; loading: number; error: number }) {
-  return (
-    <div className="grid grid-cols-4 gap-3">
-      {[
-        { label: 'Pages', value: total, color: 'text-on-surface' },
-        { label: 'Done', value: success, color: 'text-emerald-500' },
-        { label: 'Generating', value: load, color: 'text-blue-500' },
-        { label: 'Errors', value: error, color: 'text-red-500' },
-      ].map((s) => (
-        <div key={s.label} className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 p-4 text-center">
-          <p className={`text-2xl font-extrabold ${s.color}`}>{s.value}</p>
-          <p className="text-xs text-on-surface-variant mt-0.5">{s.label}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 // ── Segmented progress bar: green=done, amber=errors, shimmer=loading ────────
 function SegmentedProgressBar({ total, success, error, loading, height = 12 }: {
@@ -240,118 +85,15 @@ function SegmentedProgressBar({ total, success, error, loading, height = 12 }: {
   );
 }
 
-// ── Collapsible export panel ──────────────────────────────────────────────────
-function ExportPanel({
-  jsonCopied,
-  jsonDownloaded,
-  lastDownloadedJsonFile,
-  projectSnapshot,
-  cloudSaveStatus,
-  cloudSaveError,
-  copyProjectJson,
-  downloadProjectJson,
-  saveToCloud,
-  onOpenProjects,
-}: {
-  jsonCopied: boolean;
-  jsonDownloaded: boolean;
-  lastDownloadedJsonFile: string | null;
-  projectSnapshot: unknown;
-  cloudSaveStatus: string;
-  cloudSaveError: string | null;
-  copyProjectJson: () => void;
-  downloadProjectJson: () => void;
-  saveToCloud: () => void;
-  onOpenProjects: () => void;
-}) {
-  const [jsonOpen, setJsonOpen] = useState(false);
-  return (
-    <div className="rounded-3xl bg-surface-container-low border border-outline-variant/10 p-6 space-y-4">
-      <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Project Export</p>
-
-      {/* Action buttons */}
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={saveToCloud}
-          disabled={cloudSaveStatus === 'saving'}
-          className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all ${
-            cloudSaveStatus === 'saving'
-              ? 'bg-surface-container text-on-surface-variant cursor-not-allowed opacity-50'
-              : cloudSaveStatus === 'saved'
-                ? 'bg-emerald-500/10 text-emerald-600'
-                : 'bg-primary text-on-primary hover:opacity-90'
-          }`}
-        >
-          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
-            {cloudSaveStatus === 'saved' ? 'cloud_done' : 'cloud_upload'}
-          </span>
-          {cloudSaveStatus === 'saving' ? 'Saving…' : cloudSaveStatus === 'saved' ? 'Saved!' : 'Save to Cloud'}
-        </button>
-        <button
-          type="button"
-          onClick={onOpenProjects}
-          className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold bg-surface-container-high text-on-surface hover:bg-surface-container-highest transition-colors"
-        >
-          <span className="material-symbols-outlined text-sm">folder_open</span>
-          My Projects
-        </button>
-        <button
-          type="button"
-          onClick={downloadProjectJson}
-          className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold bg-surface-container-high text-on-surface hover:bg-surface-container-highest transition-colors"
-        >
-          <span className="material-symbols-outlined text-sm">{jsonDownloaded ? 'check' : 'download'}</span>
-          {jsonDownloaded ? 'Downloaded' : 'Download JSON'}
-        </button>
-        <button
-          type="button"
-          onClick={copyProjectJson}
-          className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold bg-surface-container-high text-on-surface hover:bg-surface-container-highest transition-colors"
-        >
-          <span className="material-symbols-outlined text-sm">{jsonCopied ? 'check' : 'content_copy'}</span>
-          {jsonCopied ? 'Copied!' : 'Copy JSON'}
-        </button>
-      </div>
-
-      {lastDownloadedJsonFile && (
-        <p className="text-xs text-on-surface-variant">Last file: {lastDownloadedJsonFile}</p>
-      )}
-      {cloudSaveError && cloudSaveStatus === 'error' && (
-        <p className="text-xs text-red-500">{cloudSaveError}</p>
-      )}
-
-      {/* Collapsible JSON preview */}
-      <button
-        type="button"
-        onClick={() => setJsonOpen((v) => !v)}
-        className="w-full flex items-center justify-between text-left py-2 border-t border-outline-variant/10"
-      >
-        <span className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
-          <span className="material-symbols-outlined text-sm">data_object</span>
-          Project JSON preview
-        </span>
-        <span
-          className="material-symbols-outlined text-sm text-on-surface-variant transition-transform"
-          style={{ transform: jsonOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
-        >
-          expand_more
-        </span>
-      </button>
-      {jsonOpen && (
-        <pre className="max-h-[280px] overflow-auto rounded-2xl bg-surface-container-lowest border border-outline-variant/10 p-4 text-xs text-on-surface-variant font-mono leading-relaxed">
-          {JSON.stringify(projectSnapshot, null, 2)}
-        </pre>
-      )}
-    </div>
-  );
-}
-
 
 
 // Strip leading/trailing markdown bold markers the LLM sometimes wraps field values in
 function stripBold(s: string) {
   return s.replace(/^\*{1,3}\s*/, '').replace(/\s*\*{1,3}$/, '').trim();
+}
+
+function genBubbleId() {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
 // ── Prompt display: dims the shared art-style prefix, highlights unique content ──
@@ -387,7 +129,7 @@ const REGEN_CHIPS = [
 ];
 
 function RegenerateModal({
-  pageNumber,
+  pageNumber: _pn, // eslint-disable-line @typescript-eslint/no-unused-vars
   contextLabel,
   currentImageUrl,
   prevFeedback,
@@ -652,61 +394,6 @@ function PanelScriptCard({ panel, artStyle }: { panel: Step4Panel; artStyle: str
   );
 }
 
-// ── Confetti canvas overlay ───────────────────────────────────────────────────
-function ConfettiCanvas({ active, onDone }: { active: boolean; onDone: () => void }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    if (!active) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-
-    const COLORS = ['#4F46E5', '#7C3AED', '#10B981', '#F59E0B', '#EC4899', '#3B82F6', '#06B6D4'];
-    type P = { x: number; y: number; vx: number; vy: number; color: string; w: number; h: number; rot: number; rv: number };
-    const particles: P[] = Array.from({ length: 90 }, () => ({
-      x: Math.random() * canvas.width,
-      y: -20 - Math.random() * 40,
-      vx: (Math.random() - 0.5) * 5,
-      vy: Math.random() * 4 + 2,
-      color: COLORS[Math.floor(Math.random() * COLORS.length)],
-      w: Math.random() * 10 + 6,
-      h: Math.random() * 5 + 3,
-      rot: Math.random() * Math.PI * 2,
-      rv: (Math.random() - 0.5) * 0.15,
-    }));
-
-    const start = Date.now();
-    const dur = 1800;
-    let raf: number;
-    function draw() {
-      const elapsed = Date.now() - start;
-      if (elapsed >= dur) { ctx.clearRect(0, 0, canvas.width, canvas.height); onDone(); return; }
-      const alpha = elapsed < 1200 ? 1 : 1 - (elapsed - 1200) / 600;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      for (const p of particles) {
-        p.x += p.vx; p.y += p.vy; p.vy += 0.08; p.rot += p.rv;
-        ctx.save();
-        ctx.translate(p.x, p.y); ctx.rotate(p.rot);
-        ctx.globalAlpha = Math.max(0, alpha);
-        ctx.fillStyle = p.color;
-        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-        ctx.restore();
-      }
-      raf = requestAnimationFrame(draw);
-    }
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-  }, [active, onDone]);
-
-  if (!active) return null;
-  return <canvas ref={canvasRef} className="fixed inset-0 z-[70] pointer-events-none" />;
-}
-
 // ── Preview slideshow modal ───────────────────────────────────────────────────
 function PreviewModal({ pages, onClose }: {
   pages: { pageNumber: number; imageUrl: string }[];
@@ -751,326 +438,495 @@ function PreviewModal({ pages, onClose }: {
   );
 }
 
-// ── Export options modal ──────────────────────────────────────────────────────
-function ExportModal({
-  panelCount, pageCount, chapterCount,
-  onClose, onDownloadJson, onSaveCloud, cloudSaveStatus, onMarkComplete,
-  onExportZip, onExportPdf, hasImages, exportStatus,
+// ── Generation progress bar ───────────────────────────────────────────────────
+function GenerationProgressBar({
+  total, done, generating, errors, pending, unit = 'panel',
 }: {
-  panelCount: number; pageCount: number; chapterCount: number;
-  onClose: () => void;
-  onDownloadJson: () => void;
-  onSaveCloud: () => void;
-  cloudSaveStatus: string;
-  onMarkComplete: () => void;
-  onExportZip: (includeMetadata: boolean) => void;
-  onExportPdf: (includeMetadata: boolean) => void;
-  hasImages: boolean;
-  exportStatus: 'idle' | 'exporting' | 'error';
+  total: number; done: number; generating: number; errors: number; pending: number; unit?: 'panel' | 'page';
 }) {
-  const [includeMetadata, setIncludeMetadata] = useState(false);
-  const isExporting = exportStatus === 'exporting';
-
-  const opts: { icon: string; label: string; desc: string; disabled: boolean; action: (() => void) | null; saved?: boolean }[] = [
-    {
-      icon: '🖼', label: 'PDF Comic', desc: 'Full comic, print-ready',
-      disabled: !hasImages || isExporting,
-      action: () => { onExportPdf(includeMetadata); onClose(); },
-    },
-    {
-      icon: '📱', label: 'Image Pack', desc: 'All pages as PNG ZIP',
-      disabled: !hasImages || isExporting,
-      action: () => { onExportZip(includeMetadata); onClose(); },
-    },
-    { icon: '☁', label: 'Save to Cloud', desc: 'Save to My Projects', disabled: false, action: onSaveCloud, saved: cloudSaveStatus === 'saved' },
-    { icon: '{ }', label: 'Export JSON', desc: 'Script + metadata', disabled: false, action: onDownloadJson },
-  ];
-
-  return (
-    <div className="fixed inset-0 z-[55] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-3xl shadow-2xl p-8 max-w-lg w-full space-y-6 animate-slide-down">
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">📦 Export Comic</h2>
-            <p className="text-sm text-gray-400 mt-0.5">
-              {panelCount} panels · {pageCount} pages · {chapterCount} chapters
-            </p>
-          </div>
-          <button type="button" onClick={onClose}
-            className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors flex-shrink-0">
-            <span className="material-symbols-outlined text-sm text-gray-600">close</span>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          {opts.map((o) => (
-            <button key={o.label} type="button"
-              onClick={o.action ?? undefined}
-              disabled={o.disabled || !o.action}
-              className={`relative text-left p-4 rounded-2xl border-2 transition-all ${
-                o.disabled
-                  ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
-                  : o.saved
-                  ? 'border-emerald-300 bg-emerald-50'
-                  : 'border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/50 cursor-pointer'
-              }`}>
-              <span className="text-2xl">{o.icon}</span>
-              <p className="text-sm font-bold text-gray-900 mt-2">{o.label}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{o.desc}</p>
-              {o.saved && <span className="absolute top-2 right-2 text-emerald-500 text-sm">✓</span>}
-            </button>
-          ))}
-        </div>
-
-        <label className="flex items-center gap-2.5 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={includeMetadata}
-            onChange={(e) => setIncludeMetadata(e.target.checked)}
-            className="w-4 h-4 rounded accent-indigo-600"
-          />
-          <span className="text-sm text-gray-700">Include panel script (dialogue, shot types, prompts)</span>
-        </label>
-
-        <div className="pt-2 border-t border-gray-100 flex gap-3">
-          <button type="button" onClick={onClose}
-            className="flex-1 px-4 py-2.5 rounded-full border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
-            Close
-          </button>
-          <button type="button" onClick={() => { onMarkComplete(); onClose(); }}
-            className="flex-1 px-4 py-2.5 rounded-full bg-gray-900 text-white text-sm font-bold hover:opacity-90 transition-opacity">
-            ✓ Mark Complete
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Emoji reaction bar ────────────────────────────────────────────────────────
-type Reaction = 'love' | 'good' | 'neutral' | 'bad';
-
-const REACTIONS: { value: Reaction; emoji: string; label: string }[] = [
-  { value: 'love',    emoji: '😍', label: 'Love it!' },
-  { value: 'good',    emoji: '👍', label: 'Good' },
-  { value: 'neutral', emoji: '😐', label: 'Okay' },
-  { value: 'bad',     emoji: '👎', label: 'Poor' },
-];
-
-function EmojiReactionBar({
-  pageId,
-  panels,
-  comicId,
-  reaction,
-  onReaction,
-  onError,
-}: {
-  pageId: string;
-  panels: Step4Panel[];
-  comicId: string;
-  reaction: Reaction | null;
-  onReaction: (pageId: string, r: Reaction) => void;
-  onError: () => void;
-}) {
-  const regenCount = panels.reduce((n, p) => {
-    return n; // panel version tracking happens at page level
-  }, 0);
-  const wasRegenerated = panels.some(() => false); // filled from pageState versions
-  const selected = REACTIONS.find((r) => r.value === reaction);
-
-  const handleClick = async (r: Reaction) => {
-    onReaction(pageId, r);
-    try {
-      await apiClient.post('/ratings/panel', {
-        panel_id: pageId,
-        comic_id: comicId,
-        reaction: r,
-        panel_version: 1,
-        was_regenerated: wasRegenerated,
-        regen_count: regenCount,
-      });
-    } catch {
-      onError();
-    }
-  };
-
-  return (
-    <div className="px-4 py-3 border-t border-outline-variant/10 flex items-center gap-3">
-      {selected ? (
-        <span className="text-xs text-on-surface-variant flex items-center gap-1.5">
-          <span className="text-base">{selected.emoji}</span>
-          <span className="font-medium">{selected.label}</span>
-        </span>
-      ) : (
-        <span className="text-xs text-on-surface-variant">Rate this panel:</span>
-      )}
-      <div className="flex items-center gap-2 ml-auto">
-        {REACTIONS.map((r) => {
-          const isSelected = reaction === r.value;
-          return (
-            <button
-              key={r.value}
-              type="button"
-              onClick={() => handleClick(r.value)}
-              title={r.label}
-              className={`w-7 h-7 rounded-lg flex items-center justify-center text-base transition-all duration-100 ${
-                isSelected
-                  ? 'bg-[#EEF2FF] border border-primary scale-100'
-                  : 'bg-transparent border border-transparent hover:bg-gray-100 hover:scale-[1.15]'
-              }`}
-              style={{ opacity: isSelected ? 1 : 0.7 }}
-            >
-              {r.emoji}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Comic rating modal ────────────────────────────────────────────────────────
-function ComicRatingModal({
-  panelReactions,
-  totalPanels,
-  onClose,
-  onSubmit,
-  onSkip,
-  initialStars,
-  initialPositive,
-  initialNegative,
-}: {
-  panelReactions: Record<string, Reaction>;
-  totalPanels: number;
-  onClose: () => void;
-  onSubmit: (stars: number, positive: string, negative: string) => void;
-  onSkip: () => void;
-  initialStars?: number;
-  initialPositive?: string;
-  initialNegative?: string;
-}) {
-  const [stars, setStars] = useState(initialStars ?? 0);
-  const [hovered, setHovered] = useState(0);
-  const [positive, setPositive] = useState(initialPositive ?? '');
-  const [negative, setNegative] = useState(initialNegative ?? '');
-  const [skipCountdown, setSkipCountdown] = useState(3);
+  const allDone = total > 0 && pending === 0 && errors === 0 && done === total;
+  const prevAllDoneRef = useRef(false);
+  const [celebrating, setCelebrating] = useState(false);
 
   useEffect(() => {
-    if (skipCountdown <= 0) return;
-    const t = setTimeout(() => setSkipCountdown((n) => n - 1), 1000);
-    return () => clearTimeout(t);
-  }, [skipCountdown]);
+    if (allDone && !prevAllDoneRef.current) {
+      setCelebrating(true);
+      const t = setTimeout(() => setCelebrating(false), 400);
+      prevAllDoneRef.current = true;
+      return () => clearTimeout(t);
+    }
+    if (!allDone) prevAllDoneRef.current = false;
+  }, [allDone]);
 
-  const reactionCounts = REACTIONS.map((r) => ({
-    ...r,
-    count: Object.values(panelReactions).filter((v) => v === r.value).length,
-  })).filter((r) => r.count > 0);
-
-  const displayStars = hovered || stars;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const greenW = total > 0 ? (done / total) * 100 : 0;
+  const yellowW = total > 0 ? (generating / total) * 100 : 0;
+  const redW = total > 0 ? (errors / total) * 100 : 0;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-[500px] bg-surface rounded-3xl shadow-2xl overflow-hidden animate-panel-appear">
-        {/* Header */}
-        <div className="px-8 pt-8 pb-5 text-center">
-          <p className="text-3xl mb-2">🎉</p>
-          <h2 className="text-xl font-bold text-on-surface">Your comic is ready!</h2>
-          <p className="text-sm text-on-surface-variant mt-1">Before we export, how was your experience?</p>
+    <div className="space-y-2">
+      {/* Bar row */}
+      <div className="flex items-center gap-3">
+        <div
+          className="flex-1 overflow-hidden"
+          style={{ height: 8, borderRadius: 4, background: '#E5E7EB' }}
+        >
+          {/* Segments: no gap, inline-flex */}
+          <div className="flex h-full" style={{ borderRadius: 4, overflow: 'hidden' }}>
+            {greenW > 0 && (
+              <div
+                className="h-full transition-[width] duration-500"
+                style={{
+                  width: `${greenW}%`,
+                  background: '#22C55E',
+                  boxShadow: celebrating ? '0 0 10px #22C55E' : undefined,
+                  transition: celebrating ? 'box-shadow 0.15s ease-in-out, width 0.5s' : 'width 0.5s',
+                }}
+              />
+            )}
+            {yellowW > 0 && (
+              <div
+                className="h-full animate-pulse"
+                style={{ width: `${yellowW}%`, background: '#F59E0B' }}
+              />
+            )}
+            {redW > 0 && (
+              <div
+                className="h-full transition-[width] duration-500"
+                style={{ width: `${redW}%`, background: '#EF4444' }}
+              />
+            )}
+          </div>
+        </div>
+        <span
+          className="text-sm font-bold tabular-nums"
+          style={{ color: allDone ? '#22C55E' : '#111827', minWidth: 36, textAlign: 'right' }}
+        >
+          {pct}%
+        </span>
+      </div>
+
+      {/* Label row */}
+      <p className={`text-xs ${celebrating ? 'animate-[pulse_0.3s_ease-in-out_1]' : ''}`}>
+        {allDone ? (
+          <span className="font-semibold" style={{ color: '#22C55E' }}>
+            ✓ All {total} {unit}s generated!
+          </span>
+        ) : (
+          <>
+            <span style={{ color: '#22C55E', fontWeight: 600 }}>{done} generated</span>
+            <span style={{ color: '#9CA3AF' }}> · {pending} pending</span>
+            {errors > 0 && <span style={{ color: '#EF4444' }}> · {errors} errors</span>}
+            {generating > 0 && <span style={{ color: '#F59E0B' }}> · {generating} running</span>}
+          </>
+        )}
+      </p>
+    </div>
+  );
+}// ── Layout template constants (mirrors backend LAYOUT_TEMPLATES) ──────────────
+
+export const TEMPLATES_BY_COUNT: Record<number, string[]> = {
+  1: ['full_bleed', 'single'],
+  2: ['diagonal_split_2', 'horizontal_duo', 'widescreen_pair'],
+  3: ['three_panels_row', 'one_large_two_small', 'two_small_one_large',
+      'diagonal_3_panels', 'cinematic_strips', 'vertical_trio', 'wide_duo',
+      'widescreen_trio', 'l_shape'],
+  4: ['grid_2x2', 'action_dynamic_4', 'splash_top', 'splash_bottom',
+      'asymmetric_4', 'vertical_flow', 'hero_left', 'hero_right',
+      'film_strip', 't_shape'],
+  5: ['manga_classic_5'],
+  6: ['grid_2x3'],
+};
+
+export const LAYOUT_DISPLAY_NAMES_MAP: Record<string, string> = {
+  full_bleed: 'Full Bleed', diagonal_split_2: 'Diagonal Split',
+  one_large_two_small: 'Feature Left', two_small_one_large: 'Feature Right',
+  three_panels_row: 'Three Row', diagonal_3_panels: 'Diagonal 3',
+  cinematic_strips: 'Cinematic', grid_2x2: '2×2 Grid',
+  action_dynamic_4: 'Action ✕', splash_top: 'Splash Top',
+  splash_bottom: 'Splash Bottom', asymmetric_4: 'Asymmetric',
+  vertical_flow: 'Flow', manga_classic_5: 'Classic 5',
+  single: 'Single', horizontal_duo: 'Horiz Duo', vertical_trio: 'Vert Trio',
+  grid_2x3: '2×3 Grid', hero_left: 'Hero Left', hero_right: 'Hero Right',
+  wide_duo: 'Wide + Duo', widescreen_pair: 'Wide Pair', widescreen_trio: 'Wide Trio',
+  film_strip: 'Film Strip', t_shape: 'T-Shape', l_shape: 'L-Shape',
+};
+
+// SVG panel rects for each template (48×64 viewport)
+export const LAYOUT_SVGS: Record<string, React.ReactNode> = {
+  full_bleed:        <rect x="2" y="2" width="44" height="60" rx="1" fill="currentColor"/>,
+  diagonal_split_2:  <><polygon points="2,2 32,2 24,62 2,62" fill="currentColor"/><polygon points="34,2 46,2 46,62 26,62" fill="currentColor"/></>,
+  one_large_two_small: <><rect x="2" y="2" width="26" height="60" rx="1" fill="currentColor"/><rect x="31" y="2" width="15" height="28" rx="1" fill="currentColor"/><rect x="31" y="33" width="15" height="29" rx="1" fill="currentColor"/></>,
+  two_small_one_large: <><rect x="2" y="2" width="15" height="28" rx="1" fill="currentColor"/><rect x="2" y="33" width="15" height="29" rx="1" fill="currentColor"/><rect x="20" y="2" width="26" height="60" rx="1" fill="currentColor"/></>,
+  three_panels_row:  <><rect x="2" y="2" width="12" height="60" rx="1" fill="currentColor"/><rect x="17" y="2" width="14" height="60" rx="1" fill="currentColor"/><rect x="34" y="2" width="12" height="60" rx="1" fill="currentColor"/></>,
+  diagonal_3_panels: <><rect x="2" y="2" width="44" height="24" rx="1" fill="currentColor"/><polygon points="2,28 22,28 17,62 2,62" fill="currentColor"/><polygon points="24,28 46,28 46,62 19,62" fill="currentColor"/></>,
+  cinematic_strips:  <><rect x="2" y="2" width="44" height="17" rx="1" fill="currentColor"/><rect x="2" y="23" width="44" height="17" rx="1" fill="currentColor"/><rect x="2" y="44" width="44" height="18" rx="1" fill="currentColor"/></>,
+  grid_2x2:          <><rect x="2" y="2" width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="2" width="20" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="20" height="28" rx="1" fill="currentColor"/><rect x="26" y="34" width="20" height="28" rx="1" fill="currentColor"/></>,
+  action_dynamic_4:  <><polygon points="2,2 21,2 18,30 2,30" fill="currentColor"/><polygon points="27,2 46,2 46,30 29,30" fill="currentColor"/><polygon points="2,33 18,33 21,62 2,62" fill="currentColor"/><polygon points="29,33 46,33 46,62 27,62" fill="currentColor"/></>,
+  splash_top:        <><rect x="2" y="2" width="44" height="34" rx="1" fill="currentColor"/><rect x="2" y="39" width="12" height="23" rx="1" fill="currentColor"/><rect x="18" y="39" width="12" height="23" rx="1" fill="currentColor"/><rect x="34" y="39" width="12" height="23" rx="1" fill="currentColor"/></>,
+  splash_bottom:     <><rect x="2" y="2" width="12" height="23" rx="1" fill="currentColor"/><rect x="18" y="2" width="12" height="23" rx="1" fill="currentColor"/><rect x="34" y="2" width="12" height="23" rx="1" fill="currentColor"/><rect x="2" y="28" width="44" height="34" rx="1" fill="currentColor"/></>,
+  asymmetric_4:      <><rect x="2" y="2" width="25" height="36" rx="1" fill="currentColor"/><rect x="30" y="2" width="16" height="16" rx="1" fill="currentColor"/><rect x="30" y="21" width="16" height="17" rx="1" fill="currentColor"/><rect x="2" y="41" width="44" height="21" rx="1" fill="currentColor"/></>,
+  vertical_flow:     <><rect x="2" y="2" width="13" height="28" rx="1" fill="currentColor"/><rect x="18" y="2" width="28" height="28" rx="1" fill="currentColor"/><rect x="2" y="34" width="24" height="28" rx="1" fill="currentColor"/><rect x="29" y="34" width="17" height="28" rx="1" fill="currentColor"/></>,
+  manga_classic_5:   <><rect x="2" y="2" width="27" height="22" rx="1" fill="currentColor"/><rect x="32" y="2" width="14" height="22" rx="1" fill="currentColor"/><rect x="2" y="27" width="15" height="16" rx="1" fill="currentColor"/><rect x="20" y="27" width="26" height="16" rx="1" fill="currentColor"/><rect x="2" y="46" width="44" height="16" rx="1" fill="currentColor"/></>,
+  single:          <rect x="1" y="1" width="46" height="62" rx="1" fill="currentColor"/>,
+  horizontal_duo:  <><rect x="1" y="1" width="46" height="30" rx="1" fill="currentColor"/><rect x="1" y="33" width="46" height="30" rx="1" fill="currentColor"/></>,
+  vertical_trio:   <><rect x="1" y="1" width="14" height="62" rx="1" fill="currentColor"/><rect x="17" y="1" width="14" height="62" rx="1" fill="currentColor"/><rect x="33" y="1" width="14" height="62" rx="1" fill="currentColor"/></>,
+  grid_2x3:        <><rect x="1" y="1" width="22" height="19" rx="1" fill="currentColor"/><rect x="25" y="1" width="22" height="19" rx="1" fill="currentColor"/><rect x="1" y="22" width="22" height="19" rx="1" fill="currentColor"/><rect x="25" y="22" width="22" height="19" rx="1" fill="currentColor"/><rect x="1" y="43" width="22" height="20" rx="1" fill="currentColor"/><rect x="25" y="43" width="22" height="20" rx="1" fill="currentColor"/></>,
+  hero_left:       <><rect x="1" y="1" width="27" height="62" rx="1" fill="currentColor"/><rect x="30" y="1" width="17" height="19" rx="1" fill="currentColor"/><rect x="30" y="22" width="17" height="19" rx="1" fill="currentColor"/><rect x="30" y="43" width="17" height="20" rx="1" fill="currentColor"/></>,
+  hero_right:      <><rect x="1" y="1" width="17" height="19" rx="1" fill="currentColor"/><rect x="1" y="22" width="17" height="19" rx="1" fill="currentColor"/><rect x="1" y="43" width="17" height="20" rx="1" fill="currentColor"/><rect x="20" y="1" width="27" height="62" rx="1" fill="currentColor"/></>,
+  wide_duo:        <><rect x="1" y="1" width="46" height="33" rx="1" fill="currentColor"/><rect x="1" y="36" width="22" height="27" rx="1" fill="currentColor"/><rect x="25" y="36" width="22" height="27" rx="1" fill="currentColor"/></>,
+  widescreen_pair: <><rect x="1" y="1" width="46" height="30" rx="1" fill="currentColor"/><rect x="1" y="33" width="46" height="30" rx="1" fill="currentColor"/></>,
+  widescreen_trio: <><rect x="1" y="1" width="46" height="19" rx="1" fill="currentColor"/><rect x="1" y="22" width="46" height="20" rx="1" fill="currentColor"/><rect x="1" y="44" width="46" height="19" rx="1" fill="currentColor"/></>,
+  film_strip:      <><rect x="1" y="1" width="10" height="62" rx="1" fill="currentColor"/><rect x="13" y="1" width="10" height="62" rx="1" fill="currentColor"/><rect x="25" y="1" width="10" height="62" rx="1" fill="currentColor"/><rect x="37" y="1" width="10" height="62" rx="1" fill="currentColor"/></>,
+  t_shape:         <><rect x="1" y="1" width="46" height="20" rx="1" fill="currentColor"/><rect x="1" y="23" width="14" height="40" rx="1" fill="currentColor"/><rect x="17" y="23" width="14" height="40" rx="1" fill="currentColor"/><rect x="33" y="23" width="14" height="40" rx="1" fill="currentColor"/></>,
+  l_shape:         <><rect x="1" y="1" width="27" height="62" rx="1" fill="currentColor"/><rect x="30" y="1" width="17" height="30" rx="1" fill="currentColor"/><rect x="30" y="33" width="17" height="30" rx="1" fill="currentColor"/></>,
+};
+
+// Panel bounding boxes in 48×64 coordinate space — mirrors LAYOUT_SVGS positions (polygons use bbox)
+export const LAYOUT_PANEL_RECTS: Record<string, Array<{ x: number; y: number; w: number; h: number }>> = {
+  full_bleed:        [{ x:2,  y:2,  w:44, h:60 }],
+  diagonal_split_2:  [{ x:2,  y:2,  w:30, h:60 }, { x:26, y:2,  w:20, h:60 }],
+  one_large_two_small: [{ x:2,  y:2,  w:26, h:60 }, { x:31, y:2,  w:15, h:28 }, { x:31, y:33, w:15, h:29 }],
+  two_small_one_large: [{ x:2,  y:2,  w:15, h:28 }, { x:2,  y:33, w:15, h:29 }, { x:20, y:2,  w:26, h:60 }],
+  three_panels_row:  [{ x:2,  y:2,  w:12, h:60 }, { x:17, y:2,  w:14, h:60 }, { x:34, y:2,  w:12, h:60 }],
+  diagonal_3_panels: [{ x:2,  y:2,  w:44, h:24 }, { x:2,  y:28, w:20, h:34 }, { x:19, y:28, w:27, h:34 }],
+  cinematic_strips:  [{ x:2,  y:2,  w:44, h:17 }, { x:2,  y:23, w:44, h:17 }, { x:2,  y:44, w:44, h:18 }],
+  grid_2x2:          [{ x:2,  y:2,  w:20, h:28 }, { x:26, y:2,  w:20, h:28 }, { x:2,  y:34, w:20, h:28 }, { x:26, y:34, w:20, h:28 }],
+  action_dynamic_4:  [{ x:2,  y:2,  w:19, h:28 }, { x:27, y:2,  w:19, h:28 }, { x:2,  y:33, w:19, h:29 }, { x:27, y:33, w:19, h:29 }],
+  splash_top:        [{ x:2,  y:2,  w:44, h:34 }, { x:2,  y:39, w:12, h:23 }, { x:18, y:39, w:12, h:23 }, { x:34, y:39, w:12, h:23 }],
+  splash_bottom:     [{ x:2,  y:2,  w:12, h:23 }, { x:18, y:2,  w:12, h:23 }, { x:34, y:2,  w:12, h:23 }, { x:2,  y:28, w:44, h:34 }],
+  asymmetric_4:      [{ x:2,  y:2,  w:25, h:36 }, { x:30, y:2,  w:16, h:16 }, { x:30, y:21, w:16, h:17 }, { x:2,  y:41, w:44, h:21 }],
+  vertical_flow:     [{ x:2,  y:2,  w:13, h:28 }, { x:18, y:2,  w:28, h:28 }, { x:2,  y:34, w:24, h:28 }, { x:29, y:34, w:17, h:28 }],
+  manga_classic_5:   [{ x:2,  y:2,  w:27, h:22 }, { x:32, y:2,  w:14, h:22 }, { x:2,  y:27, w:15, h:16 }, { x:20, y:27, w:26, h:16 }, { x:2,  y:46, w:44, h:16 }],
+  single:          [{ x:1,  y:1,  w:46, h:62 }],
+  horizontal_duo:  [{ x:1,  y:1,  w:46, h:31 }, { x:1,  y:32, w:46, h:31 }],
+  vertical_trio:   [{ x:1,  y:1,  w:15, h:62 }, { x:16, y:1,  w:15, h:62 }, { x:32, y:1,  w:15, h:62 }],
+  grid_2x3:        [{ x:1,  y:1,  w:23, h:20 }, { x:24, y:1,  w:23, h:20 }, { x:1,  y:22, w:23, h:20 },
+                    { x:24, y:22, w:23, h:20 }, { x:1,  y:43, w:23, h:20 }, { x:24, y:43, w:23, h:20 }],
+  hero_left:       [{ x:1,  y:1,  w:28, h:62 }, { x:29, y:1,  w:18, h:20 }, { x:29, y:22, w:18, h:20 }, { x:29, y:43, w:18, h:20 }],
+  hero_right:      [{ x:1,  y:1,  w:18, h:20 }, { x:1,  y:22, w:18, h:20 }, { x:1,  y:43, w:18, h:20 }, { x:19, y:1,  w:28, h:62 }],
+  wide_duo:        [{ x:1,  y:1,  w:46, h:34 }, { x:1,  y:36, w:23, h:27 }, { x:24, y:36, w:23, h:27 }],
+  widescreen_pair: [{ x:1,  y:1,  w:46, h:31 }, { x:1,  y:32, w:46, h:31 }],
+  widescreen_trio: [{ x:1,  y:1,  w:46, h:20 }, { x:1,  y:22, w:46, h:21 }, { x:1,  y:44, w:46, h:19 }],
+  film_strip:      [{ x:1,  y:1,  w:11, h:62 }, { x:12, y:1,  w:11, h:62 }, { x:24, y:1,  w:11, h:62 }, { x:36, y:1,  w:11, h:62 }],
+  t_shape:         [{ x:1,  y:1,  w:46, h:21 }, { x:1,  y:23, w:15, h:40 }, { x:16, y:23, w:15, h:40 }, { x:32, y:23, w:15, h:40 }],
+  l_shape:         [{ x:1,  y:1,  w:28, h:62 }, { x:29, y:1,  w:18, h:31 }, { x:29, y:32, w:18, h:31 }],
+};
+
+
+
+
+// ── Canvas studio: zoom constants ─────────────────────────────────────────────
+const LAYOUT_BASE_PAGE_W = 600;
+const LAYOUT_BASE_PAGE_H = 800;
+const LAYOUT_ZOOM_PRESETS = [0.5, 0.75, 1.0];
+function clampLayoutZoom(v: number) { return Math.max(0.25, Math.min(2.0, v)); }
+function computeLayoutFitZoom(viewW: number, viewH: number): number {
+  const scaleW = (viewW - 96) / LAYOUT_BASE_PAGE_W;
+  const scaleH = (viewH - 96) / LAYOUT_BASE_PAGE_H;
+  return Math.min(scaleW, scaleH, 1.0);
+}
+
+// ── Canvas studio: page canvas showing panel slots ────────────────────────────
+function LayoutPageCanvas({
+  panels,
+  panelStates,
+  layoutName,
+  onGeneratePanel,
+}: {
+  panels: Step4Panel[];
+  panelStates: Record<string, { status: string; imageUrl: string | null; error: string | null } | null>;
+  layoutName: string;
+  onGeneratePanel: (panel: Step4Panel) => void;
+}) {
+  const [zoom, setZoom] = useState(1.0);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const canvasAreaRef = useRef<HTMLDivElement>(null);
+  const spaceDownRef = useRef(false);
+  const panStartRef = useRef<{ mx: number; my: number; ox: number; oy: number } | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); spaceDownRef.current = true; }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') { spaceDownRef.current = false; panStartRef.current = null; }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); };
+  }, []);
+
+  const onWheel = useCallback((e: React.WheelEvent) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setZoom(z => clampLayoutZoom(parseFloat((z + delta).toFixed(2))));
+  }, []);
+
+  const rects = LAYOUT_PANEL_RECTS[layoutName] ?? [];
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+      {/* Canvas viewport */}
+      <div ref={canvasAreaRef}
+        style={{ flex: 1, overflow: 'hidden', position: 'relative', background: '#E8E8E8', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 24 }}
+        onWheel={onWheel}
+        onMouseDown={(e) => {
+          if (!spaceDownRef.current) return;
+          e.preventDefault();
+          panStartRef.current = { mx: e.clientX, my: e.clientY, ox: panOffset.x, oy: panOffset.y };
+        }}
+        onMouseMove={(e) => {
+          if (!panStartRef.current) return;
+          setPanOffset({ x: panStartRef.current.ox + e.clientX - panStartRef.current.mx, y: panStartRef.current.oy + e.clientY - panStartRef.current.my });
+        }}
+        onMouseUp={() => { panStartRef.current = null; }}
+      >
+        <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`, transformOrigin: 'top center', flexShrink: 0 }}>
+          <div style={{ position: 'relative', width: LAYOUT_BASE_PAGE_W, height: LAYOUT_BASE_PAGE_H, background: 'white', boxShadow: '0 4px 24px rgba(0,0,0,0.18)' }}>
+            {panels.map((panel, idx) => {
+              const rect = rects[idx];
+              if (!rect) return null;
+              const ps = panelStates[panel.id] ?? null;
+              const imageUrl = ps?.imageUrl ?? null;
+              const isLoading = ps?.status === 'loading';
+              const isError = ps?.status === 'error';
+              const left   = `${(rect.x / 48) * 100}%`;
+              const top    = `${(rect.y / 64) * 100}%`;
+              const width  = `${(rect.w / 48) * 100}%`;
+              const height = `${(rect.h / 64) * 100}%`;
+              return (
+                <div key={panel.id} style={{ position: 'absolute', left, top, width, height, border: '2px solid #ddd', overflow: 'hidden', boxSizing: 'border-box' }}>
+                  {imageUrl ? (
+                    <div className="relative w-full h-full group">
+                      <img src={imageUrl} alt={`Panel ${panel.panelNumber}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center pointer-events-none group-hover:pointer-events-auto">
+                        <button type="button" onClick={() => onGeneratePanel(panel)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-2 py-1 rounded-full bg-black/60 text-white text-[10px] font-bold backdrop-blur-sm">
+                          ↺ Regen
+                        </button>
+                      </div>
+                    </div>
+                  ) : isLoading ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-1" style={{ background: '#F3F4F6' }}>
+                      <span className="w-5 h-5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                      <span style={{ fontSize: 9, color: '#6B7280' }}>Generating…</span>
+                    </div>
+                  ) : isError ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-1 cursor-pointer" style={{ background: '#FEF2F2' }} onClick={() => onGeneratePanel(panel)}>
+                      <span style={{ fontSize: 14 }}>⚠</span>
+                      <span style={{ fontSize: 9, color: '#EF4444', fontWeight: 700 }}>Retry</span>
+                    </div>
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors hover:bg-primary/5" style={{ background: '#F9FAFB' }} onClick={() => onGeneratePanel(panel)}>
+                      <span style={{ fontSize: 11, color: '#9CA3AF' }}>P{panel.panelNumber}</span>
+                      <span className="text-primary font-bold" style={{ fontSize: 9, opacity: 0.6 }}>⚡ Generate</span>
+                    </div>
+                  )}
+                  <span style={{ position: 'absolute', top: 3, left: 3, background: 'rgba(0,0,0,0.5)', color: 'white', fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 3, lineHeight: 1.4, pointerEvents: 'none' }}>
+                    P{panel.panelNumber}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Zoom bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', padding: '6px 16px', borderTop: '1px solid var(--color-outline)', flexShrink: 0, background: 'var(--color-surface-container-lowest)' }}>
+        <button type="button" onClick={() => setZoom(z => clampLayoutZoom(parseFloat((z - 0.1).toFixed(2))))}
+          style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid var(--color-outline)', background: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--color-on-surface)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          −
+        </button>
+        {LAYOUT_ZOOM_PRESETS.map(z => (
+          <button key={z} type="button" onClick={() => setZoom(z)}
+            style={{ padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: zoom === z ? 700 : 400, border: `1px solid ${zoom === z ? 'var(--color-primary)' : 'var(--color-outline)'}`, background: zoom === z ? 'rgba(0,88,190,0.08)' : 'none', color: zoom === z ? 'var(--color-primary)' : 'var(--color-on-surface-variant)', cursor: 'pointer' }}>
+            {Math.round(z * 100)}%
+          </button>
+        ))}
+        <button type="button" onClick={() => setZoom(z => clampLayoutZoom(parseFloat((z + 0.1).toFixed(2))))}
+          style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid var(--color-outline)', background: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--color-on-surface)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          +
+        </button>
+        <button type="button" onClick={() => {
+          if (!canvasAreaRef.current) return;
+          const r = canvasAreaRef.current.getBoundingClientRect();
+          setZoom(computeLayoutFitZoom(r.width, r.height));
+          setPanOffset({ x: 0, y: 0 });
+        }} style={{ padding: '3px 8px', borderRadius: 4, fontSize: 11, border: '1px solid var(--color-outline)', background: 'none', color: 'var(--color-on-surface-variant)', cursor: 'pointer' }}>
+          ⊡ Fit
+        </button>
+        <span style={{ fontSize: 11, color: 'var(--color-on-surface-variant)', minWidth: 32 }}>
+          {Math.round(zoom * 100)}%
+        </span>
+        <span style={{ fontSize: 10, color: 'var(--color-on-surface-variant)', marginLeft: 8 }}>
+          Ctrl+scroll to zoom · Space+drag to pan
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Canvas studio: right sidebar ──────────────────────────────────────────────
+function LayoutStudioSidebar({
+  pageNumber,
+  totalPages,
+  panels,
+  panelStates,
+  panelStats,
+  isImageGenerating,
+  isPaused,
+  comicPageMode,
+  onSetPageMode,
+  onGenerateAll,
+  onPause,
+  onResume,
+  sfxMode,
+  onSetSfxMode,
+  layoutName,
+  onSelectLayout,
+  suggestion,
+  isSuggLoading,
+  onGetSuggestion,
+  artStyle,
+}: {
+  pageNumber: number;
+  totalPages: number;
+  panels: Step4Panel[];
+  panelStates: Record<string, { status: string; imageUrl: string | null; error: string | null } | null>;
+  panelStats: { total: number; done: number; generating: number; errors: number; pending: number };
+  isImageGenerating: boolean;
+  isPaused: boolean;
+  comicPageMode: 'page' | 'panel';
+  onSetPageMode: (m: 'page' | 'panel') => void;
+  onGenerateAll: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  sfxMode: 'auto' | 'manual';
+  onSetSfxMode: (m: 'auto' | 'manual') => void;
+  layoutName: string;
+  onSelectLayout: (name: string) => void;
+  suggestion: { suggested: string; reason: string } | null;
+  isSuggLoading: boolean;
+  onGetSuggestion: () => void;
+  artStyle: string;
+}) {
+  const isAllDone = panelStats.total > 0 && panelStats.done >= panelStats.total && !isImageGenerating;
+  const donePct = panelStats.total > 0 ? Math.round((panelStats.done / panelStats.total) * 100) : 0;
+
+  return (
+    <div style={{ width: 280, flexShrink: 0, borderLeft: '1px solid #E5E7EB', background: '#FFFFFF', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+
+        {/* ── LAYOUT TEMPLATE ── (mirrors "DRAG TO ADD BUBBLE" section) */}
+        <div style={{ padding: '16px 12px 12px' }}>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#374151', textTransform: 'uppercase', margin: '0 0 10px' }}>
+            Layout Template
+          </p>
+          <LayoutTemplatePicker
+            panelCount={panels.length}
+            selectedLayout={layoutName}
+            onSelect={onSelectLayout}
+            suggestion={suggestion}
+            isSuggLoading={isSuggLoading}
+            onGetSuggestion={onGetSuggestion}
+          />
         </div>
 
-        <div className="px-8 pb-6 space-y-5">
-          {/* Star rating */}
-          <div>
-            <div className="border-t border-outline-variant/20 pt-5">
-              <p className="text-sm font-semibold text-on-surface mb-3 text-center">Overall quality</p>
-              <div className="flex items-center justify-center gap-2">
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => setStars(n)}
-                    onMouseEnter={() => setHovered(n)}
-                    onMouseLeave={() => setHovered(0)}
-                    className="transition-transform hover:scale-110"
-                  >
-                    <svg width="32" height="32" viewBox="0 0 24 24">
-                      <path
-                        d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                        fill={n <= displayStars ? '#F59E0B' : '#E5E7EB'}
-                        stroke={n <= displayStars ? '#F59E0B' : '#D1D5DB'}
-                        strokeWidth="1"
-                      />
-                    </svg>
-                  </button>
-                ))}
-              </div>
-              {stars === 0 && <p className="text-[11px] text-outline text-center mt-1.5">Click to rate — required</p>}
-            </div>
-          </div>
+        <div style={{ height: 1, background: '#E5E7EB' }} />
 
-          {/* Text fields */}
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">What worked well? <span className="font-normal text-outline">(optional)</span></label>
-              <textarea
-                value={positive}
-                onChange={(e) => setPositive(e.target.value)}
-                placeholder="e.g. The art style came out great, characters looked accurate…"
-                rows={2}
-                className="w-full bg-surface-container-low rounded-xl px-4 py-2.5 text-sm text-on-surface placeholder-outline outline-none focus:ring-2 focus:ring-primary/30 resize-none leading-relaxed"
-              />
+        {/* ── Generate action button ── (mirrors "Auto-import from script") */}
+        <div style={{ padding: '12px 12px' }}>
+          {isAllDone ? (
+            <div style={{ borderRadius: 10, background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '10px 14px', textAlign: 'center' }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#065F46', margin: 0 }}>✓ All {panelStats.total} panels generated!</p>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-on-surface-variant block mb-1.5">What could be better? <span className="font-normal text-outline">(optional)</span></label>
-              <textarea
-                value={negative}
-                onChange={(e) => setNegative(e.target.value)}
-                placeholder="e.g. Panel composition felt off, text prompts were unclear…"
-                rows={2}
-                className="w-full bg-surface-container-low rounded-xl px-4 py-2.5 text-sm text-on-surface placeholder-outline outline-none focus:ring-2 focus:ring-primary/30 resize-none leading-relaxed"
-              />
-            </div>
-          </div>
-
-          {/* Panel reaction summary */}
-          {reactionCounts.length > 0 && (
-            <div className="border-t border-outline-variant/20 pt-4">
-              <p className="text-xs font-semibold text-on-surface-variant mb-2">Your panel reactions:</p>
-              <div className="flex items-center gap-4">
-                {reactionCounts.map((r) => (
-                  <span key={r.value} className="text-sm">
-                    {r.emoji} <span className="text-on-surface-variant text-xs">×{r.count}</span>
-                  </span>
-                ))}
-                <span className="text-xs text-outline ml-auto">{totalPanels} panels total</span>
+          ) : isImageGenerating && !isPaused ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ background: '#F9FAFB', borderRadius: 10, padding: '10px 12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#111827' }}>Generating panels…</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#22C55E', fontVariantNumeric: 'tabular-nums' }}>{donePct}%</span>
+                </div>
+                <div style={{ height: 4, borderRadius: 2, background: '#E5E7EB', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', background: '#22C55E', width: `${donePct}%`, transition: 'width 0.5s', borderRadius: 2 }} />
+                </div>
+                <p style={{ fontSize: 10, color: '#6B7280', marginTop: 6, marginBottom: 0 }}>{panelStats.done}/{panelStats.total} panels done</p>
               </div>
+              <button type="button" onClick={onPause}
+                style={{ width: '100%', height: 44, borderRadius: 10, border: '1.5px solid #4F46E5', background: 'transparent', color: '#4F46E5', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>pause</span>
+                Pause Generation
+              </button>
+            </div>
+          ) : isPaused ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 12px' }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: '#92400E', margin: 0 }}>Paused — {panelStats.done}/{panelStats.total} done</p>
+              </div>
+              <button type="button" onClick={onResume}
+                style={{ width: '100%', height: 44, borderRadius: 10, border: '1.5px solid #4F46E5', background: 'transparent', color: '#4F46E5', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>play_arrow</span>
+                Resume Generation
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {panelStats.done > 0 && (
+                <p style={{ fontSize: 11, color: '#6B7280', margin: 0 }}>
+                  <span style={{ color: '#22C55E', fontWeight: 600 }}>{panelStats.done}/{panelStats.total}</span> panels already generated
+                </p>
+              )}
+              <button type="button" onClick={onGenerateAll}
+                style={{ width: '100%', height: 44, borderRadius: 10, border: '1.5px solid #4F46E5', background: 'transparent', color: '#4F46E5', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>bolt</span>
+                {panelStats.done === 0 ? 'Generate All Panels' : 'Regen Remaining'}
+              </button>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+                <div style={{ flexShrink: 0, marginTop: 1 }}>
+                  <input type="checkbox" checked={sfxMode === 'manual'} onChange={(e) => onSetSfxMode(e.target.checked ? 'manual' : 'auto')} className="sr-only" />
+                  <div style={{ width: 14, height: 14, borderRadius: 3, border: `2px solid ${sfxMode === 'manual' ? '#4F46E5' : '#D1D5DB'}`, background: sfxMode === 'manual' ? '#4F46E5' : '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {sfxMode === 'manual' && <span className="material-symbols-outlined text-white" style={{ fontSize: 10 }}>check</span>}
+                  </div>
+                </div>
+                <p style={{ fontSize: 11, color: '#6B7280', lineHeight: 1.4, margin: 0 }}>Clean images (no embedded text)</p>
+              </label>
             </div>
           )}
+        </div>
 
-          {/* Footer */}
-          <div className="border-t border-outline-variant/20 pt-4 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={onSkip}
-              disabled={skipCountdown > 0}
-              className="text-sm text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {skipCountdown > 0 ? `Skip (${skipCountdown})` : 'Skip — export now'}
-            </button>
-            <button
-              type="button"
-              onClick={() => onSubmit(stars, positive, negative)}
-              disabled={stars === 0}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                stars > 0 ? 'bg-primary text-on-primary hover:opacity-90' : 'bg-surface-container text-outline cursor-not-allowed opacity-50'
-              }`}
-            >
-              Submit &amp; Export →
-            </button>
+        <div style={{ height: 1, background: '#E5E7EB' }} />
+
+        {/* ── PAGE SUMMARY ── (mirrors page summary section in DialogueEditor) */}
+        <div style={{ padding: '12px 12px 16px' }}>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#374151', textTransform: 'uppercase', marginBottom: 10 }}>
+            Page Summary
+            <span style={{ fontSize: 10, fontWeight: 400, color: '#9CA3AF', marginLeft: 6, textTransform: 'none', letterSpacing: 0 }}>
+              {pageNumber}/{totalPages}
+            </span>
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 240, overflowY: 'auto' }}>
+            {panels.map((panel) => {
+              const ps = panelStates[panel.id] ?? null;
+              const hasImage = !!ps?.imageUrl;
+              const isLoading = ps?.status === 'loading';
+              const isError = ps?.status === 'error';
+              return (
+                <div key={panel.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                  <span style={{ marginTop: 10, flexShrink: 0 }} className={`w-2 h-2 rounded-full ${
+                    hasImage ? 'bg-emerald-500' : isLoading ? 'bg-amber-400 animate-pulse' : isError ? 'bg-red-400' : 'bg-gray-300'
+                  }`} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <PanelScriptCard panel={panel} artStyle={artStyle} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
+
       </div>
     </div>
   );
@@ -1083,35 +939,30 @@ export default function Step4Generation() {
     step3,
     step4PanelsByPage,
     step4Stats,
-    jsonCopied,
-    jsonDownloaded,
-    lastDownloadedJsonFile,
-    projectSnapshot,
     handleGenerate,
     handleApprove,
-    handleRevokeApproval,
     handleRetry,
     handleStartFullGeneration,
+    handleStartPanelGeneration,
+    handleRegenerateSinglePanel,
     handleRegeneratePage,
     handleRegenerateWithFeedback,
     acceptPanelRegen,
     rejectPanelRegen,
-    copyProjectJson,
-    downloadProjectJson,
-    exportZip,
-    exportPdf,
-    exportStatus,
-    saveToCloud,
-    cloudSaveStatus,
-    cloudSaveError,
     artStyle,
-    mangaGenre,
     projectId,
     getCooldownSeconds,
     setActiveStep,
+    sfxMode,
+    setSfxMode,
+    pageLayoutNames,
+    pagePanelDimensions,
+    setPageLayout,
+    comicPageMode: contextComicPageMode,
+    setComicPageMode: setContextComicPageMode,
+    resetComicPageMode,
   } = useComicGeneration();
 
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [showFinishErrorModal, setShowFinishErrorModal] = useState(false);
   const [regenModal, setRegenModal] = useState<{
@@ -1121,83 +972,124 @@ export default function Step4Generation() {
     prevFeedback: string;
   } | null>(null);
   const [toasts, setToasts] = useState<{ id: string; label: string; pageNumber: number; panelId: string }[]>([]);
-  const [errorFilter, setErrorFilter] = useState(false);
   const [showConfetti] = useState(false);
-  const [showExportModal, setShowExportModal] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
-  // ── Rating state ──────────────────────────────────────────────────────────
-  const [panelReactions, setPanelReactions] = useState<Record<string, Reaction>>({});
-  const [showRatingModal, setShowRatingModal] = useState(false);
-  const [comicRating, setComicRating] = useState<{ stars: number; positive: string; negative: string } | null>(null);
-  const sessionStartRef = useRef(Date.now());
+  // ── Generation mode (driven from context; modal shows when null) ──────────
+  type ComicPageMode = 'page' | 'panel';
+  const comicPageMode: ComicPageMode = contextComicPageMode ?? 'page';
+  const setComicPageMode = setContextComicPageMode;
 
-  // Load saved ratings on mount
-  useEffect(() => {
-    if (!projectId) return;
-    apiClient.get(`/ratings/panels/${projectId}`).then((res) => {
-      const map: Record<string, Reaction> = {};
-      for (const r of (res.data.ratings ?? [])) map[r.panel_id] = r.reaction;
-      setPanelReactions(map);
-    }).catch(() => {});
-    apiClient.get(`/ratings/comic/${projectId}`).then((res) => {
-      const r = res.data.rating;
-      if (r) setComicRating({ stars: r.stars ?? 0, positive: r.comment_positive ?? '', negative: r.comment_negative ?? '' });
-    }).catch(() => {});
-  }, [projectId]);
+  // ── Bubble dialogue state ─────────────────────────────────────────────────
+  const [panelBubbles, setPanelBubbles] = useState<Record<string, PanelBubbles>>({});
+  const bubblesLoadedRef = useRef(false);
 
-  const addRatingErrorToast = useCallback(() => {
-    const id = `rating-err-${Date.now()}`;
-    setToasts((prev) => [...prev, { id, label: "Couldn't save rating", pageNumber: 0, panelId: '' }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
-  }, []);
+  // ── Layout suggestion state ───────────────────────────────────────────────
+  const [layoutSuggestions, setLayoutSuggestions] = useState<Record<number, { suggested: string; reason: string } | null>>({});
+  const [layoutSuggestLoading, setLayoutSuggestLoading] = useState<Record<number, boolean>>({});
 
-  const handleOpenExport = useCallback(() => {
-    if (comicRating) { setShowExportModal(true); }
-    else { setShowRatingModal(true); }
-  }, [comicRating]);
+  // ── Canvas studio page navigation ─────────────────────────────────────────
+  const [studioPage, setStudioPage] = useState(1);
 
-  const handleRatingSubmit = useCallback(async (stars: number, positive: string, negative: string) => {
-    const elapsed = Math.round((Date.now() - sessionStartRef.current) / 1000);
-    const reactionSummary = REACTIONS.reduce((acc, r) => {
-      acc[r.value] = Object.values(panelReactions).filter((v) => v === r.value).length;
-      return acc;
-    }, {} as Record<string, number>);
-    const panelsRegenerated = Object.values(step4.data?.pageStates ?? {}).filter(
-      (s) => (s as Step4PanelState).versions && (s as Step4PanelState).versions.length > 0
-    ).length;
-    const totalRegenCount = Object.values(step4.data?.pageStates ?? {}).reduce(
-      (n, s) => n + ((s as Step4PanelState).versions?.length ?? 0), 0
-    );
-    setComicRating({ stars, positive, negative });
-    setShowRatingModal(false);
-    setShowExportModal(true);
+  // ── Tab navigation ────────────────────────────────────────────────────────
+  type Step4Tab = 'layout' | 'dialogue';
+  const [activeStep4Tab, setActiveStep4Tab] = useState<Step4Tab>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('mohiom-step4-tab-v2') as Step4Tab | null;
+      return saved === 'dialogue' ? 'dialogue' : 'layout';
+    }
+    return 'layout';
+  });
+  const [showCompletionNudge, setShowCompletionNudge] = useState(false);
+  const prevAllImgDoneRef = useRef(false);
+
+
+  // ── Panel-level stats (panel mode) ────────────────────────────────────────
+  const panelStats = useMemo(() => {
+    const allPanels = step4.data?.panels ?? [];
+    const states = step4.data?.panelStates ?? {};
+    return {
+      total: allPanels.length,
+      done: allPanels.filter((p) => states[p.id]?.imageUrl != null).length,
+      generating: allPanels.filter((p) => states[p.id]?.status === 'loading').length,
+      errors: allPanels.filter((p) => states[p.id]?.status === 'error').length,
+      pending: allPanels.filter((p) => !states[p.id] || states[p.id]?.status === 'idle').length,
+    };
+  }, [step4.data]);
+
+  const autoImportDialogue = useCallback(() => {
+    const bubbles: Record<string, PanelBubbles> = {};
+    for (const [, panels] of step4PanelsByPage) {
+      for (const p of panels) {
+        const text = stripBold(p.dialogueSfx ?? '');
+        if (text && text !== 'No dialogue/SFX provided.') {
+          const isSfx = /^<.+>$/.test(text.trim());
+          const isThought = text.startsWith('*');
+          const bubbleType: BubbleType = isSfx ? 'sfx' : isThought ? 'thought' : 'speech';
+          const tailDir = bubbleType === 'sfx' ? 'none' as const : 'down-left' as const;
+          const sfxRotation = isSfx ? Math.round((Math.random() * 20 - 10)) : 0;
+          const defaultFontSize = isSfx ? 24 : isThought ? 12 : 13;
+          const newBubble: SingleBubble = {
+            id: genBubbleId(),
+            dialogue: text, bubbleType, tailDir,
+            bubblePosition: { x: 0.5, y: 0.3 },
+            bubbleSize: { w: isSfx ? 180 : 160, h: isSfx ? 90 : 80 },
+            fontSize: defaultFontSize,
+            rotation: sfxRotation,
+            opacity: 1,
+            zIndex: 0,
+          };
+          bubbles[p.id] = [newBubble];
+        }
+      }
+    }
+    setPanelBubbles((prev) => ({ ...prev, ...bubbles }));
+    if (projectId) {
+      for (const [panelId, panelBubbleList] of Object.entries(bubbles)) {
+        bubblesApi.upsert(panelId, projectId, panelBubbleList as BubbleDataPayload[]).catch(() => {});
+      }
+    }
+  }, [step4PanelsByPage, projectId]);
+
+  const handleSuggestLayout = useCallback(async (pageNumber: number, panels: Step4Panel[]) => {
+    setLayoutSuggestLoading((prev) => ({ ...prev, [pageNumber]: true }));
     try {
-      await apiClient.post('/ratings/comic', {
-        comic_id: projectId,
-        stars,
-        skipped: false,
-        comment_positive: positive,
-        comment_negative: negative,
-        total_panels: step4.data?.panels?.length ?? 0,
-        panels_regenerated: panelsRegenerated,
-        total_regen_count: totalRegenCount,
-        art_style: artStyle,
-        genre: mangaGenre,
-        total_session_time_seconds: elapsed,
-        panel_reactions_summary: reactionSummary,
-        step_completion_times: {},
+      const res = await comicLayoutApi.suggest({
+        panel_count: panels.length,
+        panels: panels.map((p) => ({ shot_type: p.shotType ?? undefined })),
       });
-    } catch { /* fire-and-forget */ }
-  }, [panelReactions, step4.data, projectId, artStyle, mangaGenre]);
+      setLayoutSuggestions((prev) => ({ ...prev, [pageNumber]: { suggested: res.data.suggested, reason: res.data.reason } }));
+      const knownTemplates = TEMPLATES_BY_COUNT[panels.length] ?? [];
+      if (knownTemplates.includes(res.data.suggested)) {
+        setPageLayout(pageNumber, res.data.suggested, panels);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setLayoutSuggestLoading((prev) => ({ ...prev, [pageNumber]: false }));
+    }
+  }, [setPageLayout]);
 
-  const handleRatingSkip = useCallback(async () => {
-    setShowRatingModal(false);
-    setShowExportModal(true);
-    try {
-      await apiClient.post('/ratings/comic', { comic_id: projectId, stars: null, skipped: true });
-    } catch { /* fire-and-forget */ }
-  }, [projectId]);
+  // Auto-initialize layout selection for each page when panels first become available
+  const hasInitializedLayoutsRef = useRef(false);
+  useEffect(() => {
+    if (!step4.data?.panels.length || hasInitializedLayoutsRef.current) return;
+    hasInitializedLayoutsRef.current = true;
+    for (const [pageNumber, panels] of step4PanelsByPage) {
+      if (!pageLayoutNames[pageNumber]) {
+        const defaultLayout = TEMPLATES_BY_COUNT[panels.length]?.[0] ?? 'grid_2x2';
+        setPageLayout(pageNumber, defaultLayout, panels);
+      }
+    }
+  }, [step4.data?.panels.length, step4PanelsByPage, pageLayoutNames, setPageLayout]);
+
+  // Reset layout init flag when step4 panels are rebuilt
+  useEffect(() => {
+    if (!step4.data?.panels.length) {
+      hasInitializedLayoutsRef.current = false;
+    }
+  }, [step4.data?.panels.length]);
+
 
   const cooldown = getCooldownSeconds(4);
   const isGenerating = step4.isLoading;
@@ -1212,19 +1104,6 @@ export default function Step4Generation() {
     if (!entry) return null;
     return entry[0].replace('page-', 'Page ');
   })();
-
-  // Pulse "Export" button when image generation just completed
-  const prevImgGenRef = useRef(false);
-  const [exportPulse, setExportPulse] = useState(false);
-  useEffect(() => {
-    const justDone = prevImgGenRef.current && !isImageGenerating &&
-      step4Stats.total > 0 && step4Stats.success === step4Stats.total;
-    if (justDone) {
-      setExportPulse(true);
-      setTimeout(() => setExportPulse(false), 1000);
-    }
-    prevImgGenRef.current = isImageGenerating;
-  }, [isImageGenerating, step4Stats]);
 
   // Derive state
   let state: State = 1;
@@ -1251,15 +1130,6 @@ export default function Step4Generation() {
   // All panels flat for grid/list views
   const allPanels = step4PanelsByPage.flatMap(([, panels]) => panels);
 
-
-  // Map panel id → page number for regenerate calls
-  const panelPageMap = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const [pageNumber, panels] of step4PanelsByPage) {
-      for (const p of panels) map[p.id] = pageNumber;
-    }
-    return map;
-  }, [step4PanelsByPage]);
 
   // Panel info map (label + pageNumber) for toasts
   const panelInfoMap = useMemo(() => {
@@ -1300,21 +1170,16 @@ export default function Step4Generation() {
     return () => { Object.values(ref).forEach(clearTimeout); };
   }, []);
 
-  // Auto-clear errorFilter when no errors remain
+  // Load saved bubbles from MongoDB on mount
   useEffect(() => {
-    if (step4Stats.error === 0) setErrorFilter(false);
-  }, [step4Stats.error]);
-
-  // Export error toast
-  useEffect(() => {
-    if (exportStatus !== 'error') return;
-    const id = `export-error-${Date.now()}`;
-    setToasts((t) => [...t.slice(-3), { id, label: 'Export', pageNumber: 0, panelId: '__export__' }]);
-    toastTimeoutsRef.current[id] = setTimeout(() => {
-      setToasts((t) => t.filter((x) => x.id !== id));
-      delete toastTimeoutsRef.current[id];
-    }, 6000);
-  }, [exportStatus]);
+    if (!projectId || bubblesLoadedRef.current) return;
+    bubblesLoadedRef.current = true;
+    bubblesApi.getForComic(projectId).then((res) => {
+      const map: Record<string, PanelBubbles> = {};
+      for (const doc of res.data) map[doc.panelId] = doc.bubbles as PanelBubbles;
+      if (Object.keys(map).length > 0) setPanelBubbles((prev) => ({ ...map, ...prev }));
+    }).catch(() => {});
+  }, [projectId]);
 
   const dismissToast = (id: string) => {
     clearTimeout(toastTimeoutsRef.current[id]);
@@ -1322,16 +1187,12 @@ export default function Step4Generation() {
     setToasts((t) => t.filter((x) => x.id !== id));
   };
 
-  // Finish button state machine
-  const finishBtnState = (() => {
-    if (isImageGenerating) return 'in-progress' as const;
-    if (step4Stats.total > 0 && step4Stats.error === 0 && step4Stats.success === step4Stats.total) return 'all-complete' as const;
-    if (step4Stats.total > 0 && step4Stats.error > 0) return 'has-errors' as const;
-    return 'not-started' as const;
-  })();
-
-  const barPct = step4Stats.total > 0 ? Math.round((step4Stats.success / step4Stats.total) * 100) : 0;
-  const barColor = finishBtnState === 'all-complete' ? '#22C55E' : finishBtnState === 'has-errors' ? '#F59E0B' : '#4F46E5';
+  // Active stats — switches source based on mode (panel or page)
+  const activeStats = useMemo(() =>
+    comicPageMode === 'panel'
+      ? { total: panelStats.total, success: panelStats.done, loading: panelStats.generating, error: panelStats.errors }
+      : { total: step4Stats.total, success: step4Stats.success, loading: step4Stats.loading, error: step4Stats.error },
+  [comicPageMode, panelStats, step4Stats]);
 
   const retryErrorPages = () => {
     if (!step4.data?.pageStates) return;
@@ -1342,338 +1203,366 @@ export default function Step4Generation() {
     setShowFinishErrorModal(false);
   };
 
+  // Tab persistence
+  useEffect(() => {
+    sessionStorage.setItem('mohiom-step4-tab-v2', activeStep4Tab);
+  }, [activeStep4Tab]);
+
+  // Completion nudge
+  useEffect(() => {
+    const isAllDone = activeStats.total > 0 && activeStats.success === activeStats.total && activeStats.error === 0 && !isImageGenerating;
+    if (isAllDone && !prevAllImgDoneRef.current) setShowCompletionNudge(true);
+    prevAllImgDoneRef.current = isAllDone;
+  }, [activeStats, isImageGenerating]);
+
+
+  // Tab helpers
+  const isTabLocked = useCallback((tab: Step4Tab) => {
+    if (tab === 'layout') return false;
+    if (tab === 'dialogue') return activeStats.success === 0;
+    return false;
+  }, [activeStats.success]);
+
+  const handleTabChange = useCallback((tab: Step4Tab) => {
+    if (isTabLocked(tab)) return;
+    setActiveStep4Tab(tab);
+    setShowCompletionNudge(false);
+  }, [isTabLocked]);
+
+  const panelsWithDialogue = allPanels.filter((p) =>
+    (panelBubbles[p.id]?.length ?? 0) > 0
+  ).length;
+
   return (
-    <section className="text-on-surface space-y-6 pb-20">
+    <>
+    <section className="text-on-surface pb-20">
 
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4 px-1 pt-1 mb-2">
         <div>
           <h2 className="text-2xl font-bold text-on-surface">Image Generation</h2>
           <p className="text-sm text-on-surface-variant mt-1">
-            Generate panel images and export the final project package
+            Pick a layout, generate panels, and add dialogue
           </p>
         </div>
         <StateBadge state={state} />
       </div>
 
+      {/* ── Tab Bar ── */}
+      <div className="border-b border-gray-200 mb-6">
+        <div className="flex items-center gap-8">
+          {(
+            [
+              { id: 'layout' as Step4Tab, label: '⚡ Layout & Generate' },
+              { id: 'dialogue' as Step4Tab, label: '💬 Dialogue' },
+            ] as const
+          ).map((tab) => {
+            const locked = isTabLocked(tab.id);
+            const active = activeStep4Tab === tab.id;
 
-      {/* ── Generation Dashboard ── */}
-      {(() => {
-        const pct = step4Stats.total > 0 ? Math.round((step4Stats.success / step4Stats.total) * 100) : 0;
-        const waiting = Math.max(0, step4Stats.total - step4Stats.success - step4Stats.loading - step4Stats.error);
-        const isAllImgDone = step4Stats.total > 0 && step4Stats.success + step4Stats.error >= step4Stats.total && !isImageGenerating;
-        const panelCount = allPanels.length || step4Stats.total;
-        const estMin = Math.max(1, Math.ceil(panelCount * 10 / 60));
+            let badgeText: string | null = null;
+            let badgeVariant: 'complete' | 'progress' | 'gray' = 'progress';
+            if (!locked) {
+              if (tab.id === 'layout' && activeStats.total > 0) {
+                if (activeStats.success === activeStats.total) {
+                  badgeText = `${activeStats.total} ✓`; badgeVariant = 'complete';
+                } else if (activeStats.success === 0) {
+                  badgeText = `0/${activeStats.total}`; badgeVariant = 'gray';
+                } else {
+                  badgeText = `${activeStats.success}/${activeStats.total}`; badgeVariant = 'progress';
+                }
+              } else if (tab.id === 'dialogue') {
+                if (panelsWithDialogue > 0) {
+                  badgeText = `${panelsWithDialogue}/${allPanels.length}`; badgeVariant = 'progress';
+                } else {
+                  badgeText = 'Optional'; badgeVariant = 'gray';
+                }
+              }
+            }
 
-        /* ── COMPLETE ── */
-        if (isAllImgDone && step4Stats.success > 0) {
-          const hasErrors = step4Stats.error > 0;
-          const chapterCount = (step3.data as {chapters?: unknown[]})?.chapters?.length ?? 1;
-          if (hasErrors) {
             return (
-              <div className="rounded-[12px] border border-amber-200 p-6 space-y-4 animate-slide-down"
-                style={{ background: 'linear-gradient(135deg, #FFFBEB, #FEF9F0)' }}>
-                <div className="flex items-center justify-between text-sm font-semibold">
-                  <span className="text-amber-700">⚠ Completed with {step4Stats.error} error{step4Stats.error !== 1 ? 's' : ''}</span>
-                  <span className="text-amber-600 tabular-nums">{Math.round((step4Stats.success / step4Stats.total) * 100)}%</span>
-                </div>
-                <SegmentedProgressBar total={step4Stats.total} success={step4Stats.success} error={step4Stats.error} loading={0} height={12} />
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-sm text-emerald-600 font-semibold">✓ {step4Stats.success}/{step4Stats.total} complete</span>
-                  <span className="text-sm text-amber-500 font-semibold">⚠ {step4Stats.error} error{step4Stats.error !== 1 ? 's' : ''}</span>
-                  <button type="button" onClick={retryErrorPages}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition-colors">
-                    ↺ Retry {step4Stats.error} failed page{step4Stats.error !== 1 ? 's' : ''}
-                  </button>
-                </div>
-              </div>
-            );
-          }
-          return (
-            <div className="rounded-[12px] border border-[#BBF7D0] p-6 space-y-5 animate-slide-down"
-              style={{ background: 'linear-gradient(135deg, #EEF2FF, #F0FDF4)' }}>
-              <div className="text-center space-y-1">
-                <p className="text-2xl font-bold text-gray-900">🎉 Your comic is ready to export!</p>
-                <p className="text-sm text-gray-500">
-                  {step4Stats.total} pages · {chapterCount} chapter{chapterCount !== 1 ? 's' : ''} · {step4PanelsByPage.length} page{step4PanelsByPage.length !== 1 ? 's' : ''} generated
-                </p>
-                {comicRating && comicRating.stars > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowRatingModal(true)}
-                    className="inline-flex items-center gap-1.5 text-xs text-amber-600 hover:text-amber-700 transition-colors mt-1"
-                  >
-                    {'★'.repeat(comicRating.stars)}{'☆'.repeat(5 - comicRating.stars)} Rated · Edit →
-                  </button>
-                )}
-              </div>
-              <SegmentedProgressBar total={step4Stats.total} success={step4Stats.success} error={0} loading={0} height={8} />
-              <div className="flex gap-3 justify-center">
-                <button type="button" onClick={() => setShowPreview(true)}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
-                  👁 Preview Comic
-                </button>
-                <button type="button" onClick={handleOpenExport}
-                  className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold text-white transition-all hover:brightness-110
-                    ${exportPulse ? 'animate-[pulse_0.4s_ease-in-out_2] scale-105' : ''}`}
-                  style={{ background: 'linear-gradient(135deg,#059669,#10B981)', boxShadow: '0 4px 20px rgba(16,185,129,0.4)' }}
-                >
-                  ⬇ Export &amp; Finish →
-                </button>
-              </div>
-            </div>
-          );
-        }
-
-        /* ── GENERATING IMAGES ── */
-        if (isImageGenerating && !isPaused) {
-          return (
-            <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-lowest p-6 space-y-4">
-              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Generation Progress</p>
-
-              {/* Progress bar */}
-              <div>
-                <div className="flex items-center justify-between text-sm font-semibold mb-2">
-                  <span className="text-on-surface-variant">
-                    {step4Stats.error > 0
-                      ? <span>✓ {step4Stats.success} · <span className="text-amber-500">⚠ {step4Stats.error} error{step4Stats.error !== 1 ? 's' : ''}</span> · {step4Stats.loading} processing</span>
-                      : <>Processing {step4Stats.loading > 0 ? `${step4Stats.loading} panel${step4Stats.loading !== 1 ? 's' : ''}` : '…'}</>
-                    }
-                  </span>
-                  <span className="text-on-surface tabular-nums font-bold">{pct}%</span>
-                </div>
-                <SegmentedProgressBar
-                  total={step4Stats.total}
-                  success={step4Stats.success}
-                  error={step4Stats.error}
-                  loading={step4Stats.loading}
-                  height={12}
-                />
-              </div>
-
-              {/* Stats row */}
-              <div className="flex flex-wrap items-center gap-5 text-sm font-semibold">
-                {step4Stats.loading > 0 && (
-                  <span className="flex items-center gap-1.5 text-[#3B82F6]">
-                    <span className="w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse flex-shrink-0" />
-                    Processing: {step4Stats.loading}
-                  </span>
-                )}
-                <span className="flex items-center gap-1.5 text-[#22C55E]">
-                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                  Done: {step4Stats.success}
-                </span>
-                {step4Stats.error > 0 && (
-                  <span className="flex items-center gap-1.5 text-[#EF4444]">
-                    <span className="material-symbols-outlined text-sm">error</span>
-                    Errors: {step4Stats.error}
-                  </span>
-                )}
-                <span className="flex items-center gap-1.5 text-[#9CA3AF]">
-                  <span className="w-2 h-2 rounded-full border-2 border-[#9CA3AF] flex-shrink-0" />
-                  Waiting: {waiting}
-                </span>
-              </div>
-
-              {/* Currently drawing */}
-              {currentlyDrawing && (
-                <p className="text-sm italic text-[#6B7280]">Drawing: {currentlyDrawing}…</p>
-              )}
-
-              {/* Pause / Cancel */}
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setIsPaused(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  <span className="material-symbols-outlined text-sm">pause</span>
-                  Pause
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleRetry(4)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border border-red-200 text-red-500 hover:bg-red-50 transition-colors"
-                >
-                  <span className="material-symbols-outlined text-sm">close</span>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          );
-        }
-
-        /* ── PAUSED ── */
-        if (isPaused) {
-          return (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-6 space-y-4">
-              <div className="flex items-center justify-between text-sm font-semibold mb-1">
-                <span className="text-amber-700 flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>pause_circle</span>
-                  Paused — {step4Stats.success}/{step4Stats.total} completed
-                </span>
-                <span className="text-amber-600 tabular-nums">{pct}%</span>
-              </div>
-              <div className="h-3 rounded-full bg-amber-100 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-500"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setIsPaused(false)}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity"
-                >
-                  <span className="material-symbols-outlined text-sm">play_arrow</span>
-                  Resume Generation
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setIsPaused(false); handleRetry(4); }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold border border-red-200 text-red-500 hover:bg-red-50 transition-colors"
-                >
-                  <span className="material-symbols-outlined text-sm">close</span>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          );
-        }
-
-        /* ── PANELS BUILT — ready to start image gen ── */
-        if (state >= 3 && !isGenerating) {
-          return (
-            <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-lowest p-6 flex flex-col items-center text-center gap-5">
-              <div>
-                <p className="text-lg font-bold text-on-surface">
-                  ✦ Panels ready — generate your images
-                </p>
-                <p className="text-sm text-on-surface-variant mt-1">
-                  {panelCount} panels · Est. ~{estMin} min
-                </p>
-              </div>
-              {step4.error && <p className="text-sm text-red-500">{step4.error}</p>}
               <button
+                key={tab.id}
                 type="button"
-                onClick={handleStartFullGeneration}
-                disabled={isImageGenerating}
-                style={{ boxShadow: '0 4px 20px rgba(79,70,229,0.4)' }}
-                className="w-full h-[52px] rounded-full text-base font-bold text-white
-                  bg-gradient-to-r from-[#4F46E5] to-[#7C3AED]
-                  hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => handleTabChange(tab.id)}
+                disabled={locked}
+                title={locked ? 'Generate at least one image to unlock' : undefined}
+                className={[
+                  'flex items-center gap-2 pb-3 pt-1 -mb-px border-b-[3px] transition-colors whitespace-nowrap text-[13px]',
+                  active
+                    ? 'border-primary text-gray-900 font-semibold'
+                    : locked
+                    ? 'border-transparent text-gray-400 font-normal cursor-not-allowed'
+                    : 'border-transparent text-gray-700 font-medium hover:text-gray-900 hover:border-gray-300',
+                ].join(' ')}
               >
-                ⚡ Generate All Images
+                <span>{tab.label}</span>
+                {locked ? (
+                  <span className="text-gray-400 text-[11px]">🔒</span>
+                ) : badgeText ? (
+                  <span className={[
+                    'inline-flex items-center text-[11px] font-semibold px-2 leading-[18px] rounded-full',
+                    badgeVariant === 'complete' ? 'bg-indigo-100 text-indigo-700' :
+                    badgeVariant === 'progress' ? 'bg-indigo-50 text-indigo-500' :
+                    'bg-gray-100 text-gray-500',
+                  ].join(' ')}>
+                    {badgeText}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ═══════════ TAB 1 — LAYOUT & GENERATE ═══════════ */}
+      {activeStep4Tab === 'layout' && (
+        comicPageMode === 'panel' && (state === 3 || state === 4 || state === 5) && step4PanelsByPage.length > 0 ? (
+          /* ── PANEL CANVAS STUDIO ── */
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 560 }}>
+            {/* Page navigation bar */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', borderBottom: '1px solid #E5E7EB', background: '#F8F9FA', flexShrink: 0 }}>
+              <button type="button"
+                onClick={() => setStudioPage((p) => Math.max(1, p - 1))}
+                disabled={studioPage <= 1}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: studioPage > 1 ? 'pointer' : 'default', fontSize: 14, fontWeight: 500, color: studioPage > 1 ? '#374151' : '#C9CCD0', padding: '4px 8px' }}>
+                <span style={{ fontSize: 16, lineHeight: 1 }}>‹</span> Prev
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {step4PanelsByPage.map(([pn]) => (
+                    <button key={pn} type="button" onClick={() => setStudioPage(pn)}
+                      style={{ width: pn === studioPage ? 12 : 8, height: pn === studioPage ? 12 : 8, borderRadius: '50%', border: 'none', background: pn === studioPage ? '#2563EB' : '#D1D5DB', cursor: 'pointer', padding: 0, transition: 'all 0.15s' }} />
+                  ))}
+                </div>
+                <span style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>
+                  Page {studioPage} of {step4PanelsByPage.length}
+                </span>
+              </div>
+              <button type="button"
+                onClick={() => setStudioPage((p) => Math.min(step4PanelsByPage.length, p + 1))}
+                disabled={studioPage >= step4PanelsByPage.length}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: studioPage < step4PanelsByPage.length ? 'pointer' : 'default', fontSize: 14, fontWeight: 500, color: studioPage < step4PanelsByPage.length ? '#374151' : '#C9CCD0', padding: '4px 8px' }}>
+                Next <span style={{ fontSize: 16, lineHeight: 1 }}>›</span>
               </button>
             </div>
-          );
-        }
+            {/* Canvas + Sidebar */}
+            {(() => {
+              const currentPageEntry = step4PanelsByPage.find(([n]) => n === studioPage) ?? step4PanelsByPage[0];
+              const currentPageNum = currentPageEntry?.[0] ?? 1;
+              const currentPagePanels = currentPageEntry?.[1] ?? [];
+              const currentLayoutName = pageLayoutNames[currentPageNum] ?? TEMPLATES_BY_COUNT[currentPagePanels.length]?.[0] ?? 'grid_2x2';
+              return (
+                <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+                  <LayoutPageCanvas
+                    panels={currentPagePanels}
+                    panelStates={step4.data?.panelStates ?? {}}
+                    layoutName={currentLayoutName}
+                    onGeneratePanel={(panel) => handleRegenerateSinglePanel(panel)}
+                  />
+                  <LayoutStudioSidebar
+                    pageNumber={currentPageNum}
+                    totalPages={step4PanelsByPage.length}
+                    panels={currentPagePanels}
+                    panelStates={step4.data?.panelStates ?? {}}
+                    panelStats={panelStats}
+                    isImageGenerating={isImageGenerating}
+                    isPaused={isPaused}
+                    comicPageMode={comicPageMode}
+                    onSetPageMode={setComicPageMode}
+                    onGenerateAll={handleStartPanelGeneration}
+                    onPause={() => setIsPaused(true)}
+                    onResume={() => setIsPaused(false)}
+                    sfxMode={sfxMode}
+                    onSetSfxMode={setSfxMode}
+                    layoutName={currentLayoutName}
+                    onSelectLayout={(name) => setPageLayout(currentPageNum, name, currentPagePanels)}
+                    suggestion={layoutSuggestions[currentPageNum] ?? null}
+                    isSuggLoading={layoutSuggestLoading[currentPageNum] ?? false}
+                    onGetSuggestion={() => handleSuggestLayout(currentPageNum, currentPagePanels)}
+                    artStyle={artStyle}
+                  />
+                </div>
+              );
+            })()}
+          </div>
+        ) : (
+        <div className="space-y-6">
 
-        /* ── BUILDING PANELS ── */
-        if (isGenerating) {
-          return (
-            <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-lowest p-6 flex items-center gap-4">
-              <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin flex-shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-on-surface">Building panel structure…</p>
-                <p className="text-xs text-on-surface-variant mt-0.5">Parsing the script and preparing panels</p>
+          {/* Generation Dashboard */}
+          {(() => {
+            const waiting = Math.max(0, activeStats.total - activeStats.success - activeStats.loading - activeStats.error);
+            const isAllImgDone = activeStats.total > 0 && activeStats.success + activeStats.error >= activeStats.total && !isImageGenerating;
+            const panelCount = allPanels.length || activeStats.total;
+            const estMin = Math.max(1, Math.ceil(panelCount * 10 / 60));
+
+            /* COMPLETE */
+            if (isAllImgDone && activeStats.success > 0) {
+              const hasErrors = activeStats.error > 0;
+              const chapterCount = (step3.data as { chapters?: unknown[] })?.chapters?.length ?? 1;
+              if (hasErrors) {
+                return (
+                  <div className="rounded-[12px] border border-amber-200 p-6 space-y-4 animate-slide-down"
+                    style={{ background: 'linear-gradient(135deg, #FFFBEB, #FEF9F0)' }}>
+                    <div className="flex items-center justify-between text-sm font-semibold">
+                      <span className="text-amber-700">⚠ Completed with {activeStats.error} error{activeStats.error !== 1 ? 's' : ''}</span>
+                      <span className="text-amber-600 tabular-nums">{Math.round((activeStats.success / activeStats.total) * 100)}%</span>
+                    </div>
+                    <SegmentedProgressBar total={activeStats.total} success={activeStats.success} error={activeStats.error} loading={0} height={12} />
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-sm text-emerald-600 font-semibold">✓ {activeStats.success}/{activeStats.total} complete</span>
+                      <span className="text-sm text-amber-500 font-semibold">⚠ {activeStats.error} error{activeStats.error !== 1 ? 's' : ''}</span>
+                      <button type="button" onClick={retryErrorPages}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition-colors">
+                        ↺ Retry {activeStats.error} failed
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div className="rounded-[12px] border border-[#BBF7D0] p-6 space-y-5 animate-slide-down"
+                  style={{ background: 'linear-gradient(135deg, #EEF2FF, #F0FDF4)' }}>
+                  <div className="text-center space-y-1">
+                    <p className="text-2xl font-bold text-gray-900">🎉 All panels generated!</p>
+                    <p className="text-sm text-gray-500">
+                      {step4Stats.total} pages · {chapterCount} chapter{chapterCount !== 1 ? 's' : ''} · {step4PanelsByPage.length} page{step4PanelsByPage.length !== 1 ? 's' : ''} ready
+                    </p>
+                  </div>
+                  <SegmentedProgressBar total={activeStats.total} success={activeStats.success} error={0} loading={0} height={8} />
+                </div>
+              );
+            }
+
+            /* GENERATING */
+            if (isImageGenerating && !isPaused) {
+              return (
+                <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-lowest p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Generating Images</p>
+                    {currentlyDrawing && <span className="text-xs italic text-[#6B7280]">Drawing: {currentlyDrawing}…</span>}
+                  </div>
+                  <GenerationProgressBar total={activeStats.total} done={activeStats.success} generating={activeStats.loading} errors={activeStats.error} pending={waiting} unit={comicPageMode === 'panel' ? 'panel' : 'page'} />
+                  <div className="flex gap-3 pt-1">
+                    <button type="button" onClick={() => setIsPaused(true)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors">
+                      <span className="material-symbols-outlined text-sm">pause</span>Pause
+                    </button>
+                    <button type="button" onClick={() => handleRetry(4)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border border-red-200 text-red-500 hover:bg-red-50 transition-colors">
+                      <span className="material-symbols-outlined text-sm">close</span>Cancel
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            /* PAUSED */
+            if (isPaused) {
+              return (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-6 space-y-4">
+                  <p className="text-sm font-semibold text-amber-700 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>pause_circle</span>
+                    Paused — {activeStats.success}/{activeStats.total} completed
+                  </p>
+                  <GenerationProgressBar total={activeStats.total} done={activeStats.success} generating={0} errors={activeStats.error} pending={waiting} unit={comicPageMode === 'panel' ? 'panel' : 'page'} />
+                  <div className="flex gap-3 pt-1">
+                    <button type="button" onClick={() => setIsPaused(false)}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity">
+                      <span className="material-symbols-outlined text-sm">play_arrow</span>Resume Generation
+                    </button>
+                    <button type="button" onClick={() => { setIsPaused(false); handleRetry(4); }}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold border border-red-200 text-red-500 hover:bg-red-50 transition-colors">
+                      <span className="material-symbols-outlined text-sm">close</span>Cancel
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            /* READY TO START */
+            if (state >= 3 && !isGenerating) {
+              return (
+                <div className="rounded-2xl border border-outline-variant/10 bg-white p-5 space-y-4">
+                  {/* Selected mode summary */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-on-surface">
+                        {comicPageMode === 'page' ? 'Full Page' : 'Panel by Panel'}
+                      </p>
+                      <p className="text-xs text-[#6B7280] mt-0.5">{panelCount} panels · Est. ~{estMin} min</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => resetComicPageMode()}
+                      className="text-xs text-[#6B7280] hover:text-primary transition-colors underline underline-offset-2"
+                    >
+                      Change
+                    </button>
+                  </div>
+                  {step4.error && <p className="text-sm text-red-500">{step4.error}</p>}
+                  <button type="button"
+                    onClick={comicPageMode === 'page' ? handleStartFullGeneration : handleStartPanelGeneration}
+                    disabled={isImageGenerating}
+                    style={{ boxShadow: '0 4px 20px rgba(79,70,229,0.4)' }}
+                    className="w-full h-[52px] rounded-full text-base font-bold text-white bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                    ⚡ {comicPageMode === 'page' ? 'Generate All Pages' : 'Generate All Panels'}
+                  </button>
+                </div>
+              );
+            }
+
+            /* BUILDING */
+            if (isGenerating) {
+              return (
+                <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-lowest p-6 flex items-center gap-4">
+                  <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-on-surface">Building panel structure…</p>
+                    <p className="text-xs text-on-surface-variant mt-0.5">Parsing the script and preparing panels</p>
+                  </div>
+                </div>
+              );
+            }
+
+            /* DEFAULT */
+            return (
+              <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-lowest p-6 flex flex-col items-center text-center gap-5">
+                <div>
+                  <p className="text-lg font-bold text-on-surface">✦ Ready to generate your comic</p>
+                  <p className="text-sm text-on-surface-variant mt-1">
+                    {panelCount > 0 ? `${panelCount} panels · Est. ~${estMin} min` : !step3.data ? 'Complete Step 3 first to generate the panel script.' : 'Build panels from script to begin.'}
+                  </p>
+                </div>
+                {step4.error && <p className="text-sm text-red-500">{step4.error}</p>}
+                <button type="button" onClick={() => handleGenerate(4)} disabled={!canBuildPanels}
+                  style={{ boxShadow: canBuildPanels ? '0 4px 20px rgba(79,70,229,0.4)' : undefined }}
+                  className="w-full h-[52px] rounded-full text-base font-bold text-white bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                  ⚡ Generate All Images
+                </button>
               </div>
+            );
+          })()}
+
+          {/* Completion nudge */}
+          {showCompletionNudge && (
+            <div className="rounded-xl border border-[#86EFAC] px-5 py-4 flex items-center justify-between gap-4"
+              style={{ background: '#F0FDF4' }}>
+              <div>
+                <p className="text-sm font-semibold text-emerald-700">✓ All {activeStats.total} panels generated!</p>
+                <p className="text-xs text-emerald-600 mt-0.5">Next: Add dialogue to your panels</p>
+              </div>
+              <button type="button" onClick={() => handleTabChange('dialogue')}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors whitespace-nowrap">
+                Go to Dialogue →
+              </button>
             </div>
-          );
-        }
+          )}
 
-        /* ── DEFAULT (state 1 — no panels yet) ── */
-        return (
-          <div className="rounded-2xl border border-outline-variant/10 bg-surface-container-lowest p-6 flex flex-col items-center text-center gap-5">
-            <div>
-              <p className="text-lg font-bold text-on-surface">✦ Ready to generate your comic</p>
-              <p className="text-sm text-on-surface-variant mt-1">
-                {panelCount > 0 ? `${panelCount} panels · Est. ~${estMin} min` : !step3.data ? 'Complete Step 3 first to generate the panel script.' : 'Build panels from script to begin.'}
-              </p>
-            </div>
-            {step4.error && <p className="text-sm text-red-500">{step4.error}</p>}
-            <button
-              type="button"
-              onClick={() => handleGenerate(4)}
-              disabled={!canBuildPanels}
-              style={{ boxShadow: canBuildPanels ? '0 4px 20px rgba(79,70,229,0.4)' : undefined }}
-              className="w-full h-[52px] rounded-full text-base font-bold text-white
-                bg-gradient-to-r from-[#4F46E5] to-[#7C3AED]
-                hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              ⚡ Generate All Images
-            </button>
-          </div>
-        );
-      })()}
-
-      {/* ── Progress + Export ── */}
-      {(state === 2 || state === 3 || state === 4 || state === 5) && (
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6">
-          {/* Left — stats */}
-          <div className="rounded-3xl bg-surface-container-low border border-outline-variant/10 p-6 space-y-4">
-            <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Generation Progress</p>
-            <StatsBar
-              total={step4Stats.total}
-              success={step4Stats.success}
-              loading={step4Stats.loading}
-              error={step4Stats.error}
-            />
-          </div>
-
-          {/* Right — export */}
-          <ExportPanel
-            jsonCopied={jsonCopied}
-            jsonDownloaded={jsonDownloaded}
-            lastDownloadedJsonFile={lastDownloadedJsonFile}
-            projectSnapshot={projectSnapshot}
-            cloudSaveStatus={cloudSaveStatus}
-            cloudSaveError={cloudSaveError}
-            copyProjectJson={copyProjectJson}
-            downloadProjectJson={downloadProjectJson}
-            saveToCloud={saveToCloud}
-            onOpenProjects={() => setIsDrawerOpen(true)}
-          />
-        </div>
-      )}
-
-      {/* ── Page view ── */}
-      {(state === 3 || state === 4 || state === 5) && step4PanelsByPage.length > 0 && (() => {
-        const displayPages = errorFilter
-          ? step4PanelsByPage.filter(([pn]) => step4.data?.pageStates?.[`page-${pn}`]?.status === 'error')
-          : step4PanelsByPage;
-        return (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-on-surface">
-              {step4PanelsByPage.length} page{step4PanelsByPage.length !== 1 ? 's' : ''} · {allPanels.length} panel{allPanels.length !== 1 ? 's' : ''}
-            </p>
-            <div className="flex items-center gap-3">
-              {step4Stats.error > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setErrorFilter((v) => !v)}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-colors ${
-                    errorFilter
-                      ? 'bg-amber-500 text-white'
-                      : 'border border-amber-300 text-amber-600 bg-amber-50 hover:bg-amber-100'
-                  }`}
-                >
-                  ⚠ {errorFilter ? 'Show all' : `Show ${step4Stats.error} error${step4Stats.error !== 1 ? 's' : ''}`}
-                </button>
-              )}
-              {step4Stats.error > 0 && !errorFilter && (
-                <button type="button" onClick={retryErrorPages}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors">
-                  ↺ Retry {step4Stats.error} failed page{step4Stats.error !== 1 ? 's' : ''}
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-6">
-              {displayPages.map(([pageNumber, panels]) => {
+          {/* Page mode: per-page images */}
+          {comicPageMode === 'page' && (state === 3 || state === 4 || state === 5) && step4PanelsByPage.length > 0 && (
+            <div className="space-y-6">
+              {step4PanelsByPage.map(([pageNumber, panels]) => {
                 const pageState = step4.data?.pageStates?.[`page-${pageNumber}`];
                 const pageStatus = pageState?.status ?? 'idle';
                 return (
@@ -1683,35 +1572,24 @@ export default function Step4Generation() {
                         <h3 className="text-base font-bold text-on-surface">Page {pageNumber}</h3>
                         <PanelStatusDot status={pageStatus} />
                         <span className="text-xs text-on-surface-variant">
-                          {pageStatus === 'loading' ? 'Generating…' : pageStatus === 'success' ? 'Done' : pageStatus === 'comparing' ? 'Comparing…' : pageStatus === 'error' ? 'Error' : 'Pending'}
+                          {pageStatus === 'loading' ? 'Generating…' : pageStatus === 'success' ? 'Done' : pageStatus === 'error' ? 'Error' : 'Pending'}
                         </span>
                       </div>
-                      <button
-                        type="button"
+                      <button type="button"
                         onClick={() => {
                           const pState = step4.data?.pageStates?.[`page-${pageNumber}`];
-                          setRegenModal({
-                            pageNumber,
-                            contextLabel: `Page ${pageNumber}`,
-                            currentImageUrl: pState?.imageUrl ?? null,
-                            prevFeedback: pState?.pendingFeedback ?? '',
-                          });
+                          setRegenModal({ pageNumber, contextLabel: `Page ${pageNumber}`, currentImageUrl: pState?.imageUrl ?? null, prevFeedback: pState?.pendingFeedback ?? '' });
                         }}
                         disabled={!step4.data || pageStatus === 'loading'}
                         className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all ${
                           !step4.data || pageStatus === 'loading'
                             ? 'bg-surface-container text-on-surface-variant cursor-not-allowed opacity-50'
                             : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'
-                        }`}
-                      >
-                        <span className="material-symbols-outlined text-sm">
-                          {pageStatus === 'loading' ? 'hourglass_empty' : pageStatus === 'error' ? 'replay' : 'refresh'}
-                        </span>
+                        }`}>
+                        <span className="material-symbols-outlined text-sm">{pageStatus === 'loading' ? 'hourglass_empty' : pageStatus === 'error' ? 'replay' : 'refresh'}</span>
                         {pageStatus === 'loading' ? 'Generating…' : pageStatus === 'error' ? 'Retry page' : 'Regenerate'}
                       </button>
                     </div>
-
-                    {/* Full-page image / comparison view */}
                     {pageState?.error && <p className="text-sm text-red-500">{pageState.error}</p>}
                     {pageStatus === 'comparing' && pageState?.pendingUrl ? (
                       <ComparisonView
@@ -1722,31 +1600,11 @@ export default function Step4Generation() {
                         versions={pageState.versions ?? []}
                         onAccept={() => acceptPanelRegen(pageNumber)}
                         onReject={() => rejectPanelRegen(pageNumber)}
-                        onTryAgain={() => setRegenModal({
-                          pageNumber,
-                          contextLabel: `Page ${pageNumber}`,
-                          currentImageUrl: pageState?.pendingUrl ?? pageState?.imageUrl ?? null,
-                          prevFeedback: pageState?.pendingFeedback ?? '',
-                        })}
+                        onTryAgain={() => setRegenModal({ pageNumber, contextLabel: `Page ${pageNumber}`, currentImageUrl: pageState?.pendingUrl ?? pageState?.imageUrl ?? null, prevFeedback: pageState?.pendingFeedback ?? '' })}
                       />
                     ) : pageState?.imageUrl ? (
                       <div className="rounded-2xl bg-surface-container overflow-hidden border border-outline-variant/10">
-                        <Image
-                          src={pageState.imageUrl}
-                          alt={`Page ${pageNumber} comic render`}
-                          width={720}
-                          height={960}
-                          className="h-auto w-full object-cover"
-                          unoptimized
-                        />
-                        <EmojiReactionBar
-                          pageId={`page-${pageNumber}`}
-                          panels={panels}
-                          comicId={projectId}
-                          reaction={panelReactions[`page-${pageNumber}`] ?? null}
-                          onReaction={(id, r) => setPanelReactions((prev) => ({ ...prev, [id]: r }))}
-                          onError={addRatingErrorToast}
-                        />
+                        <Image src={pageState.imageUrl} alt={`Page ${pageNumber} comic render`} width={720} height={960} className="h-auto w-full object-cover" unoptimized />
                       </div>
                     ) : (
                       <div className="rounded-2xl bg-surface-container py-12 text-center">
@@ -1756,27 +1614,44 @@ export default function Step4Generation() {
                             Generating comic page…
                           </span>
                         ) : (
-                          <span className="text-sm text-on-surface-variant">
-                            No image yet — click &ldquo;↺ Regenerate&rdquo; above.
-                          </span>
+                          <span className="text-sm text-on-surface-variant">No image yet — click &ldquo;↺ Regenerate&rdquo; above.</span>
                         )}
                       </div>
                     )}
-
-                    {/* Panel script cards */}
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
-                      {panels.map((panel) => (
-                        <PanelScriptCard key={panel.id} panel={panel} artStyle={artStyle} />
-                      ))}
+                      {panels.map((panel) => <PanelScriptCard key={panel.id} panel={panel} artStyle={artStyle} />)}
                     </div>
                   </div>
                 );
               })}
             </div>
+          )}
         </div>
-        );
-      })()}
+        )
+      )}
 
+
+      {/* ═══════════ TAB 2 — DIALOGUE ═══════════ */}
+      {activeStep4Tab === 'dialogue' && (
+        <DialogueEditor
+          panelsByPage={step4PanelsByPage}
+          panelStates={step4.data?.panelStates ?? {}}
+          pageStates={step4.data?.pageStates ?? {}}
+          panelBubbles={panelBubbles}
+          pageLayoutNames={pageLayoutNames}
+          comicPageMode={comicPageMode}
+          onSaveBubbles={(panelId, bubbles) => {
+            setPanelBubbles((prev) => ({ ...prev, [panelId]: bubbles }));
+            if (projectId) {
+              bubblesApi.upsert(panelId, projectId, bubbles as BubbleDataPayload[]).catch(() => {});
+            }
+          }}
+          onExport={() => { handleApprove(4); setActiveStep(5); }}
+          onAutoImport={autoImportDialogue}
+        />
+      )}
+
+      {/* ── Always-on modals ── */}
       {regenModal && (
         <RegenerateModal
           pageNumber={regenModal.pageNumber}
@@ -1788,12 +1663,8 @@ export default function Step4Generation() {
         />
       )}
 
-      <ProjectsDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
-
-      {/* confetti disabled */}
       {showConfetti && null}
 
-      {/* ── Preview modal ── */}
       {showPreview && (() => {
         const pages = Object.entries((step4.data?.pageStates ?? {}) as Record<string, { status: string; imageUrl: string | null }>)
           .filter(([, v]) => !!v.imageUrl)
@@ -1802,39 +1673,7 @@ export default function Step4Generation() {
         return <PreviewModal pages={pages} onClose={() => setShowPreview(false)} />;
       })()}
 
-      {/* ── Comic rating modal ── */}
-      {showRatingModal && (
-        <ComicRatingModal
-          panelReactions={panelReactions}
-          totalPanels={allPanels.length}
-          onClose={() => setShowRatingModal(false)}
-          onSubmit={handleRatingSubmit}
-          onSkip={handleRatingSkip}
-          initialStars={comicRating?.stars}
-          initialPositive={comicRating?.positive}
-          initialNegative={comicRating?.negative}
-        />
-      )}
-
-      {/* ── Export modal ── */}
-      {showExportModal && (
-        <ExportModal
-          panelCount={allPanels.length}
-          pageCount={step4PanelsByPage.length}
-          chapterCount={(step3.data as { chapters?: unknown[] })?.chapters?.length ?? 1}
-          onClose={() => setShowExportModal(false)}
-          onDownloadJson={downloadProjectJson}
-          onSaveCloud={saveToCloud}
-          cloudSaveStatus={cloudSaveStatus}
-          onMarkComplete={() => handleApprove(4)}
-          onExportZip={exportZip}
-          onExportPdf={exportPdf}
-          hasImages={Object.values(step4.data?.pageStates ?? {}).some((s) => s.status === 'success' && s.imageUrl)}
-          exportStatus={exportStatus}
-        />
-      )}
-
-      {/* ── Toast stack (top-right, z-60) ── */}
+      {/* Toast stack */}
       {toasts.length > 0 && (
         <div className="fixed top-6 right-6 z-[60] flex flex-col gap-2 pointer-events-none">
           {toasts.map((toast) => (
@@ -1845,15 +1684,11 @@ export default function Step4Generation() {
                 <p className="text-sm font-semibold text-gray-900 truncate">{toast.label} failed</p>
                 <div className="flex items-center gap-3 mt-1.5">
                   <button type="button" onClick={() => dismissToast(toast.id)}
-                    className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
-                    Dismiss
-                  </button>
+                    className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Dismiss</button>
                   {toast.panelId !== '__export__' && (
                     <button type="button"
                       onClick={() => { handleRegeneratePage(toast.pageNumber); dismissToast(toast.id); }}
-                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
-                      Retry now
-                    </button>
+                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">Retry now</button>
                   )}
                 </div>
               </div>
@@ -1866,7 +1701,7 @@ export default function Step4Generation() {
         </div>
       )}
 
-      {/* ── Error confirmation modal ── */}
+      {/* Error confirmation modal */}
       {showFinishErrorModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowFinishErrorModal(false)} />
@@ -1876,18 +1711,12 @@ export default function Step4Generation() {
             </p>
             <p className="text-sm text-on-surface-variant">You can retry the failed pages or continue without them.</p>
             <div className="flex gap-3 pt-1">
-              <button
-                type="button"
-                onClick={retryErrorPages}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
-              >
+              <button type="button" onClick={retryErrorPages}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
                 ↺ Retry failed pages
               </button>
-              <button
-                type="button"
-                onClick={() => { setShowFinishErrorModal(false); handleApprove(4); }}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-gray-900 text-white text-sm font-bold hover:opacity-90 transition-opacity"
-              >
+              <button type="button" onClick={() => { setShowFinishErrorModal(false); handleApprove(4); }}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-gray-900 text-white text-sm font-bold hover:opacity-90 transition-opacity">
                 Continue anyway →
               </button>
             </div>
@@ -1895,200 +1724,42 @@ export default function Step4Generation() {
         </div>
       )}
 
-      {/* ── Bottom bar ── */}
-      <div
-        className="fixed bottom-0 right-0 z-40 bg-white shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
-        style={{ left: 'var(--studio-sidebar-width)' }}
-      >
-        <div className="border-t border-gray-200 px-10 py-4 max-w-6xl mx-auto flex items-center justify-between gap-4">
-          {/* Left: ← Edit Script */}
-          <button
-            type="button"
-            onClick={() => setActiveStep(3)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors flex-shrink-0"
-          >
+      {/* ── Simple bottom bar ── */}
+      <div className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
+        style={{ left: 'var(--studio-sidebar-width)' }}>
+        <div className="px-10 max-w-6xl mx-auto flex items-center justify-between gap-4" style={{ height: 56 }}>
+          <button type="button"
+            onClick={() => {
+              if (activeStep4Tab === 'layout') setActiveStep(3);
+              else handleTabChange('layout');
+            }}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors flex-shrink-0">
             <span className="material-symbols-outlined text-base">arrow_back</span>
-            <span className="hidden sm:inline">Edit Script</span>
+            <span className="hidden sm:inline">
+              {activeStep4Tab === 'layout' ? 'Edit Script' : 'Layout & Generate'}
+            </span>
           </button>
 
-          {/* Center: progress */}
-          <div className="flex-1 min-w-0 hidden sm:flex flex-col items-center justify-center gap-2">
-            {isGenerating && (
-              <div className="flex items-center gap-2">
-                <span className="w-3.5 h-3.5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin flex-shrink-0" />
-                <span className="text-sm text-gray-500">Building panels…</span>
-              </div>
-            )}
-            {!isGenerating && step4Stats.total > 0 && (
-              <div className="w-full max-w-xs space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-xs font-semibold">
-                    <span className="text-emerald-600">✓ {step4Stats.success}/{step4Stats.total} complete</span>
-                    {step4Stats.error > 0 && (
-                      <>
-                        <span className="text-gray-300">·</span>
-                        <span className="text-amber-500">⚠ {step4Stats.error} error{step4Stats.error !== 1 ? 's' : ''}</span>
-                        <button type="button" onClick={retryErrorPages}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-700 text-[10px] font-bold hover:bg-amber-100 transition-colors">
-                          ↺ Retry
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  <span className={`text-xs tabular-nums font-bold ${
-                    finishBtnState === 'all-complete' ? 'text-emerald-600' :
-                    finishBtnState === 'has-errors' ? 'text-amber-500' : 'text-gray-400'
-                  }`}>{barPct}%</span>
-                </div>
-                <SegmentedProgressBar total={step4Stats.total} success={step4Stats.success} error={step4Stats.error} loading={step4Stats.loading} height={6} />
-              </div>
-            )}
-          </div>
-
-          {/* Right: secondary + finish button */}
-          <div className="flex items-center gap-3 flex-shrink-0">
-            {/* Rebuild secondary */}
-            {(state === 3 || state === 4 || state === 5) && !isGenerating && (
-              <button
-                type="button"
-                onClick={() => handleGenerate(4)}
-                disabled={!canBuildPanels}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <span className="material-symbols-outlined text-sm">refresh</span>
-                {cooldown > 0 ? `${cooldown}s` : 'Rebuild'}
-              </button>
-            )}
-
-            {/* Build Panels from Script (state 1/2 only) */}
-            {(state === 1 || state === 2) && (
-              <button
-                type="button"
-                onClick={() => { if (!isGenerating) handleGenerate(4); }}
-                disabled={!canBuildPanels}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all ${
-                  !canBuildPanels || isGenerating
-                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    : 'bg-gray-900 text-white hover:opacity-90'
-                }`}
-              >
-                {isGenerating ? (
-                  <><span className="w-4 h-4 border-2 border-gray-400/30 border-t-gray-400 rounded-full animate-spin" />Building…</>
-                ) : (
-                  <><span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>build</span>Build Panels from Script</>
-                )}
-              </button>
-            )}
-
-            {/* Revoke (wizard state 4 = approved) */}
-            {state === 4 && (
-              <button
-                type="button"
-                onClick={() => handleRevokeApproval(4)}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-semibold text-on-surface-variant hover:text-on-surface border border-outline-variant/20 hover:bg-surface-container transition-colors"
-              >
-                <span className="material-symbols-outlined text-sm">undo</span>
-                Revoke
-              </button>
-            )}
-
-            {/* ── FINISH BUTTON STATE MACHINE ── */}
-            {(state === 3 || state === 5) && (() => {
-              /* STATE 1 — not started */
-              if (finishBtnState === 'not-started') {
-                return (
-                  <div className="relative group">
-                    <button
-                      type="button"
-                      disabled
-                      className="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold cursor-not-allowed opacity-60"
-                      style={{ background: '#E5E7EB', color: '#9CA3AF' }}
-                    >
-                      <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>task_alt</span>
-                      Mark Complete
-                    </button>
-                    <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 pointer-events-none w-64">
-                      <div className="bg-gray-900 text-white rounded-xl px-3 py-2 text-xs leading-relaxed shadow-xl">
-                        Generate images before marking complete.<br />
-                        {step4Stats.total > 0 ? `${step4Stats.total} page${step4Stats.total !== 1 ? 's' : ''} not yet generated.` : 'No panels built yet.'}
-                      </div>
-                      <div className="w-2.5 h-2.5 bg-gray-900 rotate-45 ml-auto mr-5 -mt-1.5" />
-                    </div>
-                  </div>
-                );
-              }
-
-              /* STATE 2 — in progress */
-              if (finishBtnState === 'in-progress') {
-                const ringR = 6, ringC = 2 * Math.PI * ringR;
-                return (
-                  <div className="relative group">
-                    <button
-                      type="button"
-                      disabled
-                      className="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold cursor-not-allowed opacity-60"
-                      style={{ background: '#E5E7EB', color: '#9CA3AF' }}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 16 16" className="flex-shrink-0">
-                        <circle cx="8" cy="8" r={ringR} fill="none" stroke="#D1D5DB" strokeWidth="2" />
-                        <circle cx="8" cy="8" r={ringR} fill="none" stroke="#6B7280" strokeWidth="2"
-                          strokeDasharray={`${(barPct / 100) * ringC} ${ringC}`}
-                          strokeLinecap="round"
-                          transform="rotate(-90 8 8)" />
-                      </svg>
-                      {barPct}% · Mark Complete
-                    </button>
-                    <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 pointer-events-none w-64">
-                      <div className="bg-gray-900 text-white rounded-xl px-3 py-2 text-xs leading-relaxed shadow-xl">
-                        Generating images… {step4Stats.success}/{step4Stats.total} complete.<br />
-                        Please wait for generation to finish.
-                      </div>
-                      <div className="w-2.5 h-2.5 bg-gray-900 rotate-45 ml-auto mr-5 -mt-1.5" />
-                    </div>
-                  </div>
-                );
-              }
-
-              /* STATE 3 — has errors */
-              if (finishBtnState === 'has-errors') {
-                return (
-                  <div className="relative group">
-                    <button
-                      type="button"
-                      onClick={() => setShowFinishErrorModal(true)}
-                      className="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold border transition-colors hover:brightness-95"
-                      style={{ background: '#FEF3C7', color: '#92400E', borderColor: '#F59E0B' }}
-                    >
-                      <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
-                      Mark Complete
-                    </button>
-                    <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 pointer-events-none w-64">
-                      <div className="bg-gray-900 text-white rounded-xl px-3 py-2 text-xs leading-relaxed shadow-xl">
-                        ⚠ {step4Stats.error} page{step4Stats.error !== 1 ? 's' : ''} failed to generate.<br />
-                        You can continue or retry the failed pages.
-                      </div>
-                      <div className="w-2.5 h-2.5 bg-gray-900 rotate-45 ml-auto mr-5 -mt-1.5" />
-                    </div>
-                  </div>
-                );
-              }
-
-              /* STATE 4 — all complete */
-              return (
-                <button
-                  type="button"
-                  onClick={handleOpenExport}
-                  className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold text-white transition-all
-                    ${exportPulse ? 'animate-[pulse_0.4s_ease-in-out_2] scale-[1.05]' : ''}`}
-                  style={{ background: '#22C55E', boxShadow: '0 4px 16px rgba(34,197,94,0.4)' }}
-                >
-                  ✓ Finish &amp; Export →
-                </button>
-              );
-            })()}
-          </div>
+          <button type="button"
+            onClick={() => {
+              if (activeStep4Tab === 'layout') handleTabChange('dialogue');
+              else { handleApprove(4); setActiveStep(5); }
+            }}
+            disabled={activeStep4Tab === 'layout' && isTabLocked('dialogue')}
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
+              activeStep4Tab === 'dialogue'
+                ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                : isTabLocked('dialogue')
+                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                : 'bg-primary text-on-primary hover:opacity-90'
+            }`}>
+            {activeStep4Tab === 'layout' ? 'Go to Dialogue →' : 'Continue to Export →'}
+          </button>
         </div>
       </div>
     </section>
+
+    {contextComicPageMode === null && <GenerationModeModal />}
+    </>
   );
 }

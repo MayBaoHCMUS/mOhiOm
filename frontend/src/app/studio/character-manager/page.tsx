@@ -7,6 +7,7 @@ import StudioTopBar from '@/components/StudioTopBar';
 import CreateCharacterModal from '@/components/CreateCharacterModal';
 import { projectsApi } from '@/services/api';
 import type { CharacterSummary, CloudProjectListItem } from '@/services/api';
+import { getImageApiUrl } from '@/lib/imageApiUrl';
 
 const MAX_SLOTS = 12;
 
@@ -123,7 +124,7 @@ function DetailPanel({ character, onSaved, onDeleted, onBack }: DetailPanelProps
   }, [character.character_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const stored = window.sessionStorage.getItem('mohiom-image-api-url');
+    const stored = getImageApiUrl();
     if (stored) setApiUrl(stored);
   }, []);
 
@@ -438,8 +439,7 @@ export default function CharacterManagerPage() {
   };
 
   const handleLoadProject = (projectId: string) => {
-    window.localStorage.setItem('mohiom-pending-load', projectId);
-    router.push('/studio');
+    router.push(`/studio?project=${encodeURIComponent(projectId)}`);
   };
 
   const handleSaved = (updated: CharacterSummary) => {

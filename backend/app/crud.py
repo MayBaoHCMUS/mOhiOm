@@ -175,3 +175,20 @@ class UserRepository:
             return None
         return self.collection.find_one({"_id": ObjectId(user_id)})
 
+    async def get_text_gen_config(self, user_id: str) -> Optional[Dict[str, Any]]:
+        doc = self.collection.find_one({"_id": ObjectId(user_id)}, {"text_gen_config": 1})
+        return (doc or {}).get("text_gen_config")
+
+    async def set_text_gen_config(self, user_id: str, config: Dict[str, Any]) -> None:
+        config = {**config, "updated_at": datetime.now(timezone.utc)}
+        self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"text_gen_config": config}},
+        )
+
+    async def clear_text_gen_config(self, user_id: str) -> None:
+        self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$unset": {"text_gen_config": ""}},
+        )
+

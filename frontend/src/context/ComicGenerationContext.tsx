@@ -1,20 +1,32 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   geminiApi,
+  comicLayoutApi,
   analyzeStoryStructuredStream,
   characterDesignsStructuredStream,
   panelScriptStructuredStream,
   projectsApi,
   toApiError,
 } from '@/services/api';
-import type { FullProjectSave, CloudProjectListItem, CharacterSummary } from '@/services/api';
-import { exportAsZip, exportAsPdf } from '@/lib/export';
+import type { FullProjectSave, CloudProjectListItem, CharacterSummary, ProjectImageEntry } from '@/services/api';
+import { exportAsZip, exportAsPdf, exportAsEpub } from '@/lib/export';
+import { recomposePages, DEFAULT_BORDER_CONFIG } from '@/lib/borderComposer';
+import type { BorderConfig } from '@/lib/borderComposer';
+import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
+import { trackEvent } from '@/lib/analytics';
+import { getImageApiUrl, setImageApiUrl } from '@/lib/imageApiUrl';
 import type { ExportPage } from '@/lib/export';
+import type { SingleBubble } from '@/components/studio-steps/DialogueEditor';
 
-export type StepKey = 1 | 2 | 3 | 4;
+export type StepKey = 1 | 2 | 3 | 4 | 5;
 export type WizardStepKey = 0 | StepKey;
+
+export interface Step5Result {
+  exportedAt: string | null;
+}
 
 export type ImageGenMode = 1 | 2 | 3 | 4;
 
@@ -27,6 +39,8 @@ export interface ImageGenSettings {
   characterName?: string;
   storyId?: string;
   style?: string;
+  width?: number;
+  height?: number;
 }
 
 export interface StepState<T> {
@@ -203,6 +217,18 @@ const emptyStepState = <T,>(locked: boolean): StepState<T> => ({
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts: number, retryDelayMs: number): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try { return await fn() }
+    catch (e) {
+      lastErr = e
+      if (attempt < maxAttempts - 1) await sleep(retryDelayMs)
+    }
+  }
+  throw lastErr
+}
+
 const fetchImageFromAI = async (
   imagePrompt: string,
   localImageApiUrl?: string,
@@ -216,7 +242,7 @@ const fetchImageFromAI = async (
     const requestBody: Record<string, unknown> = {
       url: localImageApiUrl,
       scene_prompt: imagePrompt,
-      negative_prompt: 'lowres, bad anatomy, worst quality, blurry',
+      negative_prompt: PANEL_NEGATIVE_PROMPT,
       story_id: settings?.storyId ?? 'default',
       style: settings?.style ?? 'manga',
       ip_adapter_scale: settings?.ipAdapterScale ?? 0.7,
@@ -224,10 +250,15 @@ const fetchImageFromAI = async (
     if (settings?.characterName) {
       requestBody.character_name = settings.characterName;
     }
+    if (settings?.referenceImageBase64) {
+      requestBody.reference_image_b64 = settings.referenceImageBase64;
+    }
     if ((mode === 3 || mode === 4) && settings?.controlImageBase64) {
       requestBody.control_image_b64 = settings.controlImageBase64;
       requestBody.controlnet_scale = settings.controlnetScale ?? 0.8;
     }
+    if (settings?.width !== undefined)  requestBody.width  = settings.width;
+    if (settings?.height !== undefined) requestBody.height = settings.height;
 
     console.group('[fetchImageFromAI] Image generation request');
     console.log('Proxy URL   :', '/api/image-proxy');
@@ -397,25 +428,85 @@ const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {
   return parsed.sort((a, b) => a.pageNumber - b.pageNumber || a.panelNumber - b.panelNumber);
 };
 
+// Keywords that cause SD to generate character sheets instead of scene panels
+const PANEL_STRIP_KEYWORDS = [
+  'character sheet', 'turnaround', 'character design', 'full body',
+  'reference sheet', 'character turnaround', 'multiple views',
+  'front view', 'side view', 'back view',
+  'panel 1', 'panel 2', 'panel 3', 'panel 4',
+  'panel 5', 'panel 6', 'panel 7', 'panel 8',
+];
+
+// Valid shot_type values from Step 3 RULE 5 — marks where scene description begins
+const SHOT_TYPE_MARKERS = [
+  'extreme close-up', 'close-up', 'close up', 'medium shot', 'medium-wide',
+  'medium wide', 'wide shot', 'establishing shot', 'establishing',
+  'overhead', 'low angle', 'dutch angle', 'over-the-shoulder', 'two-shot',
+  'two shot', 'full shot', 'insert', 'splash',
+];
+
+/**
+ * Strip character visual tags from an ai_image_prompt.
+ * Format is: "{art_style}, {character_tags}, {shot_type}, {action}, {mood}"
+ * We keep: art_style + everything from the first shot_type onward.
+ * Character appearance comes from IP-Adapter reference image instead.
+ */
+const buildCleanPanelPrompt = (aiImagePrompt: string, artStyle: string): string => {
+  let cleaned = aiImagePrompt;
+
+  // Strip panel-number and character-sheet keywords
+  for (const kw of PANEL_STRIP_KEYWORDS) {
+    cleaned = cleaned.replace(new RegExp(kw, 'gi'), '');
+  }
+
+  // Find the first shot_type marker — everything from there is scene description
+  const lower = cleaned.toLowerCase();
+  let shotIdx = -1;
+  for (const marker of SHOT_TYPE_MARKERS) {
+    const idx = lower.indexOf(marker);
+    if (idx !== -1 && (shotIdx === -1 || idx < shotIdx)) {
+      shotIdx = idx;
+    }
+  }
+
+  const stylePrefix = artStyle.trim().toLowerCase();
+  if (shotIdx > 0) {
+    // Keep art style + scene description (shot_type → end), drop character visual tags
+    const sceneDescription = cleaned.slice(shotIdx).trim().replace(/^,\s*/, '');
+    return `${stylePrefix}, ${sceneDescription}`;
+  }
+
+  // No shot_type found — strip keywords and collapse whitespace
+  cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
+  return `${stylePrefix}, ${cleaned}`;
+};
+
+const PANEL_NEGATIVE_PROMPT =
+  'multiple panels, split screen, panel border in image, character sheet, turnaround, ' +
+  'reference sheet, text in image, watermark, signature, ' +
+  'lowres, bad anatomy, worst quality, blurry, deformed';
+
 const buildComicPagePrompt = (
   panels: Step4Panel[],
   artStyle: string,
   mangaGenre: string,
-  characterRefs: Array<{ name: string; prompt: string }>
+  _characterRefs: Array<{ name: string; prompt: string }>,
+  includeSfx = false
 ): string => {
+  // Character appearance is handled by IP-Adapter reference image — not embedded in text prompt
   const parts: string[] = [
-    `Comic book page with ${panels.length} panel layout. ${artStyle}. ${mangaGenre}.`,
+    `Comic book page, ${panels.length} panels, ${artStyle}, ${mangaGenre}.`,
   ];
-  if (characterRefs.length > 0) {
-    parts.push(`Characters: ${characterRefs.map(c => `${c.name} — ${c.prompt}`).join('; ')}.`);
-  }
   panels.forEach((panel, i) => {
-    let panelLine = `Panel ${i + 1}: ${panel.aiImagePrompt}`;
-    const sfx = panel.dialogueSfx?.trim();
-    if (sfx && !/^(none|no dialogue\/sfx provided\.?)$/i.test(sfx)) {
-      panelLine += `. Dialogue/SFX: ${sfx}`;
+    const cleanPrompt = buildCleanPanelPrompt(panel.aiImagePrompt, artStyle);
+    let line = `Panel ${i + 1}: ${cleanPrompt}`;
+    if (includeSfx) {
+      const sfx = panel.dialogueSfx?.trim();
+      if (sfx && !/^(none|no dialogue\/sfx provided\.?)$/i.test(sfx)) {
+        line += `. Dialogue: ${sfx}`;
+      }
     }
-    parts.push(panelLine);
+    parts.push(line);
   });
   parts.push('Professional comic book artwork, panel borders, clear sequential storytelling.');
   return parts.join('\n');
@@ -440,11 +531,17 @@ export interface ComicGenerationContextValue {
   ipAdapterScale: number;
   controlnetScale: number;
   useStreaming: boolean;
+  sfxMode: 'auto' | 'manual';
+  setSfxMode: (v: 'auto' | 'manual') => void;
+  comicPageMode: 'page' | 'panel' | null;
+  setComicPageMode: (mode: 'page' | 'panel') => void;
+  resetComicPageMode: () => void;
   step1: StepState<Step1Result>;
   step2: StepState<Step2Result>;
   step2ImageReview: StepState<CharacterImageReviewResult>;
   step3: StepState<Step3Result>;
   step4: StepState<Step4Result>;
+  step5: StepState<Step5Result>;
   activeStep: WizardStepKey;
   globalError: string | null;
   jsonCopied: boolean;
@@ -488,15 +585,23 @@ export interface ComicGenerationContextValue {
   handleSelectCharacterCandidate: (characterId: string, candidateId: string) => void;
   handleApproveCharacterReferences: () => void;
   handleRetryCharacterReferences: () => void;
+  pageLayoutNames: Record<number, string>;
+  pagePanelDimensions: Record<number, Record<string, { width: number; height: number }>>;
+  setPageLayout: (pageNumber: number, layoutName: string, panelsOnPage: Step4Panel[]) => Promise<void>;
+  setRawPanelDimensions: (pageNumber: number, dimMap: Record<string, { width: number; height: number }>) => void;
   handleStartFullGeneration: () => Promise<void>;
+  handleStartPanelGeneration: () => Promise<void>;
+  handleRegenerateSinglePanel: (panel: Step4Panel) => Promise<void>;
   handleRegeneratePage: (pageNumber: number) => Promise<void>;
   handleRegenerateWithFeedback: (pageNumber: number, feedback: string) => Promise<void>;
   acceptPanelRegen: (pageNumber: number) => void;
   rejectPanelRegen: (pageNumber: number) => void;
   copyProjectJson: () => Promise<void>;
   downloadProjectJson: () => void;
-  exportZip: (includeMetadata: boolean) => Promise<void>;
-  exportPdf: (includeMetadata: boolean) => Promise<void>;
+  exportZip: (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => Promise<void>;
+  exportPdf: (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => Promise<void>;
+  exportPrintPdf: (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => Promise<void>;
+  exportEpub: (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => Promise<void>;
   exportStatus: 'idle' | 'exporting' | 'error';
   getStep2PromptList: () => string[];
   getSelectedCharacterReferences: () => Array<{
@@ -510,12 +615,16 @@ export interface ComicGenerationContextValue {
   loadMockCharacterReview: () => void;
   loadMockPipeline: () => void;
   loadProjectJson: (json: Record<string, unknown>) => { success: boolean; error?: string };
+  borderConfig: BorderConfig;
+  setBorderConfig: React.Dispatch<React.SetStateAction<BorderConfig>>;
   cloudSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
   cloudSaveError: string | null;
   saveToCloud: () => Promise<void>;
   loadFromCloud: (projectId: string) => Promise<{ success: boolean; error?: string }>;
+  clearProjectFromUrl: () => void;
   listCloudProjects: () => Promise<CloudProjectListItem[]>;
   injectLibraryCharacters: (chars: CharacterSummary[]) => void;
+  addCandidateFromImage: (characterId: string, imageDataUrl: string) => void;
   fromStorySetup: boolean;
   setFromStorySetup: (v: boolean) => void;
   fieldsAutoFilledFromAnalysis: boolean;
@@ -529,7 +638,15 @@ export interface ComicGenerationContextValue {
 
 const ComicGenerationContext = createContext<ComicGenerationContextValue | null>(null);
 
-export function ComicGenerationProvider({ children }: { children: React.ReactNode }) {
+export function ComicGenerationProvider({
+  children,
+  initialProjectId,
+}: {
+  children: React.ReactNode;
+  initialProjectId?: string | null;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [projectId, setProjectId] = useState('three_little_pigs_manga_001');
   const [storyFile, setStoryFile] = useState<File | null>(null);
   const [storyText, setStoryText] = useState('');
@@ -548,9 +665,18 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   const [ipAdapterScale, setIpAdapterScale] = useState(0.7);
   const [controlnetScale, setControlnetScale] = useState(0.8);
   const [useStreaming, setUseStreaming] = useState(true);
+  const [sfxMode, setSfxMode] = useState<'auto' | 'manual'>('auto');
+  const [comicPageMode, setComicPageModeState] = useState<'page' | 'panel' | null>(null);
+  const setComicPageMode = (mode: 'page' | 'panel') => setComicPageModeState(mode);
+  const resetComicPageMode = () => setComicPageModeState(null);
+  const [pageLayoutNames, setPageLayoutNames] = useState<Record<number, string>>({});
+  const [pagePanelDimensions, setPagePanelDimensions] = useState<
+    Record<number, Record<string, { width: number; height: number }>>
+  >({});
   const [setupValidation, setSetupValidation] = useState<SetupValidationState | null>(null);
   const [setupSubmitAttempted, setSetupSubmitAttempted] = useState(false);
   const [streamingText, setStreamingText] = useState('');
+  const [borderConfig, setBorderConfig] = useState<BorderConfig>(DEFAULT_BORDER_CONFIG);
   const [cloudSaveStatus, setCloudSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [cloudSaveError, setCloudSaveError] = useState<string | null>(null);
   const [fromStorySetup, setFromStorySetup] = useState(false);
@@ -569,6 +695,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   );
   const [step3, setStep3] = useState<StepState<Step3Result>>(emptyStepState(true));
   const [step4, setStep4] = useState<StepState<Step4Result>>(emptyStepState(true));
+  const [step5, setStep5] = useState<StepState<Step5Result>>(emptyStepState(true));
   const [activeStep, setActiveStep] = useState<WizardStepKey>(0);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [jsonCopied, setJsonCopied] = useState(false);
@@ -579,6 +706,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     2: 0,
     3: 0,
     4: 0,
+    5: 0,
   });
   const [nowMs, setNowMs] = useState<number>(Date.now());
   const approvedCacheRef = useRef<Partial<Record<StepKey, ApprovedCacheEntry>>>({});
@@ -588,17 +716,23 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     return () => window.clearInterval(timer);
   }, []);
 
-  // Auto-load a project queued from the dashboard via localStorage.
+  // Auto-load the project named by the ?project= URL param (set by dashboard/character-manager).
+  const initialLoadRanRef = useRef(false);
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const pending = window.localStorage.getItem('mohiom-pending-load');
-    if (!pending) return;
-    window.localStorage.removeItem('mohiom-pending-load');
-    projectsApi.load(pending).then((res) => {
-      restoreFromFullSave(res.data as unknown as Record<string, unknown>);
-    }).catch(() => { /* silently ignore if project was deleted */ });
+    if (initialLoadRanRef.current) return;
+    initialLoadRanRef.current = true;
+    if (!initialProjectId) return;
+    loadFromCloud(initialProjectId).catch(() => { /* silently ignore if project was deleted */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep ?project=<id> in the URL in sync, but only when a project is explicitly opened via
+  // loadFromCloud — not for incidental projectId changes (typing a new ID, the Story Setup
+  // pre-fill restore below, etc.). Uses the current pathname rather than a hardcoded route since
+  // this provider is shared by both the pipeline (/studio) and the standalone editor (/studio/editor).
+  const lastSyncedProjectIdRef = useRef<string | null>(initialProjectId ?? null);
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
 
   // Import JSON queued from dashboard via localStorage.
   useEffect(() => {
@@ -658,25 +792,19 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.sessionStorage.getItem('mohiom-image-api-url');
+    const stored = getImageApiUrl();
     if (stored) {
       setLocalImageApiUrl(stored);
     }
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!localImageApiUrl.trim()) {
-      window.sessionStorage.removeItem('mohiom-image-api-url');
-      return;
-    }
-    window.sessionStorage.setItem('mohiom-image-api-url', localImageApiUrl.trim());
+    setImageApiUrl(localImageApiUrl);
   }, [localImageApiUrl]);
 
   const stepMap: Record<StepKey, StepState<unknown>> = useMemo(
-    () => ({ 1: step1, 2: step2, 3: step3, 4: step4 }),
-    [step1, step2, step3, step4]
+    () => ({ 1: step1, 2: step2, 3: step3, 4: step4, 5: step5 }),
+    [step1, step2, step3, step4, step5]
   );
 
   const extractStep2Characters = (): CharacterImageItem[] => {
@@ -786,6 +914,13 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       ? imageDataUri.split(',')[1] ?? ''
       : imageDataUri;
     if (!b64) return;
+    trackEvent({
+      type:          'character_save',
+      story_id:      projectId || 'unknown',
+      style:         imageGenStyle || 'manga',
+      duration_ms:   0,
+      has_character: true,
+    });
     fetch('/api/image-proxy/characters', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -796,13 +931,14 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         reference_image_b64: b64,
       }),
     }).catch(() => {});
-  }, [localImageApiUrl, projectId]);
+  }, [localImageApiUrl, projectId, imageGenStyle]);
 
   const setStepState = (step: StepKey, updater: (prev: StepState<unknown>) => StepState<unknown>) => {
     if (step === 1) setStep1((prev) => updater(prev as StepState<unknown>) as StepState<Step1Result>);
     if (step === 2) setStep2((prev) => updater(prev as StepState<unknown>) as StepState<Step2Result>);
     if (step === 3) setStep3((prev) => updater(prev as StepState<unknown>) as StepState<Step3Result>);
     if (step === 4) setStep4((prev) => updater(prev as StepState<unknown>) as StepState<Step4Result>);
+    if (step === 5) setStep5((prev) => updater(prev as StepState<unknown>) as StepState<Step5Result>);
   };
 
   const parseLines = (text: string, limit: number) =>
@@ -1370,6 +1506,12 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       setStep2ImageReview(emptyStepState<CharacterImageReviewResult>(true));
       setStep3((prev) => ({ ...prev, locked: true, isApproved: false }));
       setStep4((prev) => ({ ...prev, locked: true, isApproved: false }));
+      setStep5((prev) => ({ ...prev, locked: true, isApproved: false }));
+    }
+    if (step === 3) {
+      setStep4((prev) => ({ ...prev, locked: true, isApproved: false }));
+      setStep5((prev) => ({ ...prev, locked: true, isApproved: false }));
+      setComicPageModeState(null);
     }
 
     const wasApproved = stepMap[step].isApproved;
@@ -1543,6 +1685,10 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
 
     // ── Step 4: build panel list from step 3 markdown (no LLM call) ──────────
+    if (step === 4) {
+      setPageLayoutNames({});
+      setPagePanelDimensions({});
+    }
     try {
       const data = await buildStepPayload(step);
       setStepState(step, (prev) => ({
@@ -1587,9 +1733,9 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
 
     const nextStep = (step + 1) as StepKey;
-    if (nextStep <= 4) {
+    if (nextStep <= 5) {
       setStepState(nextStep, (prev) => ({ ...prev, locked: false }));
-      setActiveStep(nextStep);
+      setActiveStep(nextStep as WizardStepKey);
     }
   };
 
@@ -1600,6 +1746,9 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       regeneratedAfterApproval: false,
       approvedAt: null,
     }));
+    if (step === 4) {
+      setStep5((prev) => ({ ...prev, locked: true, isApproved: false }));
+    }
   };
 
   const handleRetry = (step: StepKey) => {
@@ -1813,12 +1962,40 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     setStep3((prev) => ({ ...prev, locked: true }));
   };
 
+  const setPageLayout = async (
+    pageNumber: number,
+    layoutName: string,
+    panelsOnPage: Step4Panel[],
+  ): Promise<void> => {
+    const style = imageGenStyle?.toLowerCase().includes('webtoon') ? 'webtoon' : 'manga';
+    setPageLayoutNames((prev) => ({ ...prev, [pageNumber]: layoutName }));
+
+    try {
+      const sorted = [...panelsOnPage].sort((a, b) => a.panelNumber - b.panelNumber);
+      const res = await comicLayoutApi.confirm({
+        panel_count: sorted.length,
+        layout_name: layoutName,
+      });
+      const dimMap: Record<string, { width: number; height: number }> = {};
+      for (let i = 0; i < sorted.length; i++) {
+        const cp = res.data.panels[i];
+        if (cp && sorted[i]) dimMap[sorted[i].id] = { width: cp.sd_width, height: cp.sd_height };
+      }
+      setPagePanelDimensions((prev) => ({ ...prev, [pageNumber]: dimMap }));
+      setPageLayoutNames((prev) => ({ ...prev, [pageNumber]: res.data.layout_name }));
+    } catch {
+      console.warn(`[setPageLayout] Failed to fetch dimensions for page ${pageNumber}`);
+    }
+  };
+
   const generatePanelImages = async (
     panelsArray: Step4Panel[],
     options?: { batchSize?: number; delayMs?: number }
   ) => {
     const batchSize = Math.max(1, options?.batchSize ?? 2);
     const delayMs = Math.max(0, options?.delayMs ?? 10000);
+    const characterRefs = getSelectedCharacterReferences();
+    const firstCharName = characterRefs[0]?.name?.toLowerCase() || '';
 
     for (let i = 0; i < panelsArray.length; i += batchSize) {
       const batch = panelsArray.slice(i, i + batchSize);
@@ -1826,23 +2003,30 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       setStep4((prev) => {
         if (!prev.data) return prev;
         const nextStates = { ...prev.data.panelStates };
+        const nextPageStates = { ...prev.data.pageStates };
         batch.forEach((panel) => {
           const prevState = nextStates[panel.id];
           nextStates[panel.id] = {
             ...(prevState ?? {}),
             status: 'loading',
-            imageUrl: prevState?.imageUrl || null,
+            imageUrl: null,
             error: null,
             versions: prevState?.versions ?? [],
             pendingUrl: null,
             pendingFeedback: '',
           };
+          // Clear the full-page composite for this page so it doesn't overlay panel images
+          const pageKey = `page-${panel.pageNumber}`;
+          if (nextPageStates[pageKey]) {
+            nextPageStates[pageKey] = { ...nextPageStates[pageKey], imageUrl: null };
+          }
         });
         return {
           ...prev,
           data: {
             ...prev.data,
             panelStates: nextStates,
+            pageStates: nextPageStates,
           },
         };
       });
@@ -1850,7 +2034,39 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       const results = await Promise.all(
         batch.map(async (panel) => {
           try {
-            const imageUrl = await fetchImageFromAI(panel.aiImagePrompt, localImageApiUrl || undefined, { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale, storyId: projectId, style: imageGenStyle });
+            let cleanPrompt = buildCleanPanelPrompt(panel.aiImagePrompt, artStyle);
+            if (sfxMode === 'auto') {
+              const sfx = panel.dialogueSfx?.trim();
+              if (sfx && !/^(none|no dialogue\/sfx provided\.?)$/i.test(sfx)) {
+                cleanPrompt += `. Dialogue: ${sfx}`;
+              }
+            }
+            const panelDimensions = pagePanelDimensions[panel.pageNumber]?.[panel.id];
+            const effectiveSettings: ImageGenSettings = {
+              mode: imageGenMode,
+              referenceImageBase64: characterRefs[0]?.image_url ?? referenceImageBase64,
+              controlImageBase64,
+              ipAdapterScale,
+              controlnetScale,
+              characterName: firstCharName || undefined,
+              storyId: projectId,
+              style: imageGenStyle,
+              width: panelDimensions?.width,
+              height: panelDimensions?.height,
+            };
+            const imageUrl = await withRetry(
+              () => fetchImageFromAI(cleanPrompt, localImageApiUrl || undefined, effectiveSettings),
+              3,
+              3000
+            );
+            trackEvent({
+              type:          'panel',
+              story_id:      projectId || 'unknown',
+              style:         imageGenStyle || 'manga',
+              duration_ms:   0,
+              has_character: !!firstCharName,
+              ip_scale:      ipAdapterScale,
+            });
             return {
               id: panel.id,
               status: 'success' as const,
@@ -1913,18 +2129,25 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       setStep4((prev) => {
         if (!prev.data) return prev;
         const nextPageStates = { ...prev.data.pageStates };
+        const nextPanelStates = { ...prev.data.panelStates };
         batch.forEach(([pageNumber]) => {
           const pageId = `page-${pageNumber}`;
           nextPageStates[pageId] = {
             status: 'loading',
-            imageUrl: prev.data!.pageStates[pageId]?.imageUrl ?? null,
+            imageUrl: null,
             error: null,
             versions: prev.data!.pageStates[pageId]?.versions ?? [],
             pendingUrl: null,
             pendingFeedback: '',
           };
+          // Clear individual panel images for this page so they don't show under the new full-page composite
+          Object.keys(nextPanelStates).forEach((panelId) => {
+            if (prev.data!.panels.find(p => p.id === panelId && p.pageNumber === pageNumber)) {
+              nextPanelStates[panelId] = { ...nextPanelStates[panelId], imageUrl: null };
+            }
+          });
         });
-        return { ...prev, data: { ...prev.data, pageStates: nextPageStates } };
+        return { ...prev, data: { ...prev.data, pageStates: nextPageStates, panelStates: nextPanelStates } };
       });
 
       const results = await Promise.all(
@@ -1935,11 +2158,12 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
               panels,
               artStyle,
               mangaGenre,
-              characterRefs.map((c) => ({ name: c.name, prompt: c.prompt }))
+              characterRefs.map((c) => ({ name: c.name, prompt: c.prompt })),
+              sfxMode === 'auto'
             );
             const effectiveSettings: ImageGenSettings = {
               mode: imageGenMode,
-              referenceImageBase64: '',
+              referenceImageBase64: characterRefs[0]?.image_url ?? referenceImageBase64,
               controlImageBase64,
               ipAdapterScale,
               controlnetScale,
@@ -1947,7 +2171,11 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
               storyId: projectId,
               style: imageGenStyle,
             };
-            const imageUrl = await fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings);
+            const imageUrl = await withRetry(
+              () => fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings),
+              3,
+              3000
+            );
             return { pageId, status: 'success' as const, imageUrl, error: null };
           } catch (error) {
             const message = error instanceof Error ? error.message : 'Image generation failed.';
@@ -2005,6 +2233,34 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
   };
 
+  const handleStartPanelGeneration = async () => {
+    if (!step4.data || step4.data.isGenerating) return;
+
+    const pending = step4.data.panels.filter((p) => {
+      const state = step4.data?.panelStates?.[p.id];
+      return !state || state.status === 'idle' || state.status === 'error';
+    });
+    if (!pending.length) return;
+
+    setStep4((prev) => {
+      if (!prev.data) return prev;
+      return { ...prev, data: { ...prev.data, isGenerating: true }, error: null };
+    });
+    try {
+      await generatePanelImages(pending, { batchSize: 2, delayMs: 10000 });
+    } finally {
+      setStep4((prev) => {
+        if (!prev.data) return prev;
+        return { ...prev, data: { ...prev.data, isGenerating: false } };
+      });
+    }
+  };
+
+  const handleRegenerateSinglePanel = async (panel: Step4Panel) => {
+    if (!step4.data) return;
+    await generatePanelImages([panel], { batchSize: 1, delayMs: 0 });
+  };
+
   const handleRegeneratePage = async (pageNumber: number) => {
     if (!step4.data || step4.data.isGenerating) return;
     const panels = step4.data.panels
@@ -2038,7 +2294,7 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     const currentState = step4.data.pageStates[pageId];
     const currentImageUrl = currentState?.imageUrl ?? null;
 
-    // Save current image to version history and set page to loading
+    // Save current image to version history, set page to loading, and clear stale panel images
     setStep4((prev) => {
       if (!prev.data) return prev;
       const prevState = prev.data.pageStates[pageId];
@@ -2046,10 +2302,17 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       const newVersions = currentImageUrl
         ? [...existingVersions, { imageUrl: currentImageUrl, feedback: prevState?.pendingFeedback ?? '' }].slice(-4)
         : existingVersions;
+      const nextPanelStates = { ...prev.data.panelStates };
+      Object.keys(nextPanelStates).forEach((panelId) => {
+        if (prev.data!.panels.find(p => p.id === panelId && p.pageNumber === pageNumber)) {
+          nextPanelStates[panelId] = { ...nextPanelStates[panelId], imageUrl: null };
+        }
+      });
       return {
         ...prev,
         data: {
           ...prev.data,
+          panelStates: nextPanelStates,
           pageStates: {
             ...prev.data.pageStates,
             [pageId]: {
@@ -2071,14 +2334,15 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       const firstCharName = characterRefs[0]?.name?.toLowerCase() || '';
       let prompt = buildComicPagePrompt(
         panels, artStyle, mangaGenre,
-        characterRefs.map((c) => ({ name: c.name, prompt: c.prompt }))
+        characterRefs.map((c) => ({ name: c.name, prompt: c.prompt })),
+        sfxMode === 'auto'
       );
       if (feedback.trim()) {
         prompt += `\nUser revision request: ${feedback.trim()}`;
       }
       const effectiveSettings: ImageGenSettings = {
         mode: imageGenMode,
-        referenceImageBase64: '',
+        referenceImageBase64: characterRefs[0]?.image_url ?? referenceImageBase64,
         controlImageBase64,
         ipAdapterScale,
         controlnetScale,
@@ -2238,55 +2502,187 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
 
   const [exportStatus, setExportStatus] = useState<'idle' | 'exporting' | 'error'>('idle');
 
-  function buildExportPages(data: { panels: Step4Panel[]; pageStates: Record<string, Step4PanelState> }): ExportPage[] {
+  async function buildExportPages(
+    data: {
+      panels: Step4Panel[];
+      pageStates: Record<string, Step4PanelState>;
+      panelStates: Record<string, Step4PanelState>;
+    },
+    panelBubbles?: Record<string, SingleBubble[]>,
+  ): Promise<ExportPage[]> {
     const byPage = new Map<number, Step4Panel[]>();
     for (const panel of data.panels) {
       const arr = byPage.get(panel.pageNumber) ?? [];
       arr.push(panel);
       byPage.set(panel.pageNumber, arr);
     }
-    const pages: ExportPage[] = [];
-    for (const [pageNumber, panels] of Array.from(byPage.entries()).sort(([a], [b]) => a - b)) {
-      const state = data.pageStates[`page-${pageNumber}`];
-      if (!state || state.status !== 'success' || !state.imageUrl) continue;
-      pages.push({
-        pageNumber,
-        imageUrl: state.imageUrl,
-        panels: panels.map((pan) => ({
-          panelNumber: pan.panelNumber,
-          contextLabel: pan.contextLabel,
-          shotType: pan.shotType,
-          dialogueSfx: pan.dialogueSfx,
-          aiImagePrompt: pan.aiImagePrompt,
-        })),
-      });
+
+    const sortedByPage = Array.from(byPage.entries()).sort(([a], [b]) => a - b);
+
+    // Full-page mode: page images already composited (generated in "Full Page" mode)
+    const hasPageImages = sortedByPage.some(([pageNumber]) => {
+      const s = data.pageStates[`page-${pageNumber}`];
+      return s?.status === 'success' && s.imageUrl;
+    });
+
+    if (hasPageImages) {
+      const pages: ExportPage[] = [];
+      for (const [pageNumber, panels] of sortedByPage) {
+        const state = data.pageStates[`page-${pageNumber}`];
+        if (!state || state.status !== 'success' || !state.imageUrl) continue;
+        pages.push({
+          pageNumber,
+          imageUrl: state.imageUrl,
+          panels: panels.map((pan) => ({
+            panelNumber: pan.panelNumber,
+            contextLabel: pan.contextLabel,
+            shotType: pan.shotType,
+            dialogueSfx: pan.dialogueSfx,
+            aiImagePrompt: pan.aiImagePrompt,
+          })),
+        });
+      }
+      return pages;
     }
-    return pages;
+
+    // Panel-by-panel mode: compose individual panel images into full pages on the fly.
+    const LAYOUT_FALLBACKS: Record<number, string> = {
+      1: 'single', 2: 'horizontal_duo', 3: 'three_panels_row',
+      4: 'grid_2x2', 5: 'splash_top', 6: 'grid_2x3',
+    };
+    const allPanelImages: string[][] = [];
+    const allLayouts: string[] = [];
+    const pageNumbers: number[] = [];
+
+    for (const [pageNumber, panelList] of sortedByPage) {
+      const sorted = [...panelList].sort((a, b) => a.panelNumber - b.panelNumber);
+      const rawImgs = sorted.map(p => {
+        const url = data.panelStates[p.id]?.imageUrl;
+        return url ? { id: p.id, url } : null;
+      }).filter(Boolean) as Array<{ id: string; url: string }>;
+      if (!rawImgs.length) continue;
+
+      // Composite bubbles onto each panel image when panelBubbles are provided
+      const imgs: string[] = await Promise.all(rawImgs.map(async ({ id, url }) => {
+        const bubbles = panelBubbles?.[id];
+        if (bubbles?.length) {
+          try {
+            const blob = await compositePanelToBlob(url, bubbles);
+            return URL.createObjectURL(blob);
+          } catch { /* fallback to raw image */ }
+        }
+        return url;
+      }));
+
+      allPanelImages.push(imgs);
+      // Use the layout the user chose in the editor; fall back to a sensible default by count
+      allLayouts.push(pageLayoutNames[pageNumber] ?? LAYOUT_FALLBACKS[imgs.length] ?? 'single');
+      pageNumbers.push(pageNumber);
+    }
+
+    if (!allPanelImages.length) return [];
+
+    // Collect any object URLs we created for composited panels so we can revoke them after
+    const blobUrls = allPanelImages.flat().filter(u => u.startsWith('blob:'));
+    const b64Pages = await recomposePages(allPanelImages, allLayouts, DEFAULT_BORDER_CONFIG);
+    blobUrls.forEach(u => URL.revokeObjectURL(u));
+
+    return b64Pages.map((b64, i) => ({
+      pageNumber: pageNumbers[i],
+      imageUrl: `data:image/png;base64,${b64}`,
+      panels: (byPage.get(pageNumbers[i]) ?? []).map((pan) => ({
+        panelNumber: pan.panelNumber,
+        contextLabel: pan.contextLabel,
+        shotType: pan.shotType,
+        dialogueSfx: pan.dialogueSfx,
+        aiImagePrompt: pan.aiImagePrompt,
+      })),
+    }));
   }
 
-  const exportZip = useCallback(async (includeMetadata: boolean) => {
+  const exportZip = useCallback(async (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => {
     if (!step4.data) return;
     setExportStatus('exporting');
     try {
-      const pages = buildExportPages(step4.data);
+      const pages = await buildExportPages(step4.data, panelBubbles);
       await exportAsZip(pages, { includeMetadata, projectId: projectId || 'comic' });
+      trackEvent({
+        type:          'export',
+        story_id:      projectId || 'unknown',
+        style:         imageGenStyle || 'manga',
+        duration_ms:   0,
+        has_character: false,
+        export_format: 'zip',
+        page_count:    pages.length,
+      });
       setExportStatus('idle');
     } catch {
       setExportStatus('error');
     }
-  }, [step4.data, projectId]);
+  }, [step4.data, projectId, imageGenStyle]);
 
-  const exportPdf = useCallback(async (includeMetadata: boolean) => {
+  const exportPdf = useCallback(async (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => {
     if (!step4.data) return;
     setExportStatus('exporting');
     try {
-      const pages = buildExportPages(step4.data);
+      const pages = await buildExportPages(step4.data, panelBubbles);
       await exportAsPdf(pages, { includeMetadata, projectId: projectId || 'comic' });
+      trackEvent({
+        type:          'export',
+        story_id:      projectId || 'unknown',
+        style:         imageGenStyle || 'manga',
+        duration_ms:   0,
+        has_character: false,
+        export_format: 'pdf',
+        page_count:    pages.length,
+      });
       setExportStatus('idle');
     } catch {
       setExportStatus('error');
     }
-  }, [step4.data, projectId]);
+  }, [step4.data, projectId, imageGenStyle]);
+
+  const exportPrintPdf = useCallback(async (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => {
+    if (!step4.data) return;
+    setExportStatus('exporting');
+    try {
+      const pages = await buildExportPages(step4.data, panelBubbles);
+      await exportAsPdf(pages, { includeMetadata, projectId: projectId || 'comic', printReady: true });
+      trackEvent({
+        type:          'export',
+        story_id:      projectId || 'unknown',
+        style:         imageGenStyle || 'manga',
+        duration_ms:   0,
+        has_character: false,
+        export_format: 'pdf',
+        page_count:    pages.length,
+      });
+      setExportStatus('idle');
+    } catch {
+      setExportStatus('error');
+    }
+  }, [step4.data, projectId, imageGenStyle]);
+
+  const exportEpub = useCallback(async (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => {
+    if (!step4.data) return;
+    setExportStatus('exporting');
+    try {
+      const pages = await buildExportPages(step4.data, panelBubbles);
+      await exportAsEpub(pages, { includeMetadata, projectId: projectId || 'comic' });
+      trackEvent({
+        type:          'export',
+        story_id:      projectId || 'unknown',
+        style:         imageGenStyle || 'manga',
+        duration_ms:   0,
+        has_character: false,
+        export_format: 'epub',
+        page_count:    pages.length,
+      });
+      setExportStatus('idle');
+    } catch {
+      setExportStatus('error');
+    }
+  }, [step4.data, projectId, imageGenStyle]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2476,6 +2872,29 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     setActiveStep(0);
   };
 
+  const applyLoadedImages = (images: ProjectImageEntry[]) => {
+    if (!images.length) return;
+    const panelUpdates: Record<string, string> = {};
+    const pageUpdates: Record<string, string> = {};
+    for (const { image_key, image_data } of images) {
+      if (image_key.startsWith('panel:')) panelUpdates[image_key.slice(6)] = image_data;
+      else if (image_key.startsWith('page:')) pageUpdates[image_key.slice(5)] = image_data;
+    }
+    const blank: Step4PanelState = { status: 'idle', imageUrl: null, error: null, versions: [], pendingUrl: null, pendingFeedback: '' };
+    setStep4((prev) => {
+      if (!prev.data) return prev;
+      const nextPanel = { ...prev.data.panelStates };
+      for (const [k, url] of Object.entries(panelUpdates)) {
+        nextPanel[k] = { ...(nextPanel[k] ?? blank), status: 'success', imageUrl: url };
+      }
+      const nextPage = { ...prev.data.pageStates };
+      for (const [k, url] of Object.entries(pageUpdates)) {
+        nextPage[k] = { ...(nextPage[k] ?? blank), status: 'success', imageUrl: url };
+      }
+      return { ...prev, data: { ...prev.data, panelStates: nextPanel, pageStates: nextPage } };
+    });
+  };
+
   // Restore from full-save format (produced by buildFullSave / cloud save).
   const restoreFromFullSave = (json: Record<string, unknown>): { success: boolean; error?: string } => {
     try {
@@ -2507,6 +2926,27 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
       if (imageGenSettings.mode) setImageGenMode(Number(imageGenSettings.mode) as ImageGenMode);
       if (imageGenSettings.ip_adapter_scale != null) setIpAdapterScale(Number(imageGenSettings.ip_adapter_scale));
       if (imageGenSettings.controlnet_scale != null) setControlnetScale(Number(imageGenSettings.controlnet_scale));
+      if (imageGenSettings.page_layout_names && typeof imageGenSettings.page_layout_names === 'object') {
+        // JSON keys are always strings — convert back to number keys
+        const restored: Record<number, string> = {};
+        for (const [k, v] of Object.entries(imageGenSettings.page_layout_names as Record<string, unknown>)) {
+          const pageNum = Number(k);
+          if (!isNaN(pageNum) && typeof v === 'string') restored[pageNum] = v;
+        }
+        setPageLayoutNames(restored);
+      }
+      if (imageGenSettings.border_config && typeof imageGenSettings.border_config === 'object') {
+        const bc = imageGenSettings.border_config as Record<string, unknown>;
+        setBorderConfig(prev => ({
+          ...prev,
+          ...(typeof bc.borderColor === 'string'  ? { borderColor: bc.borderColor }  : {}),
+          ...(typeof bc.borderWidth === 'number'   ? { borderWidth: bc.borderWidth }  : {}),
+          ...(typeof bc.gutterColor === 'string'   ? { gutterColor: bc.gutterColor }  : {}),
+          ...(typeof bc.gutterWidth === 'number'   ? { gutterWidth: bc.gutterWidth }  : {}),
+          ...(typeof bc.pageMargin  === 'number'   ? { pageMargin:  bc.pageMargin  }  : {}),
+          ...(typeof bc.pageBg      === 'string'   ? { pageBg:      bc.pageBg      }  : {}),
+        }));
+      }
 
       const s1Data = toRecord(s1.data);
       setStep1({
@@ -2678,6 +3118,27 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     }
   };
 
+  const collectImagesToSave = (): ProjectImageEntry[] => {
+    if (!step4.data) return [];
+    const entries: ProjectImageEntry[] = [];
+    // Save only the images that match the active generation mode so the Dialogue tab,
+    // the cloud save, and the editor all reflect exactly the same images.
+    if (comicPageMode === 'page') {
+      for (const [key, state] of Object.entries(step4.data.pageStates)) {
+        if (state.status === 'success' && state.imageUrl) {
+          entries.push({ image_key: `page:${key}`, image_data: state.imageUrl });
+        }
+      }
+    } else {
+      for (const [key, state] of Object.entries(step4.data.panelStates)) {
+        if (state.status === 'success' && state.imageUrl) {
+          entries.push({ image_key: `panel:${key}`, image_data: state.imageUrl });
+        }
+      }
+    }
+    return entries;
+  };
+
   const buildFullSave = (): FullProjectSave => {
     const nowIso = new Date().toISOString();
     const step2irData = step2ImageReview.data
@@ -2718,6 +3179,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
         mode: imageGenMode,
         ip_adapter_scale: ipAdapterScale,
         controlnet_scale: controlnetScale,
+        page_layout_names: pageLayoutNames,
+        border_config: borderConfig,
       },
       steps: {
         step1: { data: step1.data, isApproved: step1.isApproved, lastUpdated: step1.lastUpdated },
@@ -2733,7 +3196,12 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     setCloudSaveStatus('saving');
     setCloudSaveError(null);
     try {
-      await projectsApi.save(buildFullSave());
+      const fullSave = buildFullSave();
+      const images = collectImagesToSave();
+      await projectsApi.save(fullSave);
+      if (images.length > 0) {
+        await projectsApi.saveImages(projectId, images);
+      }
       setCloudSaveStatus('saved');
       window.setTimeout(() => setCloudSaveStatus('idle'), 2000);
     } catch (err) {
@@ -2744,16 +3212,61 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
 
   const loadFromCloud = async (cloudProjectId: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await projectsApi.load(cloudProjectId);
-      return restoreFromFullSave(response.data as unknown as Record<string, unknown>);
+      const [projectRes, imagesRes] = await Promise.all([
+        projectsApi.load(cloudProjectId),
+        projectsApi.loadImages(cloudProjectId).catch(() => ({ data: { images: [] as ProjectImageEntry[] } })),
+      ]);
+      const result = restoreFromFullSave(projectRes.data as unknown as Record<string, unknown>);
+      if (result.success) {
+        applyLoadedImages(imagesRes.data.images);
+        if (lastSyncedProjectIdRef.current !== cloudProjectId) {
+          lastSyncedProjectIdRef.current = cloudProjectId;
+          router.replace(`${pathnameRef.current}?project=${encodeURIComponent(cloudProjectId)}`, { scroll: false });
+        }
+      }
+      return result;
     } catch (err) {
       return { success: false, error: toApiError(err).message };
     }
   };
 
+  // Clears ?project=<id> from the URL (e.g. "All Projects" back button) and resets the sync
+  // guard so re-opening the same project afterwards still updates the URL.
+  const clearProjectFromUrl = () => {
+    lastSyncedProjectIdRef.current = null;
+    router.replace(pathnameRef.current, { scroll: false });
+  };
+
   const listCloudProjects = async (): Promise<CloudProjectListItem[]> => {
     const response = await projectsApi.list();
     return response.data;
+  };
+
+  const addCandidateFromImage = (characterId: string, imageDataUrl: string) => {
+    const candidateId = crypto.randomUUID();
+    setStep2ImageReview((prev) => {
+      if (!prev.data) return prev;
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          characters: prev.data.characters.map((c) => {
+            if (c.characterId !== characterId) return c;
+            const newCandidate: CharacterImageCandidate = {
+              id: candidateId,
+              imageUrl: imageDataUrl,
+              createdAt: new Date().toISOString(),
+            };
+            return {
+              ...c,
+              status: 'success' as CharacterImageStatus,
+              candidates: [...c.candidates, newCandidate],
+              selectedCandidateId: candidateId,
+            };
+          }),
+        },
+      };
+    });
   };
 
   const injectLibraryCharacters = (chars: CharacterSummary[]) => {
@@ -2808,6 +3321,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     ipAdapterScale,
     controlnetScale,
     useStreaming,
+    sfxMode,
+    setSfxMode,
     step1,
     step2,
     step2ImageReview,
@@ -2856,7 +3371,18 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     handleSelectCharacterCandidate,
     handleApproveCharacterReferences,
     handleRetryCharacterReferences,
+    comicPageMode,
+    setComicPageMode,
+    resetComicPageMode,
+    step5,
+    pageLayoutNames,
+    pagePanelDimensions,
+    setPageLayout,
+    setRawPanelDimensions: (pageNumber, dimMap) =>
+      setPagePanelDimensions((prev) => ({ ...prev, [pageNumber]: dimMap })),
     handleStartFullGeneration,
+    handleStartPanelGeneration,
+    handleRegenerateSinglePanel,
     handleRegeneratePage,
     handleRegenerateWithFeedback,
     acceptPanelRegen,
@@ -2865,6 +3391,8 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     downloadProjectJson,
     exportZip,
     exportPdf,
+    exportPrintPdf,
+    exportEpub,
     exportStatus,
     getStep2PromptList,
     getSelectedCharacterReferences,
@@ -2873,12 +3401,16 @@ export function ComicGenerationProvider({ children }: { children: React.ReactNod
     loadMockCharacterReview,
     loadMockPipeline,
     loadProjectJson,
+    borderConfig,
+    setBorderConfig,
     cloudSaveStatus,
     cloudSaveError,
     saveToCloud,
     loadFromCloud,
+    clearProjectFromUrl,
     listCloudProjects,
     injectLibraryCharacters,
+    addCandidateFromImage,
     fromStorySetup,
     setFromStorySetup,
     fieldsAutoFilledFromAnalysis,

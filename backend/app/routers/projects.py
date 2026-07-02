@@ -5,7 +5,7 @@ API routes for project save / load.
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Header
 from typing import Any, Dict, List, Optional
-from app.schemas import ProjectSaveRequest, ProjectListItem, CharacterSummary, CharacterUpsertPayload, CharacterPatchPayload, StatsResponse, ProjectPublishPayload
+from app.schemas import ProjectSaveRequest, ProjectListItem, CharacterSummary, CharacterUpsertPayload, CharacterPatchPayload, StatsResponse, ProjectPublishPayload, ProjectImageEntry, ProjectImagesSaveRequest, ProjectImagesResponse
 from app.database import mongo_db
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -17,6 +17,10 @@ def _col():
 
 def _char_col():
     return mongo_db.get_database()["user_characters"]
+
+
+def _img_col():
+    return mongo_db.get_database()["project_images"]
 
 
 def _require_user(x_user_id: Optional[str]) -> str:
@@ -349,6 +353,41 @@ def load_project(
     return doc
 
 
+@router.post("/{project_id}/images")
+def save_project_images(
+    project_id: str,
+    payload: ProjectImagesSaveRequest,
+    x_user_id: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    user_id = _require_user(x_user_id)
+    if not _col().find_one({"user_id": user_id, "project_id": project_id}):
+        raise HTTPException(status_code=404, detail="Project not found")
+    now = datetime.now(timezone.utc).isoformat()
+    # Replace the full image set atomically so stale keys (e.g. old Full-Page images
+    # after the user switches to Panel mode) are never left behind.
+    _img_col().delete_many({"user_id": user_id, "project_id": project_id})
+    if payload.images:
+        _img_col().insert_many([
+            {"user_id": user_id, "project_id": project_id,
+             "image_key": entry.image_key, "image_data": entry.image_data, "saved_at": now}
+            for entry in payload.images
+        ])
+    return {"saved": len(payload.images), "message": "images saved"}
+
+
+@router.get("/{project_id}/images", response_model=ProjectImagesResponse)
+def load_project_images(
+    project_id: str,
+    x_user_id: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    user_id = _require_user(x_user_id)
+    docs = list(_img_col().find(
+        {"user_id": user_id, "project_id": project_id},
+        {"_id": 0, "user_id": 0, "project_id": 0, "saved_at": 0},
+    ))
+    return {"images": docs}
+
+
 @router.patch("/{project_id}/publish")
 def publish_project(
     project_id: str,
@@ -375,4 +414,5 @@ def delete_project(
     result = _col().delete_one({"user_id": user_id, "project_id": project_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Project not found")
+    _img_col().delete_many({"user_id": user_id, "project_id": project_id})
     return {"message": "deleted"}

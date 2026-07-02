@@ -197,3 +197,114 @@ class StatsResponse(BaseModel):
     character_count: int
     panel_count: int
 
+
+class ComposePanelInput(BaseModel):
+    """One panel's metadata + image for page composition."""
+
+    panel_number: int
+    page_number: int
+    shot_type: str = "medium shot"
+    dialogue: Optional[str] = None
+    image_data_url: str
+
+
+class CrossPanelBubble(BaseModel):
+    """A speech bubble that visually spans two adjacent panels across the gutter."""
+
+    text: str
+    bubble_type: str = "speech"
+    panel_indices: List[int] = Field(
+        ...,
+        min_length=2, max_length=2,
+        description="Two 0-based indices (sorted panel order) of the adjacent panels this bubble bridges.",
+    )
+
+
+class ComposePageRequest(BaseModel):
+    """Request to compose a set of panel images into a single comic page."""
+
+    panels: List[ComposePanelInput]
+    style: str = "manga"
+    layout: Optional[List[List[int]]] = None  # explicit panel-index rows, e.g. [[0,1],[2]]
+    use_smart_layout: bool = False             # trigger LLM layout selection
+    cross_panel_bubbles: Optional[List[CrossPanelBubble]] = None  # bubbles spanning two panels
+
+
+class ComposePageResponse(BaseModel):
+    """Composed comic page returned as base64 PNG."""
+
+    status: str
+    page_base64: str
+    page_width: int
+    page_height: int
+    panel_count: int
+    layout_name: Optional[str] = None  # e.g. "grid_2x2" or display name
+
+
+class AutoLayoutPanel(BaseModel):
+    """Metadata for one panel used in auto-layout (no image — comes from splitting)."""
+
+    panel_number: int
+    shot_type: str = "medium shot"
+    dialogue: Optional[str] = None
+
+
+class AutoLayoutRequest(BaseModel):
+    """Split a full AI-generated page into panels, then re-compose with intensity sizing."""
+
+    page_image_data_url: str
+    panels: List[AutoLayoutPanel]
+    style: str = "manga"
+
+
+class AutoLayoutResponse(BaseModel):
+    """Re-composed page after splitting and re-laying out panels."""
+
+    status: str
+    page_base64: str
+    page_width: int
+    page_height: int
+    panel_count: int
+    detected_panels: int
+
+
+class LayoutDimensionsRequest(BaseModel):
+    """Request to compute panel cell pixel dimensions for a chosen layout template."""
+
+    panels: List[AutoLayoutPanel]  # panel_number + shot_type per panel
+    layout_name: str               # e.g. "grid_2x2"; "auto" triggers rule-based selection
+    style: str = "manga"
+
+
+class PanelCellDimensions(BaseModel):
+    """Exact pixel dimensions for one panel cell in the chosen layout."""
+
+    panel_index: int   # 0-based position in the sorted panels list
+    panel_number: int  # 1-based panel number from the script
+    width: int
+    height: int
+
+
+class LayoutDimensionsResponse(BaseModel):
+    """Computed cell dimensions for every panel in the chosen layout."""
+
+    status: str
+    layout_name: str
+    layout: List[List[int]]               # resolved row-of-indices structure
+    dimensions: List[PanelCellDimensions]
+    page_width: int = 1200
+    page_height: int = 1600
+
+
+class ProjectImageEntry(BaseModel):
+    image_key: str   # "panel:p1-n1" or "page:page-1"
+    image_data: str  # base64 data URL
+
+
+class ProjectImagesSaveRequest(BaseModel):
+    images: List[ProjectImageEntry]
+
+
+class ProjectImagesResponse(BaseModel):
+    images: List[ProjectImageEntry]
+

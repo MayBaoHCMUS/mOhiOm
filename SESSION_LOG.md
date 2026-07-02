@@ -1,3 +1,1343 @@
+## SESSION: 2026-07-01 — UI Consistency Pass + Per-Character Reference Image System
+
+### ✅ COMPLETED
+
+#### 1. Card Style Consistency — `/editor` and `/my-stories`
+
+Unified all project/story cards across the app to match the `/studio/publish` card style.
+
+**`frontend/src/components/ComicEditor.tsx` (ProjectPicker):**
+- Added `EDITOR_STEP_BADGES` array (S1–S5, matching `has_step1/2/2_images/3/4`)
+- Added `editorAccentFor(id)`, `formatEditorTitle(slug)`, `formatEditorDate(iso)` helpers
+- Card thumbnail: 72px gradient based on project ID hash
+- Card body: 4px solid colored `borderLeft`, formatted title + raw slug in 10px monospace, S1–S5 step badges (filled `#DCFCE7` green for complete, outlined for incomplete), relative date
+- Grid: `minmax(340px, 1fr)`
+
+**`frontend/src/app/studio/my-stories/page.tsx`:**
+- Added `STORY_GRADIENTS`, `STORY_ACCENT_COLORS`, `hashId()`, `storyGradient()`, `storyAccent()`, `formatRelativeDate()` helpers
+- Card thumbnail: 72px gradient, genre badge top-left, title bottom-left
+- Card body: 4px solid `borderLeft` via `storyAccent(id)`, title, relative date + word count
+- Grid: `minmax(340px, 1fr)`
+- Layout fixed: `ml-[var(--studio-sidebar-width)]` + `#F8FAFF` header band (removed conflicting `max-w-[1400px] mx-auto` + `max-w-5xl`)
+
+---
+
+#### 2. Publish Page — Portal Menu + Card Overhaul
+
+**`frontend/src/app/studio/publish/page.tsx`:**
+- Added `createPortal` from `react-dom` — overflow menu escapes card's `overflow:hidden` boundary
+- `PortalMenu` component: positions via `triggerRef.getBoundingClientRect()`, closes on Escape/click-outside, `min-width: 220px`
+- `MenuItemBtn` component with destructive variant
+- `formatProjectTitle(slug)` → Title Case; `formatRelativeDate(iso)` → relative dates
+- `PROJECT_ACCENT_COLORS` + `projectColorFor(id)` — deterministic color from project_id hash
+- Step badge: filled `background: '#DCFCE7'`, `fontWeight: 600`, no border
+- Thumbnail: formatted title in 13px, text-shadow for legibility
+- Card body: `borderLeft: 4px solid ${projectColorFor(id)}`, formatted title + raw slug
+- Subtitle: "Last saved Xh ago" relative format
+- ⋯ button: `menuButtonRef = useRef<HTMLButtonElement>`, shows `bg-[#F3F4F6]` when menu open
+- Grid: `repeat(auto-fill, minmax(340px, 1fr))`, section labels `marginTop: 28px`
+- Step badge display: `getMaxStep` returns 1-indexed (1–5); S5 = has_step4
+
+---
+
+#### 3. ProjectsDrawer — Full Overhaul
+
+**`frontend/src/components/ProjectsDrawer.tsx`:**
+- `PIPELINE_STEP_BADGES`: S1=`has_step1`, S2=`has_step2`, S3=`has_step2_images`, S4=`has_step3`, S5=`has_step4`
+- `getProjectColor(id)`, `formatProjectTitle(slug)`, `formatProjectDate(iso)`, `fullTimestamp(iso)` helpers
+- Sort control: Recent / Name A–Z / Most complete (via `sortProjects(list, key)`)
+- Cards: colored left border `4px solid ${color}`, tinted background via `color-mix(in srgb, color 3%, #FFFFFF)`, formatted title + slug, S1–S5 badges, relative date + genre
+- "Open Project" button (primary action), conditional "Publish →" link when has_step4
+- Empty state with `FolderOpen` icon + "Start new project" dashed button
+- Removed: `publishingId`, `deleteConfirmId`, `handlePublish`, `handleAddToReferencePool`
+- Save always enabled (removed `const canSave = !!step3.data` guard)
+- Width: `min-width: 440px, max-width: 520px, width: 90vw`
+
+---
+
+#### 4. Step 3 Reference Images — Library/Community as IP-Adapter (not pipeline characters)
+
+**`frontend/src/components/studio-steps/Step2Characters.tsx`:**
+
+Changed the behavior of "From Library" and "Browse Community" buttons in the References tab from `injectLibraryCharacters` (which added pipeline characters) to `handleAddReferenceFromPicker` which:
+- Fetches the selected image URL → base64
+- Applies to all pipeline characters without an existing `referenceImageBase64`
+- Switches those characters from mode 1 (Text) → mode 2 (+Ref) so the reference slot appears
+- Image shows up in each character's existing "Upload reference image" slot in `GenerationModePanel`
+
+---
+
+#### 5. Per-Character Reference Image: Library/Community Pickers + "Use as Character Image"
+
+**`frontend/src/context/ComicGenerationContext.tsx`:**
+- Added `addCandidateFromImage(characterId: string, imageDataUrl: string)`:
+  - Creates a new `CharacterImageCandidate` with `crypto.randomUUID()` id
+  - Appends candidate to that character's `candidates[]` in `step2ImageReview`
+  - Sets it as `selectedCandidateId`
+  - Sets character `status: 'success'`
+- Exported in context value + type declaration
+
+**`frontend/src/components/studio-steps/Step2Characters.tsx`:**
+
+Modal state refactored from `isLibraryOpen: boolean` / `isGalleryOpen: boolean` to:
+- `libraryTargetCharId: string | null` (`null` = closed, `'__all__'` = tab-level, `charId` = per-character)
+- `galleryTargetCharId: string | null` (same semantics)
+- `isLibraryOpen = libraryTargetCharId !== null` (derived)
+- `isGalleryOpen = galleryTargetCharId !== null` (derived)
+
+New handlers:
+- `fetchImageBase64(url)` — fetch URL → raw base64 (strips data: prefix)
+- `handleAddReferenceFromPicker(chars)` — async; uses `libraryTargetCharId ?? galleryTargetCharId` to determine scope: `'__all__'` = all chars without a ref; charId = only that character
+- `handleUseAsCharacterImage(charId, base64)` — calls `addCandidateFromImage(charId, 'data:image/png;base64,'+base64)`
+
+`GenerationModePanel` new props (optional):
+- `onPickReferenceFromLibrary?: () => void`
+- `onPickReferenceFromCommunity?: () => void`
+- `onUseAsCharacterImage?: (base64: string) => void`
+
+In reference section (when mode is +Ref or All), now shows:
+1. File upload label (unchanged)
+2. "From Library" + "Browse Community" pill buttons (if callbacks provided)
+3. When `referenceImageBase64` is set: thumbnail preview + "Use as character image" text button + "Remove"
+
+`ImageGenPanel` and `CharacterAccordionCard` both extended with the same 3 optional props and thread them down the chain.
+
+At call site (`CharacterAccordionCard` render in References tab):
+- `onPickReferenceFromLibrary={() => setLibraryTargetCharId(charId)}`
+- `onPickReferenceFromCommunity={() => setGalleryTargetCharId(charId)}`
+- `onUseAsCharacterImage={(base64) => handleUseAsCharacterImage(charId, base64)}`
+
+Tab-level "From Library" / "Browse Community" buttons remain — they set `'__all__'` as target and apply the reference to all chars without one.
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/context/ComicGenerationContext.tsx` — `addCandidateFromImage` function + type
+- `frontend/src/components/studio-steps/Step2Characters.tsx` — modal state refactor, `handleAddReferenceFromPicker`, `handleUseAsCharacterImage`, `fetchImageBase64`; `GenerationModePanel` / `ImageGenPanel` / `CharacterAccordionCard` new props; per-character Library/Community buttons + "Use as character image" in reference section
+- `frontend/src/app/studio/publish/page.tsx` — portal menu, card overhaul, formatters
+- `frontend/src/components/ProjectsDrawer.tsx` — full rewrite (sort, step badges, card style, remove publish/delete logic)
+- `frontend/src/components/ComicEditor.tsx` — card style consistency (gradient thumbnail, colored border, S1–S5 badges)
+- `frontend/src/app/studio/my-stories/page.tsx` — layout fix (`ml-[var(--studio-sidebar-width)]`), card style consistency
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **`addCandidateFromImage` uses data URL**: the imageUrl stored in `CharacterImageCandidate.imageUrl` is a `data:image/png;base64,...` string. The image grid already renders any URL in `<img src>` so it works without changes.
+- **Tab-level vs per-character**: `'__all__'` sentinel in `libraryTargetCharId`/`galleryTargetCharId` allows a single modal and handler to serve both scope levels. The `onConfirm` handler reads the target at call time (not at state-set time) so React batching doesn't cause stale closures.
+- **Reference slot visibility**: setting `referenceImageBase64` alone doesn't make the UI slot visible — mode must also be 2 (+Ref) or 4 (All). `handleAddReferenceFromPicker` upgrades mode 1 → 2 automatically.
+- **"Use as character image" is non-destructive**: it adds a NEW candidate (doesn't replace existing ones) and selects it. User can switch back to AI-generated candidates via the existing candidate selector.
+- **Pre-existing TS error**: `AnalyticsDashboard.tsx(409,29): error TS7006` remains — pre-existing, not introduced this session.
+
+---
+
+## SESSION: 2026-06-30 — Publish History (Read Count Analytics)
+
+### ✅ COMPLETED
+
+#### 1. Client-side Publish History (`/studio/publish-history`)
+
+**New file `frontend/src/lib/publishHistory.ts`:**
+- `PublishedComicRecord` interface: `{ comic_id, reader_url, title, page_count, published_at }`
+  - `reader_url` stores the **full absolute URL** (built at record time via `buildShareUrl`) so no API URL is needed at render time
+- `recordPublish(record)` — prepends to `localStorage["publish_history"]`, capped at 100 entries, newest first; noop in private browsing
+- `getPublishHistory()` — returns `[]` safely when localStorage is empty or disabled
+- `removeFromHistory(comicId)` — local-only removal; never calls DELETE on the server
+- `fetchLiveStats(apiUrl, comicIds)` — makes ONE request to `/admin/publish-stats` via the existing `/api/manga-proxy` (not N requests); returns `Map<string, number>` of `comic_id → read_count`
+
+**New file `frontend/src/components/PublishHistory.tsx`:**
+- `'use client'` component; reads `localImageApiUrl` from `ComicGenerationContext` for `fetchLiveStats`
+- Summary header: comic count + "N total reads" (via `useMemo` summing only comics present in `liveStats`)
+- Per-entry row: title, page count, publish date, live read count badge, external link icon, remove button
+- "Expired" detection: if `comic_id` is absent from `/admin/publish-stats` response after loading → shows "· expired (server restarted)" in red (Kaggle kernel restarted clears in-memory `_comics`)
+- Empty state shown when `history.length === 0`
+- Refresh button disabled while `loading === true`
+
+**New file `frontend/src/app/studio/publish-history/page.tsx`:**
+- Follows the same pattern as `/studio/analytics/page.tsx`: `<StudioSidebar />` + `<StudioTopBar />` + `<main className="ml-[var(--studio-sidebar-width)] pt-24 px-8 pb-12 min-h-screen">`
+
+**`frontend/src/components/PublishButton.tsx`:** Added `recordPublish()` call right after `setStatus('done')` + `setShowDialog(true)`. Stores full URL via `buildShareUrl(localImageApiUrl, result.reader_url)` at record time.
+
+**`frontend/src/components/StudioSidebar.tsx`:** Added `{ href: '/studio/publish-history', label: 'Publish History', icon: 'history' }` to the `LIBRARY` nav group (after Analytics).
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+**New files:**
+- `frontend/src/lib/publishHistory.ts`
+- `frontend/src/components/PublishHistory.tsx`
+- `frontend/src/app/studio/publish-history/page.tsx`
+
+**Modified:**
+- `frontend/src/components/PublishButton.tsx` — `recordPublish()` call after successful publish; added `buildShareUrl` import from `@/lib/publish`
+- `frontend/src/components/StudioSidebar.tsx` — "Publish History" added to LIBRARY nav group
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **One aggregate request**: `fetchLiveStats` always calls `/admin/publish-stats` once and filters client-side. This is correct even if localStorage history holds many entries — do NOT change to per-comic `/r/{id}/stats` calls.
+- **Full URL in `reader_url`**: `PublishedComicRecord.reader_url` stores the concatenated full URL (via `buildShareUrl`). `PublishHistory` uses `href={record.reader_url}` directly — no second `buildShareUrl` call needed.
+- **Proxy required**: The Kaggle server is behind a Cloudflare tunnel; direct browser fetch is blocked by CORS. `fetchLiveStats` calls `/api/manga-proxy` (same as all other Kaggle calls in `publish.ts`).
+- **CSS vars**: Component uses project's actual Material Design token names (`--color-surface-container`, `--color-surface-container-low`, `--color-on-surface`, `--color-on-surface-variant`, `--color-outline`), not the spec's `--surface-1` / `--text-primary` etc.
+- **`localImageApiUrl` required**: If the user hasn't configured the Image API URL in Step 1, `fetchLiveStats` returns an empty map (noop). History entries still display; read counts show "…" until configured.
+
+---
+
+## SESSION: 2026-06-27 — Analytics Dashboard, UI Fixes, Generation Mode Popup, Auto-retry
+
+### ✅ COMPLETED
+
+#### 1. Client-side Analytics Dashboard (`/studio/analytics`)
+
+**New file `frontend/src/lib/analytics.ts`:**
+- `GenerateEvent` interface: `{ id, ts, type, story_id, style, mood?, intensity?, duration_ms, has_character, ip_scale?, export_format?, page_count?, panel_count? }`
+- `trackEvent()` — writes to `localStorage["comic_events"]`, capped at 500 events
+- `getEvents(filters?)` — filters by type / story_id / since
+- `clearEvents()` — wipes localStorage key
+- `computeMetrics(events)` — returns `DashboardMetrics`: `{ total_panels, total_stories, avg_gen_ms, style_dist, mood_dist, char_usage_pct, export_count, export_rate_pct, daily_counts }`
+
+**New file `frontend/src/components/AnalyticsDashboard.tsx`:**
+- `'use client'` component using Chart.js (`import { Chart, registerables } from 'chart.js'` + `Chart.register(...registerables)`)
+- Range selector: 7d / 30d / All time
+- 6 KPI cards: Panels generated, Stories created, Avg time/panel, Character ref usage%, Exports, Export rate%
+- `DoughnutChart` (style distribution) + `BarChart` (mood distribution) + `LineChart` (panels/day)
+- "Clear data" button with `window.confirm('Clear all analytics data?')`
+- All text in English
+
+**New file `frontend/src/app/studio/analytics/page.tsx`:**
+- Matches other studio pages: `<StudioSidebar />` + `<StudioTopBar />` + `<main className="ml-[var(--studio-sidebar-width)] pt-24 px-8 pb-12 min-h-screen">`
+
+**`trackEvent` calls added to `ComicGenerationContext.tsx`:**
+- `generatePanelImages`: tracks `type: 'panel'` after each successful image
+- `exportZip` / `exportPdf` / `exportEpub`: tracks `type: 'export'` with format
+- `saveCharacterToServer`: tracks `type: 'character_save'`
+
+**`StudioSidebar.tsx`:** Added `{ href: '/studio/analytics', label: 'Analytics', icon: 'bar_chart' }` to `TOOLS` array.
+
+---
+
+#### 2. Dialogue Tab Black Panels Fix (Full Mode)
+
+**Problem:** In Full Mode (`comicPageMode === 'page'`), composite page images are stored in `pageStates["page-N"]`. `DialogueEditor` only received `panelStates` (always empty in Full Mode), so all panels showed black placeholder.
+
+**Fix in `DialogueEditor.tsx`:**
+- Added `pageStates: Record<string, Step4PanelState>` to `DialogueEditorProps`
+- Added `hasPageImage?: boolean` to `PanelCellProps`
+- `PanelCell` when `hasPageImage`: `background: 'transparent'`, `border: '1px solid rgba(255,255,255,0.15)'`, no placeholder icon
+- Page container renders absolutely-positioned `<img>` as first child when `currentPageImageUrl` is set (NOT CSS `backgroundImage` — that conflicted with the `background` shorthand, causing pages 2+ to show nothing)
+
+**Fix in `Step4Generation.tsx`:** Added `pageStates={step4.data?.pageStates ?? {}}` to `<DialogueEditor>` props.
+
+---
+
+#### 3. Generation Mode Popup (enter Step 4 → choose mode)
+
+**Wired `GenerationModeModal.tsx` to context `comicPageMode`:**
+- `comicPageMode` starts as `null` in context; modal fires when `contextComicPageMode === null`
+- Step4Generation: replaced local `comicPageMode` state with `comicPageMode: comicPageMode ?? 'page'` from context
+- Renders `{contextComicPageMode === null && <GenerationModeModal />}` at top of return
+- Modal confirm button calls `setComicPageMode(selected)` → sets context (non-null) → modal disappears
+- Modal also has `sfxMode`/`setSfxMode` "Clean images" checkbox
+
+---
+
+#### 4. Removed Redundant Inline "Generation Mode" Section
+
+The "Ready to start" sidebar panel that had the two big mode-selection cards + Clean images checkbox + Generate button was cleaned up:
+- **Before:** Full mode-picker UI duplicating the popup (2 big cards, checkbox, mode toggle link)
+- **After:** Compact summary row: `Full Page / Panel by Panel` mode name + `[Change]` link (calls `resetComicPageMode()` → modal re-opens) + estimate + Generate button
+
+**Also removed:** "Switch to … mode →" compact link from the per-panel sidebar character section.
+
+---
+
+#### 5. Removed "Layout Engine" from Sidebar
+
+`StudioSidebar.tsx` — deleted `{ href: '/studio/layout-engine', label: 'Layout Engine', icon: 'grid_view' }` from `TOOLS` array. The route/page still exists; no nav link.
+
+---
+
+#### 6. Analytics Page — All English
+
+All Vietnamese text in `AnalyticsDashboard.tsx` and `analytics.ts` replaced with English:
+- Range buttons: `Tất cả` → `All time`, `30 ngày` → `30d`, `7 ngày` → `7d`
+- Button: `Xoá data` → `Clear data`
+- Confirm: `Xoá toàn bộ analytics data?` → `Clear all analytics data?`
+- Empty state: `Chưa có dữ liệu...` → `No data yet. Generate some panels...`
+- KPI labels: `Panels sinh` → `Panels generated`, `Stories tạo` → `Stories created`, `Avg thời gian/panel` → `Avg time / panel`, `Dùng character ref` → `Character ref usage`
+- Chart title: `Panels sinh theo ngày` → `Panels generated per day`
+- Weekday locale: `"vi-VN"` → `"en-US"` in `computeMetrics` daily_counts
+
+---
+
+#### 7. Automatic Retry on Image Generation Failure
+
+**Problem:** When "Generate All Pages/Panels" ran, any failed panel/page got `status: 'error'` and the loop moved on. Users had to manually click "Retry failed" after the run.
+
+**Fix in `ComicGenerationContext.tsx`:**
+- Added `withRetry<T>(fn, maxAttempts, retryDelayMs)` async helper after `sleep`
+- Wrapped `fetchImageFromAI` in `generatePanelImages` with `withRetry(..., 3, 3000)` — 3 total attempts, 3s between retries
+- Wrapped `fetchImageFromAI` in `generatePageImages` with same `withRetry(..., 3, 3000)`
+- Panel/page stays at `status: 'loading'` during retries; only flips to `status: 'error'` after all 3 attempts fail
+- No new state fields, no UI changes needed
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+**New files:**
+- `frontend/src/lib/analytics.ts`
+- `frontend/src/components/AnalyticsDashboard.tsx`
+- `frontend/src/app/studio/analytics/page.tsx`
+
+**Modified:**
+- `frontend/src/context/ComicGenerationContext.tsx` — `trackEvent` calls, `withRetry` helper, `fetchImageFromAI` wrapped in both generation loops; `imageGenStyle` added to export dep arrays
+- `frontend/src/components/studio-steps/Step4Generation.tsx` — modal trigger, simplified "ready" panel, `pageStates` prop passed to `DialogueEditor`, removed mode-toggle link
+- `frontend/src/components/studio-steps/DialogueEditor.tsx` — `pageStates` prop, `hasPageImage` support, `<img>` background for Full Mode pages
+- `frontend/src/components/StudioSidebar.tsx` — added Analytics, removed Layout Engine
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **CSS `backgroundImage` vs `<img>`**: Using CSS `backgroundImage` in the same `style` object as `background: 'transparent'` causes the shorthand to reset backgroundImage on React re-renders affecting pages 2+. Using an absolutely-positioned `<img>` element avoids this entirely.
+- **`comicPageMode` null trigger**: The popup shows whenever `contextComicPageMode === null`. `resetComicPageMode()` sets it back to null; `setComicPageMode(mode)` dismisses it. Step 3 regeneration also resets to null.
+- **`withRetry` applies to both generation functions**: single-panel regenerate (`handleRegenerateSinglePanel`) also calls `generatePanelImages` → also gets automatic retry for free.
+- **Analytics data is local-only**: `localStorage["comic_events"]` — no backend involvement. Clears on browser data wipe. Max 500 events stored.
+
+---
+
+## SESSION: 2026-06-25 (continued) — PDF / EPUB Export Feature Plan
+
+### 🎯 NEXT SESSION — PDF + EPUB Export Upgrade
+
+#### Context
+
+Current state:
+- `jspdf` (v4.2.1) + `jszip` (v3.10.1) already installed.
+- `frontend/src/lib/export.ts` has `exportAsZip` and `exportAsPdf` (jsPDF, A4 fixed size).
+- Context (`ComicGenerationContext.tsx`) exposes `exportZip(includeMetadata)` and `exportPdf(includeMetadata)`.
+- `Step5Export.tsx` has PDF + ZIP buttons wired to context.
+- `pdf-lib` NOT installed. `epubjs` NOT needed (we build EPUB manually with jszip).
+
+**Key difference from reference spec:** Our images are stored as full data URLs (`data:image/png;base64,...`) in `pageStates[pageId].imageUrl`, not raw base64. The existing `stripDataPrefix()` helper in `export.ts` already handles stripping the prefix before processing.
+
+#### What changes
+
+**Install:**
+```bash
+cd frontend && npm install pdf-lib
+```
+(`jszip` already installed; `epubjs` is a reader library — not needed.)
+
+---
+
+**File 1 — `frontend/src/lib/export.ts`**
+
+1. Remove `import jsPDF from 'jspdf'` → add `import { PDFDocument } from 'pdf-lib'`.
+
+2. **Replace `exportAsPdf`** (currently uses jsPDF at fixed A4 210×297mm) with a `pdf-lib` version that preserves actual image dimensions:
+```typescript
+export async function exportAsPdf(pages: ExportPage[], opts: ExportOpts): Promise<void> {
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.setTitle(opts.projectId);
+  pdfDoc.setAuthor('mOhiOm AI');
+  pdfDoc.setCreationDate(new Date());
+
+  for (const page of pages) {
+    const { base64 } = stripDataPrefix(page.imageUrl);
+    const imgBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    const pngImage = await pdfDoc.embedPng(imgBytes);
+    const pdfPage = pdfDoc.addPage([pngImage.width, pngImage.height]);
+    pdfPage.drawImage(pngImage, { x: 0, y: 0, width: pngImage.width, height: pngImage.height });
+  }
+
+  // optional metadata appendix page omitted (image-based comic — text page not useful for pdf-lib)
+
+  const pdfBytes = await pdfDoc.save();
+  triggerDownload(new Blob([pdfBytes], { type: 'application/pdf' }), `comic-${opts.projectId}.pdf`);
+}
+```
+
+3. **Add `exportAsEpub`** (built manually with jszip — no epubjs):
+```typescript
+export async function exportAsEpub(pages: ExportPage[], opts: ExportOpts): Promise<void> {
+  const zip  = new JSZip();
+  const safe = opts.projectId.replace(/[^\w]/g, '_').slice(0, 64);
+  const title = opts.projectId;
+  const uid  = `urn:uuid:${crypto.randomUUID()}`;
+  const now  = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+  // mimetype — MUST be first, MUST NOT be compressed
+  zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
+
+  zip.folder('META-INF')!.file('container.xml',
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">' +
+    '<rootfiles><rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/>' +
+    '</rootfiles></container>'
+  );
+
+  const epub = zip.folder('EPUB')!;
+  const imgs = epub.folder('images')!;
+
+  const manifestItems: string[] = [];
+  const spineItems: string[] = [];
+  const navItems: string[] = [];
+
+  pages.forEach((page, i) => {
+    const n = String(i + 1).padStart(2, '0');
+    const imgFile = `page_${n}.png`;
+    const xhtmlFile = `page_${n}.xhtml`;
+    const chTitle = `Page ${i + 1}`;
+
+    const { base64 } = stripDataPrefix(page.imageUrl);
+    imgs.file(imgFile, base64, { base64: true });
+
+    epub.file(xhtmlFile,
+      `<?xml version="1.0" encoding="utf-8"?>` +
+      `<html xmlns="http://www.w3.org/1999/xhtml">` +
+      `<head><title>${chTitle}</title>` +
+      `<style>body{margin:0;padding:0}img{width:100%;height:auto;display:block}</style></head>` +
+      `<body><img src="images/${imgFile}" alt="${chTitle}"/></body></html>`
+    );
+
+    manifestItems.push(
+      `<item id="img${n}" href="images/${imgFile}" media-type="image/png"/>`,
+      `<item id="ch${n}" href="${xhtmlFile}" media-type="application/xhtml+xml"/>`
+    );
+    spineItems.push(`<itemref idref="ch${n}"/>`);
+    navItems.push(`<li><a href="${xhtmlFile}">${chTitle}</a></li>`);
+  });
+
+  epub.file('content.opf',
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">` +
+    `<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">` +
+    `<dc:identifier id="uid">${uid}</dc:identifier>` +
+    `<dc:title>${title}</dc:title>` +
+    `<dc:language>en</dc:language>` +
+    `<dc:creator>mOhiOm AI</dc:creator>` +
+    `<meta property="dcterms:modified">${now}</meta>` +
+    `</metadata>` +
+    `<manifest>` +
+    `<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>` +
+    manifestItems.join('') +
+    `</manifest>` +
+    `<spine>${spineItems.join('')}</spine>` +
+    `</package>`
+  );
+
+  epub.file('nav.xhtml',
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">` +
+    `<head><title>Table of Contents</title></head>` +
+    `<body><nav epub:type="toc"><ol>${navItems.join('')}</ol></nav></body></html>`
+  );
+
+  const epubBytes = await zip.generateAsync({
+    type: 'uint8array',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 },
+  });
+  triggerDownload(new Blob([epubBytes], { type: 'application/epub+zip' }), `${safe}.epub`);
+}
+```
+
+4. **Update `triggerDownload`** to revoke the blob URL after 60s (currently revokes immediately):
+```typescript
+function triggerDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+```
+
+---
+
+**File 2 — `frontend/src/context/ComicGenerationContext.tsx`**
+
+Add `exportEpub` alongside `exportZip` / `exportPdf`:
+
+```typescript
+// in interface ComicGenerationContextValue:
+exportEpub: (includeMetadata: boolean) => Promise<void>;
+
+// in provider body (mirrors exportPdf pattern):
+const exportEpub = useCallback(async (includeMetadata: boolean) => {
+  if (!step4.data) return;
+  setExportStatus('exporting');
+  try {
+    const pages = buildExportPages(step4.data);
+    await exportAsEpub(pages, { includeMetadata, projectId });
+    setExportStatus('idle');
+  } catch { setExportStatus('error'); }
+}, [step4.data, projectId]);
+
+// add to context value object:
+exportEpub,
+```
+
+Also add `exportAsEpub` to the import from `'@/lib/export'`.
+
+---
+
+**File 3 — `frontend/src/components/studio-steps/Step5Export.tsx`**
+
+Add an EPUB button next to PDF and ZIP. Pull `exportEpub` from context. Same loading/disabled pattern as the other two buttons.
+
+UI addition in the export card row:
+```tsx
+<button
+  onClick={() => exportEpub(includeMetadata)}
+  disabled={!hasImages || exportStatus === 'exporting'}
+  className={...same style as PDF/ZIP buttons...}
+>
+  {/* book icon */}
+  <p className="text-sm font-bold text-gray-900 mt-2">EPUB</p>
+  <p className="text-xs text-gray-500">E-reader, mobile</p>
+</button>
+```
+
+---
+
+#### Critical notes
+
+- `pdf-lib` replaces `jspdf` for PDF only. Remove `jspdf` import from `export.ts` after migration but keep the package (may be used elsewhere — check first with `grep -r "jspdf"` before removing).
+- EPUB `mimetype` file MUST be first in the ZIP and use `compression: 'STORE'` — violating this makes Apple Books / Kindle reject the file.
+- `exportAsEpub` uses `crypto.randomUUID()` — available in all modern browsers (Chrome 92+, Safari 15.4+).
+- `stripDataPrefix()` already exists in `export.ts` — reuse it in both new functions. Don't duplicate.
+- No backend changes needed. All export runs in the browser.
+- Run `npx tsc --noEmit` after changes — `pdf-lib` types are bundled with the package.
+
+#### Verification
+1. PDF: open exported file — each page fills the page exactly at image native resolution (no A4 letterboxing).
+2. ZIP: open archive — files named `page_01.png`, `page_02.png`, etc.
+3. EPUB: open in Calibre or Apple Books — all pages visible, TOC lists each page, no validation errors.
+4. Zero TS errors after migration.
+
+---
+
+## SESSION: 2026-06-25 — DialogueEditor Position Bug Fix + Layout Template Expansion Plan
+
+### ✅ COMPLETED — DialogueEditor Absolute Positioning Bug Fix
+
+**Root cause:** In `DialogueEditor.tsx`, the `PanelCell` root div had:
+```tsx
+style={{
+  ...(absoluteStyle ?? gridPlacement),  // spreads position: 'absolute' from absoluteStyle
+  position: 'relative',                 // BUG: overrode 'absolute' → all panels flowed in document order
+  overflow: 'hidden',
+}}
+```
+The hardcoded `position: 'relative'` silently overwrote the `position: 'absolute'` spread from
+`absoluteStyle`, causing all absolutely-positioned panels (action_dynamic_4, asymmetric_4, etc.)
+to render in normal document flow — P1 huge, P2/P3/P4 stacked below or invisible.
+
+**Fix (single line change):**
+```tsx
+position: absoluteStyle ? 'absolute' : 'relative',
+```
+
+**File changed:** `frontend/src/components/studio-steps/DialogueEditor.tsx`
+
+---
+
+### 🎯 NEXT SESSION — Expand Layout Templates (26 total = 14 existing + 12 new)
+
+**Full plan saved at:** `/Users/thuongnguyen/.claude/plans/i-remember-i-implemented-federated-thompson.md`
+
+#### Summary of changes needed:
+
+**1. `backend/comic/layout/layout_templates.py`**
+Add 12 new `@classmethod` methods to `MangaLayoutTemplates` and register in `get_all()`.
+All use `_rect(id, x1, y1, x2-x1, y2-y1, shot)` — pure rectangles, no polygons.
+
+New templates (group):
+- `single` (standard) — 1 panel, margins only
+- `horizontal_duo` (standard) — 2 equal horizontal strips
+- `vertical_trio` (standard) — 3 equal vertical columns
+- `grid_2x3` (standard) — 2×3 grid, 6 panels
+- `hero_left` (hero) — tall left + 3 stacked right
+- `hero_right` (hero) — 3 stacked left + tall right
+- `wide_duo` (hero) — wide top + 2 bottom side-by-side
+- `widescreen_pair` (cinematic) — 2 equal horizontal strips
+- `widescreen_trio` (cinematic) — 3 equal horizontal strips
+- `film_strip` (cinematic) — 4 equal vertical columns
+- `t_shape` (dynamic) — wide top + 3 equal columns bottom
+- `l_shape` (dynamic) — tall left + 2 stacked right
+
+Exact `_rect()` calls with coordinates are in the plan file.
+
+**2. `backend/comic/layout/panel_dimension_calculator.py`** (NEW file)
+```python
+def calc_flux_dimensions(panel: PanelDefinition, page_w=1240, page_h=1754,
+                         min_dim=256, max_dim=1024) -> tuple[int, int]:
+    x_pct, y_pct, w_pct, h_pct = panel.bbox
+    raw_w = w_pct / 100.0 * page_w
+    raw_h = h_pct / 100.0 * page_h
+    return (max(min_dim, min(max_dim, round(raw_w/8)*8)),
+            max(min_dim, min(max_dim, round(raw_h/8)*8)))
+```
+
+**3. `frontend/src/components/studio-steps/Step4Generation.tsx`**
+- `TEMPLATES_BY_COUNT`: add 12 new templates to correct count buckets; fix `6:` → `['grid_2x3']`
+- `LAYOUT_DISPLAY_NAMES_MAP`: add 12 display names
+- `LAYOUT_SVGS`: add 12 entries (48×64 viewBox, all `<rect>` shapes)
+- `LAYOUT_PANEL_RECTS`: add 12 entries in 48×64 space (exact values in plan file)
+- Remove inline `LayoutPickerPanel`; import `LayoutTemplatePicker` from new file
+
+**4. `frontend/src/components/studio-steps/LayoutTemplatePicker.tsx`** (NEW file)
+Extract `LayoutPickerPanel` + add group filter tabs:
+- Tabs: `All | Standard | Hero | Cinematic | Dynamic`
+- `LAYOUT_GROUPS` constant maps 18 spec templates to groups; old 8 show in "All" only
+- Scrollable grid: `overflow-y-auto max-h-[320px]`
+- Pill style — active: `bg-[#EFF6FF] text-[#2563EB] border-[#BFDBFE]`; inactive: `bg-transparent text-[#6B7280] border-[#E5E7EB]`
+- Same props as current `LayoutPickerPanel`
+
+**5. `frontend/src/components/studio-steps/DialogueEditor.tsx`**
+Add to `LAYOUT_ROW_STRUCTURES`:
+- CSS grid: `single:[[0]]`, `horizontal_duo/widescreen_pair:[[0],[1]]`, `vertical_trio:[[0,1,2]]`, `widescreen_trio:[[0],[1],[2]]`, `film_strip:[[0,1,2,3]]`, `grid_2x3:[[0,1],[2,3],[4,5]]`
+- Non-grid (absolute mode): `hero_left/hero_right/wide_duo/t_shape/l_shape: [[0]]`
+
+Add to `ABSOLUTE_LAYOUT_BBOXES` (5 layouts — exact %s in plan file):
+`hero_left`, `hero_right`, `wide_duo`, `t_shape`, `l_shape`
+
+#### Notes:
+- `widescreen_pair` = `horizontal_duo` geometrically — differ only in group
+- 14 existing templates ALL kept; old 8 without groups appear in "All" tab only
+
+---
+
+## SESSION: 2026-06-23 — Canvas Studio + Sidebar Redesign (Step 4)
+
+### ✅ COMPLETED — Canvas Studio for Step 4 Layout Tab
+
+Implemented the full canvas studio view inside `Step4Generation.tsx` Layout tab.
+
+**New constant `LAYOUT_PANEL_RECTS`** (added after `LAYOUT_SVGS`):
+- Maps all 14+ layout names → array of `{x,y,w,h}` bounding boxes in 48×64 coordinate space
+- Used by `LayoutPageCanvas` to absolutely-position panel slots
+
+**`LayoutPageCanvas` component (line ~663):**
+- Gray canvas background (`#E8E8E8`) fills the left side, white 360×480 comic page centered
+- Panel slots absolutely-positioned using `LAYOUT_PANEL_RECTS` percentages (`rect.x/48*100%` etc.)
+- Slot states: idle (gray placeholder + "click to generate"), loading (spinner), error (⚠ retry), has-image (img fill)
+- P{n} badge top-left of each slot
+
+**Canvas studio activated when:**
+`comicPageMode === 'panel' && (state === 3 || state === 4 || state === 5) && step4PanelsByPage.length > 0`
+- Shows: page nav bar (← Prev / dot indicators / Next →) + canvas + sidebar
+- Else: shows legacy generation dashboard (state machine + page images)
+
+**`studioPage` state added** (`useState(1)`) — tracks current page in canvas view.
+
+**Dead code removed:**
+- `PanelCard` function (~218 lines) — canvas slots replace the panel grid
+- `LayoutWireframe` function — replaced by `LAYOUT_PANEL_RECTS`
+- `PanelReaction` type
+- `approvedPanelIds`, `setApprovedPanelIds`, `panelItemReactions`, `setPanelItemReactions` state
+- `copyProjectJson`, `downloadProjectJson` from context destructure
+
+---
+
+### ✅ COMPLETED — LayoutStudioSidebar Redesign (BubbleSidebar-consistent)
+
+Rewrote `LayoutStudioSidebar` to visually match `DialogueEditor`'s `BubbleSidebar`:
+
+**Section 1 — "LAYOUT TEMPLATE"** (mirrors "DRAG TO ADD BUBBLE"):
+- Header row: uppercase bold "Layout Template" + "✨ AI Suggest" link (right)
+- AI reason callout shown below header when suggestion active
+- 4-column grid of template cards: SVG wireframe icon (28×37px) + truncated name
+- Selected card: blue border (`#4F46E5`) + `#EEF2FF` bg + blue checkmark dot top-right
+- Suggested (non-selected): muted indigo border + tinted background
+
+**Section 2 — Action button** (mirrors "Auto-import from script" outlined blue button):
+- Idle: `border: 1.5px solid #4F46E5`, transparent bg, "⚡ Generate All Panels" / "Regen Remaining"
+- Generating: progress bar card + "Pause Generation" outlined button
+- Paused: amber status card + "Resume Generation" outlined button
+- Done: green "✓ All N panels generated!" banner
+- Extras: "Clean images" `sfxMode` checkbox + "Switch to Full Page mode →" text link
+
+**Section 3 — "PAGE SUMMARY"** (mirrors page summary in BubbleSidebar):
+- Status dot (emerald/amber/red/gray) + `PanelScriptCard` for each panel on current page
+- Cards are collapsible (user expands to see shot type, dialogue/sfx, image prompt)
+
+**Props change:**
+- Removed: `hasDimensions` (no longer needed)
+- Added: `artStyle: string` (forwarded to `PanelScriptCard`)
+- Mode toggle: removed from prominent 2-button grid → simplified to "Switch to Full Page mode →" text link
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/components/studio-steps/Step4Generation.tsx` — canvas studio (LAYOUT_PANEL_RECTS, LayoutPageCanvas, canvas studio render, dead code removal) + LayoutStudioSidebar full redesign
+
+---
+
+## SESSION: 2026-06-21 (continued — wizard restructure + canvas editor spec)
+
+### ✅ COMPLETED — Wizard Restructure: Steps 4 + 5 Split + Mode Modal
+
+Restructured the wizard from 5 steps to 6 steps (keys 0–5):
+- **Step 4** = "Generate" — Layout + Generate tabs (panel-by-panel flow)
+- **Step 5** = "Export" — Dialogue + Export tabs
+
+**New files:**
+- `frontend/src/components/GenerationModeModal.tsx` — full-screen modal (no dismiss) shown when entering Step 4 for the first time; user chooses "Full Page" or "Panel by Panel"; choice stored in context as `comicPageMode`
+- `frontend/src/components/studio-steps/Step5Export.tsx` (469 lines) — dialogue tab + export tab; ported dialogue/bubble/export logic from old Step4Generation
+
+**Context changes (`ComicGenerationContext.tsx`):**
+- `StepKey` extended: `1 | 2 | 3 | 4` → `1 | 2 | 3 | 4 | 5`
+- `Step5Result = { exportedAt: string | null }`
+- `comicPageMode: 'page' | 'panel' | null` state (null = modal not dismissed)
+- `setComicPageMode(mode)` — sets mode, hides modal
+- `resetComicPageMode()` — sets to null, re-triggers modal
+- `step5` StepState added; `stepMap` includes step 5; `cooldownUntil` includes `5: 0`
+- `handleApprove` guard: `nextStep <= 5`; `handleRevokeApproval(4)` cascades to lock step 5
+- Step 3 regeneration resets `comicPageMode` to null + re-locks steps 4 & 5
+
+**Step4Generation.tsx refactor (2318 lines):**
+- `Step4Tab` narrowed from `'generate'|'layout'|'dialogue'|'export'` → `'layout'|'generate'`
+- Removed: dialogue tab, export tab, all bubble/compose/export handlers and state
+- Removed: inline mode picker cards (Generate tab) — mode is set upfront via modal
+- Removed: per-page layout picker icons from the Generate tab panel grid
+- Added: `comicPageMode` + `resetComicPageMode` from context
+- **Layout tab additions:**
+  - Mode chip + "Change mode →" button (calls `resetComicPageMode()`)
+  - Panel script preview rows per page card (panelNumber, shotType, dialogueSfx/aiImagePrompt)
+- **Tab sync effect:** when `comicPageMode === 'panel'` → force Layout tab first; when `'page'` → force Generate tab
+- Bottom nav simplified: Layout → Generate, Generate → `handleApprove(4)`
+
+**TextToComicGenerator.tsx:**
+- `wizardSteps` extended to 6 entries (keys 0–5)
+- Renders `<GenerationModeModal />` when `activeStep === 4 && comicPageMode === null`
+- Bottom bar hidden for steps 1–5 (each owns its action bar)
+
+---
+
+### 🎯 NEXT SESSION — Canvas Editor Redesign (Step 4)
+
+The user provided a comprehensive redesign spec for Step 4 titled **"REDESIGN: Comic Page Editor"** requesting a Canva-style 3-zone layout. This has NOT been implemented yet.
+
+**Spec summary:**
+
+Replace the current 2-tab (Layout + Generate) flow in Step 4 with a **unified canvas editor**:
+
+```
+┌────────────────────────────────────────────────────┐
+│  [Page 1] [Page 2] [Page 3]  ← page navigator     │
+├──────────┬─────────────────────────┬───────────────┤
+│ LEFT     │  CENTER CANVAS          │ RIGHT         │
+│ 240px    │  (fills remaining)      │ 280px         │
+│          │                         │               │
+│ Templates│  Comic page at 1:1.414  │ Contextual:   │
+│ + scene  │  ratio with panel slots │ page overview │
+│ + import │  (positioned by bbox)   │ panel props   │
+│ + script │                         │ bubble editor │
+│ preview  │                         │               │
+├──────────┴─────────────────────────┴───────────────┤
+│  [← Back]   X/Y panels generated   [Export →]      │
+└────────────────────────────────────────────────────┘
+```
+
+**Key behaviors from spec:**
+1. **No Layout/Generate tabs** — single unified view per page
+2. **Page navigator** at top: horizontal page tabs with mini progress bars
+3. **Left panel** (240px): layout template list, scene type dropdown, AI suggestion button, dialogue auto-import, page script preview
+4. **Center canvas**: shows ONE page at a time; panel slots positioned using `bbox` from `confirmedLayouts[pageNumber]`; 6 panel states (no layout / pending / generating / generated / selected / error); zoom controls
+5. **Click empty panel** = immediate generation (`handleRegenerateSinglePanel(panel)`)
+6. **Layout change = canvas re-renders immediately** — auto-calls `comicLayoutApi.confirm()` when template selected (no explicit "Confirm" button)
+7. **Right panel** (280px): contextual — page overview (default) / panel properties (when panel selected) / bubble editor (when bubble selected)
+8. **Inline dialogue bubbles** always visible on canvas over panel images
+9. **Bottom bar**: back to script + X/Y panels progress + Export button (calls `handleApprove(4)`)
+
+**Implementation plan for next session:**
+- Create `frontend/src/components/studio-steps/Step4CanvasEditor.tsx` (replaces Step4Generation.tsx in wizard)
+- Update `TextToComicGenerator.tsx`: swap `Step4Generation` import → `Step4CanvasEditor`
+- Keep `Step4Generation.tsx` until canvas editor is verified working
+- Keep `Step5Export.tsx` unchanged — canvas editor calls `handleApprove(4)` to advance to export
+
+**Key technical notes:**
+- Panel positions from `confirmedLayouts[pageNumber].panels[idx].bbox = [x1,y1,x2,y2]` (in 1240×1754 space)
+- CSS: `left: x1/1240*100%`, `top: y1/1754*100%`, `width: (x2-x1)/1240*100%`, `height: (y2-y1)/1754*100%`
+- Diagonal panels: `clip-path: polygon(${pts.map(([x,y])=>'${x/1240*100}% ${y/1754*100}%').join(',')})`
+- Map `confirmedLayouts[page].panels[idx]` ↔ `step4PanelsByPage.find([page,...])[idx]` by array index to get panel IDs
+- Auto-confirm flow: user picks template → `comicLayoutApi.confirm({panel_count, layout_name})` → stores in `confirmedLayouts` → `setRawPanelDimensions(page, dimMap)` → canvas renders positioned slots
+- Use `MANGA_LAYOUT_SVGS` constants from Step4Generation for wireframe previews while awaiting confirm API response
+- The `comicPageMode === 'page'` case: show a single slot for the full page image; no layout picker needed
+
+---
+
+## SESSION: 2026-06-21 (continued — layout-first system)
+
+### ✅ COMPLETED — Layout-First Manga Panel System
+
+Implemented the full layout-first spec. Layout tab now comes BEFORE Generate tab.
+
+**Backend:**
+- `backend/comic/layout/mask_renderer.py` — Fixed stretch bug: `_cover_crop()` + `_expand_polygon()`. Images now fill polygon bbox without distortion. Cover-crop preserves aspect ratio; expand closes hairline gaps between panels.
+- `backend/comic/layout/layout_selector.py` — Added `suggest_layout()` with scene inference from shot types, reasons, and alternatives. `select_layout()` kept for backward compat.
+- `backend/comic/layout/composition_hints.py` — New file. `get_composition_hint(panel)` + `inject_composition(prompt, panel)` for framing keywords based on panel shape.
+- `backend/app/routers/comic_generation.py` — Added `POST /api/comic-layout/suggest` (AI layout suggestion + alternatives) and `POST /api/comic-layout/confirm` (returns panel slots with `sd_width`/`sd_height` for exact-dimension generation).
+
+**Frontend:**
+- `frontend/src/services/api.ts` — Added `SuggestLayoutRequest/Response`, `ConfirmLayoutRequest/Response`, `ConfirmedPanelDefinition` types. Added `comicLayoutApi.suggest()` and `comicLayoutApi.confirm()`.
+- `frontend/src/context/ComicGenerationContext.tsx` — Added `setRawPanelDimensions(pageNumber, dimMap)` to context (exposes direct dim override without calling Gemini endpoint).
+- `frontend/src/components/studio-steps/Step4Generation.tsx`:
+  - Tab order: **Layout → Generate → Dialogue → Export** (layout first)
+  - Default tab: `layout`
+  - `isTabLocked`: layout=never, generate=locked until `anyLayoutConfirmed` (panel mode only), others unchanged
+  - New state: `confirmedLayouts`, `layoutSuggestions`, `suggestionLoading`, `confirmingLayout`
+  - New handlers: `handleGetSuggestion()`, `handleConfirmLayout()` (calls `/confirm`, maps slots → panel IDs, updates `pagePanelDimensions`)
+  - Layout tab redesigned: AI suggestion banner, template picker, wireframe SVG preview, "Confirm Layout" button, post-confirm shows dimensions + compose section when images exist
+  - Bottom bar navigation updated for new tab order
+
+**Key flow:** Layout tab → pick template → Confirm → `pagePanelDimensions` updated → Generate tab unlocks → generate at exact dimensions → Layout tab compose section appears → Apply Manga Layout → polygon-masked page image.
+
+**Tests:** 14/14 templates + 8/8 procedural pass.
+
+---
+
+## SESSION: 2026-06-21
+
+### ✅ COMPLETED — DialogueEditor.tsx — Bubble UX Overhaul
+
+All work in: `frontend/src/components/studio-steps/DialogueEditor.tsx`
+
+---
+
+#### Cross-panel bubbles (`crossPanel` flag)
+
+- Added `crossPanel?: boolean` to `SingleBubble` interface
+- `PanelCell` filters out `crossPanel: true` bubbles from its render (`sortedBubbles.filter(b => !b.crossPanel)`)
+- `PageBubbleLayer` collects all `crossPanel: true` bubbles via `useMemo` across all panels and renders them in an absolute overlay at `zIndex: 20` covering the full page grid
+- Right-click → context menu: "Bring to Front" sets `crossPanel: true`; "Send to Back" sets `crossPanel: false`
+- Context menu bug root cause & fix: `document.addEventListener('mousedown', close)` fired before `click`, clearing `contextMenu` state before action ran. Fixed with **backdrop pattern**: transparent `<div style={{ position:'fixed', inset:0, zIndex:199 }}>` fires `onClose` on outside clicks; menu's `onMouseDown={e.stopPropagation()}` prevents backdrop from firing on menu-internal clicks
+- Backend: added `crossPanel: Optional[bool] = False` to `BubbleData` Pydantic model in `backend/app/routers/bubbles.py`
+- Frontend API: added `crossPanel?: boolean` to `BubbleDataPayload` in `frontend/src/services/api.ts`
+
+---
+
+#### Inline text editing
+
+- New `editingBubbleId: string | null` state in `DialogueEditor`
+- `addBubble` auto-sets `setEditingBubbleId(newBubble.id)` — new bubbles immediately enter edit mode
+- Transparent `<textarea autoFocus>` overlay rendered inside selected bubble when `editingBubbleId === bubble.id`:
+  - `color: transparent`, `caretColor: textColor` — SVG text renders through, textarea captures input
+  - `onBlur` / Escape → `onEditEnd()`
+- Double-click on any bubble → `onEditStart(panelId, bubbleId)` → inline edit
+- `onEditEnd` auto-deletes the bubble if `dialogue` is empty/null (no ghost bubbles)
+- `PanelCellProps` new props: `editingBubbleId`, `onEditStart`, `onEditEnd`
+
+---
+
+#### Drag-to-create bubbles (sidebar palette)
+
+- `BubbleSidebar` restructured: always shows a "Drag to add bubble" palette grid at the top (all 15 `BUBBLE_TYPE_OPTIONS` as draggable tiles)
+- Palette tiles: `draggable={true}`, `onDragStart` sets `dataTransfer.setData('bubbleType', type)` with `effectAllowed: 'copy'`
+- Clicking a palette tile when a bubble is selected changes that bubble's type (replaces old bubble-type grid in selected state)
+- `PanelCell` root div: `onDragOver` + `onDrop` handlers compute normalized drop position from `clientX/Y` relative to cell rect, call `onBubbleAdd(panelId, normX, normY, type)`
+- `addBubble` extended: accepts `bubbleType: BubbleType = 'speech'` parameter; new bubble uses dropped type
+- `onBubbleAdd` prop signature updated: `(panelId, normX, normY, bubbleType?: BubbleType) => void`
+
+---
+
+#### Hover grab cursor + drag-to-move
+
+- All bubbles (selected and non-selected) have `cursor: grab`
+- **Non-selected bubbles**: `onPointerDown` → select + `startDrag(e, 'move', b)`; `onPointerMove` / `onPointerUp` run shared `onDragMove` / `onDragEnd`; `onDoubleClick` → `onEditStart`
+- **Selected bubble**: whole body is draggable — `onPointerDown` on outer div starts move drag; `onDoubleClick` enters inline edit
+- Removed the separate purple move-handle bar at the top of selected bubbles
+- Corner/tail handles: all add `e.stopPropagation()` to prevent triggering the body's `onPointerDown`
+- `dragActiveRef = useRef(false)`: only set `true` after pointer moves ≥ 3px from start; `onDragEnd` only saves + commits if `dragActiveRef.current` — prevents position save on simple clicks
+- Bug fix: `computePatch(e)` called **before** `dragRef.current = null` in `onDragEnd` — previously the ref was cleared first causing `computePatch` to return `null` and the bubble snapping back
+
+---
+
+#### Click-to-create removed
+
+- `onClick={handleCellClick}` removed from panel cell div — clicking empty panel no longer creates a bubble
+- Hover `+` button removed entirely
+- Only creation paths: drag from sidebar palette, or "Auto-import from script" button
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/components/studio-steps/DialogueEditor.tsx` — all bubble UX changes (~2100 lines)
+- `frontend/src/services/api.ts` — `crossPanel?: boolean` on `BubbleDataPayload`
+- `backend/app/routers/bubbles.py` — `crossPanel: Optional[bool] = False` on `BubbleData`
+
+---
+
+### 🐛 KNOWN ISSUES / DECISIONS
+
+- **`crossPanel` flag vs separate panel**: cross-panel bubbles stay in their original `panelBubbles[panelId]` array; only rendered differently. All save/load/delete mechanics are unchanged.
+- **`PAGE_PANEL_PREFIX = '__page__'`**: exported constant kept for backward-compat with MongoDB records but not used in active logic.
+- **Inline edit not available for `bubbleType: 'none'` and `'sfx'`**: `none` is invisible; `sfx` uses direct SVG text styling that doesn't need inline edit. Both still editable via sidebar textarea.
+- **`dragActiveRef` threshold = 3px**: prevents spurious saves on single clicks. Does NOT block `dblclick` — double-click fires `onDoubleClick` independently, not via drag logic.
+- **`onEditEnd` auto-delete**: only fires when the bubble exiting edit has `dialogue === null` or `dialogue.trim() === ''`. Bubbles with text are always preserved on blur.
+
+---
+
+### 🎯 NEXT SESSION PLAN
+
+1. **Expand bubble types to 15** — add `whisper`, `double`, `electric`, `round`, `square`, `scream`, `heart`, `burst`, `wobbly` to `BubbleType` union, `BUBBLE_TYPE_DEFAULTS`, `MangaBubbleSVG` switch, and palette (see Phase 1 spec in SESSION: 2026-06-20 below)
+2. **MongoDB persistence** — wire `PUT /api/bubbles/{panelId}` on save (Phase 2 spec below)
+3. **PNG composite export** — html2canvas per panel (Phase 3 spec below)
+
+---
+
+## SESSION: 2026-06-20
+
+### ✅ COMPLETED — DialogueEditor.tsx — Full Canvas Dialogue System
+
+All work in: `frontend/src/components/studio-steps/DialogueEditor.tsx` (~1591 lines) and `frontend/src/components/studio-steps/Step4Generation.tsx`.
+
+---
+
+#### What was built this session
+
+**MangaBubbleSVG — native SVG rendering**
+- `SvgText` helper: `<text>/<tspan>` word-wrap via `wrapTextToLines()` (no `<foreignObject>`)
+- `MangaBubbleSVG`: 6 bubble types — speech (oval + triangle tail), thought (cloud circles + dot trail), shout (spiky star polygon), sfx (outline text, no shape), narration (rectangle), none (hidden)
+- viewBox fixed to `0 0 w h` (1:1 with display) + `overflow: 'visible'` for tails — was previously padded, making text 75% too small
+- Tail shapes: `tailPts()` generates triangle polygon; `thoughtTrail()` generates 3 shrinking circles
+- SFX: `paintOrder="stroke fill"` for manga-style outline text with `Bangers` font
+
+**Drag + resize — pointer events + local override**
+- `startDrag` → `setPointerCapture` on the drag element
+- `onDragMove` → `setDragOverride(patch)` (local PanelCell state only — no parent re-render during drag)
+- `onDragEnd` → `onBubbleUpdate(...)` commits position + calls `onDragCommit()` for immediate flush
+- Zero re-renders in parent tree while dragging — only PanelCell re-renders
+
+**Save architecture (30s/Ctrl+S + immediate on drag end)**
+- `triggerSave(panelId, bubbles)` → calls `onSaveBubbles` immediately (parent state update, no snap-back) + stores `pendingSaveRef.current`
+- 30s `setInterval` auto-flushes `pendingSaveRef` if changes are pending
+- Ctrl+S / Cmd+S: keyboard `useEffect` calls `flushSaveRef.current()` immediately
+- `onDragCommit` prop on `PanelCell` → `flushSave()` fires right after drag ends
+- Status indicator: `idle` (gray) / `unsaved` (amber "● Unsaved · Ctrl+S to save") / `saving` (muted) / `saved` (green "✓ Saved") / `error` (red + Retry)
+
+**Tail direction compass**
+- 3×3 grid of 36×36px cells (8 directions + center no-op)
+- Auto-detect button: `autoDetectTailDir()` uses `atan2` from bubble center to panel center → nearest compass direction
+
+**Page navigation + counters**
+- `panelHasDialogue(panelId)`: single canonical definition — `bubbles.length > 0 && some(b => text not empty and not NONE)`
+- Tab badge, page dots, sidebar summary all use the same predicate
+- Page dots: green (all panels done), orange (partial), gray (none)
+
+**Bubble opacity fix**
+- Non-selected bubbles: `dimmed={!!selectedBubbleId}` (only dim when a bubble is actively selected in that panel, not always)
+- Dimmed opacity: `0.55 → 0.8` so bubbles remain legible on dark manga backgrounds
+
+**Key types (canonical)**
+```typescript
+export type BubbleType = 'speech' | 'thought' | 'shout' | 'sfx' | 'narration' | 'none';
+export type TailDir = 'up-left'|'up'|'up-right'|'left'|'right'|'down-left'|'down'|'down-right'|'none';
+export interface SingleBubble {
+  id: string;
+  dialogue: string | null;
+  bubbleType: BubbleType;
+  tailDir: TailDir;
+  bubblePosition: { x: number; y: number };  // normalized 0–1 relative to panel
+  bubbleSize: { w: number; h: number };       // logical pixels (zoom-independent)
+  fontSize: number;
+  rotation: number;  // degrees, SFX only; 0 for others
+  character?: string;
+  zIndex: number;
+}
+```
+
+**BUBBLE_TYPE_DEFAULTS**
+```typescript
+speech:    { fontSize: 13, minFont: 8,  maxFont: 20 }
+thought:   { fontSize: 12, minFont: 8,  maxFont: 20 }
+shout:     { fontSize: 18, minFont: 16, maxFont: 48 }
+sfx:       { fontSize: 24, minFont: 16, maxFont: 48 }
+narration: { fontSize: 11, minFont: 8,  maxFont: 20 }
+none:      { fontSize: 14, minFont: 8,  maxFont: 20 }
+```
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/components/studio-steps/DialogueEditor.tsx` — **All changes** (1591 lines; all bubble types, drag, save, compass, counters, opacity fix)
+- `frontend/src/components/studio-steps/Step4Generation.tsx` — `onSaveBubbles` wires to `setPanelBubbles`; `autoImportDialogue` creates `SingleBubble` objects; `panelsWithDialogue` counter uses same predicate
+- `frontend/src/styles/globals.css` — Bangers font import + `--font-bangers` CSS custom property
+
+---
+
+### 🎯 NEXT SESSION PLAN — Dialogue System Enhancements
+
+**CONTEXT**: The following spec was provided for the next implementation phase. Priority: Phase 1 (more types), Phase 2 (MongoDB persistence), Phase 3 (PNG export). Do NOT adopt the spec's file structure — keep everything in `DialogueEditor.tsx`. Do NOT use ComicalJS — SVG rendering is working. Keep normalized 0–1 coordinate system (not the spec's 0–100 percentage).
+
+---
+
+#### Phase 1 — Expand bubble types (in `DialogueEditor.tsx`)
+
+The spec defines 15 types. We currently have 6. Add these 9:
+
+| Type | Render | Notes |
+|---|---|---|
+| `whisper` | oval with `strokeDasharray="6,3"` | italic font, opacity 0.9 fill |
+| `double` | two concentric ovals (inner = outer − 8px) | same tail as speech |
+| `electric` | oval with `strokeDasharray="4,2"`, gold stroke (`#DAA520`) | yellow-tinted fill |
+| `round` | ellipse forced to circle (`rx = ry = min(w,h)/2`) | same tail as speech |
+| `square` | `<rect>` with `rx={2}` sharp corners | no tail rounding; monospace font |
+| `scream` | spiky polygon with 18 spikes (shout has 12) | red stroke, larger font |
+| `heart` | SVG heart path, no tail | pink stroke `#FF6B9D`, pink fill |
+| `burst` | 16-point starburst polygon | no tail; Bangers font |
+| `wobbly` | sinusoidal ellipse path (approximate with cubic beziers) | blue stroke `#6699CC` |
+
+**Steps:**
+1. Add all 9 to `BubbleType` union
+2. Add all 9 to `BUBBLE_TYPE_DEFAULTS` (font sizes, slider ranges)
+3. Add rendering cases to `MangaBubbleSVG` switch
+4. Add all 9 to the bubble type selector in `BubbleSidebar` (currently 5 visible types + none)
+5. `autoImportDialogue` in Step4Generation: map `*text*` → `whisper`, `!TEXT!` → `scream`
+
+**Heart SVG path formula** (for reference):
+```
+// cx=w/2, cy=h/2, scale to fit bubble
+const scale = Math.min(w, h) * 0.45;
+// standard heart: M0,-1 C0.5,-1 1,-0.5 1,0 C1,0.5 0.5,1 0,1.5 C-0.5,1 -1,0.5 -1,0 C-1,-0.5 -0.5,-1 0,-1
+// apply scale and translate to cx,cy
+```
+
+---
+
+#### Phase 2 — MongoDB persistence for bubble data
+
+**Backend** — new router: `backend/app/routers/bubbles.py`
+
+```python
+# Schema to add to backend/app/schemas.py:
+class BubbleData(BaseModel):
+    id: str
+    dialogue: Optional[str]
+    bubbleType: str
+    tailDir: str
+    bubblePosition: dict  # {x: float, y: float}
+    bubbleSize: dict      # {w: float, h: float}
+    fontSize: float
+    rotation: float
+    character: Optional[str]
+    zIndex: int
+
+class PanelBubblesUpsert(BaseModel):
+    panelId: str
+    comicId: str
+    bubbles: List[BubbleData]
+
+# Collection: panel_bubbles
+# Index: { panelId: 1 } unique
+```
+
+```python
+# Endpoints:
+GET  /api/bubbles?comicId=xxx          # load all bubble data for a comic
+PUT  /api/bubbles/{panelId}            # upsert bubbles for one panel
+DELETE /api/bubbles/{panelId}          # clear bubbles for panel
+```
+
+**Frontend** — wire in Step4Generation.tsx:
+- On `DialogueEditor` mount: fetch `GET /api/bubbles?comicId={projectId}` → init `panelBubbles`
+- `onSaveBubbles` currently only calls `setPanelBubbles` (in-memory) → also call `PUT /api/bubbles/{panelId}`
+- Add `bubblesApi` to `frontend/src/services/api.ts`
+
+**Key constraint**: keep `panelBubbles` React state as source of truth for rendering; MongoDB is persistence layer only. Fetch on mount, write on save.
+
+---
+
+#### Phase 3 — Composite PNG export per panel
+
+**Library**: `npm install html2canvas` (already in spec; check if installed first)
+
+**Approach** (in `frontend/src/lib/bubbles/exportComposite.ts` — new file):
+```typescript
+export async function exportPanelWithBubbles(panelElement: HTMLElement): Promise<Blob>
+export async function exportPageWithBubbles(pageElement: HTMLElement): Promise<Blob>
+```
+
+**Wire into Step4Generation Export tab**: "Export with Dialogue" button — captures each page's panel div (with SVG overlay) using html2canvas and bundles as ZIP.
+
+**Important**: `foreignObjectRendering: true` is NOT reliable across browsers. Since we switched to native SVG `<text>/<tspan>` (no `<foreignObject>`), html2canvas should work without that flag.
+
+---
+
+### 🐛 KNOWN ISSUES / DECISIONS
+
+- **`BubbleType = 'none'`**: panels imported with "NONE" dialogue get `bubbleType: 'none'` — these render as invisible and are filtered out of `panelHasDialogue`. Do not remove this type.
+- **Coordinate system**: `bubblePosition` is normalized 0–1 (not 0–100 percentage as in the spec). Do not change — changing would break all saved bubbles.
+- **`onSaveBubbles` dual purpose**: currently updates both in-memory state (immediately) and queues persistence (deferred). When Phase 2 is added, the immediate `onSaveBubbles` call in `triggerSave` updates React state; the deferred `flushSave` makes the API call.
+- **No ComicalJS**: the spec mentions ComicalJS but we implemented custom SVG. DO NOT add ComicalJS — it has SSR conflicts with Next.js 14 App Router and our custom rendering works correctly.
+- **Bangers font**: loaded via Google Fonts in `globals.css`. Used for shout/sfx/burst bubble types.
+- **`panelHasDialogue` predicate** (single canonical definition — use everywhere):
+  ```typescript
+  const bs = panelBubbles[panelId] ?? [];
+  return bs.length > 0 && bs.some(b => {
+    const t = b.dialogue?.trim() ?? '';
+    return t !== '' && t.toUpperCase() !== 'NONE';
+  });
+  ```
+
+---
+
+### 📦 PACKAGES TO INSTALL BEFORE PHASE 2/3
+
+```bash
+cd frontend
+npm install html2canvas   # Phase 3 PNG export
+# NOTE: do NOT install comicaljs — not needed
+# NOTE: do NOT install lodash.debounce — we use setInterval instead
+```
+
+---
+
+## SESSION: 2026-06-16 (continued)
+
+### ✅ COMPLETED — Tab-Based Layout Redesign (Step4Generation.tsx)
+
+**What changed:**
+- Replaced single-page Step 4 with a 4-tab progressive workflow: Generate → Layout → Dialogue → Export
+- Tab bar: 44px tabs with badge counters, lock rules, `sessionStorage` persistence
+- Tab 1 (Generate): all existing generation dashboard + panel grids; completion nudge banner
+- Tab 2 (Layout): "AI Layout All Pages" button + per-page composed views + panel mini-card approval grid
+- Tab 3 (Dialogue): optional dialogue editing, auto-import from script, inline textarea edit
+- Tab 4 (Export): inline star rating (non-blocking), PDF/ZIP/cloud/JSON export options, page preview strip
+- Simple bottom bar: prev/next nav per tab, replaces complex 190-line state machine
+- Removed `ExportModal` and `ComicRatingModal` popup components (moved inline to Tab 4)
+- New handlers: `handleComposeAllPages`, `handleApproveAllOnPage`, `autoImportDialogue`
+- New state: `activeStep4Tab`, `dialogueEdits`, `dialogueEditOpen`, `dialogueEditValue`, `composingAll`, `showCompletionNudge`, `exportStars`, `exportHovered`, `exportPositive`, `exportNegative`, `includeMetadata`
+- File went from 2688 → 2099 lines (net -589 lines)
+- TypeScript: zero new errors; ESLint: went from 8 → 2 pre-existing errors
+
+**Also completed (same session):**
+- Smart panel layout (`comic_composer.py`): LLM-driven layout selection, cover-crop image fill, `LAYOUT_TEMPLATES` dict, `rule_based_layout()`, `_suggest_layout()` in `gemini.py`
+- `schemas.py`: `ComposePageRequest.use_smart_layout`, `ComposePageResponse.layout_name`
+- `api.ts`: updated interfaces for compose page
+
+---
+
+## SESSION: 2026-06-16
+
+### 🎯 CONTEXT — Step 4 panel grid polish, progress bar, and footer standardization
+
+All work this session is in:
+- `frontend/src/components/studio-steps/Step4Generation.tsx`
+
+---
+
+### ✅ COMPLETED
+
+#### 1. Consistent 2-column panel grid with odd-panel centering and lightbox
+
+**`PanelCard` image area refactor:**
+- Changed image area from `flex-none` + `style={{ height: 190 }}` → `flex-1 overflow-hidden` — fills remaining space after 90px footer, total card stays 280px via parent `style={{ height: 280 }}`
+- All states (success/loading/error/pending) use `w-full h-full` — no per-state height overrides
+
+**Hover overlay + lightbox (`🔍 View full`):**
+- Added `group` class to image container; overlay div uses `group-hover:bg-black/25` + `group-hover:pointer-events-auto`
+- "🔍 View full" button appears on hover, opens a fullscreen lightbox (`z-[100]`, `bg-black/90`)
+- Lightbox: closes on backdrop click or ✕ button; clicking the image itself does NOT close it
+- Caption at bottom: `Pg.N · Panel N · SHOT TYPE`
+- Implemented via `useState(false)` local to `PanelCard`; lightbox rendered inside `<>` fragment sibling to the card
+
+**Odd-panel centering:**
+- Panel grid: `grid grid-cols-2 gap-3` (2-column, consistent across all pages)
+- When `panels.length % 2 === 1`, last panel gets a wrapper `<div style={{ gridColumn: 'span 2', maxWidth: '50%', margin: '0 auto' }}>` — sits centered at half-width rather than stretching full row
+- Even panels use `<React.Fragment key={panel.id}>` for key without extra DOM nodes
+
+**Image area for error/pending:** Removed duplicate action buttons (Retry/Generate) from the image area — actions are now exclusively in the footer.
+
+---
+
+#### 2. `GenerationProgressBar` — enhanced segmented progress bar
+
+**New component** (inserted before `PanelCard`):
+- 8px bar, `border-radius: 4px`, segments stacked inline-flex with no gap
+- Green (`#22C55E`) = done panels, yellow (`#F59E0B`, animate-pulse) = currently generating, red (`#EF4444`) = errors, gray track (`#E5E7EB`) = pending
+- Percentage label right-aligned on same row as bar
+- Label row below: `"15 generated · 5 pending · 3 errors · 0 running"` (each value colored to match segment; 0-count values hidden except pending)
+- **Completion state**: when all done (`pending=0, errors=0`), label becomes `"✓ All X panels generated!"` in green
+- **Confetti animation (300ms, one-time)**: detects `allDone` transition via `useRef` + `useEffect`; fires `box-shadow` glow on green bar + `animate-[pulse_0.3s_ease-in-out_1]` on label text; `celebrating` state resets after 400ms
+- Accepts `unit: 'panel' | 'page'` prop for label pluralization
+
+**Placement — `activeStats` hoisted out of IIFE:**
+- `activeStats` previously computed inside the dashboard IIFE; moved to `useMemo` in component body so it's accessible both inside the IIFE and to the persistent bar element
+- Formula: panel mode → `panelStats.*`; page mode → `step4Stats.*`
+
+**Three locations where `GenerationProgressBar` now renders:**
+1. **GENERATING IMAGES section** (inside dashboard IIFE): replaces old `SegmentedProgressBar` + inline stats row. Keeps heading + "Drawing: Page X…" + Pause/Cancel
+2. **PAUSED section** (inside dashboard IIFE): replaces old amber gradient bar. Keeps "Paused" heading + Resume/Cancel
+3. **Persistent element** (between dashboard IIFE and stats grid): shows when `state >= 3 && activeStats.total > 0 && !isImageGenerating && !isPaused` — guards against duplicate rendering when dashboard sections already show the bar
+
+**Duplicate bar fix:** Persistent bar hidden via `&& !isImageGenerating && !isPaused` condition — resolves the visual where two identical "✓ All 1 pages generated!" bars appeared simultaneously.
+
+**`StatsBar` update:**
+- Added `totalLabel?: string` prop (default `'Total'`)
+- Stats card now passes `totalLabel={comicPageMode === 'panel' ? 'Panels' : 'Pages'}` so the first card doesn't say "Pages" in panel mode
+
+---
+
+#### 3. Standardized `PanelCard` footer — universal 3-row template
+
+**Footer dimensions:** `flex-none flex flex-col justify-between px-3 py-2` `style={{ height: 90 }}` — 3 rows share height via `justify-between`
+
+**Row 1 — Metadata (always):**
+- Left: `Pg.N · Panel N` + `✓` (primary color, 10px) when approved
+- Right: shot type in `text-[10px] font-bold uppercase tracking-wider`
+
+**Row 2 — Feedback/status (state-dependent):**
+- Generated (has image, not approved, or approved with no reaction): emoji rating buttons `😍 👍 😐 👎` (no "Rate:" label)
+- Approved + has reaction: `"You rated: 😍"` — shows emoji of the selected reaction
+- Loading: tiny spinner + `"Generating…"` (10px, muted)
+- Error: `"⚠ Generation failed"` (10px, red)
+- Pending: `"○ Not generated yet"` (10px, muted)
+
+**Row 3 — Actions (state-dependent):**
+- Generated: `[↺ Regen]` (left) · `[✓ Approve]` (right) — both `whitespace-nowrap`
+- Approved: `[↺ Regen (revokes)]` (left, revoke language) · `[✓ Approved]` (right, filled primary bg)
+- Error: `[↺ Retry]` (left, red) · truncated error text (right, `title` tooltip for full message)
+- Pending: `[⚡ Generate this panel]` (full-width via `w-full`)
+- Loading: nothing (null)
+
+**Image area cleanup:** duplicate Retry/Generate buttons removed from error/pending image placeholders — actions exclusively in footer.
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/components/studio-steps/Step4Generation.tsx` — `PanelCard` image area (`flex-1`), hover lightbox, odd-panel grid wrapper, `GenerationProgressBar` component, `activeStats` useMemo hoisted, GENERATING/PAUSED sections simplified, persistent progress bar placement, `StatsBar` `totalLabel` prop, standardized 3-row footer
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **Lightbox z-index `z-[100]`**: above all existing modals (`z-[55]` export, `z-[60]` toasts, `z-[70]` regen modal, `z-[80]` comic rating, `z-[9999]` preview slideshow). The panel lightbox at 100 sits below the preview slideshow — intentional.
+- **Odd-panel wrapper vs prop**: used a wrapper `<div>` for the odd-last-panel grid spanning rather than passing an `isLastOdd` prop to `PanelCard`. Keeps the card component unaware of grid layout concerns.
+- **`activeStats` useMemo deps**: `[comicPageMode, panelStats, step4Stats]` — `panelStats` itself is a useMemo (depends on `step4.data`), so the chain is reactive without over-triggering.
+- **Persistent bar guard (`!isImageGenerating && !isPaused`)**: prevents showing two `GenerationProgressBar` instances simultaneously. The dashboard IIFE's GENERATING and PAUSED branches each render their own bar internally.
+- **"You rated" in approved state**: only shows if `reaction` is non-null. If the user approved without rating, the emoji buttons still show so they can rate later.
+- **Pre-existing TS warnings**: `panelPageMap` unused (declared but never read) and `barColor` unused remain — pre-existing from previous sessions, not introduced this session.
+
+---
+
+### 🎯 NEXT STEPS
+
+1. **Test lightbox with portrait panels** — verify "🔍 View full" renders correctly for 9:16 generated panel images; image should display at full resolution without cropping
+2. **Test odd-panel centering** — generate a page with 3 or 5 panels; verify last panel is centered at 50% width, not stretched
+3. **Test footer states** — cycle through all 4 states (pending → generating → error → generated → approved) and verify 3-row footer renders correctly for each
+4. **Panel mode stats accuracy** — verify `panelStats.done`, `panelStats.generating`, `panelStats.errors`, `panelStats.pending` update reactively as panels transition states during generation
+
+---
+
+## SESSION: 2026-06-15
+
+### 🎯 CONTEXT — SD Server API v2, Step 2 flow, Step 4 UX polish
+
+---
+
+### ✅ COMPLETED
+
+#### New Image Generation Server API (SD 1.5 + IP-Adapter Plus v2)
+
+Server API contract changed — characters are now saved server-side by name and referenced in generate calls (no more `reference_image_base64` on every request).
+
+**`frontend/src/app/api/image-proxy/route.ts`** (updated):
+- `ProxyRequestBody` updated: `scene_prompt` (was `prompt`), `control_image_b64` (was `control_image_base64`), new fields `story_id`, `character_name`, `style`
+- Proxy target: `{url}/generate-page`
+
+**`frontend/src/app/api/image-proxy/characters/route.ts`** (new file):
+- `POST` proxy to `{url}/characters/save`
+- Body: `{ story_id, character_name, reference_image_b64 }`
+- Fire-and-forget character registration before image generation
+
+**`frontend/src/context/ComicGenerationContext.tsx`** (updated):
+- `ImageGenSettings` interface: added `characterName?`, `storyId?`, `style?`
+- Added `imageGenStyle` state (default `'manga'`), exported via context
+- `fetchImageFromAI`: request body now uses `scene_prompt`, `story_id`, `style`, `character_name`; removed `reference_image_base64` from all modes
+- Added `saveCharacterToServer(characterName, imageDataUri)` — fire-and-forget POST to `/api/image-proxy/characters`
+- `handleApproveCharacterReferences`: saves each approved character to SD server via `saveCharacterToServer`
+- `generatePageImages` + `handleRegenerateWithFeedback`: now pass `characterName` (first character name, lowercased) and `storyId` instead of `referenceImageBase64`
+
+**`frontend/src/components/story-setup/Step1.tsx`** (updated):
+- New `ImageStylePicker` custom dropdown component (replaces native `<select>`)
+- 4 styles: Manga (B&W lineart), Webtoon (flat vivid), Chibi (pastel kawaii), Watercolor (painterly)
+- Visual style cards: colored emoji badge, bold label, muted subtitle, checkmark when selected
+- Click-outside close via `useRef` + `mousedown` handler
+- Placed below "Image API URL" input in Step 1 sidebar
+
+---
+
+#### Step 2 Flow Change — Design Sheets → References auto-flow
+
+**`frontend/src/components/studio-steps/Step2Characters.tsx`** (updated):
+- Approving the Design Sheet tab now automatically switches to the References tab AND triggers character reference image generation (if not already generated)
+- Button labels updated: "Approve & Generate Images →" (not yet approved) / "View Reference Images →" (already approved)
+- `switchToReferencesAndGenerate()` helper encapsulates tab switch + conditional auto-generate
+- Removed `onSwitchToReferences` prop from `DesignSheetsRightPanel` and the "View in Reference Images" inline link button
+
+---
+
+#### Step 4 — One-click Generate (no double-click)
+
+**`frontend/src/components/studio-steps/Step4Generation.tsx`** (updated):
+- Added `wasBuildingRef` + `useEffect` that watches for state 2→3 transition (panels done building) and auto-calls `handleStartFullGeneration()`
+- Only auto-fires if the panel build was triggered in this session (ref is `false` on page load — no surprise auto-generation on returning to an already-built step)
+- State-1 button renamed from "⚡ Generate All Panels" → "⚡ Generate All Images" to match user expectation
+
+---
+
+#### Step 4 — Progress Bar Cleanup
+
+**`frontend/src/components/studio-steps/Step4Generation.tsx`** (updated):
+- Removed `SegmentedProgressBar` from the "Generation Progress" sidebar panel — `StatsBar` (4-number grid) alone is sufficient; no information lost
+- Removed the 3px indigo progress line at the very top of the fixed bottom bar (`barColor: #4F46E5` during generation looked like a thick blue stripe)
+- Result: during active generation, only 2 visual progress bars visible (main dashboard card A + bottom bar C) instead of 3–4
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+- `frontend/src/app/api/image-proxy/route.ts` — updated API contract
+- `frontend/src/app/api/image-proxy/characters/route.ts` — **New** (character save proxy)
+- `frontend/src/context/ComicGenerationContext.tsx` — new API fields, `imageGenStyle`, `saveCharacterToServer`, character-name-based generation
+- `frontend/src/components/story-setup/Step1.tsx` — custom `ImageStylePicker` dropdown
+- `frontend/src/components/studio-steps/Step2Characters.tsx` — Design Sheet approval auto-triggers References generation
+- `frontend/src/components/studio-steps/Step4Generation.tsx` — one-click generate, removed duplicate progress bars, removed top-of-bar indigo line
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **`imageGenStyle` vs `artStyle`**: `artStyle` ("Japanese manga style, detailed") is embedded in text prompts by `buildComicPagePrompt()`. `imageGenStyle` ("manga") selects LoRA + trigger words on the SD server. Both coexist; default "manga" for both.
+- **Character name convention**: character names are lowercased before saving to SD server (`character.name.toLowerCase()`). Generation calls use the same lowercased name.
+- **`wasBuildingRef` pattern**: using a `useRef` (not state) to track the 2→3 transition avoids extra re-renders and prevents stale closure issues. The ref is reset to `false` after auto-triggering so it doesn't fire again on subsequent re-renders at state 3.
+- **Pre-existing TS errors**: 13 canvas null-check errors in `Step4Generation.tsx` remain (pre-existing). Zero new TS errors from this session.
+
+---
+
+### 🎯 NEXT STEPS
+
+1. **Test SD server integration end-to-end** — configure `localImageApiUrl`, approve characters in Step 2, verify `/api/image-proxy/characters` fires for each character; generate panels and verify `character_name` is present in proxy requests
+2. **Test one-click generate flow** — click "⚡ Generate All Images" in Step 4, verify panel building starts then image generation auto-begins without a second click
+3. **`story_id` per project**: currently defaults to `projectId` state (default `'three_little_pigs_manga_001'`). Consider letting users set a custom `story_id` or deriving it from the project title
+4. **Character gallery search backend**: current search in `/gallery` is frontend-only; add backend search when gallery grows
+5. **Gallery page auth gate**: "Add to My Library" visible to unauthenticated users — should check `localStorage['mohiom-user-id']`
+
+---
+
 ## SESSION: 2026-06-13
 
 ### 🎯 CONTEXT — Feature 3 (Character Design Rating) + Feature 7 (Admin Analytics Dashboard + Characters Tab)

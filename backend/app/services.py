@@ -509,15 +509,37 @@ def _extract_step3_context(step1_json: dict, step2_json: dict) -> tuple[str, str
 class GeminiService:
     """Service class for interacting with Google's Gemini API."""
 
-    def __init__(self, model: str | None = None):
-        """Initialize Gemini API with API key from settings."""
+    def __init__(
+        self,
+        model: str | None = None,
+        override_url: str | None = None,
+        override_api_key: str | None = None,
+        override_model: str | None = None,
+    ):
+        """Initialize Gemini API with API key from settings.
+
+        `override_*` args support per-user BYOK: when `override_url` is set, this
+        instance talks to that URL/key/model instead of the app's own NineRouter/Gemini
+        config. Without `override_url`, `override_model` alone swaps just the model
+        while still using the app's own NineRouter/Gemini url/key.
+        """
+        if override_url:
+            self.use_nine_router = True
+            self.nine_router_url = _normalize_nine_router_url(override_url)
+            if not self.nine_router_url:
+                raise ValueError("Configured text-gen API URL is empty after normalization.")
+            self.nine_router_api_key = override_api_key or ""
+            self.nine_router_model = override_model or settings.NINE_ROUTER_MODEL
+            self.nine_router_timeout = settings.NINE_ROUTER_TIMEOUT_SECONDS
+            return
+
         self.use_nine_router = bool(settings.NINE_ROUTER_URL)
         if self.use_nine_router:
             self.nine_router_url = _normalize_nine_router_url(settings.NINE_ROUTER_URL)
             if not self.nine_router_url:
                 raise ValueError("NINE_ROUTER_URL is set but empty.")
             self.nine_router_api_key = settings.NINE_ROUTER_API_KEY
-            self.nine_router_model = settings.NINE_ROUTER_MODEL
+            self.nine_router_model = override_model or settings.NINE_ROUTER_MODEL
             self.nine_router_timeout = settings.NINE_ROUTER_TIMEOUT_SECONDS
             return
 
@@ -528,7 +550,7 @@ class GeminiService:
         if not settings.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY environment variable is not set")
 
-        self.model_name = model or settings.GEMINI_MODEL
+        self.model_name = override_model or model or settings.GEMINI_MODEL
         # Client-based SDK surface; avoids global state.
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
 

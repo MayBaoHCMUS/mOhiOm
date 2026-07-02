@@ -5,26 +5,20 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
-const WORKFLOW = [
-  { href: '/studio/story-setup',       label: 'Story Setup',        icon: 'auto_stories',  step: 1 },
-  { href: '/studio',                   label: 'Comic Pipeline',      icon: 'movie_creation', step: 2 },
-  { href: '/studio/character-manager', label: 'Character Manager',  icon: 'face_6',        step: 3 },
-  { href: '/studio/editor',            label: 'Comic Editor',       icon: 'edit_note',     step: 4 },
-  { href: '/studio/export',            label: 'Export & Publish',   icon: 'ios_share',     step: 5 },
+const PRE_PRODUCTION = [
+  { href: '/studio/story-setup',       label: 'Story Setup',       icon: 'auto_stories' },
+  { href: '/studio/character-manager', label: 'Character Manager', icon: 'face_6' },
 ];
 
-const TOOLS = [
-  { href: '/studio/my-stories',    label: 'My Stories',   icon: 'library_books' },
-  { href: '/studio/layout-engine', label: 'Layout Engine', icon: 'grid_view' },
-  { href: '/settings',             label: 'Settings',      icon: 'settings' },
+const POST_PRODUCTION = [
+  { href: '/studio/editor',  label: 'Comic Editor', icon: 'edit_note' },
+  { href: '/studio/publish', label: 'Publish',      icon: 'ios_share' },
 ];
 
-const ACCOUNT = [
-  { href: '/pricing', label: 'Pricing', icon: 'payments' },
-  { href: '/gallery', label: 'Gallery', icon: 'collections' },
+const LIBRARY = [
+  { href: '/studio/my-stories', label: 'My Stories', icon: 'library_books' },
+  { href: '/studio/analytics',  label: 'Analytics',  icon: 'bar_chart' },
 ];
-
-const STEP_NUMERALS = ['①', '②', '③', '④', '⑤'];
 
 export default function StudioSidebar() {
   const pathname = usePathname();
@@ -62,13 +56,37 @@ export default function StudioSidebar() {
         : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
     }`;
 
+  const sectionLabel = (text: string) =>
+    !isCollapsed ? (
+      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-on-surface-variant/50 px-4 mb-1.5">
+        {text}
+      </p>
+    ) : null;
+
+  const navItems = (items: typeof PRE_PRODUCTION) =>
+    items.map((item) => {
+      const active = isActive(item.href);
+      return (
+        <Link
+          key={item.href}
+          href={item.href}
+          className={navItemClass(active)}
+          aria-current={active ? 'page' : undefined}
+          title={isCollapsed ? item.label : undefined}
+        >
+          <span className="material-symbols-outlined">{item.icon}</span>
+          <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>{item.label}</span>
+        </Link>
+      );
+    });
+
   return (
     <aside
       className={`h-screen w-[var(--studio-sidebar-width)] fixed left-0 top-0 bg-surface-container-low border-r-0 z-[60] flex flex-col transition-[width] duration-300 ${
         isCollapsed ? 'px-2 py-4' : 'p-4'
       }`}
     >
-      {/* Brand + collapse toggle */}
+      {/* Zone A — Brand + collapse toggle */}
       <div className={`mb-6 ${isCollapsed ? 'px-1 pt-2' : 'px-2 pt-4'}`}>
         <div className="flex items-start justify-between">
           <div className={isCollapsed ? 'flex flex-col items-center gap-1' : ''}>
@@ -93,7 +111,7 @@ export default function StudioSidebar() {
         </div>
       </div>
 
-      {/* Dashboard home */}
+      {/* Home — standalone */}
       <Link
         href="/studio/dashboard"
         className={navItemClass(isActive('/studio/dashboard'))}
@@ -104,102 +122,46 @@ export default function StudioSidebar() {
         <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>Home</span>
       </Link>
 
-      <nav className="flex-1 overflow-y-auto mt-2 space-y-5">
+      {/* Zone B — Navigation */}
+      <nav className="flex-1 overflow-y-auto mt-2 space-y-5 hide-scrollbar">
 
-        {/* WORKFLOW group */}
+        {/* Comic Pipeline — blue gradient featured card */}
         <div>
-          {!isCollapsed && (
-            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-on-surface-variant/50 px-4 mb-1.5">Workflow</p>
-          )}
-          <div className="space-y-0.5">
-            {WORKFLOW.map((item, idx) => {
-              const active = isActive(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={navItemClass(active)}
-                  aria-current={active ? 'page' : undefined}
-                  title={isCollapsed ? `${item.step}. ${item.label}` : undefined}
-                >
-                  <span className="material-symbols-outlined">{item.icon}</span>
-                  {!isCollapsed && (
-                    <span className="text-sm font-semibold flex-1">{item.label}</span>
-                  )}
-                  {!isCollapsed && (
-                    <span className="text-xs text-on-surface-variant/40 font-bold">
-                      {STEP_NUMERALS[idx]}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
+          <Link
+            href="/studio"
+            className={`flex items-center gap-3 rounded-xl overflow-hidden bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-blue-500 hover:to-indigo-500 transition-all duration-200 ${
+              isCollapsed ? 'justify-center px-2 py-3' : 'px-4 py-3'
+            }`}
+            aria-current={isActive('/studio') ? 'page' : undefined}
+            title={isCollapsed ? 'Comic Pipeline' : undefined}
+          >
+            <span className="material-symbols-outlined">movie_creation</span>
+            <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>Comic Pipeline</span>
+          </Link>
         </div>
 
-        {/* TOOLS group */}
+        {/* PRE-PRODUCTION */}
         <div>
-          {!isCollapsed && (
-            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-on-surface-variant/50 px-4 mb-1.5">Tools</p>
-          )}
-          <div className="space-y-0.5">
-            {TOOLS.map((item) => {
-              const active = isActive(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={navItemClass(active)}
-                  aria-current={active ? 'page' : undefined}
-                  title={isCollapsed ? item.label : undefined}
-                >
-                  <span className="material-symbols-outlined">{item.icon}</span>
-                  <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
+          {sectionLabel('Pre-Production')}
+          <div className="space-y-0.5">{navItems(PRE_PRODUCTION)}</div>
         </div>
 
-        {/* ACCOUNT group */}
+        {/* POST-PRODUCTION */}
         <div>
-          {!isCollapsed && (
-            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-on-surface-variant/50 px-4 mb-1.5">Account</p>
-          )}
-          <div className="space-y-0.5">
-            {ACCOUNT.map((item) => {
-              const active = isActive(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={navItemClass(active)}
-                  aria-current={active ? 'page' : undefined}
-                  title={isCollapsed ? item.label : undefined}
-                >
-                  <span className="material-symbols-outlined">{item.icon}</span>
-                  <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
+          {sectionLabel('Post-Production')}
+          <div className="space-y-0.5">{navItems(POST_PRODUCTION)}</div>
+        </div>
+
+        {/* LIBRARY */}
+        <div>
+          {sectionLabel('Library')}
+          <div className="space-y-0.5">{navItems(LIBRARY)}</div>
         </div>
 
       </nav>
 
-      {/* Bottom: upgrade + user */}
-      <div className="mt-auto pt-4 space-y-3">
-        <Link
-          className={`w-full bg-primary-container text-white rounded-xl font-semibold text-sm shadow-sm transition-transform active:scale-95 flex items-center justify-center gap-2 py-3 ${
-            isCollapsed ? '' : 'px-4'
-          }`}
-          href="/pricing"
-          title={isCollapsed ? 'Upgrade to Pro' : undefined}
-          aria-label={isCollapsed ? 'Upgrade to Pro' : undefined}
-        >
-          <span className="material-symbols-outlined text-base">workspace_premium</span>
-          <span className={isCollapsed ? 'sr-only' : ''}>Upgrade to Pro</span>
-        </Link>
+      {/* Zone C — Bottom: user row (links to settings) */}
+      <div className="mt-auto pt-4">
         <Link
           href="/settings"
           className={`flex items-center gap-3 border-t border-outline-variant/30 hover:bg-surface-container-high rounded-xl transition-colors ${
