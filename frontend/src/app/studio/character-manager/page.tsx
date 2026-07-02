@@ -430,7 +430,7 @@ export default function CharacterManagerPage() {
 
   const toggleLock = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setLockedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setLockedIds((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   };
 
   const selectCharacter = (char: CharacterSummary) => {
@@ -539,7 +539,7 @@ export default function CharacterManagerPage() {
                   </button>
                 </div>
               ) : filtered.length === 0 ? (
-                <p className="text-center text-sm text-outline py-8">No characters match "{search}".</p>
+                <p className="text-center text-sm text-outline py-8">No characters match &quot;{search}&quot;.</p>
               ) : (
                 <div className="space-y-3">
                   {filtered.map((char) => (

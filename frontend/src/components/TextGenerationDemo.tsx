@@ -9,7 +9,7 @@ export default function TextGenerationDemo() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [mode, setMode] = useState<"stream" | "no-stream">("stream");
+  const [mode] = useState<"stream" | "no-stream">("stream");
 
   const handleStreamGeneration = async () => {
     if (!prompt.trim()) {
@@ -52,8 +52,9 @@ export default function TextGenerationDemo() {
     try {
       const result = await geminiApi.generateText(prompt, false);
       setResponse(result.data.generated_text);
-    } catch (err: any) {
-      setError(err.response?.data?.detail?.message || err.message || "Request failed");
+    } catch (err) {
+      const e = err as { response?: { data?: { detail?: { message?: string } } }; message?: string };
+      setError(e.response?.data?.detail?.message || e.message || "Request failed");
     } finally {
       setIsLoading(false);
     }

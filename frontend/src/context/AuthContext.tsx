@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         window.localStorage.setItem('mohiom-user-id', nextUser.id);
       }
       return nextUser;
-    } catch (err) {
+    } catch {
       setUser(null);
       setError('Not authenticated');
       return null;

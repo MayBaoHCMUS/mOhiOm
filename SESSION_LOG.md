@@ -1,3 +1,129 @@
+## SESSION: 2026-07-02 (2) — Thesis Draft + Deployment Guide + CI Pipeline (lint/type debt cleared)
+
+### ✅ COMPLETED
+
+#### 1. Thesis Full Draft — `thesisInformation/KhoaLuan_Draft.md`
+
+Wrote the complete 7-chapter khoá luận draft (Vietnamese) from the đề cương PDF + topic registration PDF + codebase facts:
+- Ch1 Giới thiệu · Ch2 Cơ sở lý thuyết (LLM/prompting, diffusion, IP-Adapter/ControlNet, FastAPI/Next/Mongo/SSE) · Ch3 Phân tích yêu cầu (khảo sát 4 đối thủ, FR/NFR, UC03/04/06 specs) · Ch4 Thiết kế (Mermaid: architecture, deployment, component, class, sequence pipeline 5 bước, activity, state machine, ERD, Mongo schema, REST/SSE/proxy, wireframes) · Ch5 Triển khai (BYOK, rate limit, context, export, mục 5.5 vấn đề kỹ thuật thật) · Ch6 Kiểm thử (16 test case, hai nhánh deterministic/AI) · Ch7 Kết luận + 20 tài liệu tham khảo + Phụ lục A/B/C.
+- **Còn thiếu (user phải làm):** bảng số liệu 6.3.1/6.4.1 đang là "…" placeholder chờ đo thực tế; Phụ lục A còn 9 use case chưa đặc tả.
+- `humanizer` skill user yêu cầu **không tồn tại** trong session — đã viết văn phong tự nhiên thủ công.
+
+#### 2. Deployment Guide — `DEPLOYMENT.md`
+
+Researched hosting (07/2026) và viết hướng dẫn deploy:
+- **Phương án A (free):** Vercel Hobby (frontend) + Render free 750h/tháng (backend) + Atlas M0 512MB. Railway/Fly.io đã bỏ free tier.
+- App-specific gotchas đã ghi trong file: proxy ảnh cần `export const maxDuration = 60` (Fluid Compute) không thì 504; cross-domain cookie cần `AUTH_COOKIE_SAMESITE=none` + `AUTH_COOKIE_SECURE=true` (đã hỗ trợ sẵn qua env, verified `auth.py`); Render free **chặn cổng SMTP** → forgot-password chết trừ khi chuyển `emailer.py` sang HTTP API (Resend); ảnh base64 trong Mongo → M0 chứa ~10–20 truyện.
+- **Phương án B:** VPS + docker-compose có sẵn + Caddy; GitHub Student Pack credit.
+
+#### 3. CI Pipeline — `.github/workflows/ci.yml` + `CICD.md`
+
+- **`ci.yml`:** 2 jobs. `frontend`: npm ci → ESLint → `tsc --noEmit` → `next build` (Node 20, npm cache). `backend`: pip install → `compileall` → import `app.main` → **boot smoke**: uvicorn + `mongo:7` service container + curl `/health` retry 20×1s. Zero secrets needed (config.py has defaults for everything).
+- **`CICD.md`:** thiết kế + lý do (backend không linter theo quy ước; test AI non-deterministic để ngoài CI), các bước còn lại (branch protection 2 required checks; Render "Auto-Deploy: After CI checks pass"; Vercel Git integration = CD), mục 5 có đoạn văn tiếng Việt viết sẵn để dán vào khoá luận 5.1.
+
+#### 4. Cleared ALL pre-existing lint/type/build debt (CI would have been red)
+
+- **TS7006** `AnalyticsDashboard.tsx:410` — annotated `ScriptableContext<'line'>` (import type from chart.js).
+- **`.eslintrc.json`** — added `@typescript-eslint/no-unused-vars` override with `varsIgnorePattern/argsIgnorePattern/caughtErrorsIgnorePattern: "^_"`.
+- **37 ESLint errors / 15 files fixed:** unused vars renamed `_`-prefix (admin/page, publish/page, DialogueEditor ×5, Step2Characters ×3, Step4CanvasEditor ×4, Step4Generation ×3 destructure-renames, ComicGenerationContext `_style`, exportComposite ×3); unused imports/bindings removed (`Plus` in ComicEditor, `setMode` + `setPageSceneType` from useState destructures); 3× ternary-as-statement → if/else (character-manager, CharacterLibraryModal, GalleryModal); 4× unescaped entities; `@ts-ignore` → `@ts-expect-error` (PublishDialog); `catch (err)` → `catch` (AuthContext); typed `any` catch (TextGenerationDemo).
+- **jsx-key ×2 in DialogueEditor:** added `key={panel.id}` at both `<PanelCell>` call sites and **removed `key` from `sharedPanelProps()`** return object (was inside spread → ESLint can't see it, and explicit key before spread caused TS2783).
+- **Prerender failures** `/callback` + `/reset-password`: `useSearchParams()` without Suspense → renamed inner components, wrapped default export in `<Suspense>`.
+- **Verified:** `npm run lint` 0 errors · `tsc --noEmit` 0 errors · `npm run build` 30/30 pages · backend compileall + import OK. Remaining ESLint *warnings* (`no-img-element`, `exhaustive-deps`) left as-is — don't fail CI.
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+**New:** `thesisInformation/KhoaLuan_Draft.md`, `DEPLOYMENT.md`, `CICD.md`, `.github/workflows/ci.yml`
+**Modified (lint/type debt):** `frontend/.eslintrc.json`, `frontend/src/components/AnalyticsDashboard.tsx`, `frontend/src/app/admin/page.tsx`, `frontend/src/app/studio/publish/page.tsx`, `frontend/src/app/studio/character-manager/page.tsx`, `frontend/src/components/ComicEditor.tsx`, `frontend/src/components/CharacterLibraryModal.tsx`, `frontend/src/components/GalleryModal.tsx`, `frontend/src/components/PublishDialog.tsx`, `frontend/src/components/TextGenerationDemo.tsx`, `frontend/src/components/studio-steps/DialogueEditor.tsx`, `frontend/src/components/studio-steps/Step2Characters.tsx`, `frontend/src/components/studio-steps/Step4CanvasEditor.tsx`, `frontend/src/components/studio-steps/Step4Generation.tsx`, `frontend/src/context/AuthContext.tsx`, `frontend/src/context/ComicGenerationContext.tsx`, `frontend/src/lib/bubbles/exportComposite.ts`, `frontend/src/app/(auth)/callback/page.tsx`, `frontend/src/app/(auth)/reset-password/page.tsx`
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **`_`-prefix convention over deletion:** unused vars renamed, not deleted — preserves intent for future use, zero behavior-change risk in load-bearing files. `BorderStyleSettings` already used this convention; the eslintrc override just formalizes it.
+- **CI has no AI tests by design:** integration tests needing live LLM/API keys stay manual (or future `workflow_dispatch` + secrets) — matches the deterministic/AI split argued in thesis Ch6.
+- **Next steps for user:** commit + push to trigger first CI run; enable branch protection on `main`; if deployed per DEPLOYMENT.md, flip Render to "After CI checks pass". Thesis: fill Ch6 measurement tables, write remaining 9 UC specs in Appendix A.
+
+---
+
+## SESSION: 2026-07-02 — BYOK Text-Generation Settings + Project URL Sync
+
+### ✅ COMPLETED
+
+#### 1. Per-User Text-Generation Settings (BYOK / built-in model / local server)
+
+New Settings page section letting logged-in users override text generation, replacing the non-functional "Manage Keys" Developer-panel stub. Three modes, stored per-user in Mongo (`text_gen_config` sub-document), image generation untouched (Pollinations.ai path unchanged).
+
+**Backend — new files:**
+- `backend/app/crypto_utils.py` — `encrypt_secret`/`decrypt_secret` via `cryptography.fernet`, key derived from `hashlib.sha256(JWT_SECRET_KEY)`. Added `cryptography` explicitly to `requirements.txt` (was only a transitive dep).
+- `backend/app/deps.py` — `get_current_user_optional`/`get_current_user_required`, reusing `token_from_request` (imported from `app.routers.auth`, not duplicated) + `decode_token` + `UserRepository.get_by_id`.
+- `backend/app/routers/settings.py` — `GET/PUT/DELETE /api/settings/text-gen-config`, `GET /api/settings/nine-router-models`, `GET /api/settings/text-gen-providers`. PUT validates per-mode; blank `api_key` on save preserves the existing encrypted key.
+- `backend/app/providers.py` — `TEXT_GEN_PROVIDERS` registry (final, simplified design): `gemini` → `https://generativelanguage.googleapis.com/v1beta/openai` / `gemini-2.5-flash`; `openai` → `https://api.openai.com/v1` / `gpt-4o-mini`; `deepseek` → `https://api.deepseek.com` / `deepseek-chat`. All three speak the same OpenAI-compatible `chat/completions` format already used by NineRouter — no per-provider wire-format code. Claude explicitly excluded (not OpenAI-compatible, would need a separate Anthropic Messages API implementation).
+
+**Backend — modified:**
+- `backend/app/services.py` — `GeminiService.__init__` gained `override_url`/`override_api_key`/`override_model` params. `override_url` set → full override (own url/key/model); only `override_model` set → keeps app's own NineRouter/Gemini url/key, just swaps model.
+- `backend/app/routers/gemini.py` — new `_resolve_gemini_service(http_request)`: for `mode="byok"` looks up `TEXT_GEN_PROVIDERS[cfg["provider"]]` and builds a per-request `GeminiService`; for `mode="local_server"` uses `cfg["api_url"]` directly (no key); for `mode="nine_router"` overrides only the model. No config/anonymous user → falls back to the existing module-level singleton. Threaded into all 9 text-gen handlers (`/generate-text`, `/analyze-story*`, `/adapt-story`, `/character-prompt`, `/character-designs-structured`, `/panel-script*`); `/generate-panel-image` and `_suggest_layout()`'s internal Gemini call deliberately left untouched.
+- `backend/app/config.py` — added `NINE_ROUTER_AVAILABLE_MODELS` (comma-separated; falls back to `[NINE_ROUTER_MODEL]` if blank).
+- `backend/.env` — `NINE_ROUTER_AVAILABLE_MODELS` populated with 25 models (kr/claude-sonnet-4.5, kr/claude-sonnet-4.5-thinking, kr/claude-haiku-4.5, kr/deepseek-3.2, kr/MiniMax-M2.5, kr/glm-5, mmf/mimo-auto, oc/deepseek-v4-flash-free, oc/mimo-v2.5-free, cx/gpt-5.5, cx/gpt-5.4, cx/gpt-5.4-mini, cx/gpt-5.5-review, ollama/glm-5, ollama/minimax-m2.5, ollama/gpt-oss:120b, ollama/qwen3.5, kc/anthropic/claude-sonnet-4-20250514, kc/anthropic/claude-opus-4-20250514, kc/google/gemini-2.5-pro, kc/openai/gpt-4.1, kc/google/gemini-2.5-flash, kc/kilo-auto/free, kc/openrouter/free, kc/openai/o3).
+
+**Frontend:**
+- `frontend/src/services/api.ts` — `settingsApi` (`getTextGenConfig`/`saveTextGenConfig`/`clearTextGenConfig`/`getNineRouterModels`/`getTextGenProviders`), `TextGenConfig`/`SaveTextGenConfigPayload`/`TextGenProvider` types.
+- `frontend/src/app/settings/page.tsx` — "Text Generation" panel: 3-way mode selector (App's built-in models / Bring your own API key / My own local model server). `byok` mode UI is just a **Provider `<select>`** (populated from `getTextGenProviders()`) + password-masked API key — no URL/model fields (simplified after initial version asked for provider label + URL + model, per user feedback that real-world API-key pages only ever give you a provider + a key). `nine_router` mode shows a model `<select>` from `getNineRouterModels()`. `local_server` mode shows API URL + optional model, no key. Also added the "Image Generation" panel (Image API URL field, see #2 below).
+
+---
+
+#### 2. Image API URL Consolidation (Settings page, not Step 1 / publish)
+
+- `frontend/src/lib/imageApiUrl.ts` (new) — `getImageApiUrl()`/`setImageApiUrl()`, single source of truth backed by `localStorage['mohiom-image-api-url']` (promoted from `sessionStorage`).
+- Migrated all 7 former direct `sessionStorage` consumers to the helper: `ComicGenerationContext.tsx`, `studio/publish/page.tsx`, `studio/character-manager/page.tsx`, `EvaluationDashboard.tsx`, `PublishHistory.tsx`, `AnalyticsDashboard.tsx`, `CreateCharacterModal.tsx`.
+- Removed the editable URL input from `studio/publish/page.tsx` (now a read-only "Server connected"/"No web reader server" status bar + "Configure in Settings →" link) and from `Step1.tsx` (now a read-only value + "Edit in Settings" link).
+
+---
+
+#### 3. Step 3 Reference Images Toolbar — Removed Redundant Global Buttons
+
+`frontend/src/components/studio-steps/Step2Characters.tsx` — removed the global "From Library" and "Browse Community" buttons from the Reference Images tab toolbar (every character card already has its own per-character Regenerate/From Library/Browse Community). Kept "Regenerate All" (bulk convenience) and "Reset" (no per-character equivalent).
+
+---
+
+#### 4. Pipeline/Editor URL Reflects the Open Project
+
+Previously, opening any project left the URL static at `/studio` — handoff was entirely via `localStorage['mohiom-pending-load']`.
+
+- `frontend/src/app/studio/page.tsx` — converted to an async Server Component reading `searchParams.project` (mirrors the pre-existing `/studio/editor` pattern), passed down as `initialProjectId`.
+- `frontend/src/components/TextToComicGenerator.tsx` — forwards optional `initialProjectId` prop to `ComicGenerationProvider`.
+- `frontend/src/context/ComicGenerationContext.tsx`:
+  - `ComicGenerationProvider` accepts `initialProjectId`; on mount, calls the existing `loadFromCloud(initialProjectId)` instead of reading `mohiom-pending-load`.
+  - `loadFromCloud` itself now updates the URL (`router.replace(`${pathname}?project=<id>`, { scroll: false })`) on a successful load, using `usePathname()` rather than a hardcoded `/studio` — required because this provider is shared by both `/studio` and `/studio/editor`.
+  - New `clearProjectFromUrl()` (clears the query param AND resets the "last synced" tracking ref) exposed on the context, used by the editor's "All Projects" back button so reopening the *same* project afterward still re-syncs the URL.
+  - **Design correction during this session:** an earlier version watched *any* `projectId` state change (including typing a new Project ID, debounced) and synced the URL — this incorrectly leaked stale/unrelated state into the URL, e.g. a pre-existing `mohiom-story-setup` localStorage restore effect (unrelated pre-fill mechanism, untouched) would silently set `projectId` and get reflected in the URL even though the user never opened anything. Fixed by making **`loadFromCloud` the only thing that ever syncs the URL** — deliberate project opens only, not incidental state changes.
+- `frontend/src/app/studio/dashboard/page.tsx` and `frontend/src/app/studio/character-manager/page.tsx` — `handleLoadProject` now does `router.push(`/studio?project=<id>`)` directly; the `mohiom-pending-load` localStorage dance is fully removed (`grep -rn "mohiom-pending-load" frontend/src` → zero hits).
+- `frontend/src/components/ComicEditor.tsx` — "← All Projects" back button now calls `clearProjectFromUrl()` (previously only did local `setForcePicker(true)`, leaving the stale `?project=` in the URL).
+
+---
+
+### 📂 KEY FILES CHANGED THIS SESSION
+
+**New (backend):** `backend/app/crypto_utils.py`, `backend/app/deps.py`, `backend/app/routers/settings.py`, `backend/app/providers.py`
+**New (frontend):** `frontend/src/lib/imageApiUrl.ts`
+**Modified (backend):** `backend/app/services.py`, `backend/app/routers/gemini.py`, `backend/app/config.py`, `backend/app/crud.py`, `backend/app/main.py`, `backend/requirements.txt`, `backend/.env`
+**Modified (frontend):** `frontend/src/services/api.ts`, `frontend/src/app/settings/page.tsx`, `frontend/src/context/ComicGenerationContext.tsx`, `frontend/src/components/TextToComicGenerator.tsx`, `frontend/src/app/studio/page.tsx`, `frontend/src/app/studio/dashboard/page.tsx`, `frontend/src/app/studio/character-manager/page.tsx`, `frontend/src/app/studio/publish/page.tsx`, `frontend/src/components/story-setup/Step1.tsx`, `frontend/src/components/ComicEditor.tsx`, `frontend/src/components/studio-steps/Step2Characters.tsx`, `frontend/src/components/EvaluationDashboard.tsx`, `frontend/src/components/PublishHistory.tsx`, `frontend/src/components/AnalyticsDashboard.tsx`, `frontend/src/components/CreateCharacterModal.tsx`
+
+---
+
+### 🐛 DECISIONS & NOTES
+
+- **BYOK calling convention**: all 3 registry providers (Gemini/OpenAI/Deepseek) go through the exact same generic OpenAI-compatible `httpx` POST already used for NineRouter — verified end-to-end via a local mock `chat/completions` server before/after each design iteration. No provider-specific request/response parsing exists or is needed for this set.
+- **Per-request `GeminiService`, not singleton mutation**: `_resolve_gemini_service` builds a fresh instance per BYOK/local_server/model-override request rather than mutating the shared module-level singleton — avoids a concurrency bug where one user's override could leak into another's concurrent anonymous request.
+- **Auth requirement**: BYOK/model-selection config requires a logged-in user (real Mongo doc via existing auth cookie). Anonymous users always get the app's global default untouched.
+- **`usePathname()` over `useSearchParams()`**: deliberately avoided the `useSearchParams()` client hook everywhere in this work since it requires a Suspense boundary in Next.js 14 App Router; `usePathname()`/`useRouter()` do not.
+- **Sentinel default guard**: `ComicGenerationContext.tsx`'s hardcoded seed `projectId` default (`'three_little_pigs_manga_001'`, used nowhere else in the frontend — verified via grep) is treated as "no real project loaded yet" and never gets URL-synced.
+- **Recurring "Invalid or unexpected token" pageerror**: observed intermittently in Playwright runs, but only ever immediately after a cold `rm -rf .next` + fresh `next dev` restart; never reproduced on a warm dev server across many repeated runs. Concluded to be a Next.js dev-mode/HMR first-compile artifact from the aggressive cache-clearing test pattern used this session, not a real app bug — flagged here in case it resurfaces so it isn't re-investigated from scratch.
+- **Pre-existing TS error**: `AnalyticsDashboard.tsx(410,29): error TS7006` remains (line number shifted +1 from a new import line) — pre-existing, confirmed via diffing lint/typecheck output against the base branch, not introduced this session.
+
+---
+
 ## SESSION: 2026-07-01 — UI Consistency Pass + Per-Character Reference Image System
 
 ### ✅ COMPLETED

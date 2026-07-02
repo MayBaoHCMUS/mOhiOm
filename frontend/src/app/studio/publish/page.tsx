@@ -50,7 +50,7 @@ function truncateTitle(title: string, maxLen = 24): string {
   return title.length > maxLen ? title.slice(0, maxLen - 2) + '…' : title;
 }
 
-function formatDate(iso: string) {
+function _formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 

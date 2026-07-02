@@ -788,7 +788,7 @@ function PanelCell({
     }
   }, [computePatch, panel.id, onBubbleUpdate, onDragCommit]);
 
-  const handleCellClick = useCallback((e: React.MouseEvent) => {
+  const _handleCellClick = useCallback((e: React.MouseEvent) => {
     if (isDraggingRef.current) return;
     if (!cellRef.current) return;
     const rect = cellRef.current.getBoundingClientRect();
@@ -797,7 +797,7 @@ function PanelCell({
     onBubbleAdd(panel.id, clamp(normX, 0.05, 0.95), clamp(normY, 0.05, 0.95));
   }, [panel.id, onBubbleAdd]);
 
-  const handleAddClick = useCallback((e: React.MouseEvent) => {
+  const _handleAddClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onBubbleAdd(panel.id, 0.5, 0.35);
   }, [panel.id, onBubbleAdd]);
@@ -1696,7 +1696,7 @@ function ContextMenu({ x, y, isCrossPanel, onBringFront, onSendBack, onDuplicate
 
 export default function DialogueEditor({
   panelsByPage, panelStates, pageStates, panelBubbles, pageLayoutNames, comicPageMode,
-  onSaveBubbles, onExport, onAutoImport,
+  onSaveBubbles, onExport: _onExport, onAutoImport,
 }: DialogueEditorProps) {
   const pageIds = panelsByPage.map(([n]) => n);
   const allPanels = panelsByPage.flatMap(([, ps]) => ps);
@@ -1904,14 +1904,14 @@ export default function DialogueEditor({
     return bs.length > 0 && bs.some(b => !isNoneText(b.dialogue));
   };
 
-  const filledCount = allPanels.filter(p => panelHasDialogue(p.id)).length;
+  const _filledCount = allPanels.filter(p => panelHasDialogue(p.id)).length;
 
   const currentPageIdx = pageIds.indexOf(currentPage);
   const layoutName = pageLayoutNames[currentPage] ?? 'stacked';
   const layoutRows = LAYOUT_ROW_STRUCTURES[layoutName] ?? [[0]];
 
   // Page dot color: green=all done, orange=partial, gray=none
-  const pageDotColor = (pageNum: number): string => {
+  const _pageDotColor = (pageNum: number): string => {
     const panels = panelsByPage.find(([n]) => n === pageNum)?.[1] ?? [];
     const filled = panels.filter(p => panelHasDialogue(p.id)).length;
     if (filled === panels.length && panels.length > 0) return '#1D9E75';
@@ -1987,7 +1987,6 @@ export default function DialogueEditor({
               {(() => {
                 const absBboxes = ABSOLUTE_LAYOUT_BBOXES[layoutName];
                 const sharedPanelProps = (panel: Step4Panel, idx: number) => ({
-                  key: panel.id,
                   panel,
                   panelIndex: idx,
                   imageUrl: panelStates[panel.id]?.imageUrl ?? null,
@@ -2032,7 +2031,7 @@ export default function DialogueEditor({
                         const absoluteStyle: React.CSSProperties | undefined = bb
                           ? { position: 'absolute', left: `${bb.l}%`, top: `${bb.t}%`, width: `${bb.w}%`, height: `${bb.h}%` }
                           : undefined;
-                        return <PanelCell {...sharedPanelProps(panel, idx)} absoluteStyle={absoluteStyle} />;
+                        return <PanelCell key={panel.id} {...sharedPanelProps(panel, idx)} absoluteStyle={absoluteStyle} />;
                       })}
                     </div>
                   );
@@ -2050,7 +2049,7 @@ export default function DialogueEditor({
                     )}
                     <div style={buildGridStyle(layoutRows)}>
                       {currentPanels.map((panel, idx) => (
-                        <PanelCell {...sharedPanelProps(panel, idx)} />
+                        <PanelCell key={panel.id} {...sharedPanelProps(panel, idx)} />
                       ))}
                     </div>
                   </div>

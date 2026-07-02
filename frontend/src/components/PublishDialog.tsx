@@ -32,7 +32,7 @@ export function PublishDialog({
     script.onload = () => {
       if (!container) return
       container.innerHTML = ''
-      // @ts-ignore — QRCode loaded via CDN, not npm
+      // @ts-expect-error — QRCode loaded via CDN, not npm
       new QRCode(container, {
         text: shareUrl, width: 160, height: 160,
         colorDark: '#111111', colorLight: '#ffffff',

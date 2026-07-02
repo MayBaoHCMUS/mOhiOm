@@ -1967,7 +1967,7 @@ export function ComicGenerationProvider({
     layoutName: string,
     panelsOnPage: Step4Panel[],
   ): Promise<void> => {
-    const style = imageGenStyle?.toLowerCase().includes('webtoon') ? 'webtoon' : 'manga';
+    const _style = imageGenStyle?.toLowerCase().includes('webtoon') ? 'webtoon' : 'manga';
     setPageLayoutNames((prev) => ({ ...prev, [pageNumber]: layoutName }));
 
     try {
