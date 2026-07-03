@@ -192,3 +192,14 @@ class UserRepository:
             {"$unset": {"text_gen_config": ""}},
         )
 
+    async def get_onboarding_state(self, user_id: str) -> Optional[Dict[str, Any]]:
+        doc = self.collection.find_one({"_id": ObjectId(user_id)}, {"onboarding_state": 1})
+        return (doc or {}).get("onboarding_state")
+
+    async def set_onboarding_state(self, user_id: str, state: Dict[str, Any]) -> None:
+        state = {**state, "updated_at": datetime.now(timezone.utc)}
+        self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"onboarding_state": state}},
+        )
+

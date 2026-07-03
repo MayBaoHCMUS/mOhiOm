@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { projectsApi } from '@/services/api';
 import type { CharacterSummary, CloudProjectListItem } from '@/services/api';
 import { getImageApiUrl } from '@/lib/imageApiUrl';
+import ContextualTip from '@/components/onboarding/ContextualTip';
 
 // ─── Static data ──────────────────────────────────────────────────────────────
 
@@ -117,6 +118,7 @@ function FromImagePanel({ onImageReady }: { onImageReady: (url: string) => void 
       onDragLeave={() => setDragging(false)}
       onDrop={async (e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) await handle(f); }}
       onClick={() => inputRef.current?.click()}
+      data-tour="char-ref-upload"
       className={`flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed cursor-pointer transition-all py-16 ${
         dragging ? 'border-primary bg-primary/5' : 'border-outline-variant/40 hover:border-primary/40 hover:bg-surface-container-low'
       }`}
@@ -127,6 +129,13 @@ function FromImagePanel({ onImageReady }: { onImageReady: (url: string) => void 
         <p className="text-sm text-on-surface-variant mt-1">or click to browse — PNG, JPG, WEBP</p>
       </div>
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handle(f); }} />
+      <ContextualTip
+        id="character-ref-tip"
+        target='[data-tour="char-ref-upload"]'
+        title="Upload reference images"
+        body="The more reference images you upload, the more consistent your character looks across panels."
+        position="bottom"
+      />
     </div>
   );
 }

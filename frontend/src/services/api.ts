@@ -1298,6 +1298,27 @@ export const settingsApi = {
   getTextGenProviders: () => apiClient.get<{ providers: TextGenProvider[] }>("/settings/text-gen-providers"),
 };
 
+export interface OnboardingStateDto {
+  completed: boolean;
+  skipped: boolean;
+  currentStep: number;
+  welcomeSeen: boolean;
+  tourCompleted: boolean;
+  createStory: boolean;
+  runPipeline: boolean;
+  generateImage: boolean;
+  addDialogue: boolean;
+  publishComic: boolean;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
+export const onboardingApi = {
+  getState: () => apiClient.get<OnboardingStateDto>("/onboarding"),
+
+  saveState: (payload: OnboardingStateDto) => apiClient.put<OnboardingStateDto>("/onboarding", payload),
+};
+
 export interface MangaComposePageRequest {
   panel_images: Record<string, string>;  // 'p1' | 'p2' | … → base64 PNG
   panel_count: number;

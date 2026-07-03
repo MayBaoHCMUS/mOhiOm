@@ -5,17 +5,19 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
-const PRE_PRODUCTION = [
-  { href: '/studio/story-setup',       label: 'Story Setup',       icon: 'auto_stories' },
-  { href: '/studio/character-manager', label: 'Character Manager', icon: 'face_6' },
+type NavItem = { href: string; label: string; icon: string; tour?: string };
+
+const PRE_PRODUCTION: NavItem[] = [
+  { href: '/studio/story-setup',       label: 'Story Setup',       icon: 'auto_stories', tour: 'story-setup' },
+  { href: '/studio/character-manager', label: 'Character Manager', icon: 'face_6',       tour: 'character-manager' },
 ];
 
-const POST_PRODUCTION = [
-  { href: '/studio/editor',  label: 'Comic Editor', icon: 'edit_note' },
-  { href: '/studio/publish', label: 'Publish',      icon: 'ios_share' },
+const POST_PRODUCTION: NavItem[] = [
+  { href: '/studio/editor',  label: 'Comic Editor', icon: 'edit_note', tour: 'comic-editor' },
+  { href: '/studio/publish', label: 'Publish',      icon: 'ios_share', tour: 'publish' },
 ];
 
-const LIBRARY = [
+const LIBRARY: NavItem[] = [
   { href: '/studio/my-stories', label: 'My Stories', icon: 'library_books' },
   { href: '/studio/analytics',  label: 'Analytics',  icon: 'bar_chart' },
 ];
@@ -38,6 +40,14 @@ export default function StudioSidebar() {
     document.documentElement.style.setProperty('--studio-sidebar-width', width);
     window.localStorage.setItem('studio-sidebar-collapsed', String(isCollapsed));
   }, [isCollapsed]);
+
+  // Allows the onboarding spotlight tour to force the sidebar open so link
+  // labels/rects are meaningful while it's running.
+  useEffect(() => {
+    const handler = () => setIsCollapsed(false);
+    window.addEventListener('studio-sidebar-force-expand', handler);
+    return () => window.removeEventListener('studio-sidebar-force-expand', handler);
+  }, []);
 
   const toggleLabel = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
 
@@ -63,7 +73,7 @@ export default function StudioSidebar() {
       </p>
     ) : null;
 
-  const navItems = (items: typeof PRE_PRODUCTION) =>
+  const navItems = (items: NavItem[]) =>
     items.map((item) => {
       const active = isActive(item.href);
       return (
@@ -73,6 +83,7 @@ export default function StudioSidebar() {
           className={navItemClass(active)}
           aria-current={active ? 'page' : undefined}
           title={isCollapsed ? item.label : undefined}
+          data-tour={item.tour}
         >
           <span className="material-symbols-outlined">{item.icon}</span>
           <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>{item.label}</span>
@@ -134,9 +145,17 @@ export default function StudioSidebar() {
             }`}
             aria-current={isActive('/studio') ? 'page' : undefined}
             title={isCollapsed ? 'Comic Pipeline' : undefined}
+            data-tour="comic-pipeline"
           >
             <span className="material-symbols-outlined">movie_creation</span>
-            <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>Comic Pipeline</span>
+            {isCollapsed ? (
+              <span className="sr-only">Comic Pipeline</span>
+            ) : (
+              <span className="flex flex-col">
+                <span className="text-sm font-semibold">Comic Pipeline</span>
+                <span className="text-[11px] text-white/70">6-step AI comic generation</span>
+              </span>
+            )}
           </Link>
         </div>
 

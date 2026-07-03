@@ -2,6 +2,8 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import type { Step4Panel, Step4PanelState } from '@/context/ComicGenerationContext';
+import { useOnboardingContext } from '@/context/OnboardingContext';
+import ContextualTip from '@/components/onboarding/ContextualTip';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1325,7 +1327,7 @@ function BubbleSidebar({
       <div style={{ width: 280, borderLeft: '1px solid var(--color-outline)', display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto', background: 'var(--color-surface-container-lowest)' }}>
         {palette}
         <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--color-outline)' }}>
-          <button type="button" onClick={onAutoImport}
+          <button type="button" onClick={onAutoImport} data-tour="auto-import-btn"
             style={{
               width: '100%', padding: '7px 12px', borderRadius: 8,
               border: `1px solid ${primaryColor}`,
@@ -1336,6 +1338,13 @@ function BubbleSidebar({
             <span className="material-symbols-outlined" style={{ fontSize: 14 }}>bolt</span>
             Auto-import from script
           </button>
+          <ContextualTip
+            id="auto-import-tip"
+            target='[data-tour="auto-import-btn"]'
+            title="Import dialogue automatically"
+            body="Auto-import pulls dialogue from your panel script directly into speech bubbles."
+            position="left"
+          />
         </div>
         <div style={{ padding: '10px 12px', flex: 1 }}>
           <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: mutedColor, marginBottom: 6 }}>
@@ -1698,6 +1707,7 @@ export default function DialogueEditor({
   panelsByPage, panelStates, pageStates, panelBubbles, pageLayoutNames, comicPageMode,
   onSaveBubbles, onExport: _onExport, onAutoImport,
 }: DialogueEditorProps) {
+  const { markChecklistItem } = useOnboardingContext();
   const pageIds = panelsByPage.map(([n]) => n);
   const allPanels = panelsByPage.flatMap(([, ps]) => ps);
 
@@ -1843,9 +1853,10 @@ export default function DialogueEditor({
     };
     const updated = [...existing, newBubble];
     triggerSave(panelId, updated);
+    markChecklistItem('addDialogue');
     setSelectedBubble({ panelId, bubbleId: newBubble.id });
     setEditingBubbleId(newBubble.id);
-  }, [panelBubbles, triggerSave]);
+  }, [panelBubbles, triggerSave, markChecklistItem]);
 
   // Update + save — called on drag end and sidebar changes
   const updateBubble = useCallback((panelId: string, bubbleId: string, patch: Partial<SingleBubble>) => {

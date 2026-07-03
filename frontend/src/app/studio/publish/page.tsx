@@ -14,6 +14,7 @@ import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
 import { downloadSocialPack, PLATFORMS } from '@/lib/socialPack';
 import { recordPublish } from '@/lib/publishHistory';
 import { getImageApiUrl } from '@/lib/imageApiUrl';
+import { useOnboardingContext } from '@/context/OnboardingContext';
 import {
   AlertTriangle, CheckCircle2, ChevronDown, Eye, EyeOff, ExternalLink,
   MoreHorizontal, RefreshCw,
@@ -806,6 +807,7 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
 
 // ── Publish Page ──────────────────────────────────────────────────────
 export default function PublishPage() {
+  const { markChecklistItem } = useOnboardingContext();
   const [apiUrl, setApiUrl] = useState('');
   const [projects, setProjects] = useState<CloudProjectListItem[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
@@ -945,6 +947,7 @@ export default function PublishPage() {
       pagesCache.current.set(projectId, pages);
       setCard(projectId, { status: 'publishing' });
       const result = await publishComic(apiUrl, pages, projectId, '');
+      markChecklistItem('publishComic');
 
       recordPublish({
         comic_id:     result.comic_id,

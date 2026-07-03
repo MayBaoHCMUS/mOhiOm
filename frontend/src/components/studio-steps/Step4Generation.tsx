@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
+import { useOnboardingContext } from '@/context/OnboardingContext';
 import type { Step4Panel, PanelVersion } from '@/context/ComicGenerationContext';
 import { bubblesApi, comicLayoutApi } from '@/services/api';
 import type { BubbleDataPayload } from '@/services/api';
@@ -962,6 +963,7 @@ export default function Step4Generation() {
     setComicPageMode: setContextComicPageMode,
     resetComicPageMode,
   } = useComicGeneration();
+  const { markChecklistItem } = useOnboardingContext();
 
   const [isPaused, setIsPaused] = useState(false);
   const [showFinishErrorModal, setShowFinishErrorModal] = useState(false);
@@ -1193,6 +1195,10 @@ export default function Step4Generation() {
       ? { total: panelStats.total, success: panelStats.done, loading: panelStats.generating, error: panelStats.errors }
       : { total: step4Stats.total, success: step4Stats.success, loading: step4Stats.loading, error: step4Stats.error },
   [comicPageMode, panelStats, step4Stats]);
+
+  useEffect(() => {
+    if (activeStats.success > 0) markChecklistItem('generateImage');
+  }, [activeStats.success, markChecklistItem]);
 
   const retryErrorPages = () => {
     if (!step4.data?.pageStates) return;
