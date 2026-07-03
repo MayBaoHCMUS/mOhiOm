@@ -43,11 +43,9 @@ async function callImageProxy(apiUrl: string, prompt: string, style?: string): P
     const err = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? `Image API error (${res.status})`);
   }
-  const data = await res.json() as { image_base64?: string; message?: string };
-  if (!data.image_base64) throw new Error(data.message ?? 'No image returned');
-  return data.image_base64.startsWith('data:')
-    ? data.image_base64
-    : `data:image/png;base64,${data.image_base64}`;
+  const data = await res.json() as { image_url?: string; message?: string };
+  if (!data.image_url) throw new Error(data.message ?? 'No image returned');
+  return data.image_url;
 }
 
 // ─── Chip selector ────────────────────────────────────────────────────────────

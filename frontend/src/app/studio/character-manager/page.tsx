@@ -142,10 +142,9 @@ function DetailPanel({ character, onSaved, onDeleted, onBack }: DetailPanelProps
         body: JSON.stringify({ url: apiUrl.trim(), prompt: prompt.trim(), negative_prompt: 'lowres, bad anatomy' }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})) as { error?: string }; throw new Error(e.error ?? `Error ${res.status}`); }
-      const data = await res.json() as { image_base64?: string; message?: string };
-      if (!data.image_base64) throw new Error(data.message ?? 'No image returned');
-      const url = data.image_base64.startsWith('data:') ? data.image_base64 : `data:image/png;base64,${data.image_base64}`;
-      setPreviewUrl(url);
+      const data = await res.json() as { image_url?: string; message?: string };
+      if (!data.image_url) throw new Error(data.message ?? 'No image returned');
+      setPreviewUrl(data.image_url);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Generation failed.');
     } finally {

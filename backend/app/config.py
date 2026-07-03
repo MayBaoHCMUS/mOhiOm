@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     # Admin dashboard
     ADMIN_SECRET_KEY: str = "mohiom-admin-2024"
 
+    # Cloudflare R2 (S3-compatible object storage for generated images)
+    R2_ACCOUNT_ID: str = ""
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET_NAME: str = ""
+    # Public base URL images are served from (R2.dev subdomain or a custom domain)
+    R2_PUBLIC_URL_BASE: str = ""
+
     class Config:
         env_file = ENV_FILE
         env_file_encoding = "utf-8"

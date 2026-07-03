@@ -1086,7 +1086,7 @@ export interface FullProjectSave {
 
 export interface ProjectImageEntry {
   image_key: string;
-  image_data: string;
+  image_url: string;
 }
 
 export interface ProjectImagesResponse {

@@ -188,7 +188,9 @@ const toRecord = (value: unknown): Record<string, unknown> =>
 
 /**
  * Recursively replace base64 data URLs (data:image/…) with a short placeholder
- * so the project snapshot stays within the localStorage 5 MB quota.
+ * so the project snapshot stays within the localStorage 5 MB quota. Images are
+ * R2 URLs after generation, so this is normally a no-op — kept as a safety net
+ * in case a base64 string ever ends up in the snapshot (e.g. a mock/dev path).
  */
 const stripBase64 = (obj: unknown): unknown => {
   if (typeof obj === 'string') {
@@ -285,25 +287,15 @@ const fetchImageFromAI = async (
         throw new Error(serverDetail ? `Image API error: ${detailMsg}` : `Image API error (${response.status})`);
       }
 
-      const result = (await response.json()) as { status?: string; image_base64?: string; message?: string };
-      console.log('Response    :', {
-        status: result.status,
-        message: result.message,
-        image_base64: result.image_base64
-          ? `[base64, ${result.image_base64.length} chars]`
-          : undefined,
-      });
+      const result = (await response.json()) as { status?: string; image_url?: string; message?: string };
+      console.log('Response    :', { status: result.status, message: result.message, image_url: result.image_url });
       console.groupEnd();
 
-      if (result.status !== 'success' || !result.image_base64) {
+      if (result.status !== 'success' || !result.image_url) {
         throw new Error(result.message || 'Local image API did not return an image.');
       }
 
-      if (result.image_base64.startsWith('data:')) {
-        return result.image_base64;
-      }
-
-      return `data:image/png;base64,${result.image_base64}`;
+      return result.image_url;
     } catch (err) {
       if (!(err instanceof Error && err.message.startsWith('Local image API error'))) {
         console.error('[fetchImageFromAI] Unexpected error:', err);
@@ -317,6 +309,22 @@ const fetchImageFromAI = async (
 
   console.warn('[fetchImageFromAI] No localImageApiUrl provided — cannot generate image.');
   throw new Error('Image API URL is not set. Please provide one in Step 1 before generating images.');
+};
+
+/**
+ * Fetch an image URL (typically an R2 URL) and convert it to a base64 data
+ * URL. Used at boundaries that still need raw image bytes (e.g. sending a
+ * reference image to the Kaggle IP-adapter server) now that images are
+ * stored as URLs rather than base64.
+ */
+const fetchImageAsBase64 = async (url: string): Promise<string> => {
+  const blob = await (await fetch(url)).blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 };
 
 const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {
@@ -907,12 +915,13 @@ export function ComicGenerationProvider({
 
   const saveCharacterToServer = useCallback(async (
     characterName: string,
-    imageDataUri: string
+    imageUrl: string
   ): Promise<void> => {
     if (!localImageApiUrl) return;
-    const b64 = imageDataUri.startsWith('data:')
-      ? imageDataUri.split(',')[1] ?? ''
-      : imageDataUri;
+    // imageUrl is a real R2 URL after generation (not a data: URI), so fetch
+    // and convert it to base64 before sending to the Kaggle IP-adapter server.
+    const dataUri = imageUrl.startsWith('data:') ? imageUrl : await fetchImageAsBase64(imageUrl).catch(() => '');
+    const b64 = dataUri.startsWith('data:') ? dataUri.split(',')[1] ?? '' : dataUri;
     if (!b64) return;
     trackEvent({
       type:          'character_save',
@@ -2876,9 +2885,9 @@ export function ComicGenerationProvider({
     if (!images.length) return;
     const panelUpdates: Record<string, string> = {};
     const pageUpdates: Record<string, string> = {};
-    for (const { image_key, image_data } of images) {
-      if (image_key.startsWith('panel:')) panelUpdates[image_key.slice(6)] = image_data;
-      else if (image_key.startsWith('page:')) pageUpdates[image_key.slice(5)] = image_data;
+    for (const { image_key, image_url } of images) {
+      if (image_key.startsWith('panel:')) panelUpdates[image_key.slice(6)] = image_url;
+      else if (image_key.startsWith('page:')) pageUpdates[image_key.slice(5)] = image_url;
     }
     const blank: Step4PanelState = { status: 'idle', imageUrl: null, error: null, versions: [], pendingUrl: null, pendingFeedback: '' };
     setStep4((prev) => {
@@ -2922,7 +2931,11 @@ export function ComicGenerationProvider({
       if (userInputs.num_chapters) setNumChapters(String(userInputs.num_chapters));
       if (userInputs.target_pages) setTargetPages(String(userInputs.target_pages));
       if (userInputs.main_characters) setMainCharacters(String(userInputs.main_characters));
-      if (userInputs.local_image_api_url) setLocalImageApiUrl(String(userInputs.local_image_api_url));
+      // Deliberately NOT restoring local_image_api_url from the project here — the
+      // image API URL is a global, ephemeral setting (the Kaggle tunnel address,
+      // which changes often) owned by the Settings page. Restoring it from an old
+      // project would overwrite the current, correct URL with a stale one via the
+      // two-way sync effect below, breaking generation until manually re-entered.
       if (imageGenSettings.mode) setImageGenMode(Number(imageGenSettings.mode) as ImageGenMode);
       if (imageGenSettings.ip_adapter_scale != null) setIpAdapterScale(Number(imageGenSettings.ip_adapter_scale));
       if (imageGenSettings.controlnet_scale != null) setControlnetScale(Number(imageGenSettings.controlnet_scale));
@@ -3126,13 +3139,13 @@ export function ComicGenerationProvider({
     if (comicPageMode === 'page') {
       for (const [key, state] of Object.entries(step4.data.pageStates)) {
         if (state.status === 'success' && state.imageUrl) {
-          entries.push({ image_key: `page:${key}`, image_data: state.imageUrl });
+          entries.push({ image_key: `page:${key}`, image_url: state.imageUrl });
         }
       }
     } else {
       for (const [key, state] of Object.entries(step4.data.panelStates)) {
         if (state.status === 'success' && state.imageUrl) {
-          entries.push({ image_key: `panel:${key}`, image_data: state.imageUrl });
+          entries.push({ image_key: `panel:${key}`, image_url: state.imageUrl });
         }
       }
     }

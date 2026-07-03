@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Header
 from typing import Any, Dict, List, Optional
 from app.schemas import ProjectSaveRequest, ProjectListItem, CharacterSummary, CharacterUpsertPayload, CharacterPatchPayload, StatsResponse, ProjectPublishPayload, ProjectImageEntry, ProjectImagesSaveRequest, ProjectImagesResponse
 from app.database import mongo_db
+from app import r2_storage
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -29,6 +30,15 @@ def _require_user(x_user_id: Optional[str]) -> str:
     return x_user_id
 
 
+def _maybe_upload(url: Optional[str], folder: str) -> Optional[str]:
+    """Safety net for character endpoints, which never go through save_project()'s
+    steps-blob sanitizer: upload a lingering base64 data URL to R2 if one slips
+    through, otherwise pass the value (a real URL, or None) through unchanged."""
+    if url and url.startswith("data:image/") and r2_storage.configured():
+        return r2_storage.upload_image_base64(url, folder=folder) or url
+    return url
+
+
 @router.post("/save")
 def save_project(
     payload: ProjectSaveRequest,
@@ -36,6 +46,7 @@ def save_project(
 ) -> Dict[str, str]:
     user_id = _require_user(x_user_id)
     doc = payload.model_dump()
+    doc["steps"] = r2_storage.sanitize_base64_in_place(doc["steps"], folder=f"steps/{payload.project_id}")
     doc["user_id"] = user_id
     _col().update_one(
         {"user_id": user_id, "project_id": payload.project_id},
@@ -144,12 +155,13 @@ def create_standalone_character(
     existing = _char_col().find_one({"user_id": user_id, "character_id": payload.character_id})
     if existing:
         raise HTTPException(status_code=409, detail="Character ID already exists")
+    selected_image_url = _maybe_upload(payload.selected_image_url, folder="characters")
     doc = {
         "user_id": user_id,
         "character_id": payload.character_id,
         "name": payload.name,
         "prompt": payload.prompt,
-        "selected_image_url": payload.selected_image_url,
+        "selected_image_url": selected_image_url,
         "project_id": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -158,7 +170,7 @@ def create_standalone_character(
         character_id=payload.character_id,
         name=payload.name,
         prompt=payload.prompt,
-        selected_image_url=payload.selected_image_url,
+        selected_image_url=selected_image_url,
         project_id=None,
     )
 
@@ -180,7 +192,7 @@ def update_standalone_character(
     if payload.prompt is not None:
         updates["prompt"] = payload.prompt
     if payload.selected_image_url is not None:
-        updates["selected_image_url"] = payload.selected_image_url
+        updates["selected_image_url"] = _maybe_upload(payload.selected_image_url, folder="characters")
     if payload.is_public is not None:
         updates["is_public"] = payload.is_public
     if updates:
@@ -203,9 +215,12 @@ def delete_standalone_character(
 ) -> Dict[str, str]:
     """Delete a standalone character from the user's library."""
     user_id = _require_user(x_user_id)
-    result = _char_col().delete_one({"user_id": user_id, "character_id": character_id})
-    if result.deleted_count == 0:
+    char = _char_col().find_one({"user_id": user_id, "character_id": character_id})
+    if not char:
         raise HTTPException(status_code=404, detail="Character not found")
+    _char_col().delete_one({"user_id": user_id, "character_id": character_id})
+    if char.get("selected_image_url"):
+        r2_storage.delete_by_url(char["selected_image_url"])
     return {"message": "deleted"}
 
 
@@ -236,12 +251,13 @@ def create_character(
     chars = _get_characters(doc)
     if any(c.get("characterId") == payload.character_id for c in chars):
         raise HTTPException(status_code=409, detail="Character ID already exists in this project")
+    selected_image_url = _maybe_upload(payload.selected_image_url, folder="characters")
     new_char = {
         "characterId": payload.character_id,
         "name": payload.name,
         "prompt": payload.prompt,
-        "selectedCandidateId": f"{payload.character_id}-1" if payload.selected_image_url else None,
-        "selectedImageUrl": payload.selected_image_url,
+        "selectedCandidateId": f"{payload.character_id}-1" if selected_image_url else None,
+        "selectedImageUrl": selected_image_url,
     }
     chars.append(new_char)
     _set_characters(_col(), user_id, project_id, chars)
@@ -249,7 +265,7 @@ def create_character(
         character_id=payload.character_id,
         name=payload.name,
         prompt=payload.prompt,
-        selected_image_url=payload.selected_image_url,
+        selected_image_url=selected_image_url,
         project_id=project_id,
     )
 
@@ -273,7 +289,7 @@ def update_character(
             if payload.prompt is not None:
                 char["prompt"] = payload.prompt
             if payload.selected_image_url is not None:
-                char["selectedImageUrl"] = payload.selected_image_url
+                char["selectedImageUrl"] = _maybe_upload(payload.selected_image_url, folder="characters")
                 char["selectedCandidateId"] = f"{character_id}-updated"
             _set_characters(_col(), user_id, project_id, chars)
             return CharacterSummary(
@@ -301,6 +317,9 @@ def delete_character(
     if len(next_chars) == len(chars):
         raise HTTPException(status_code=404, detail="Character not found in project")
     _set_characters(_col(), user_id, project_id, next_chars)
+    removed = next(c for c in chars if c.get("characterId") == character_id)
+    if removed.get("selectedImageUrl"):
+        r2_storage.delete_by_url(removed["selectedImageUrl"])
     return {"message": "deleted"}
 
 
@@ -365,11 +384,14 @@ def save_project_images(
     now = datetime.now(timezone.utc).isoformat()
     # Replace the full image set atomically so stale keys (e.g. old Full-Page images
     # after the user switches to Panel mode) are never left behind.
+    for old in _img_col().find({"user_id": user_id, "project_id": project_id}, {"image_url": 1}):
+        if old.get("image_url"):
+            r2_storage.delete_by_url(old["image_url"])
     _img_col().delete_many({"user_id": user_id, "project_id": project_id})
     if payload.images:
         _img_col().insert_many([
             {"user_id": user_id, "project_id": project_id,
-             "image_key": entry.image_key, "image_data": entry.image_data, "saved_at": now}
+             "image_key": entry.image_key, "image_url": entry.image_url, "saved_at": now}
             for entry in payload.images
         ])
     return {"saved": len(payload.images), "message": "images saved"}
@@ -411,8 +433,14 @@ def delete_project(
     x_user_id: Optional[str] = Header(None),
 ) -> Dict[str, str]:
     user_id = _require_user(x_user_id)
-    result = _col().delete_one({"user_id": user_id, "project_id": project_id})
-    if result.deleted_count == 0:
+    if not _col().find_one({"user_id": user_id, "project_id": project_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Project not found")
+
+    for img in _img_col().find({"user_id": user_id, "project_id": project_id}, {"image_url": 1}):
+        if img.get("image_url"):
+            r2_storage.delete_by_url(img["image_url"])
+
+    _col().delete_one({"user_id": user_id, "project_id": project_id})
     _img_col().delete_many({"user_id": user_id, "project_id": project_id})
+    r2_storage.delete_by_prefix(f"steps/{project_id}")
     return {"message": "deleted"}
