@@ -945,6 +945,8 @@ export default function Step4Generation() {
     handleRetry,
     handleStartFullGeneration,
     handleStartPanelGeneration,
+    panelAutoRetryInfo,
+    cancelPanelAutoRetry,
     handleRegenerateSinglePanel,
     handleRegeneratePage,
     handleRegenerateWithFeedback,
@@ -1394,6 +1396,21 @@ export default function Step4Generation() {
           </div>
         ) : (
         <div className="space-y-6">
+
+          {/* Auto-retry banner — shown while handleStartPanelGeneration is backing off
+              and retrying panels that failed in a previous round (rounds 2-5). */}
+          {panelAutoRetryInfo && (
+            <div className="rounded-[12px] border border-amber-200 p-4 flex items-center justify-between animate-slide-down"
+              style={{ background: 'linear-gradient(135deg, #FFFBEB, #FEF9F0)' }}>
+              <span className="text-sm font-semibold text-amber-700">
+                ↺ Auto-retrying failed panels — round {panelAutoRetryInfo.round}/{panelAutoRetryInfo.totalRounds}, {panelAutoRetryInfo.remaining} remaining…
+              </span>
+              <button type="button" onClick={cancelPanelAutoRetry}
+                className="px-3 py-1.5 rounded-full border border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition-colors">
+                Stop
+              </button>
+            </div>
+          )}
 
           {/* Generation Dashboard */}
           {(() => {

@@ -599,6 +599,8 @@ export interface ComicGenerationContextValue {
   setRawPanelDimensions: (pageNumber: number, dimMap: Record<string, { width: number; height: number }>) => void;
   handleStartFullGeneration: () => Promise<void>;
   handleStartPanelGeneration: () => Promise<void>;
+  panelAutoRetryInfo: { round: number; totalRounds: number; remaining: number } | null;
+  cancelPanelAutoRetry: () => void;
   handleRegenerateSinglePanel: (panel: Step4Panel) => Promise<void>;
   handleRegeneratePage: (pageNumber: number) => Promise<void>;
   handleRegenerateWithFeedback: (pageNumber: number, feedback: string) => Promise<void>;
@@ -666,6 +668,8 @@ export function ComicGenerationProvider({
   const [maxPanelsPerPage, setMaxPanelsPerPage] = useState('6');
   const [specialRequests, setSpecialRequests] = useState('None');
   const [localImageApiUrl, setLocalImageApiUrl] = useState('');
+  const [panelAutoRetryInfo, setPanelAutoRetryInfo] = useState<{ round: number; totalRounds: number; remaining: number } | null>(null);
+  const panelAutoRetryCancelRef = useRef(false);
   const [imageGenMode, setImageGenMode] = useState<ImageGenMode>(1);
   const [imageGenStyle, setImageGenStyle] = useState<string>('manga');
   const [referenceImageBase64, setReferenceImageBase64] = useState('');
@@ -1999,14 +2003,17 @@ export function ComicGenerationProvider({
 
   const generatePanelImages = async (
     panelsArray: Step4Panel[],
-    options?: { batchSize?: number; delayMs?: number }
-  ) => {
+    options?: { batchSize?: number; delayMs?: number },
+    shouldCancel?: () => boolean
+  ): Promise<Record<string, { status: PanelImageStatus; imageUrl: string | null; error: string | null }>> => {
     const batchSize = Math.max(1, options?.batchSize ?? 2);
     const delayMs = Math.max(0, options?.delayMs ?? 10000);
     const characterRefs = getSelectedCharacterReferences();
     const firstCharName = characterRefs[0]?.name?.toLowerCase() || '';
+    const allResults: Record<string, { status: PanelImageStatus; imageUrl: string | null; error: string | null }> = {};
 
     for (let i = 0; i < panelsArray.length; i += batchSize) {
+      if (shouldCancel?.()) break;
       const batch = panelsArray.slice(i, i + batchSize);
 
       setStep4((prev) => {
@@ -2094,6 +2101,10 @@ export function ComicGenerationProvider({
         })
       );
 
+      results.forEach((result) => {
+        allResults[result.id] = { status: result.status, imageUrl: result.imageUrl, error: result.error };
+      });
+
       setStep4((prev) => {
         if (!prev.data) return prev;
         const nextStates = { ...prev.data.panelStates };
@@ -2121,6 +2132,8 @@ export function ComicGenerationProvider({
         await sleep(delayMs);
       }
     }
+
+    return allResults;
   };
 
   const generatePageImages = async (
@@ -2242,22 +2255,52 @@ export function ComicGenerationProvider({
     }
   };
 
+  // Panels most often fail because the external Kaggle-tunnel image server
+  // chokes under concurrent load, not because a given panel is unfixable —
+  // so auto-retry rounds progressively back off (smaller batches, longer
+  // waits) rather than repeating the same load pattern that likely caused
+  // the failures. Round 1 matches today's defaults exactly.
+  const PANEL_AUTO_RETRY_ROUNDS: { batchSize: number; delayMs: number }[] = [
+    { batchSize: 2, delayMs: 10000 },
+    { batchSize: 1, delayMs: 15000 },
+    { batchSize: 1, delayMs: 20000 },
+    { batchSize: 1, delayMs: 30000 },
+    { batchSize: 1, delayMs: 45000 },
+  ];
+
+  const cancelPanelAutoRetry = useCallback(() => {
+    panelAutoRetryCancelRef.current = true;
+  }, []);
+
   const handleStartPanelGeneration = async () => {
     if (!step4.data || step4.data.isGenerating) return;
 
-    const pending = step4.data.panels.filter((p) => {
+    let pending = step4.data.panels.filter((p) => {
       const state = step4.data?.panelStates?.[p.id];
       return !state || state.status === 'idle' || state.status === 'error';
     });
     if (!pending.length) return;
 
+    panelAutoRetryCancelRef.current = false;
     setStep4((prev) => {
       if (!prev.data) return prev;
       return { ...prev, data: { ...prev.data, isGenerating: true }, error: null };
     });
     try {
-      await generatePanelImages(pending, { batchSize: 2, delayMs: 10000 });
+      let round = 0;
+      while (pending.length && round < PANEL_AUTO_RETRY_ROUNDS.length && !panelAutoRetryCancelRef.current) {
+        const settings = PANEL_AUTO_RETRY_ROUNDS[round];
+        if (round > 0) {
+          setPanelAutoRetryInfo({ round: round + 1, totalRounds: PANEL_AUTO_RETRY_ROUNDS.length, remaining: pending.length });
+          await sleep(settings.delayMs);
+          if (panelAutoRetryCancelRef.current) break;
+        }
+        const results = await generatePanelImages(pending, settings, () => panelAutoRetryCancelRef.current);
+        pending = pending.filter((p) => results[p.id]?.status === 'error');
+        round += 1;
+      }
     } finally {
+      setPanelAutoRetryInfo(null);
       setStep4((prev) => {
         if (!prev.data) return prev;
         return { ...prev, data: { ...prev.data, isGenerating: false } };
@@ -3395,6 +3438,8 @@ export function ComicGenerationProvider({
       setPagePanelDimensions((prev) => ({ ...prev, [pageNumber]: dimMap })),
     handleStartFullGeneration,
     handleStartPanelGeneration,
+    panelAutoRetryInfo,
+    cancelPanelAutoRetry,
     handleRegenerateSinglePanel,
     handleRegeneratePage,
     handleRegenerateWithFeedback,
