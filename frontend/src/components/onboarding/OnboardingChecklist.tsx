@@ -71,7 +71,7 @@ export default function OnboardingChecklist() {
 
   return (
     <div
-      className="fixed z-40 bottom-4"
+      className="fixed z-40 bottom-24"
       style={{ left: 'calc(var(--studio-sidebar-width) + 1rem)' }}
     >
       <AnimatePresence>

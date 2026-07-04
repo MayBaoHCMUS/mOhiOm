@@ -1062,7 +1062,7 @@ function ScriptBottomBar({
                 isGenerating
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   : allDone
-                  ? `bg-emerald-600 text-white hover:bg-emerald-700 shadow-[0_4px_14px_rgba(5,150,105,0.35)] ${pulse ? 'animate-[pulse_0.4s_ease-in-out_2]' : ''}`
+                  ? `bg-emerald-500 text-white hover:bg-emerald-600 shadow-[0_4px_14px_rgba(5,150,105,0.35)] ${pulse ? 'animate-[pulse_0.4s_ease-in-out_2]' : ''}`
                   : 'bg-gray-200 text-gray-400 cursor-not-allowed'
               }`}
             >

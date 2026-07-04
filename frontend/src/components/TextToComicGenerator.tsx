@@ -169,17 +169,17 @@ function WizardContent() {
             <div />
           )}
 
-          {/* Next Step — primary black, with tooltip when disabled */}
+          {/* Next Step — primary emerald, with tooltip when disabled */}
           {!isLastStep && (
             <div className="relative group">
               <button
                 type="button"
                 onClick={handleNext}
                 disabled={isNextDisabled}
-                className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-semibold transition-transform ${
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-transform ${
                   isNextDisabled
                     ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    : 'bg-gray-900 text-white hover:scale-105'
+                    : 'bg-emerald-500 text-white hover:bg-emerald-600 hover:scale-105'
                 }`}
               >
                 {nextLabel}

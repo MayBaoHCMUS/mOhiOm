@@ -2650,7 +2650,7 @@ export default function Step2Characters() {
                 type="button"
                 onClick={() => handleGenerate(2)}
                 disabled={!canGenerate}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold bg-gray-900 text-white hover:opacity-90 disabled:opacity-40 transition-all"
+                className="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-40 transition-all"
               >
                 <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>style</span>
                 {cooldown > 0 ? `Retry in ${cooldown}s` : 'Generate Designs'}
@@ -2720,15 +2720,7 @@ export default function Step2Characters() {
                 <button
                   type="button"
                   onClick={activeTab === 'designs' ? handleDesignApproveClick : handleApproveAndContinue}
-                  className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
-                    activeTab === 'designs'
-                      ? state === 4
-                        ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                        : 'bg-gray-900 text-white hover:opacity-90'
-                      : step2ImageReview.isApproved
-                        ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                        : 'bg-gray-900 text-white hover:opacity-90'
-                  }`}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 bg-emerald-500 text-white hover:bg-emerald-600"
                 >
                   <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
                     {activeTab === 'designs' ? (state === 4 ? 'image' : 'check_circle') : 'check_circle'}
