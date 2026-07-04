@@ -1,0 +1,6854 @@
+{
+  "version": "1.0.0",
+  "gitCommitHash": "44d842530f833675f31cd17f3f9a4a330e384c61",
+  "generatedAt": "2026-06-02T15:20:26.800Z",
+  "files": {
+    ".claude/settings.json": {
+      "filePath": ".claude/settings.json",
+      "contentHash": "9b1083169630875e49d77dffd624774f2ffe96bf6cf4259802e5e56e13dd6975",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 18,
+      "hasStructuralAnalysis": true
+    },
+    ".claude/skills/run-stack/SKILL.md": {
+      "filePath": ".claude/skills/run-stack/SKILL.md",
+      "contentHash": "5f14ce5c980ddf9f78c4ba5651a519cfd3f9040571f4a9146d479564f6d6daf5",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 24,
+      "hasStructuralAnalysis": true
+    },
+    ".continue/agents/new-config.yaml": {
+      "filePath": ".continue/agents/new-config.yaml",
+      "contentHash": "5863188c96b94e2ac49eec2fbe6d88be23d3121cc75845e5c67ebcecae8fd887",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 24,
+      "hasStructuralAnalysis": true
+    },
+    ".github/agents/My.agent.md": {
+      "filePath": ".github/agents/My.agent.md",
+      "contentHash": "db701f4f69b5df21d4a77930fc1110828bdeb0f9ae40155da64e95d998aa0e7a",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 5,
+      "hasStructuralAnalysis": true
+    },
+    ".understand-anything/.understandignore": {
+      "filePath": ".understand-anything/.understandignore",
+      "contentHash": "6fa7586c9d0fa5ad0288200f35670366b321ed2de08bfd580de27436ea6355d1",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 34,
+      "hasStructuralAnalysis": false
+    },
+    "00_READ_ME_FIRST.md": {
+      "filePath": "00_READ_ME_FIRST.md",
+      "contentHash": "b3182009aecf1addf040b8537aa2ee80e92799b5db2ba1cb9a26246eb8798353",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 283,
+      "hasStructuralAnalysis": true
+    },
+    "backend/.env.example": {
+      "filePath": "backend/.env.example",
+      "contentHash": "698204bfaebde6fa5ff3942a90d89047a9d114acc36c652c3d3b52398b94de66",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 11,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/__init__.py": {
+      "filePath": "backend/app/__init__.py",
+      "contentHash": "c99882973fd240b78fbb4f99ad4b29066d8f07a02d40966a0d3f339aa3fc10a4",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 5,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/config.py": {
+      "filePath": "backend/app/config.py",
+      "contentHash": "417db092f3d1c9cca6ff6cb9d6acbc0883b8a2a117c9984861d0dd5cdd367102",
+      "functions": [],
+      "classes": [
+        {
+          "name": "Settings",
+          "methods": [],
+          "properties": [
+            "APP_NAME",
+            "DEBUG",
+            "API_PREFIX",
+            "MONGODB_URL",
+            "DATABASE_NAME",
+            "GEMINI_API_KEY",
+            "GEMINI_MODEL",
+            "GEMINI_REQUESTS_PER_SECOND",
+            "GEMINI_MAX_QUEUE_SIZE",
+            "GEMINI_MAX_QUEUE_WAIT_SECONDS",
+            "NINE_ROUTER_URL",
+            "NINE_ROUTER_API_KEY",
+            "NINE_ROUTER_MODEL",
+            "NINE_ROUTER_TIMEOUT_SECONDS",
+            "CORS_ORIGINS",
+            "JWT_SECRET_KEY",
+            "JWT_ALGORITHM",
+            "JWT_EXPIRES_MINUTES",
+            "AUTH_COOKIE_NAME",
+            "AUTH_COOKIE_SECURE",
+            "AUTH_COOKIE_SAMESITE",
+            "AUTH_COOKIE_DOMAIN",
+            "AUTH_FRONTEND_URL",
+            "AUTH_BACKEND_URL",
+            "OAUTH_GOOGLE_CLIENT_ID",
+            "OAUTH_GOOGLE_CLIENT_SECRET",
+            "OAUTH_GITHUB_CLIENT_ID",
+            "OAUTH_GITHUB_CLIENT_SECRET",
+            "PASSWORD_RESET_TOKEN_EXPIRES_MINUTES",
+            "SMTP_HOST",
+            "SMTP_PORT",
+            "SMTP_USERNAME",
+            "SMTP_PASSWORD",
+            "SMTP_FROM",
+            "SMTP_USE_TLS"
+          ],
+          "exported": true,
+          "lineCount": 63
+        }
+      ],
+      "imports": [
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "pydantic_settings",
+          "specifiers": [
+            "BaseSettings"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "List"
+          ]
+        }
+      ],
+      "exports": [
+        "Settings"
+      ],
+      "totalLines": 76,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/crud.py": {
+      "filePath": "backend/app/crud.py",
+      "contentHash": "2b9dc284c21b8388a0e0754eac5f3281d10bdc3119b36a95c87cb31dfe45c1cf",
+      "functions": [],
+      "classes": [
+        {
+          "name": "ItemRepository",
+          "methods": [
+            "__init__",
+            "create",
+            "get",
+            "list",
+            "update",
+            "delete"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 40
+        },
+        {
+          "name": "UserRepository",
+          "methods": [
+            "__init__",
+            "_public_user",
+            "get_by_email",
+            "get_by_id",
+            "get_by_oauth",
+            "create_manual_user",
+            "upsert_oauth_user",
+            "set_password_reset",
+            "clear_password_reset",
+            "update_password"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 113
+        }
+      ],
+      "imports": [
+        {
+          "source": "pymongo.collection",
+          "specifiers": [
+            "Collection"
+          ]
+        },
+        {
+          "source": "bson.objectid",
+          "specifiers": [
+            "ObjectId"
+          ]
+        },
+        {
+          "source": "app.schemas",
+          "specifiers": [
+            "ItemCreate",
+            "Item"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Optional",
+            "List",
+            "Dict",
+            "Any"
+          ]
+        },
+        {
+          "source": "datetime",
+          "specifiers": [
+            "datetime",
+            "timezone"
+          ]
+        }
+      ],
+      "exports": [
+        "ItemRepository",
+        "UserRepository"
+      ],
+      "totalLines": 168,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/database.py": {
+      "filePath": "backend/app/database.py",
+      "contentHash": "1e7278d37c8cfb701c916281b1b9c0675713ba03320bf32ca5bd729f45907131",
+      "functions": [],
+      "classes": [
+        {
+          "name": "MongoDatabase",
+          "methods": [
+            "connect",
+            "disconnect",
+            "get_database"
+          ],
+          "properties": [
+            "client"
+          ],
+          "exported": true,
+          "lineCount": 24
+        }
+      ],
+      "imports": [
+        {
+          "source": "pymongo",
+          "specifiers": [
+            "MongoClient"
+          ]
+        },
+        {
+          "source": "app.config",
+          "specifiers": [
+            "settings"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Optional"
+          ]
+        }
+      ],
+      "exports": [
+        "MongoDatabase"
+      ],
+      "totalLines": 35,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/emailer.py": {
+      "filePath": "backend/app/emailer.py",
+      "contentHash": "a7de83cb7ea530bc5eb7189f07b502a9d090005aa0468740e3e3803bdba494a2",
+      "functions": [
+        {
+          "name": "send_password_reset_email",
+          "params": [
+            "recipient",
+            "reset_url"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 25
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "logging",
+          "specifiers": [
+            "logging"
+          ]
+        },
+        {
+          "source": "smtplib",
+          "specifiers": [
+            "smtplib"
+          ]
+        },
+        {
+          "source": "email.message",
+          "specifiers": [
+            "EmailMessage"
+          ]
+        },
+        {
+          "source": "app.config",
+          "specifiers": [
+            "settings"
+          ]
+        }
+      ],
+      "exports": [
+        "send_password_reset_email"
+      ],
+      "totalLines": 35,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/lifespan.py": {
+      "filePath": "backend/app/lifespan.py",
+      "contentHash": "aba4e147fb0fc46a59dce57d1d9c499b24d9f7b45527ad45912142b720bf2afc",
+      "functions": [
+        {
+          "name": "lifespan",
+          "params": [
+            "app"
+          ],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "contextlib",
+          "specifiers": [
+            "asynccontextmanager"
+          ]
+        },
+        {
+          "source": "app.database",
+          "specifiers": [
+            "mongo_db"
+          ]
+        }
+      ],
+      "exports": [
+        "lifespan"
+      ],
+      "totalLines": 18,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/main.py": {
+      "filePath": "backend/app/main.py",
+      "contentHash": "3b2143802904922f5567b239f127a690cdb26db54e51c02a7e8d052827387d00",
+      "functions": [
+        {
+          "name": "lifespan",
+          "params": [
+            "app"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "root",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "health_check",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "contextlib",
+          "specifiers": [
+            "asynccontextmanager"
+          ]
+        },
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "FastAPI"
+          ]
+        },
+        {
+          "source": "fastapi.middleware.cors",
+          "specifiers": [
+            "CORSMiddleware"
+          ]
+        },
+        {
+          "source": "app.config",
+          "specifiers": [
+            "settings"
+          ]
+        },
+        {
+          "source": "app.database",
+          "specifiers": [
+            "mongo_db"
+          ]
+        },
+        {
+          "source": "app.routers",
+          "specifiers": [
+            "items",
+            "gemini",
+            "text_to_comic",
+            "auth",
+            "projects"
+          ]
+        }
+      ],
+      "exports": [
+        "lifespan",
+        "root",
+        "health_check"
+      ],
+      "totalLines": 58,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/rate_limit.py": {
+      "filePath": "backend/app/rate_limit.py",
+      "contentHash": "04c5b3330991aeeb245ceb78dc75d7b3be5f0898604823bf2a89d264257b0e25",
+      "functions": [],
+      "classes": [
+        {
+          "name": "QueueFullError",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "RateLimitExceededError",
+          "methods": [
+            "__init__"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "LimiterToken",
+          "methods": [
+            "release"
+          ],
+          "properties": [
+            "_semaphore",
+            "_released"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "PerUserRateLimiter",
+          "methods": [
+            "__init__",
+            "acquire",
+            "_try_claim_request_slot"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 48
+        }
+      ],
+      "imports": [
+        {
+          "source": "asyncio",
+          "specifiers": [
+            "asyncio"
+          ]
+        },
+        {
+          "source": "time",
+          "specifiers": [
+            "time"
+          ]
+        },
+        {
+          "source": "collections",
+          "specifiers": [
+            "defaultdict",
+            "deque"
+          ]
+        },
+        {
+          "source": "dataclasses",
+          "specifiers": [
+            "dataclass"
+          ]
+        }
+      ],
+      "exports": [
+        "QueueFullError",
+        "RateLimitExceededError",
+        "LimiterToken",
+        "PerUserRateLimiter"
+      ],
+      "totalLines": 83,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/routers/__init__.py": {
+      "filePath": "backend/app/routers/__init__.py",
+      "contentHash": "142b2812e15511dcdb13ee40c2a895122cf9537da2de91c1ddc3dfee61554d61",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "app.routers",
+          "specifiers": [
+            "items",
+            "gemini",
+            "auth",
+            "text_to_comic"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 6,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/routers/.gitkeep": {
+      "filePath": "backend/app/routers/.gitkeep",
+      "contentHash": "461fff8e2144cc6d77c048aa6601b341544f656c3436aed2a8ff2928b17f1137",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 3,
+      "hasStructuralAnalysis": false
+    },
+    "backend/app/routers/auth.py": {
+      "filePath": "backend/app/routers/auth.py",
+      "contentHash": "3ac2872adbea497ab476089f59fd5e8da19b1091891d6f005e9ad91b078dfc93",
+      "functions": [
+        {
+          "name": "get_user_repo",
+          "params": [],
+          "returnType": "UserRepository",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "public_user",
+          "params": [
+            "doc"
+          ],
+          "returnType": "UserPublic",
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "auth_redirect_url",
+          "params": [
+            "provider"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "set_auth_cookie",
+          "params": [
+            "response",
+            "token"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "clear_auth_cookie",
+          "params": [
+            "response"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "token_from_request",
+          "params": [
+            "request"
+          ],
+          "returnType": "str | None",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "register",
+          "params": [
+            "payload"
+          ],
+          "exported": true,
+          "lineCount": 25
+        },
+        {
+          "name": "login",
+          "params": [
+            "payload"
+          ],
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "forgot_password",
+          "params": [
+            "payload"
+          ],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "reset_password",
+          "params": [
+            "payload"
+          ],
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "me",
+          "params": [
+            "request"
+          ],
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "logout",
+          "params": [],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "oauth_start",
+          "params": [
+            "provider",
+            "mode"
+          ],
+          "exported": true,
+          "lineCount": 37
+        },
+        {
+          "name": "exchange_google_code",
+          "params": [
+            "code",
+            "redirect_uri"
+          ],
+          "returnType": "Dict[str, Any]",
+          "exported": true,
+          "lineCount": 32
+        },
+        {
+          "name": "exchange_github_code",
+          "params": [
+            "code",
+            "redirect_uri"
+          ],
+          "returnType": "Dict[str, Any]",
+          "exported": true,
+          "lineCount": 48
+        },
+        {
+          "name": "oauth_callback",
+          "params": [
+            "provider",
+            "code",
+            "state"
+          ],
+          "exported": true,
+          "lineCount": 36
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "APIRouter",
+            "HTTPException",
+            "Query",
+            "Request",
+            "Response",
+            "status"
+          ]
+        },
+        {
+          "source": "fastapi.responses",
+          "specifiers": [
+            "RedirectResponse",
+            "JSONResponse"
+          ]
+        },
+        {
+          "source": "app.config",
+          "specifiers": [
+            "settings"
+          ]
+        },
+        {
+          "source": "app.database",
+          "specifiers": [
+            "mongo_db"
+          ]
+        },
+        {
+          "source": "app.schemas",
+          "specifiers": [
+            "AuthRegister",
+            "AuthLogin",
+            "AuthResponse",
+            "OAuthStartResponse",
+            "ForgotPasswordRequest",
+            "ResetPasswordRequest",
+            "MessageResponse",
+            "UserPublic",
+            "AuthMeResponse"
+          ]
+        },
+        {
+          "source": "app.security",
+          "specifiers": [
+            "hash_password",
+            "verify_password",
+            "create_access_token",
+            "create_oauth_state",
+            "decode_token",
+            "hash_reset_token"
+          ]
+        },
+        {
+          "source": "app.crud",
+          "specifiers": [
+            "UserRepository"
+          ]
+        },
+        {
+          "source": "app.emailer",
+          "specifiers": [
+            "send_password_reset_email"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Dict",
+            "Any"
+          ]
+        },
+        {
+          "source": "httpx",
+          "specifiers": [
+            "httpx"
+          ]
+        },
+        {
+          "source": "secrets",
+          "specifiers": [
+            "secrets"
+          ]
+        },
+        {
+          "source": "urllib.parse",
+          "specifiers": [
+            "urlencode",
+            "quote"
+          ]
+        },
+        {
+          "source": "datetime",
+          "specifiers": [
+            "datetime",
+            "timedelta",
+            "timezone"
+          ]
+        }
+      ],
+      "exports": [
+        "get_user_repo",
+        "public_user",
+        "auth_redirect_url",
+        "set_auth_cookie",
+        "clear_auth_cookie",
+        "token_from_request",
+        "register",
+        "login",
+        "forgot_password",
+        "reset_password",
+        "me",
+        "logout",
+        "oauth_start",
+        "exchange_google_code",
+        "exchange_github_code",
+        "oauth_callback"
+      ],
+      "totalLines": 376,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/routers/gemini.py": {
+      "filePath": "backend/app/routers/gemini.py",
+      "contentHash": "6a47715b7df3ff843f3a6f3f23c40e5f01df95546cc15349d9dfd4d0ede9ec5a",
+      "functions": [
+        {
+          "name": "_resolve_user_key",
+          "params": [
+            "request"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "_acquire_limit_token",
+          "params": [
+            "request"
+          ],
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "generate_text",
+          "params": [
+            "request",
+            "http_request"
+          ],
+          "exported": true,
+          "lineCount": 51
+        },
+        {
+          "name": "analyze_story",
+          "params": [
+            "request",
+            "http_request"
+          ],
+          "exported": true,
+          "lineCount": 33
+        },
+        {
+          "name": "analyze_story_structured",
+          "params": [
+            "request",
+            "http_request"
+          ],
+          "exported": true,
+          "lineCount": 106
+        },
+        {
+          "name": "generate_character_prompt",
+          "params": [
+            "request",
+            "http_request"
+          ],
+          "exported": true,
+          "lineCount": 24
+        },
+        {
+          "name": "generate_character_designs_structured",
+          "params": [
+            "request",
+            "http_request"
+          ],
+          "exported": true,
+          "lineCount": 90
+        },
+        {
+          "name": "generate_panel_script",
+          "params": [
+            "request",
+            "http_request"
+          ],
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "generate_panel_script_structured",
+          "params": [
+            "request",
+            "http_request"
+          ],
+          "exported": true,
+          "lineCount": 98
+        },
+        {
+          "name": "generate_panel_image",
+          "params": [
+            "request",
+            "http_request"
+          ],
+          "exported": true,
+          "lineCount": 28
+        },
+        {
+          "name": "health_check",
+          "params": [],
+          "exported": true,
+          "lineCount": 8
+        }
+      ],
+      "classes": [
+        {
+          "name": "TextGenerationRequest",
+          "methods": [],
+          "properties": [
+            "prompt",
+            "stream"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "StoryAnalysisRequest",
+          "methods": [],
+          "properties": [
+            "story_text",
+            "num_chapters",
+            "desired_main_characters",
+            "target_total_pages",
+            "genre_tone",
+            "art_style_reference",
+            "max_panels_per_page",
+            "special_requests",
+            "stream"
+          ],
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "StructuredStoryAnalysisRequest",
+          "methods": [],
+          "properties": [
+            "project_id",
+            "stream"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "Step2DesignRequest",
+          "methods": [],
+          "properties": [
+            "project_id",
+            "step1_json",
+            "desired_main_characters",
+            "genre_tone",
+            "art_style_reference",
+            "special_requests",
+            "stream"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "Step3ScriptRequest",
+          "methods": [],
+          "properties": [
+            "project_id",
+            "step1_json",
+            "step2_json",
+            "num_chapters",
+            "target_total_pages",
+            "genre_tone",
+            "art_style_reference",
+            "max_panels_per_page",
+            "special_requests",
+            "stream"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "CharacterPromptRequest",
+          "methods": [],
+          "properties": [
+            "character_description"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "PanelScriptRequest",
+          "methods": [],
+          "properties": [
+            "scene_description"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "PanelImageRequest",
+          "methods": [],
+          "properties": [
+            "image_prompt",
+            "width",
+            "height"
+          ],
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "APIRouter",
+            "HTTPException",
+            "Request"
+          ]
+        },
+        {
+          "source": "fastapi.responses",
+          "specifiers": [
+            "StreamingResponse"
+          ]
+        },
+        {
+          "source": "pydantic",
+          "specifiers": [
+            "BaseModel"
+          ]
+        },
+        {
+          "source": "datetime",
+          "specifiers": [
+            "datetime",
+            "timezone"
+          ]
+        },
+        {
+          "source": "app.config",
+          "specifiers": [
+            "settings"
+          ]
+        },
+        {
+          "source": "app.rate_limit",
+          "specifiers": [
+            "PerUserRateLimiter",
+            "QueueFullError",
+            "RateLimitExceededError"
+          ]
+        },
+        {
+          "source": "app.services",
+          "specifiers": [
+            "GeminiService",
+            "GeminiServiceError"
+          ]
+        }
+      ],
+      "exports": [
+        "TextGenerationRequest",
+        "StoryAnalysisRequest",
+        "StructuredStoryAnalysisRequest",
+        "Step2DesignRequest",
+        "Step3ScriptRequest",
+        "CharacterPromptRequest",
+        "PanelScriptRequest",
+        "PanelImageRequest",
+        "_resolve_user_key",
+        "_acquire_limit_token",
+        "generate_text",
+        "analyze_story",
+        "analyze_story_structured",
+        "generate_character_prompt",
+        "generate_character_designs_structured",
+        "generate_panel_script",
+        "generate_panel_script_structured",
+        "generate_panel_image",
+        "health_check"
+      ],
+      "totalLines": 613,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/routers/items.py": {
+      "filePath": "backend/app/routers/items.py",
+      "contentHash": "f51d4d86df9d681192f32d3a7fdcc86dfddc5ad5b19b46c3e5c4541b85b86f31",
+      "functions": [
+        {
+          "name": "create_item",
+          "params": [
+            "item"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "list_items",
+          "params": [
+            "skip",
+            "limit"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "get_item",
+          "params": [
+            "item_id"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "update_item",
+          "params": [
+            "item_id",
+            "item"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "delete_item",
+          "params": [
+            "item_id"
+          ],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "APIRouter",
+            "HTTPException"
+          ]
+        },
+        {
+          "source": "app.schemas",
+          "specifiers": [
+            "ItemCreate",
+            "Item"
+          ]
+        },
+        {
+          "source": "app.database",
+          "specifiers": [
+            "mongo_db"
+          ]
+        },
+        {
+          "source": "app.crud",
+          "specifiers": [
+            "ItemRepository"
+          ]
+        }
+      ],
+      "exports": [
+        "create_item",
+        "list_items",
+        "get_item",
+        "update_item",
+        "delete_item"
+      ],
+      "totalLines": 60,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/routers/projects.py": {
+      "filePath": "backend/app/routers/projects.py",
+      "contentHash": "5cda83c1b800c0fb8996254d062365035d81f8773a62a164b91aa985df11499d",
+      "functions": [
+        {
+          "name": "_col",
+          "params": [],
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "_require_user",
+          "params": [
+            "x_user_id"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "save_project",
+          "params": [
+            "payload",
+            "x_user_id"
+          ],
+          "returnType": "Dict[str, str]",
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "list_projects",
+          "params": [
+            "x_user_id"
+          ],
+          "returnType": "List[Dict[str, Any]]",
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "list_characters",
+          "params": [
+            "x_user_id"
+          ],
+          "returnType": "List[Dict[str, Any]]",
+          "exported": true,
+          "lineCount": 32
+        },
+        {
+          "name": "_get_characters",
+          "params": [
+            "doc"
+          ],
+          "returnType": "List[Dict[str, Any]]",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "_set_characters",
+          "params": [
+            "col",
+            "user_id",
+            "project_id",
+            "chars"
+          ],
+          "returnType": "None",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "create_character",
+          "params": [
+            "project_id",
+            "payload",
+            "x_user_id"
+          ],
+          "returnType": "Dict[str, Any]",
+          "exported": true,
+          "lineCount": 28
+        },
+        {
+          "name": "update_character",
+          "params": [
+            "project_id",
+            "character_id",
+            "payload",
+            "x_user_id"
+          ],
+          "returnType": "Dict[str, Any]",
+          "exported": true,
+          "lineCount": 29
+        },
+        {
+          "name": "delete_character",
+          "params": [
+            "project_id",
+            "character_id",
+            "x_user_id"
+          ],
+          "returnType": "Dict[str, str]",
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "load_project",
+          "params": [
+            "project_id",
+            "x_user_id"
+          ],
+          "returnType": "Dict[str, Any]",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "delete_project",
+          "params": [
+            "project_id",
+            "x_user_id"
+          ],
+          "returnType": "Dict[str, str]",
+          "exported": true,
+          "lineCount": 9
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "APIRouter",
+            "HTTPException",
+            "Header"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Any",
+            "Dict",
+            "List",
+            "Optional"
+          ]
+        },
+        {
+          "source": "app.schemas",
+          "specifiers": [
+            "ProjectSaveRequest",
+            "ProjectListItem",
+            "CharacterSummary",
+            "CharacterUpsertPayload",
+            "CharacterPatchPayload"
+          ]
+        },
+        {
+          "source": "app.database",
+          "specifiers": [
+            "mongo_db"
+          ]
+        }
+      ],
+      "exports": [
+        "_col",
+        "_require_user",
+        "save_project",
+        "list_projects",
+        "list_characters",
+        "_get_characters",
+        "_set_characters",
+        "create_character",
+        "update_character",
+        "delete_character",
+        "load_project",
+        "delete_project"
+      ],
+      "totalLines": 228,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/routers/text_to_comic.py": {
+      "filePath": "backend/app/routers/text_to_comic.py",
+      "contentHash": "89133bcfff8e0308dc2fb858a066e57036160ed99c535954fa067f6fb9be511a",
+      "functions": [
+        {
+          "name": "generate_comic",
+          "params": [
+            "request",
+            "background_tasks"
+          ],
+          "exported": true,
+          "lineCount": 60
+        },
+        {
+          "name": "get_pipeline_status",
+          "params": [
+            "job_id"
+          ],
+          "exported": true,
+          "lineCount": 24
+        },
+        {
+          "name": "get_pipeline_results",
+          "params": [
+            "job_id"
+          ],
+          "exported": true,
+          "lineCount": 44
+        },
+        {
+          "name": "list_jobs",
+          "params": [],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "_execute_pipeline",
+          "params": [
+            "job_id",
+            "request"
+          ],
+          "exported": true,
+          "lineCount": 73
+        }
+      ],
+      "classes": [
+        {
+          "name": "ComicGenerationRequest",
+          "methods": [],
+          "properties": [
+            "story_text",
+            "main_characters",
+            "num_chapters",
+            "target_pages",
+            "genre_tone",
+            "art_style",
+            "max_panels_per_page",
+            "generate_markdown"
+          ],
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "PipelineStatus",
+          "methods": [],
+          "properties": [
+            "job_id",
+            "status",
+            "progress",
+            "output_files",
+            "error_message"
+          ],
+          "exported": true,
+          "lineCount": 8
+        }
+      ],
+      "imports": [
+        {
+          "source": "fastapi",
+          "specifiers": [
+            "APIRouter",
+            "HTTPException",
+            "BackgroundTasks"
+          ]
+        },
+        {
+          "source": "pydantic",
+          "specifiers": [
+            "BaseModel",
+            "Field"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Optional",
+            "Dict",
+            "Any"
+          ]
+        },
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "datetime",
+          "specifiers": [
+            "datetime"
+          ]
+        },
+        {
+          "source": "logging",
+          "specifiers": [
+            "logging"
+          ]
+        },
+        {
+          "source": "text_to_comic_pipeline",
+          "specifiers": [
+            "TextToComicPipeline"
+          ]
+        }
+      ],
+      "exports": [
+        "ComicGenerationRequest",
+        "PipelineStatus",
+        "generate_comic",
+        "get_pipeline_status",
+        "get_pipeline_results",
+        "list_jobs",
+        "_execute_pipeline"
+      ],
+      "totalLines": 298,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/schemas.py": {
+      "filePath": "backend/app/schemas.py",
+      "contentHash": "93fe0d638c48a262e537540571959617936e8dd6f0b0fa1fe72f72468dfe7ba0",
+      "functions": [],
+      "classes": [
+        {
+          "name": "ItemBase",
+          "methods": [],
+          "properties": [
+            "name",
+            "description"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "ItemCreate",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "Item",
+          "methods": [],
+          "properties": [
+            "id"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "UserPublic",
+          "methods": [],
+          "properties": [
+            "id",
+            "email",
+            "first_name",
+            "last_name",
+            "providers"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "AuthRegister",
+          "methods": [],
+          "properties": [
+            "first_name",
+            "last_name",
+            "email",
+            "password"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "AuthLogin",
+          "methods": [],
+          "properties": [
+            "email",
+            "password"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "ForgotPasswordRequest",
+          "methods": [],
+          "properties": [
+            "email"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "ResetPasswordRequest",
+          "methods": [],
+          "properties": [
+            "email",
+            "token",
+            "password"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "OAuthStartResponse",
+          "methods": [],
+          "properties": [
+            "url"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "MessageResponse",
+          "methods": [],
+          "properties": [
+            "message"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "AuthResponse",
+          "methods": [],
+          "properties": [
+            "message",
+            "access_token",
+            "token_type",
+            "user"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "AuthMeResponse",
+          "methods": [],
+          "properties": [
+            "user"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "ProjectSaveRequest",
+          "methods": [],
+          "properties": [
+            "project_id",
+            "saved_at",
+            "user_inputs",
+            "image_gen_settings",
+            "steps"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "ProjectListItem",
+          "methods": [],
+          "properties": [
+            "project_id",
+            "saved_at",
+            "genre",
+            "has_step1",
+            "has_step2",
+            "has_step2_images",
+            "has_step3",
+            "has_step4",
+            "step1_approved",
+            "step2_approved",
+            "step2_images_approved",
+            "step3_approved"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "CharacterSummary",
+          "methods": [],
+          "properties": [
+            "character_id",
+            "name",
+            "prompt",
+            "selected_image_url",
+            "project_id"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "CharacterUpsertPayload",
+          "methods": [],
+          "properties": [
+            "character_id",
+            "name",
+            "prompt",
+            "selected_image_url"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "CharacterPatchPayload",
+          "methods": [],
+          "properties": [
+            "name",
+            "prompt",
+            "selected_image_url"
+          ],
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "pydantic",
+          "specifiers": [
+            "BaseModel",
+            "Field"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Any",
+            "Dict",
+            "Optional",
+            "List"
+          ]
+        }
+      ],
+      "exports": [
+        "ItemBase",
+        "ItemCreate",
+        "Item",
+        "UserPublic",
+        "AuthRegister",
+        "AuthLogin",
+        "ForgotPasswordRequest",
+        "ResetPasswordRequest",
+        "OAuthStartResponse",
+        "MessageResponse",
+        "AuthResponse",
+        "AuthMeResponse",
+        "ProjectSaveRequest",
+        "ProjectListItem",
+        "CharacterSummary",
+        "CharacterUpsertPayload",
+        "CharacterPatchPayload"
+      ],
+      "totalLines": 151,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/security.py": {
+      "filePath": "backend/app/security.py",
+      "contentHash": "8c15f85bbc965f8e58b1d0c2237f2ebf4947917916812cfabda2ad79a556c098",
+      "functions": [
+        {
+          "name": "hash_password",
+          "params": [
+            "password"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "verify_password",
+          "params": [
+            "password",
+            "hashed_password"
+          ],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "create_access_token",
+          "params": [
+            "payload",
+            "expires_minutes"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "create_oauth_state",
+          "params": [
+            "payload",
+            "expires_minutes"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "decode_token",
+          "params": [
+            "token"
+          ],
+          "returnType": "dict",
+          "exported": true,
+          "lineCount": 2
+        },
+        {
+          "name": "hash_reset_token",
+          "params": [
+            "token"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 2
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "datetime",
+          "specifiers": [
+            "datetime",
+            "timedelta",
+            "timezone"
+          ]
+        },
+        {
+          "source": "jose",
+          "specifiers": [
+            "jwt"
+          ]
+        },
+        {
+          "source": "passlib.context",
+          "specifiers": [
+            "CryptContext"
+          ]
+        },
+        {
+          "source": "app.config",
+          "specifiers": [
+            "settings"
+          ]
+        },
+        {
+          "source": "hashlib",
+          "specifiers": [
+            "hashlib"
+          ]
+        }
+      ],
+      "exports": [
+        "hash_password",
+        "verify_password",
+        "create_access_token",
+        "create_oauth_state",
+        "decode_token",
+        "hash_reset_token"
+      ],
+      "totalLines": 41,
+      "hasStructuralAnalysis": true
+    },
+    "backend/app/services.py": {
+      "filePath": "backend/app/services.py",
+      "contentHash": "93c236a608b9f64d14516a5bd55c0d9640e76f16da5ed10937e63511675ebe3b",
+      "functions": [
+        {
+          "name": "_extract_retry_after_seconds",
+          "params": [
+            "error_text"
+          ],
+          "returnType": "float | None",
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "_extract_json_payload",
+          "params": [
+            "text"
+          ],
+          "returnType": "dict",
+          "exported": true,
+          "lineCount": 26
+        },
+        {
+          "name": "_first_nonempty_line",
+          "params": [
+            "text"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "_slugify_identifier",
+          "params": [
+            "value",
+            "fallback"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "_normalize_nine_router_url",
+          "params": [
+            "raw_url"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "_parse_nine_router_sse",
+          "params": [
+            "raw_text"
+          ],
+          "returnType": "str",
+          "exported": true,
+          "lineCount": 30
+        },
+        {
+          "name": "_extract_main_character_names_from_step1",
+          "params": [
+            "step1_json"
+          ],
+          "returnType": "list[str]",
+          "exported": true,
+          "lineCount": 23
+        },
+        {
+          "name": "_extract_step2_markdown_character_prompts",
+          "params": [
+            "design_markdown"
+          ],
+          "returnType": "list[dict[str, str]]",
+          "exported": true,
+          "lineCount": 24
+        },
+        {
+          "name": "_build_step2_main_designs",
+          "params": [
+            "step1_json",
+            "design_markdown",
+            "desired_main_characters",
+            "art_style_reference"
+          ],
+          "returnType": "dict",
+          "exported": true,
+          "lineCount": 51
+        },
+        {
+          "name": "_build_step1_fallback_snapshot",
+          "params": [
+            "project_id",
+            "story_text",
+            "genre_tone",
+            "art_style_reference",
+            "max_panels_per_page",
+            "special_requests",
+            "step_status",
+            "last_updated",
+            "num_chapters",
+            "analysis_markdown"
+          ],
+          "returnType": "dict",
+          "exported": true,
+          "lineCount": 63
+        },
+        {
+          "name": "_build_step2_fallback_snapshot",
+          "params": [
+            "project_id",
+            "genre_tone",
+            "art_style_reference",
+            "special_requests",
+            "step_status",
+            "last_updated",
+            "step1_json",
+            "design_markdown",
+            "desired_main_characters"
+          ],
+          "returnType": "dict",
+          "exported": true,
+          "lineCount": 41
+        },
+        {
+          "name": "_build_step3_fallback_snapshot",
+          "params": [
+            "project_id",
+            "genre_tone",
+            "art_style_reference",
+            "max_panels_per_page",
+            "special_requests",
+            "step_status",
+            "last_updated",
+            "step2_json",
+            "script_markdown"
+          ],
+          "returnType": "dict",
+          "exported": true,
+          "lineCount": 45
+        },
+        {
+          "name": "_trim_json_for_prompt",
+          "params": [
+            "obj",
+            "max_str"
+          ],
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "_extract_step3_context",
+          "params": [
+            "step1_json",
+            "step2_json"
+          ],
+          "returnType": "tuple[str, str]",
+          "exported": true,
+          "lineCount": 60
+        }
+      ],
+      "classes": [
+        {
+          "name": "GeminiServiceError",
+          "methods": [
+            "__init__"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "GeminiService",
+          "methods": [
+            "__init__",
+            "generate_text",
+            "_generate_text_gemini_stream",
+            "_generate_text_nine_router",
+            "_generate_text_nine_router_stream",
+            "_raw_stream",
+            "_stream_with_separator",
+            "generate_step2_stream",
+            "generate_step3_stream",
+            "generate_step1_stream",
+            "generate_panel_image_url",
+            "generate_panel_image_data_url",
+            "analyze_story",
+            "generate_plot_analysis",
+            "generate_plot_analysis_structured",
+            "generate_character_prompts",
+            "generate_step2_character_design_markdown",
+            "generate_step2_structured_snapshot",
+            "generate_step3_panel_script_markdown",
+            "generate_step3_structured_snapshot",
+            "generate_panel_script",
+            "generate_step1_structured_snapshot"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 1596
+        }
+      ],
+      "imports": [
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "re",
+          "specifiers": [
+            "re"
+          ]
+        },
+        {
+          "source": "hashlib",
+          "specifiers": [
+            "hashlib"
+          ]
+        },
+        {
+          "source": "base64",
+          "specifiers": [
+            "base64"
+          ]
+        },
+        {
+          "source": "urllib.parse",
+          "specifiers": [
+            "quote"
+          ]
+        },
+        {
+          "source": "httpx",
+          "specifiers": [
+            "httpx"
+          ]
+        },
+        {
+          "source": "app.config",
+          "specifiers": [
+            "settings"
+          ]
+        }
+      ],
+      "exports": [
+        "GeminiServiceError",
+        "_extract_retry_after_seconds",
+        "_extract_json_payload",
+        "_first_nonempty_line",
+        "_slugify_identifier",
+        "_normalize_nine_router_url",
+        "_parse_nine_router_sse",
+        "_extract_main_character_names_from_step1",
+        "_extract_step2_markdown_character_prompts",
+        "_build_step2_main_designs",
+        "_build_step1_fallback_snapshot",
+        "_build_step2_fallback_snapshot",
+        "_build_step3_fallback_snapshot",
+        "_trim_json_for_prompt",
+        "_extract_step3_context",
+        "GeminiService"
+      ],
+      "totalLines": 2073,
+      "hasStructuralAnalysis": true
+    },
+    "backend/Dockerfile": {
+      "filePath": "backend/Dockerfile",
+      "contentHash": "8867b8259ddffad110cb61cf21327fca363c2c9856ca025d703fdf654ff6627c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 14,
+      "hasStructuralAnalysis": true
+    },
+    "backend/README.md": {
+      "filePath": "backend/README.md",
+      "contentHash": "3208744d3b80f1b9b329f369f8cff6ba1b66a7961ffde9172b17ec6d33ac1140",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 98,
+      "hasStructuralAnalysis": true
+    },
+    "backend/requirements.txt": {
+      "filePath": "backend/requirements.txt",
+      "contentHash": "74fcac33419ba8f56d06fe323785b6d6bc73efe5cc5571d314481600210b0aff",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 13,
+      "hasStructuralAnalysis": false
+    },
+    "backend/RESET_PASSWORD_README.md": {
+      "filePath": "backend/RESET_PASSWORD_README.md",
+      "contentHash": "aa35a3cb22760c4d13e4ee5c022bd0fd11109b9e6ef7e232345ed96ee1439b48",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 64,
+      "hasStructuralAnalysis": true
+    },
+    "backend/scripts/__init__.py": {
+      "filePath": "backend/scripts/__init__.py",
+      "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1,
+      "hasStructuralAnalysis": true
+    },
+    "backend/scripts/auth_smoke.py": {
+      "filePath": "backend/scripts/auth_smoke.py",
+      "contentHash": "2b3fe28e1d902e95de596e593b1703ae292e610e73d1b06717b9b08f62b9b4a4",
+      "functions": [
+        {
+          "name": "run",
+          "params": [],
+          "exported": true,
+          "lineCount": 24
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "datetime",
+          "specifiers": [
+            "datetime"
+          ]
+        },
+        {
+          "source": "fastapi.testclient",
+          "specifiers": [
+            "TestClient"
+          ]
+        },
+        {
+          "source": "app.main",
+          "specifiers": [
+            "app"
+          ]
+        }
+      ],
+      "exports": [
+        "run"
+      ],
+      "totalLines": 43,
+      "hasStructuralAnalysis": true
+    },
+    "backend/scripts/README.md": {
+      "filePath": "backend/scripts/README.md",
+      "contentHash": "11d36a60dfb5fab38bb92935123fd7240d31238c13697360146d5a99a1dbaaef",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 17,
+      "hasStructuralAnalysis": true
+    },
+    "backend/start-pipeline.ps1": {
+      "filePath": "backend/start-pipeline.ps1",
+      "contentHash": "cb11c6531994249f7b9ffa40dc2afe8872e91424e2ed2dc166fe08c9578b7738",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 236,
+      "hasStructuralAnalysis": false
+    },
+    "backend/test_gemini_integration.py": {
+      "filePath": "backend/test_gemini_integration.py",
+      "contentHash": "c46d50301a3c93542cebdbb12d9eba05a44d6acaefc6f6f9df453fc8d891c073",
+      "functions": [
+        {
+          "name": "print_header",
+          "params": [
+            "text"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "print_success",
+          "params": [
+            "text"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "print_error",
+          "params": [
+            "text"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "print_info",
+          "params": [
+            "text"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "print_warning",
+          "params": [
+            "text"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "test_connection",
+          "params": [],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 20
+        },
+        {
+          "name": "test_gemini_health",
+          "params": [],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 28
+        },
+        {
+          "name": "test_generate_text",
+          "params": [
+            "prompt"
+          ],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 39
+        },
+        {
+          "name": "test_analyze_story",
+          "params": [
+            "story"
+          ],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 41
+        },
+        {
+          "name": "test_character_prompt",
+          "params": [
+            "character"
+          ],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 37
+        },
+        {
+          "name": "run_all_tests",
+          "params": [],
+          "exported": true,
+          "lineCount": 32
+        },
+        {
+          "name": "print_summary",
+          "params": [
+            "results"
+          ],
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "main",
+          "params": [],
+          "exported": true,
+          "lineCount": 12
+        }
+      ],
+      "classes": [
+        {
+          "name": "Colors",
+          "methods": [],
+          "properties": [],
+          "exported": true,
+          "lineCount": 10
+        }
+      ],
+      "imports": [
+        {
+          "source": "sys",
+          "specifiers": [
+            "sys"
+          ]
+        },
+        {
+          "source": "httpx",
+          "specifiers": [
+            "httpx"
+          ]
+        },
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Optional"
+          ]
+        }
+      ],
+      "exports": [
+        "Colors",
+        "print_header",
+        "print_success",
+        "print_error",
+        "print_info",
+        "print_warning",
+        "test_connection",
+        "test_gemini_health",
+        "test_generate_text",
+        "test_analyze_story",
+        "test_character_prompt",
+        "run_all_tests",
+        "print_summary",
+        "main"
+      ],
+      "totalLines": 300,
+      "hasStructuralAnalysis": true
+    },
+    "backend/test_text_to_comic_pipeline.py": {
+      "filePath": "backend/test_text_to_comic_pipeline.py",
+      "contentHash": "4f1ad30ed2f8581edf668f08c85bf9e683d609201627fc72aba9938561227868",
+      "functions": [
+        {
+          "name": "test_environment",
+          "params": [],
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "test_imports",
+          "params": [],
+          "exported": true,
+          "lineCount": 26
+        },
+        {
+          "name": "test_pipeline_initialization",
+          "params": [],
+          "exported": true,
+          "lineCount": 17
+        },
+        {
+          "name": "test_file_system",
+          "params": [],
+          "exported": true,
+          "lineCount": 35
+        },
+        {
+          "name": "test_router_import",
+          "params": [],
+          "exported": true,
+          "lineCount": 19
+        },
+        {
+          "name": "test_pipeline_methods",
+          "params": [],
+          "exported": true,
+          "lineCount": 36
+        },
+        {
+          "name": "run_quick_pipeline_test",
+          "params": [],
+          "exported": true,
+          "lineCount": 53
+        },
+        {
+          "name": "print_summary",
+          "params": [
+            "results"
+          ],
+          "exported": true,
+          "lineCount": 38
+        },
+        {
+          "name": "main",
+          "params": [],
+          "exported": true,
+          "lineCount": 21
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "sys",
+          "specifiers": [
+            "sys"
+          ]
+        },
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "datetime",
+          "specifiers": [
+            "datetime"
+          ]
+        }
+      ],
+      "exports": [
+        "test_environment",
+        "test_imports",
+        "test_pipeline_initialization",
+        "test_file_system",
+        "test_router_import",
+        "test_pipeline_methods",
+        "run_quick_pipeline_test",
+        "print_summary",
+        "main"
+      ],
+      "totalLines": 313,
+      "hasStructuralAnalysis": true
+    },
+    "backend/text_to_comic_pipeline.py": {
+      "filePath": "backend/text_to_comic_pipeline.py",
+      "contentHash": "05b179b0786db1a40cb8119e792618aad95cdd2f5a2e6eb4d434b13b7311e144",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": true,
+          "lineCount": 48
+        }
+      ],
+      "classes": [
+        {
+          "name": "TextToComicPipeline",
+          "methods": [
+            "__init__",
+            "call_gemini_api",
+            "save_json_result",
+            "load_step_result",
+            "step1_analysis_planning",
+            "step2_character_designs",
+            "step3_panel_script_prompts",
+            "step4_image_generation_simulation",
+            "generate_final_markdown",
+            "run_full_pipeline"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 535
+        }
+      ],
+      "imports": [
+        {
+          "source": "json",
+          "specifiers": [
+            "json"
+          ]
+        },
+        {
+          "source": "os",
+          "specifiers": [
+            "os"
+          ]
+        },
+        {
+          "source": "sys",
+          "specifiers": [
+            "sys"
+          ]
+        },
+        {
+          "source": "pathlib",
+          "specifiers": [
+            "Path"
+          ]
+        },
+        {
+          "source": "typing",
+          "specifiers": [
+            "Dict",
+            "Any",
+            "Optional"
+          ]
+        },
+        {
+          "source": "google",
+          "specifiers": [
+            "genai"
+          ]
+        },
+        {
+          "source": "google.api_core",
+          "specifiers": [
+            "google_exceptions"
+          ]
+        },
+        {
+          "source": "datetime",
+          "specifiers": [
+            "datetime"
+          ]
+        }
+      ],
+      "exports": [
+        "TextToComicPipeline",
+        "main"
+      ],
+      "totalLines": 619,
+      "hasStructuralAnalysis": true
+    },
+    "backend/TEXT_TO_COMIC_QUICK_REFERENCE.md": {
+      "filePath": "backend/TEXT_TO_COMIC_QUICK_REFERENCE.md",
+      "contentHash": "2d10d7dcf7c22ab0df9b16b6317183744ef01bea42b50df83343a31622a6be3d",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 250,
+      "hasStructuralAnalysis": true
+    },
+    "backend/TEXT_TO_COMIC_README.md": {
+      "filePath": "backend/TEXT_TO_COMIC_README.md",
+      "contentHash": "117ba3a270534050a92d22dbe38eff299531ae11280eeea80a8d819d14bc66e1",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 388,
+      "hasStructuralAnalysis": true
+    },
+    "backend/TEXT_TO_COMIC_SETUP_GUIDE.md": {
+      "filePath": "backend/TEXT_TO_COMIC_SETUP_GUIDE.md",
+      "contentHash": "7d6f362452fe9fbf7db738f3d898a18186e2bbdc087884f2e47e1ca6c7a611f1",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 482,
+      "hasStructuralAnalysis": true
+    },
+    "CLAUDE.md": {
+      "filePath": "CLAUDE.md",
+      "contentHash": "ef2af00295ff48ff1c835ad7bdfbefadb101569eed2c1efe4c006e09ea0f877a",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 92,
+      "hasStructuralAnalysis": true
+    },
+    "COMPLETE_SETUP_GUIDE.md": {
+      "filePath": "COMPLETE_SETUP_GUIDE.md",
+      "contentHash": "b8ac0819dd57d726308b372802ea9bb8ea95f175c8699ecce7c014d4af9a91a6",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 400,
+      "hasStructuralAnalysis": true
+    },
+    "database/docker-compose.yml": {
+      "filePath": "database/docker-compose.yml",
+      "contentHash": "4b331a483281da9499bc13ca47c02cbc9bb3c5be733f7e6cee7f7d1e10173002",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 26,
+      "hasStructuralAnalysis": true
+    },
+    "database/init-mongo.js": {
+      "filePath": "database/init-mongo.js",
+      "contentHash": "93f721be462c4d461640908bb17d460112ebc49d72779594a4eb6c414825d118",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 14,
+      "hasStructuralAnalysis": true
+    },
+    "database/init.sql": {
+      "filePath": "database/init.sql",
+      "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1,
+      "hasStructuralAnalysis": true
+    },
+    "database/README.md": {
+      "filePath": "database/README.md",
+      "contentHash": "a9f5b04d5d4284e4c3470a00baf1c6f9102399b721b89675f992af914ce57f0c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 151,
+      "hasStructuralAnalysis": true
+    },
+    "docker-compose.yml": {
+      "filePath": "docker-compose.yml",
+      "contentHash": "a5c58b2e85a48fb77e760704dae0540d1da606ce8f61fc017f704c8ceec3f8e0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 68,
+      "hasStructuralAnalysis": true
+    },
+    "DOCUMENTATION_INDEX.md": {
+      "filePath": "DOCUMENTATION_INDEX.md",
+      "contentHash": "e94b664a8c31bf3a092d2e8a2bb1c723c3e722e6e016ac9658595c98c5a1a9d6",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 317,
+      "hasStructuralAnalysis": true
+    },
+    "FILE_MANIFEST.md": {
+      "filePath": "FILE_MANIFEST.md",
+      "contentHash": "bb48cd2c3e39016ca0d66864b93c7e794964b3f3dd89b13e81e13383584ef8a7",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 366,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/.env.local.example": {
+      "filePath": "frontend/.env.local.example",
+      "contentHash": "548603c608a4d5788cd718793a2ba4fad57b5e8bbf8c8cf73044c217af61f4cf",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 3,
+      "hasStructuralAnalysis": false
+    },
+    "frontend/Dockerfile": {
+      "filePath": "frontend/Dockerfile",
+      "contentHash": "7485e5208b046b2d8a6dc9afafd1ceea2fe79985860b84894c49e1993ae2bf68",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 14,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/FINAL_CHECKLIST.md": {
+      "filePath": "frontend/FINAL_CHECKLIST.md",
+      "contentHash": "9a17ab7c65460c9386c2aea737e9d11e0467c7f71d22a04a9d895e69a3f9f5ed",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 386,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/FIXES_APPLIED.md": {
+      "filePath": "frontend/FIXES_APPLIED.md",
+      "contentHash": "ff732aff1e309dd1d58c43e625ce0b4f0eb4e205e33acb965a307ca3ccdc262c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 72,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/IMPLEMENTATION_COMPLETE.md": {
+      "filePath": "frontend/IMPLEMENTATION_COMPLETE.md",
+      "contentHash": "0554634a83f22f9314e499d02c16de993f46d700892ddc6fec08185ed6496f43",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 424,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/INSTALLATION_SUMMARY.md": {
+      "filePath": "frontend/INSTALLATION_SUMMARY.md",
+      "contentHash": "5df842e3d852068c757afb9df3f92f96f4804b57ecf4d6e9c04287ccd8b7a206",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 429,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/next.config.js": {
+      "filePath": "frontend/next.config.js",
+      "contentHash": "d8ba0e19f323b424eaf954ed781fc353a3243d65ea30bb7782a5b2e27ea6b986",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 9,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/package.json": {
+      "filePath": "frontend/package.json",
+      "contentHash": "36667ad0d165551aee7f088f3dc7e56fc334b704e4c015c9bad318ea65929b0e",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 33,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/postcss.config.js": {
+      "filePath": "frontend/postcss.config.js",
+      "contentHash": "251ecddd4672c9cf467547e3dc535de00ad2129df26e7e7ae728fa4e5ac45fc5",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 7,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/public/.gitkeep": {
+      "filePath": "frontend/public/.gitkeep",
+      "contentHash": "b1ad4c0f26444f5b41c74194acc01eca7366aa7efc067e5a2873bdb937353e35",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 3,
+      "hasStructuralAnalysis": false
+    },
+    "frontend/QUICK_REFERENCE.md": {
+      "filePath": "frontend/QUICK_REFERENCE.md",
+      "contentHash": "a28a142f3e481deb7aaa4ebba5703edfa0c0a40f16db062af4c37de13da8ac66",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 265,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/QUICK_START_COMIC_APP.md": {
+      "filePath": "frontend/QUICK_START_COMIC_APP.md",
+      "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/QUICK_START.txt": {
+      "filePath": "frontend/QUICK_START.txt",
+      "contentHash": "efd181f7ab88a365c0b1960514f6f1e3c4cfe22f81ffe598328bef7a499064f0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 51,
+      "hasStructuralAnalysis": false
+    },
+    "frontend/README.md": {
+      "filePath": "frontend/README.md",
+      "contentHash": "1e81f9d33049e0e59c745392d649d5b55715f62f8440d088361564c7777dea48",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 60,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/.gitkeep": {
+      "filePath": "frontend/src/app/.gitkeep",
+      "contentHash": "19a4a118a3179b40edffde6b896ed2dbcfe16964c8d9811a3e2e49fd40620a36",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 3,
+      "hasStructuralAnalysis": false
+    },
+    "frontend/src/app/(auth)/callback/page.tsx": {
+      "filePath": "frontend/src/app/(auth)/callback/page.tsx",
+      "contentHash": "2594eb9f31289a0f48043aba47c2359b215e1a65b37feb2c1b7288f339f52b95",
+      "functions": [
+        {
+          "name": "AuthCallbackPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 56
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useEffect",
+            "useMemo",
+            "useState"
+          ]
+        },
+        {
+          "source": "next/navigation",
+          "specifiers": [
+            "useRouter",
+            "useSearchParams"
+          ]
+        },
+        {
+          "source": "@/components/auth/AuthShell",
+          "specifiers": [
+            "AuthShell"
+          ]
+        },
+        {
+          "source": "@/context/AuthContext",
+          "specifiers": [
+            "useAuth"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthCallbackPage"
+      ],
+      "totalLines": 65,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/(auth)/forgot-password/page.tsx": {
+      "filePath": "frontend/src/app/(auth)/forgot-password/page.tsx",
+      "contentHash": "d3f524affca2c2ef920b3fd3b6dc4d7428563bba9520aa76572fd4e55e23fa29",
+      "functions": [
+        {
+          "name": "isValidEmail",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 1
+        },
+        {
+          "name": "ForgotPasswordPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 121
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useState"
+          ]
+        },
+        {
+          "source": "next/link",
+          "specifiers": [
+            "Link"
+          ]
+        },
+        {
+          "source": "@/components/auth/AuthShell",
+          "specifiers": [
+            "AuthShell"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "authApi",
+            "toApiError"
+          ]
+        }
+      ],
+      "exports": [
+        "ForgotPasswordPage"
+      ],
+      "totalLines": 131,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/(auth)/layout.tsx": {
+      "filePath": "frontend/src/app/(auth)/layout.tsx",
+      "contentHash": "420f63b4e827b9d47ada8777c3940e7b6e9c4424c91031d5db8ac37c937630b2",
+      "functions": [
+        {
+          "name": "AuthLayout",
+          "params": [
+            "{ children }"
+          ],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [
+        "AuthLayout"
+      ],
+      "totalLines": 5,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/(auth)/login/page.tsx": {
+      "filePath": "frontend/src/app/(auth)/login/page.tsx",
+      "contentHash": "43258a35395d73299caf7551f8396da5ad3b1e0ae1d1fc0a9847e140935296e4",
+      "functions": [
+        {
+          "name": "isValidEmail",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 1
+        },
+        {
+          "name": "LoginPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 222
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useState"
+          ]
+        },
+        {
+          "source": "next/link",
+          "specifiers": [
+            "Link"
+          ]
+        },
+        {
+          "source": "next/navigation",
+          "specifiers": [
+            "useRouter"
+          ]
+        },
+        {
+          "source": "@/components/auth/AuthShell",
+          "specifiers": [
+            "AuthShell"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "authApi",
+            "toApiError"
+          ]
+        },
+        {
+          "source": "@/context/AuthContext",
+          "specifiers": [
+            "useAuth"
+          ]
+        }
+      ],
+      "exports": [
+        "LoginPage"
+      ],
+      "totalLines": 234,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/(auth)/register/page.tsx": {
+      "filePath": "frontend/src/app/(auth)/register/page.tsx",
+      "contentHash": "7e41562863195735470971f3a3fbebec43fc24c4ec1edd716adc01ee28122278",
+      "functions": [
+        {
+          "name": "isValidEmail",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 1
+        },
+        {
+          "name": "RegisterPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 317
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useState"
+          ]
+        },
+        {
+          "source": "next/link",
+          "specifiers": [
+            "Link"
+          ]
+        },
+        {
+          "source": "next/navigation",
+          "specifiers": [
+            "useRouter"
+          ]
+        },
+        {
+          "source": "@/components/auth/AuthShell",
+          "specifiers": [
+            "AuthShell"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "authApi",
+            "toApiError"
+          ]
+        },
+        {
+          "source": "@/context/AuthContext",
+          "specifiers": [
+            "useAuth"
+          ]
+        }
+      ],
+      "exports": [
+        "RegisterPage"
+      ],
+      "totalLines": 329,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/(auth)/reset-password/page.tsx": {
+      "filePath": "frontend/src/app/(auth)/reset-password/page.tsx",
+      "contentHash": "d792abf166f8da169018cfcc2ef8790e52b2f7375da5a460d7edc78fbbd6bea7",
+      "functions": [
+        {
+          "name": "ResetPasswordPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 134
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useMemo",
+            "useState"
+          ]
+        },
+        {
+          "source": "next/link",
+          "specifiers": [
+            "Link"
+          ]
+        },
+        {
+          "source": "next/navigation",
+          "specifiers": [
+            "useRouter",
+            "useSearchParams"
+          ]
+        },
+        {
+          "source": "@/components/auth/AuthShell",
+          "specifiers": [
+            "AuthShell"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "authApi",
+            "toApiError"
+          ]
+        }
+      ],
+      "exports": [
+        "ResetPasswordPage"
+      ],
+      "totalLines": 144,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/(auth)/reset-password/placeholder.txt": {
+      "filePath": "frontend/src/app/(auth)/reset-password/placeholder.txt",
+      "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1,
+      "hasStructuralAnalysis": false
+    },
+    "frontend/src/app/admin/analytics/page.tsx": {
+      "filePath": "frontend/src/app/admin/analytics/page.tsx",
+      "contentHash": "2d06bfcdd22bf5b53ef9891aa1533313c9a4f01d8260f9e2d876831d7ad2d444",
+      "functions": [
+        {
+          "name": "AdminAnalyticsPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 253
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "next/link",
+          "specifiers": [
+            "Link"
+          ]
+        }
+      ],
+      "exports": [
+        "AdminAnalyticsPage"
+      ],
+      "totalLines": 320,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/admin/moderation/page.tsx": {
+      "filePath": "frontend/src/app/admin/moderation/page.tsx",
+      "contentHash": "79e86f58b98e3150629cb328df3d174254a2864c3f114392a0e579fa9bfec83b",
+      "functions": [
+        {
+          "name": "AdminModerationPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 265
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "next/link",
+          "specifiers": [
+            "Link"
+          ]
+        }
+      ],
+      "exports": [
+        "AdminModerationPage"
+      ],
+      "totalLines": 308,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/api/image-proxy/route.ts": {
+      "filePath": "frontend/src/app/api/image-proxy/route.ts",
+      "contentHash": "5fccd6d0f0b272bd527fc3f26d7a5b4b198d3539dbe9bde88f872603d2dec49b",
+      "functions": [
+        {
+          "name": "POST",
+          "params": [
+            "request"
+          ],
+          "exported": true,
+          "lineCount": 105
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "next/server",
+          "specifiers": [
+            "NextResponse"
+          ]
+        }
+      ],
+      "exports": [
+        "POST"
+      ],
+      "totalLines": 121,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/demo/page.tsx": {
+      "filePath": "frontend/src/app/demo/page.tsx",
+      "contentHash": "6751e1a0895db3df048f696af07797630d64e7ee73ab885f85dbc872ca49bb80",
+      "functions": [
+        {
+          "name": "DemoPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "@/components/TextGenerationDemo",
+          "specifiers": [
+            "TextGenerationDemo"
+          ]
+        }
+      ],
+      "exports": [
+        "DemoPage"
+      ],
+      "totalLines": 10,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/gallery/page.tsx": {
+      "filePath": "frontend/src/app/gallery/page.tsx",
+      "contentHash": "c749400e4cad8b315975fc090bb99f61ea23ef0291e96c8e2a13fe5aa7f0e3ea",
+      "functions": [
+        {
+          "name": "GalleryPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 195
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "next/link",
+          "specifiers": [
+            "Link"
+          ]
+        }
+      ],
+      "exports": [
+        "GalleryPage"
+      ],
+      "totalLines": 255,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/layout.tsx": {
+      "filePath": "frontend/src/app/layout.tsx",
+      "contentHash": "c0cd12cd0b6b7093531cf779b1c18150fbb693a7f7f6e72737a839b81bf6c147",
+      "functions": [
+        {
+          "name": "RootLayout",
+          "params": [
+            "{\n  children,\n}"
+          ],
+          "exported": true,
+          "lineCount": 13
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "../styles/globals.css",
+          "specifiers": []
+        },
+        {
+          "source": "@/context/AuthContext",
+          "specifiers": [
+            "AuthProvider"
+          ]
+        }
+      ],
+      "exports": [
+        "RootLayout"
+      ],
+      "totalLines": 18,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/page.tsx": {
+      "filePath": "frontend/src/app/page.tsx",
+      "contentHash": "27e377eddf71d8ee540344a652b22c4a6e2d260b59d0b2a37062670c1a654d60",
+      "functions": [
+        {
+          "name": "LandingPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 197
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "next/link",
+          "specifiers": [
+            "Link"
+          ]
+        },
+        {
+          "source": "framer-motion",
+          "specifiers": [
+            "motion"
+          ]
+        },
+        {
+          "source": "lucide-react",
+          "specifiers": [
+            "ArrowRight",
+            "ChevronRight",
+            "LayoutIcon",
+            "PenTool",
+            "Play",
+            "Shield",
+            "Sparkles",
+            "Wand2",
+            "Zap"
+          ]
+        }
+      ],
+      "exports": [
+        "LandingPage"
+      ],
+      "totalLines": 214,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/pricing/page.tsx": {
+      "filePath": "frontend/src/app/pricing/page.tsx",
+      "contentHash": "657936c8880b8a09a951dc327d6394b4e031abf951b57741a8854ff2b45962a4",
+      "functions": [
+        {
+          "name": "PricingPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 166
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useEffect",
+            "useState"
+          ]
+        },
+        {
+          "source": "next/navigation",
+          "specifiers": [
+            "useRouter"
+          ]
+        }
+      ],
+      "exports": [
+        "PricingPage"
+      ],
+      "totalLines": 215,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/reset_password_tmp.tsx": {
+      "filePath": "frontend/src/app/reset_password_tmp.tsx",
+      "contentHash": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 2,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/settings/page.tsx": {
+      "filePath": "frontend/src/app/settings/page.tsx",
+      "contentHash": "6effbdf4221522d40315279f97f21891cda692c67b35e1b4bbae1044996bc0fc",
+      "functions": [
+        {
+          "name": "SettingsPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 113
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "@/components/StudioSidebar",
+          "specifiers": [
+            "StudioSidebar"
+          ]
+        },
+        {
+          "source": "@/components/StudioTopBar",
+          "specifiers": [
+            "StudioTopBar"
+          ]
+        }
+      ],
+      "exports": [
+        "SettingsPage"
+      ],
+      "totalLines": 131,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/studio/character-manager/page.tsx": {
+      "filePath": "frontend/src/app/studio/character-manager/page.tsx",
+      "contentHash": "6ced999fcb38aff422874096d8890b31e4aa2cb0e987132adc2e776eba9cf49d",
+      "functions": [
+        {
+          "name": "seedFrom",
+          "params": [
+            "id"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "tagFrom",
+          "params": [
+            "id"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "Avatar",
+          "params": [
+            "{ src, name, size = 'md' }"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "CharacterCard",
+          "params": [
+            "{ character, selected, locked, onSelect, onToggleLock }"
+          ],
+          "exported": false,
+          "lineCount": 42
+        },
+        {
+          "name": "DetailPanel",
+          "params": [
+            "{ character, onSaved, onDeleted, onBack }"
+          ],
+          "exported": false,
+          "lineCount": 199
+        },
+        {
+          "name": "StatsPanel",
+          "params": [
+            "{ characters, lockedIds, onLoadProject }"
+          ],
+          "exported": false,
+          "lineCount": 52
+        },
+        {
+          "name": "CharacterManagerPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 207
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useCallback",
+            "useEffect",
+            "useState"
+          ]
+        },
+        {
+          "source": "next/navigation",
+          "specifiers": [
+            "useRouter"
+          ]
+        },
+        {
+          "source": "@/components/StudioSidebar",
+          "specifiers": [
+            "StudioSidebar"
+          ]
+        },
+        {
+          "source": "@/components/StudioTopBar",
+          "specifiers": [
+            "StudioTopBar"
+          ]
+        },
+        {
+          "source": "@/components/CreateCharacterModal",
+          "specifiers": [
+            "CreateCharacterModal"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "projectsApi"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "CharacterSummary",
+            "CloudProjectListItem"
+          ]
+        }
+      ],
+      "exports": [
+        "CharacterManagerPage"
+      ],
+      "totalLines": 566,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/studio/character-setup/page.tsx": {
+      "filePath": "frontend/src/app/studio/character-setup/page.tsx",
+      "contentHash": "ad161c5b5cc0d898692589af99f73f03a9cc3832aea422b923caf3902dc03520",
+      "functions": [
+        {
+          "name": "CharacterSetupPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 138
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "next/link",
+          "specifiers": [
+            "Link"
+          ]
+        },
+        {
+          "source": "@/components/StudioSidebar",
+          "specifiers": [
+            "StudioSidebar"
+          ]
+        },
+        {
+          "source": "@/components/StudioTopBar",
+          "specifiers": [
+            "StudioTopBar"
+          ]
+        }
+      ],
+      "exports": [
+        "CharacterSetupPage"
+      ],
+      "totalLines": 157,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/studio/dashboard/page.tsx": {
+      "filePath": "frontend/src/app/studio/dashboard/page.tsx",
+      "contentHash": "90c593af5f5a139f425bf0c8e0477e23494874b6fa99124358222cad4b7e4b46",
+      "functions": [
+        {
+          "name": "gradientFor",
+          "params": [
+            "id"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "timeAgo",
+          "params": [
+            "iso"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "StepBadge",
+          "params": [
+            "{ label, active }"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "ProjectCardSkeleton",
+          "params": [],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "CharacterSkeleton",
+          "params": [],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "EmptyProjects",
+          "params": [],
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "EmptyCharacters",
+          "params": [],
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "StudioDashboardPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 181
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useEffect",
+            "useState"
+          ]
+        },
+        {
+          "source": "next/navigation",
+          "specifiers": [
+            "useRouter"
+          ]
+        },
+        {
+          "source": "@/components/StudioSidebar",
+          "specifiers": [
+            "StudioSidebar"
+          ]
+        },
+        {
+          "source": "@/components/StudioTopBar",
+          "specifiers": [
+            "StudioTopBar"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "projectsApi"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "CloudProjectListItem",
+            "CharacterSummary"
+          ]
+        }
+      ],
+      "exports": [
+        "StudioDashboardPage"
+      ],
+      "totalLines": 277,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/studio/editor/page.tsx": {
+      "filePath": "frontend/src/app/studio/editor/page.tsx",
+      "contentHash": "94aab4cb0fded22c2f57cf544b5fac6eab1f83e211c9caf7e21af4e28d28ce4d",
+      "functions": [
+        {
+          "name": "ComicEditorPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 150
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "next/link",
+          "specifiers": [
+            "Link"
+          ]
+        },
+        {
+          "source": "@/components/StudioSidebar",
+          "specifiers": [
+            "StudioSidebar"
+          ]
+        },
+        {
+          "source": "@/components/StudioTopBar",
+          "specifiers": [
+            "StudioTopBar"
+          ]
+        }
+      ],
+      "exports": [
+        "ComicEditorPage"
+      ],
+      "totalLines": 179,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/studio/export/page.tsx": {
+      "filePath": "frontend/src/app/studio/export/page.tsx",
+      "contentHash": "8352d0be3487ce7a39459119b3ec7406dbd497971679286e88470efd6a10361b",
+      "functions": [
+        {
+          "name": "ExportPublishPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 153
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "@/components/StudioSidebar",
+          "specifiers": [
+            "StudioSidebar"
+          ]
+        },
+        {
+          "source": "@/components/StudioTopBar",
+          "specifiers": [
+            "StudioTopBar"
+          ]
+        }
+      ],
+      "exports": [
+        "ExportPublishPage"
+      ],
+      "totalLines": 179,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/studio/layout-engine/page.tsx": {
+      "filePath": "frontend/src/app/studio/layout-engine/page.tsx",
+      "contentHash": "987de42f6623f809ee9db17852faefff9f7fa8929210f6329ac0f3fe70a7bcd2",
+      "functions": [
+        {
+          "name": "LayoutEnginePage",
+          "params": [],
+          "exported": true,
+          "lineCount": 62
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "@/components/StudioSidebar",
+          "specifiers": [
+            "StudioSidebar"
+          ]
+        },
+        {
+          "source": "@/components/StudioTopBar",
+          "specifiers": [
+            "StudioTopBar"
+          ]
+        }
+      ],
+      "exports": [
+        "LayoutEnginePage"
+      ],
+      "totalLines": 65,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/studio/page.tsx": {
+      "filePath": "frontend/src/app/studio/page.tsx",
+      "contentHash": "2e6d52ff0e3f196e5cb9a502f079e6dc4414b731ec5e1625f2c80a7fc9ef9e51",
+      "functions": [
+        {
+          "name": "StudioPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "@/components/TextToComicGenerator",
+          "specifiers": [
+            "TextToComicGenerator"
+          ]
+        }
+      ],
+      "exports": [
+        "StudioPage"
+      ],
+      "totalLines": 7,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/app/studio/story-setup/page.tsx": {
+      "filePath": "frontend/src/app/studio/story-setup/page.tsx",
+      "contentHash": "4955ce5adc2a40dd55d797d9f4217e1ec1c879797e56acc8eb119ce7a8b0a5ae",
+      "functions": [
+        {
+          "name": "StorySetupPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 142
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "next/link",
+          "specifiers": [
+            "Link"
+          ]
+        },
+        {
+          "source": "@/components/StudioSidebar",
+          "specifiers": [
+            "StudioSidebar"
+          ]
+        },
+        {
+          "source": "@/components/StudioTopBar",
+          "specifiers": [
+            "StudioTopBar"
+          ]
+        }
+      ],
+      "exports": [
+        "StorySetupPage"
+      ],
+      "totalLines": 154,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/.gitkeep": {
+      "filePath": "frontend/src/components/.gitkeep",
+      "contentHash": "4d09d94c24ee68b768d317fb8ff350db8c6240b487b56f1a300408ac18402720",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 3,
+      "hasStructuralAnalysis": false
+    },
+    "frontend/src/components/auth/AuthShell.tsx": {
+      "filePath": "frontend/src/components/auth/AuthShell.tsx",
+      "contentHash": "5db70bf0ab41527d650c143e1f99e08a6bac3edff1a2761b803e2cb9fd2fb4c9",
+      "functions": [
+        {
+          "name": "AuthShell",
+          "params": [
+            "{ title, subtitle, children, footer, aside }"
+          ],
+          "exported": true,
+          "lineCount": 37
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "next/link",
+          "specifiers": [
+            "Link"
+          ]
+        },
+        {
+          "source": "react",
+          "specifiers": [
+            "ReactNode"
+          ]
+        },
+        {
+          "source": "lucide-react",
+          "specifiers": [
+            "Sparkles"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthShell"
+      ],
+      "totalLines": 50,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/CharacterLibraryModal.tsx": {
+      "filePath": "frontend/src/components/CharacterLibraryModal.tsx",
+      "contentHash": "8023f6225db703ce287388f1675b813e50caf3ccc019e613d6fb13e548f627ce",
+      "functions": [
+        {
+          "name": "CharacterCard",
+          "params": [
+            "{\n  char,\n  state,\n  onToggle,\n}"
+          ],
+          "exported": false,
+          "lineCount": 64
+        },
+        {
+          "name": "CharacterLibraryModal",
+          "params": [
+            "{ isOpen, onClose, existingIds, onConfirm }"
+          ],
+          "exported": true,
+          "lineCount": 171
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useEffect",
+            "useMemo",
+            "useState"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "projectsApi"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "CharacterSummary"
+          ]
+        }
+      ],
+      "exports": [
+        "CharacterLibraryModal"
+      ],
+      "totalLines": 251,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/CreateCharacterModal.tsx": {
+      "filePath": "frontend/src/components/CreateCharacterModal.tsx",
+      "contentHash": "4a1ab6b9cf6cbec047e7d11752ad7001be076516780bf17432bcb253d753b842",
+      "functions": [
+        {
+          "name": "readFileAsDataUrl",
+          "params": [
+            "file"
+          ],
+          "returnType": "Promise<string>",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "callImageProxy",
+          "params": [
+            "apiUrl",
+            "prompt"
+          ],
+          "returnType": "Promise<string>",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "Chips",
+          "params": [
+            "{ options, value, onChange }"
+          ],
+          "exported": false,
+          "lineCount": 19
+        },
+        {
+          "name": "PreviewPane",
+          "params": [
+            "{ imageUrl, name, generating }"
+          ],
+          "exported": false,
+          "lineCount": 25
+        },
+        {
+          "name": "FromImagePanel",
+          "params": [
+            "{ onImageReady }"
+          ],
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "DescribePanel",
+          "params": [
+            "{ style, onStyleChange, description, onDescriptionChange }"
+          ],
+          "exported": false,
+          "lineCount": 22
+        },
+        {
+          "name": "BuildPanel",
+          "params": [
+            "{ vibe, onVibe, gender, onGender, ethnicity, onEthnicity, age, onAge, build, onBuild, extra, onExtra }"
+          ],
+          "exported": false,
+          "lineCount": 28
+        },
+        {
+          "name": "CreateCharacterModal",
+          "params": [
+            "{ isOpen, onClose, onCreated, projects = [], defaultProjectId }"
+          ],
+          "exported": true,
+          "lineCount": 243
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useCallback",
+            "useEffect",
+            "useRef",
+            "useState"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "projectsApi"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "CharacterSummary",
+            "CloudProjectListItem"
+          ]
+        }
+      ],
+      "exports": [
+        "CreateCharacterModal"
+      ],
+      "totalLines": 456,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/ProjectsDrawer.tsx": {
+      "filePath": "frontend/src/components/ProjectsDrawer.tsx",
+      "contentHash": "ff31ff9a7aacdd58812db0dd558e35326f8ffcb69d25b1610763520bf837bd3d",
+      "functions": [
+        {
+          "name": "StepBadge",
+          "params": [
+            "{ label, active }"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "formatDate",
+          "params": [
+            "iso"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "ProjectsDrawer",
+          "params": [
+            "{ isOpen, onClose }"
+          ],
+          "exported": true,
+          "lineCount": 168
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React",
+            "useCallback",
+            "useEffect",
+            "useState"
+          ]
+        },
+        {
+          "source": "@/context/ComicGenerationContext",
+          "specifiers": [
+            "useComicGeneration"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "CloudProjectListItem"
+          ]
+        }
+      ],
+      "exports": [
+        "ProjectsDrawer"
+      ],
+      "totalLines": 198,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/story-setup/CharacterWordCounter.tsx": {
+      "filePath": "frontend/src/components/story-setup/CharacterWordCounter.tsx",
+      "contentHash": "02199fc46f6cd23d05c349a23772217e659ab2b05be9c88f1798b6f7129aa3b0",
+      "functions": [
+        {
+          "name": "CharacterWordCounter",
+          "params": [
+            "{ value, maxLength, minLength = 0 }"
+          ],
+          "exported": true,
+          "lineCount": 20
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React",
+            "useMemo"
+          ]
+        }
+      ],
+      "exports": [
+        "CharacterWordCounter"
+      ],
+      "totalLines": 30,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/story-setup/EnhancedTextarea.tsx": {
+      "filePath": "frontend/src/components/story-setup/EnhancedTextarea.tsx",
+      "contentHash": "6caa702801bf5bb7fe0890f0d515c351e24695e4a82d851c09391af7fb3a44dd",
+      "functions": [
+        {
+          "name": "EnhancedTextarea",
+          "params": [
+            "{\n                                           id,\n                                           label,\n                                           value,\n                                           onChange,\n                                           maxLength = 10000,\n                                           minLength = 100,\n                                           placeholder,\n                                           autosave = true,\n                                           autoExpand = true,\n                                           helperText,\n                                           tooltip,\n                                           saveKey,\n                                         }"
+          ],
+          "exported": true,
+          "lineCount": 301
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React",
+            "useCallback",
+            "useEffect",
+            "useMemo",
+            "useRef",
+            "useState"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/CharacterWordCounter",
+          "specifiers": [
+            "CharacterWordCounter"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/ErrorMessage",
+          "specifiers": [
+            "ErrorMessage"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/HelperText",
+          "specifiers": [
+            "HelperText"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/SaveIndicator",
+          "specifiers": [
+            "SaveIndicator"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/Tooltip",
+          "specifiers": [
+            "Tooltip"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/types",
+          "specifiers": [
+            "TextareaProps"
+          ]
+        },
+        {
+          "source": "@/hooks/useAutosave",
+          "specifiers": [
+            "useAutosave"
+          ]
+        },
+        {
+          "source": "@/hooks/useDraftRecovery",
+          "specifiers": [
+            "useDraftRecovery"
+          ]
+        }
+      ],
+      "exports": [
+        "EnhancedTextarea"
+      ],
+      "totalLines": 326,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/story-setup/ErrorMessage.tsx": {
+      "filePath": "frontend/src/components/story-setup/ErrorMessage.tsx",
+      "contentHash": "2bb222d4ceef456b7429c4b30b0c774928833020eebae95dcb08329f2784414d",
+      "functions": [
+        {
+          "name": "ErrorMessage",
+          "params": [
+            "{ id, message }"
+          ],
+          "exported": true,
+          "lineCount": 9
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React"
+          ]
+        }
+      ],
+      "exports": [
+        "ErrorMessage"
+      ],
+      "totalLines": 18,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/story-setup/FileUploadZone.tsx": {
+      "filePath": "frontend/src/components/story-setup/FileUploadZone.tsx",
+      "contentHash": "41277a6eddb2c9137a215158efad8358bc77f961e465f15f29a5a3a67b71c2fa",
+      "functions": [
+        {
+          "name": "formatPercent",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 1
+        },
+        {
+          "name": "FileUploadZone",
+          "params": [
+            "{ file, storyText, disabled, onFileReady, onFileCleared }"
+          ],
+          "exported": true,
+          "lineCount": 160
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/types",
+          "specifiers": [
+            "UploadState"
+          ]
+        },
+        {
+          "source": "@/hooks/useFileUpload",
+          "specifiers": [
+            "useFileUpload"
+          ]
+        }
+      ],
+      "exports": [
+        "FileUploadZone"
+      ],
+      "totalLines": 175,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/story-setup/FormField.tsx": {
+      "filePath": "frontend/src/components/story-setup/FormField.tsx",
+      "contentHash": "d8c5f320c8304b50028b12f4cf8c8728f54718a1b8b8fd30786574d841578d36",
+      "functions": [
+        {
+          "name": "FormField",
+          "params": [
+            "{\n  id,\n  label,\n  required,\n  optionalTag,\n  tooltip,\n  helperText,\n  error,\n  success,\n  warning,\n  children,\n}"
+          ],
+          "exported": true,
+          "lineCount": 37
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/ErrorMessage",
+          "specifiers": [
+            "ErrorMessage"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/HelperText",
+          "specifiers": [
+            "HelperText"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/Tooltip",
+          "specifiers": [
+            "Tooltip"
+          ]
+        }
+      ],
+      "exports": [
+        "FormField"
+      ],
+      "totalLines": 57,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/story-setup/HelperText.tsx": {
+      "filePath": "frontend/src/components/story-setup/HelperText.tsx",
+      "contentHash": "e140729a31b7c758f9ea3ad17fa0c7cffc48206ee790da88ce16695ef078f158",
+      "functions": [
+        {
+          "name": "HelperText",
+          "params": [
+            "{ id, text, tone = 'muted' }"
+          ],
+          "exported": true,
+          "lineCount": 8
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React"
+          ]
+        }
+      ],
+      "exports": [
+        "HelperText"
+      ],
+      "totalLines": 18,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/story-setup/NumberInput.tsx": {
+      "filePath": "frontend/src/components/story-setup/NumberInput.tsx",
+      "contentHash": "4336861ae3e477f7178fd222f74a55670694e1853c8c6eab088e0d31df399553",
+      "functions": [
+        {
+          "name": "clamp",
+          "params": [
+            "value",
+            "min",
+            "max"
+          ],
+          "exported": false,
+          "lineCount": 1
+        },
+        {
+          "name": "NumberInput",
+          "params": [
+            "{\n  id,\n  label,\n  value,\n  min,\n  max,\n  step = 1,\n  required,\n  helperText,\n  tooltip,\n  error,\n  success,\n  disabled,\n  onChange,\n  onBlur,\n}"
+          ],
+          "exported": true,
+          "lineCount": 102
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React",
+            "useMemo"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/FormField",
+          "specifiers": [
+            "FormField"
+          ]
+        }
+      ],
+      "exports": [
+        "NumberInput"
+      ],
+      "totalLines": 126,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/story-setup/PresetButtons.tsx": {
+      "filePath": "frontend/src/components/story-setup/PresetButtons.tsx",
+      "contentHash": "323c7bd194a333925c68bc771aa2379b28c016cc5d71eaed8791aee9ddf91e50",
+      "functions": [
+        {
+          "name": "PresetButtons",
+          "params": [
+            "{ presets, onSelect }"
+          ],
+          "exported": true,
+          "lineCount": 16
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React"
+          ]
+        }
+      ],
+      "exports": [
+        "PresetButtons"
+      ],
+      "totalLines": 30,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/story-setup/README.md": {
+      "filePath": "frontend/src/components/story-setup/README.md",
+      "contentHash": "e6034da921d96a093a9929a714b873a436836b07a7b3ee3b34665f95896e28f0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 31,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/story-setup/SaveIndicator.tsx": {
+      "filePath": "frontend/src/components/story-setup/SaveIndicator.tsx",
+      "contentHash": "78f1dbb15440fdb0a9bc10a721a1cd82a27c15a0018adde44d7b7ecde87c69dd",
+      "functions": [
+        {
+          "name": "SaveIndicator",
+          "params": [
+            "{ status, isOffline }"
+          ],
+          "exported": true,
+          "lineCount": 35
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/types",
+          "specifiers": [
+            "SaveStatus"
+          ]
+        }
+      ],
+      "exports": [
+        "SaveIndicator"
+      ],
+      "totalLines": 45,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/story-setup/Step1.tsx": {
+      "filePath": "frontend/src/components/story-setup/Step1.tsx",
+      "contentHash": "c06f0a34c1670a1b2ea4f403a014e03a3a20943294024b6a37f47f03b9e136c4",
+      "functions": [
+        {
+          "name": "validateProjectId",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "validateRange",
+          "params": [
+            "value",
+            "min",
+            "max",
+            "message"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "Step1",
+          "params": [],
+          "exported": true,
+          "lineCount": 647
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React",
+            "useEffect",
+            "useMemo",
+            "useRef",
+            "useState"
+          ]
+        },
+        {
+          "source": "@/context/ComicGenerationContext",
+          "specifiers": [
+            "useComicGeneration"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/ErrorMessage",
+          "specifiers": [
+            "ErrorMessage"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/FileUploadZone",
+          "specifiers": [
+            "FileUploadZone"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/FormField",
+          "specifiers": [
+            "FormField"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/EnhancedTextarea",
+          "specifiers": [
+            "EnhancedTextarea"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/NumberInput",
+          "specifiers": [
+            "NumberInput"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/PresetButtons",
+          "specifiers": [
+            "PresetButtons"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/Tooltip",
+          "specifiers": [
+            "Tooltip"
+          ]
+        },
+        {
+          "source": "@/components/ProjectsDrawer",
+          "specifiers": [
+            "ProjectsDrawer"
+          ]
+        },
+        {
+          "source": "@/hooks/useFormValidation",
+          "specifiers": [
+            "useFormValidation"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/types",
+          "specifiers": [
+            "FieldConfig",
+            "FormData"
+          ]
+        }
+      ],
+      "exports": [
+        "Step1"
+      ],
+      "totalLines": 682,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/story-setup/Tooltip.tsx": {
+      "filePath": "frontend/src/components/story-setup/Tooltip.tsx",
+      "contentHash": "ada5545eee8e9dc81d6a475722e6564a68de6c11fc73a776bb2efd831545ba00",
+      "functions": [
+        {
+          "name": "Tooltip",
+          "params": [
+            "{ content, ariaLabel }"
+          ],
+          "exported": true,
+          "lineCount": 20
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React"
+          ]
+        }
+      ],
+      "exports": [
+        "Tooltip"
+      ],
+      "totalLines": 29,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/story-setup/types.ts": {
+      "filePath": "frontend/src/components/story-setup/types.ts",
+      "contentHash": "2106f3a3118aadd06887ea8b9a0cd464b980f96d7dfa0a8ead661d5243b22121",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 56,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/studio-steps/CharacterModePanel.tsx": {
+      "filePath": "frontend/src/components/studio-steps/CharacterModePanel.tsx",
+      "contentHash": "d547c2c2a334911ccd44be15f3503cdbc2025ead6729f43b111eb0210feb3234",
+      "functions": [
+        {
+          "name": "readFileAsBase64",
+          "params": [
+            "file"
+          ],
+          "returnType": "Promise<string>",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "CharacterModePanel",
+          "params": [
+            "{ disabled, value, onChange }"
+          ],
+          "exported": true,
+          "lineCount": 130
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React",
+            "useState"
+          ]
+        },
+        {
+          "source": "@/context/ComicGenerationContext",
+          "specifiers": [
+            "ImageGenMode",
+            "ImageGenSettings"
+          ]
+        }
+      ],
+      "exports": [
+        "CharacterModePanel",
+        "DEFAULT_SETTINGS",
+        "CharacterModePanelProps"
+      ],
+      "totalLines": 168,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/studio-steps/ImageGenModePanel.tsx": {
+      "filePath": "frontend/src/components/studio-steps/ImageGenModePanel.tsx",
+      "contentHash": "e685d19220781685015570049706da6f9568c02aedff3e21e784be34e2daaa9d",
+      "functions": [
+        {
+          "name": "readFileAsBase64",
+          "params": [
+            "file"
+          ],
+          "returnType": "Promise<string>",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "ImageGenModePanel",
+          "params": [
+            "{ disabled }"
+          ],
+          "exported": true,
+          "lineCount": 152
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React",
+            "useState"
+          ]
+        },
+        {
+          "source": "@/context/ComicGenerationContext",
+          "specifiers": [
+            "useComicGeneration"
+          ]
+        },
+        {
+          "source": "@/context/ComicGenerationContext",
+          "specifiers": [
+            "ImageGenMode"
+          ]
+        }
+      ],
+      "exports": [
+        "ImageGenModePanel"
+      ],
+      "totalLines": 174,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/studio-steps/Step0Setup.tsx": {
+      "filePath": "frontend/src/components/studio-steps/Step0Setup.tsx",
+      "contentHash": "557a20fd3519dbad09250f9ae5197f3869db4024c8222503129adaf28c06f8f2",
+      "functions": [
+        {
+          "name": "Step0Setup",
+          "params": [],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/Step1",
+          "specifiers": [
+            "Step1"
+          ]
+        }
+      ],
+      "exports": [
+        "Step0Setup"
+      ],
+      "totalLines": 9,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/studio-steps/Step1Analysis.tsx": {
+      "filePath": "frontend/src/components/studio-steps/Step1Analysis.tsx",
+      "contentHash": "739538ed0fd126a38a747bb26aa0cf159f8b9d8d9dd18335478c56a5a9d04361",
+      "functions": [
+        {
+          "name": "Step1Analysis",
+          "params": [],
+          "exported": true,
+          "lineCount": 125
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React"
+          ]
+        },
+        {
+          "source": "@/context/ComicGenerationContext",
+          "specifiers": [
+            "useComicGeneration"
+          ]
+        }
+      ],
+      "exports": [
+        "Step1Analysis"
+      ],
+      "totalLines": 131,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/studio-steps/Step2Characters.tsx": {
+      "filePath": "frontend/src/components/studio-steps/Step2Characters.tsx",
+      "contentHash": "5be45df067e0ed4bb1dcd761bb2d061dd2253873f11caae3d835d94aca30060b",
+      "functions": [
+        {
+          "name": "Step2Characters",
+          "params": [],
+          "exported": true,
+          "lineCount": 292
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React",
+            "useState"
+          ]
+        },
+        {
+          "source": "next/image",
+          "specifiers": [
+            "Image"
+          ]
+        },
+        {
+          "source": "@/context/ComicGenerationContext",
+          "specifiers": [
+            "useComicGeneration"
+          ]
+        },
+        {
+          "source": "@/context/ComicGenerationContext",
+          "specifiers": [
+            "ImageGenSettings"
+          ]
+        },
+        {
+          "source": "@/components/studio-steps/CharacterModePanel",
+          "specifiers": [
+            "CharacterModePanel",
+            "DEFAULT_SETTINGS"
+          ]
+        },
+        {
+          "source": "@/components/CharacterLibraryModal",
+          "specifiers": [
+            "CharacterLibraryModal"
+          ]
+        }
+      ],
+      "exports": [
+        "Step2Characters"
+      ],
+      "totalLines": 302,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/studio-steps/Step3Script.tsx": {
+      "filePath": "frontend/src/components/studio-steps/Step3Script.tsx",
+      "contentHash": "f96b535e55c27947166b81aa57af323ad5f36cb6f5b263512ad9d8ade9cca265",
+      "functions": [
+        {
+          "name": "Step3Script",
+          "params": [],
+          "exported": true,
+          "lineCount": 97
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React"
+          ]
+        },
+        {
+          "source": "@/context/ComicGenerationContext",
+          "specifiers": [
+            "useComicGeneration"
+          ]
+        }
+      ],
+      "exports": [
+        "Step3Script"
+      ],
+      "totalLines": 103,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/studio-steps/Step4Generation.tsx": {
+      "filePath": "frontend/src/components/studio-steps/Step4Generation.tsx",
+      "contentHash": "997b961e5e1cd0f810591c54d0649522f0e6a3d9a2cd7085118848e5b17fd4c7",
+      "functions": [
+        {
+          "name": "Step4Generation",
+          "params": [],
+          "exported": true,
+          "lineCount": 238
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React",
+            "useState"
+          ]
+        },
+        {
+          "source": "next/image",
+          "specifiers": [
+            "Image"
+          ]
+        },
+        {
+          "source": "@/context/ComicGenerationContext",
+          "specifiers": [
+            "useComicGeneration"
+          ]
+        },
+        {
+          "source": "@/components/studio-steps/ImageGenModePanel",
+          "specifiers": [
+            "ImageGenModePanel"
+          ]
+        },
+        {
+          "source": "@/components/ProjectsDrawer",
+          "specifiers": [
+            "ProjectsDrawer"
+          ]
+        }
+      ],
+      "exports": [
+        "Step4Generation"
+      ],
+      "totalLines": 247,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/StudioSidebar.tsx": {
+      "filePath": "frontend/src/components/StudioSidebar.tsx",
+      "contentHash": "f4407b7a7b84fc80500e0f2fce939726e5e6f15273a14269cd5063147b32026f",
+      "functions": [
+        {
+          "name": "StudioSidebar",
+          "params": [],
+          "exported": true,
+          "lineCount": 109
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "next/link",
+          "specifiers": [
+            "Link"
+          ]
+        },
+        {
+          "source": "next/navigation",
+          "specifiers": [
+            "usePathname"
+          ]
+        },
+        {
+          "source": "react",
+          "specifiers": [
+            "useEffect",
+            "useState"
+          ]
+        }
+      ],
+      "exports": [
+        "StudioSidebar"
+      ],
+      "totalLines": 128,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/StudioTopBar.tsx": {
+      "filePath": "frontend/src/components/StudioTopBar.tsx",
+      "contentHash": "e3f50f9842e1ef4cfcff0c70c77a219b9b4d8ffb22e5e3d704c3f39a68fcdeeb",
+      "functions": [
+        {
+          "name": "StudioTopBar",
+          "params": [
+            "{ leftOffset = true }"
+          ],
+          "exported": true,
+          "lineCount": 36
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "next/link",
+          "specifiers": [
+            "Link"
+          ]
+        }
+      ],
+      "exports": [
+        "StudioTopBar"
+      ],
+      "totalLines": 44,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/TextGenerationDemo.tsx": {
+      "filePath": "frontend/src/components/TextGenerationDemo.tsx",
+      "contentHash": "92755380c632311789bae0a3f66b625495e6dd42a07dc75c597c1147bf9d218c",
+      "functions": [
+        {
+          "name": "TextGenerationDemo",
+          "params": [],
+          "exported": true,
+          "lineCount": 148
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useState"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "geminiApi"
+          ]
+        }
+      ],
+      "exports": [
+        "TextGenerationDemo"
+      ],
+      "totalLines": 154,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/components/TextToComicGenerator.tsx": {
+      "filePath": "frontend/src/components/TextToComicGenerator.tsx",
+      "contentHash": "00cc5e341ce4a56c08fd025ed515e07b66846cdc6a8e63afd93c88d311ceced0",
+      "functions": [
+        {
+          "name": "WizardContent",
+          "params": [],
+          "exported": false,
+          "lineCount": 127
+        },
+        {
+          "name": "TextToComicGenerator",
+          "params": [],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React"
+          ]
+        },
+        {
+          "source": "@/components/StudioSidebar",
+          "specifiers": [
+            "StudioSidebar"
+          ]
+        },
+        {
+          "source": "@/components/StudioTopBar",
+          "specifiers": [
+            "StudioTopBar"
+          ]
+        },
+        {
+          "source": "@/context/ComicGenerationContext",
+          "specifiers": [
+            "ComicGenerationProvider",
+            "StepKey",
+            "WizardStepKey",
+            "useComicGeneration"
+          ]
+        },
+        {
+          "source": "@/components/studio-steps/Step0Setup",
+          "specifiers": [
+            "Step0Setup"
+          ]
+        },
+        {
+          "source": "@/components/studio-steps/Step1Analysis",
+          "specifiers": [
+            "Step1Analysis"
+          ]
+        },
+        {
+          "source": "@/components/studio-steps/Step2Characters",
+          "specifiers": [
+            "Step2Characters"
+          ]
+        },
+        {
+          "source": "@/components/studio-steps/Step3Script",
+          "specifiers": [
+            "Step3Script"
+          ]
+        },
+        {
+          "source": "@/components/studio-steps/Step4Generation",
+          "specifiers": [
+            "Step4Generation"
+          ]
+        }
+      ],
+      "exports": [
+        "TextToComicGenerator"
+      ],
+      "totalLines": 156,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/context/AuthContext.tsx": {
+      "filePath": "frontend/src/context/AuthContext.tsx",
+      "contentHash": "f8d67393f68f56c5342a459c728f65a7683cdeacef60bbc04fca79cc67f0fd0c",
+      "functions": [
+        {
+          "name": "AuthProvider",
+          "params": [
+            "{ children }"
+          ],
+          "exported": true,
+          "lineCount": 51
+        },
+        {
+          "name": "useAuth",
+          "params": [],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "createContext",
+            "useCallback",
+            "useContext",
+            "useEffect",
+            "useMemo",
+            "useState"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "authApi"
+          ]
+        }
+      ],
+      "exports": [
+        "AuthProvider",
+        "useAuth"
+      ],
+      "totalLines": 85,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/context/ComicGenerationContext.tsx": {
+      "filePath": "frontend/src/context/ComicGenerationContext.tsx",
+      "contentHash": "6587dce43d0b2f172d7ffe4c4caed01c25b0f2ceb0f190aaa2bee60c3d4f7770",
+      "functions": [
+        {
+          "name": "toRecord",
+          "params": [
+            "value"
+          ],
+          "returnType": "Record<string, unknown>",
+          "exported": false,
+          "lineCount": 2
+        },
+        {
+          "name": "stripBase64",
+          "params": [
+            "obj"
+          ],
+          "returnType": "unknown",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "emptyStepState",
+          "params": [
+            "locked"
+          ],
+          "returnType": "StepState<T>",
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "sleep",
+          "params": [
+            "ms"
+          ],
+          "exported": false,
+          "lineCount": 1
+        },
+        {
+          "name": "fetchImageFromAI",
+          "params": [
+            "imagePrompt",
+            "localImageApiUrl",
+            "settings"
+          ],
+          "returnType": "Promise<string>",
+          "exported": false,
+          "lineCount": 82
+        },
+        {
+          "name": "parseStep3PanelsFromMarkdown",
+          "params": [
+            "markdown"
+          ],
+          "returnType": "Step4Panel[]",
+          "exported": false,
+          "lineCount": 94
+        },
+        {
+          "name": "buildComicPagePrompt",
+          "params": [
+            "panels",
+            "artStyle",
+            "mangaGenre",
+            "characterRefs"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "ComicGenerationProvider",
+          "params": [
+            "{ children }"
+          ],
+          "exported": true,
+          "lineCount": 1955
+        },
+        {
+          "name": "useComicGeneration",
+          "params": [],
+          "returnType": "ComicGenerationContextValue",
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "React",
+            "createContext",
+            "useCallback",
+            "useContext",
+            "useEffect",
+            "useMemo",
+            "useRef",
+            "useState"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "geminiApi",
+            "analyzeStoryStructuredStream",
+            "characterDesignsStructuredStream",
+            "panelScriptStructuredStream",
+            "projectsApi",
+            "toApiError"
+          ]
+        },
+        {
+          "source": "@/services/api",
+          "specifiers": [
+            "FullProjectSave",
+            "CloudProjectListItem",
+            "CharacterSummary"
+          ]
+        }
+      ],
+      "exports": [
+        "ComicGenerationProvider",
+        "useComicGeneration"
+      ],
+      "totalLines": 2435,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/hooks/useAutosave.ts": {
+      "filePath": "frontend/src/hooks/useAutosave.ts",
+      "contentHash": "98d3517338331387552cff20aa3715381af4257a59f6cbdd6ade8d58fccb6ef7",
+      "functions": [
+        {
+          "name": "useAutosave",
+          "params": [
+            "content",
+            "saveKey",
+            "interval"
+          ],
+          "exported": true,
+          "lineCount": 70
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useCallback",
+            "useEffect",
+            "useMemo",
+            "useRef",
+            "useState"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/types",
+          "specifiers": [
+            "SaveStatus"
+          ]
+        },
+        {
+          "source": "@/utils/draftStorage",
+          "specifiers": [
+            "saveDraft"
+          ]
+        }
+      ],
+      "exports": [
+        "useAutosave"
+      ],
+      "totalLines": 75,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/hooks/useDraftRecovery.ts": {
+      "filePath": "frontend/src/hooks/useDraftRecovery.ts",
+      "contentHash": "e2313437c47cd191ba012c892cbc9aaf72930637f643934b30371a02b515f80a",
+      "functions": [
+        {
+          "name": "useDraftRecovery",
+          "params": [
+            "saveKey",
+            "currentContent"
+          ],
+          "exported": true,
+          "lineCount": 30
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useCallback",
+            "useEffect",
+            "useState"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/types",
+          "specifiers": [
+            "DraftPayload"
+          ]
+        },
+        {
+          "source": "@/utils/draftStorage",
+          "specifiers": [
+            "clearDraft",
+            "loadDraft"
+          ]
+        }
+      ],
+      "exports": [
+        "useDraftRecovery"
+      ],
+      "totalLines": 36,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/hooks/useFileUpload.ts": {
+      "filePath": "frontend/src/hooks/useFileUpload.ts",
+      "contentHash": "3f18bb70f3d464f839feca550a737ff9f1e7008b9c8a309dd075263d974c2798",
+      "functions": [
+        {
+          "name": "useFileUpload",
+          "params": [
+            "{ currentText, existingFile, onContentReady, onFileCleared }"
+          ],
+          "exported": true,
+          "lineCount": 180
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useCallback",
+            "useEffect",
+            "useMemo",
+            "useRef",
+            "useState"
+          ]
+        },
+        {
+          "source": "react",
+          "specifiers": [
+            "DragEvent"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/types",
+          "specifiers": [
+            "UploadState"
+          ]
+        },
+        {
+          "source": "@/utils/fileValidation",
+          "specifiers": [
+            "fileValidationConfig",
+            "formatBytes",
+            "validateFile"
+          ]
+        }
+      ],
+      "exports": [
+        "useFileUpload"
+      ],
+      "totalLines": 193,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/hooks/useFormValidation.ts": {
+      "filePath": "frontend/src/hooks/useFormValidation.ts",
+      "contentHash": "370a6f2d7bfeda4ab79ad98e45bc614f202154fa922626b502987ff835701708",
+      "functions": [
+        {
+          "name": "isEmpty",
+          "params": [
+            "value"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "useFormValidation",
+          "params": [
+            "formData",
+            "fieldConfigs"
+          ],
+          "exported": true,
+          "lineCount": 92
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "useCallback",
+            "useMemo",
+            "useState"
+          ]
+        },
+        {
+          "source": "@/components/story-setup/types",
+          "specifiers": [
+            "FieldConfig",
+            "ValidationErrors"
+          ]
+        }
+      ],
+      "exports": [
+        "useFormValidation"
+      ],
+      "totalLines": 104,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/services/api.ts": {
+      "filePath": "frontend/src/services/api.ts",
+      "contentHash": "f7bf8c8a07b5196caa2291c89766fd14569c28eddf8a10e4601ae64ac1d50b59",
+      "functions": [
+        {
+          "name": "redactHeaders",
+          "params": [
+            "headers"
+          ],
+          "returnType": "unknown",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "fullUrl",
+          "params": [
+            "baseURL",
+            "url"
+          ],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "getOrCreateUserId",
+          "params": [],
+          "returnType": "string",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "toApiError",
+          "params": [
+            "error"
+          ],
+          "returnType": "ApiErrorInfo",
+          "exported": true,
+          "lineCount": 35
+        },
+        {
+          "name": "analyzeStoryStructuredStream",
+          "params": [
+            "payload",
+            "callbacks"
+          ],
+          "returnType": "AbortController",
+          "exported": true,
+          "lineCount": 100
+        },
+        {
+          "name": "_readSseStream",
+          "params": [
+            "url",
+            "body",
+            "onToken",
+            "onDone",
+            "onError",
+            "parseDone"
+          ],
+          "returnType": "AbortController",
+          "exported": false,
+          "lineCount": 70
+        },
+        {
+          "name": "characterDesignsStructuredStream",
+          "params": [
+            "payload",
+            "callbacks"
+          ],
+          "returnType": "AbortController",
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "panelScriptStructuredStream",
+          "params": [
+            "payload",
+            "callbacks"
+          ],
+          "returnType": "AbortController",
+          "exported": true,
+          "lineCount": 16
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "axios",
+          "specifiers": [
+            "axios"
+          ]
+        },
+        {
+          "source": "axios",
+          "specifiers": [
+            "AxiosRequestConfig"
+          ]
+        }
+      ],
+      "exports": [
+        "apiClient",
+        "toApiError",
+        "analyzeStoryStructuredStream",
+        "characterDesignsStructuredStream",
+        "panelScriptStructuredStream",
+        "geminiApi",
+        "comicApi",
+        "projectsApi",
+        "authApi"
+      ],
+      "totalLines": 894,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/styles/.gitkeep": {
+      "filePath": "frontend/src/styles/.gitkeep",
+      "contentHash": "281607a883de734d093ba31a7e30409cd4e7a687fdea7e17d4012a0b00dc45c0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 3,
+      "hasStructuralAnalysis": false
+    },
+    "frontend/src/styles/globals.css": {
+      "filePath": "frontend/src/styles/globals.css",
+      "contentHash": "f28e62967c3d2e2e3e011c4ed82536247c7bc2fb16c0eeff1936225b33987600",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 65,
+      "hasStructuralAnalysis": false
+    },
+    "frontend/src/utils/.gitkeep": {
+      "filePath": "frontend/src/utils/.gitkeep",
+      "contentHash": "f13055f89d3202cc0c44b72e2ad8136ee647cce3c8aed3684b5e77416882f5cf",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 3,
+      "hasStructuralAnalysis": false
+    },
+    "frontend/src/utils/draftStorage.ts": {
+      "filePath": "frontend/src/utils/draftStorage.ts",
+      "contentHash": "90441803c430cf3092979ee707e23d0aeab0306310d9220b32ea6c5dfdc353a2",
+      "functions": [
+        {
+          "name": "loadDraft",
+          "params": [
+            "key"
+          ],
+          "returnType": "DraftPayload | null",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "saveDraft",
+          "params": [
+            "key",
+            "content"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "clearDraft",
+          "params": [
+            "key"
+          ],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "@/components/story-setup/types",
+          "specifiers": [
+            "DraftPayload"
+          ]
+        }
+      ],
+      "exports": [
+        "loadDraft",
+        "saveDraft",
+        "clearDraft"
+      ],
+      "totalLines": 29,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/src/utils/fileValidation.ts": {
+      "filePath": "frontend/src/utils/fileValidation.ts",
+      "contentHash": "11b2312f143dab93dbf3108e9e63a1d0ffb0727041487cbffa0a1566be466e42",
+      "functions": [
+        {
+          "name": "getExtension",
+          "params": [
+            "fileName"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "formatBytes",
+          "params": [
+            "bytes"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "validateFile",
+          "params": [
+            "file"
+          ],
+          "returnType": "{ valid: boolean; error?: string }",
+          "exported": true,
+          "lineCount": 17
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [
+        "formatBytes",
+        "validateFile",
+        "fileValidationConfig"
+      ],
+      "totalLines": 41,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/tailwind.config.js": {
+      "filePath": "frontend/tailwind.config.js",
+      "contentHash": "059f10dde3701987464d29772bfee2a835585f49c4b72de1d0e6336558390e5b",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 32,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/TEXT_TO_COMIC_SETUP_GUIDE.md": {
+      "filePath": "frontend/TEXT_TO_COMIC_SETUP_GUIDE.md",
+      "contentHash": "de14ba16cf1336c029a0bde5ccf86739afb9c93ecc384d2edef17459765f89e2",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 235,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/tsconfig.json": {
+      "filePath": "frontend/tsconfig.json",
+      "contentHash": "49d4106d85ea7f838646b1fb20a5521ceed697f73fa89002c3e12e630d506b2c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 44,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/VERIFICATION_CHECKLIST.md": {
+      "filePath": "frontend/VERIFICATION_CHECKLIST.md",
+      "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1,
+      "hasStructuralAnalysis": true
+    },
+    "frontend/VISUAL_OVERVIEW.md": {
+      "filePath": "frontend/VISUAL_OVERVIEW.md",
+      "contentHash": "0a1cbb4cab078d6a704d513bb7edf39df0247b5da03fcd7279a36ab95b3addda",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 359,
+      "hasStructuralAnalysis": true
+    },
+    "GEMINI_ARCHITECTURE.md": {
+      "filePath": "GEMINI_ARCHITECTURE.md",
+      "contentHash": "4fd5d15405149b0e6eeb5a06174c32ca064e58ed22c1536547877546e1b1a73a",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 245,
+      "hasStructuralAnalysis": true
+    },
+    "GEMINI_INTEGRATION_INDEX.md": {
+      "filePath": "GEMINI_INTEGRATION_INDEX.md",
+      "contentHash": "ec049c0de27a4d4fa9e011b7a7b107a437a5b6074f908926a06dbb4b01c86633",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 374,
+      "hasStructuralAnalysis": true
+    },
+    "GEMINI_INTEGRATION_SUMMARY.md": {
+      "filePath": "GEMINI_INTEGRATION_SUMMARY.md",
+      "contentHash": "6151dc0ccd0da1b9d426d99210c38bfc328c38cf0557ac74d5d33d5dab96831f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 234,
+      "hasStructuralAnalysis": true
+    },
+    "GEMINI_QUICK_REFERENCE.md": {
+      "filePath": "GEMINI_QUICK_REFERENCE.md",
+      "contentHash": "49a98edd1eae2600c05777795bab0dd84bd41dc26285915421c3ff39af3cf185",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 139,
+      "hasStructuralAnalysis": true
+    },
+    "GEMINI_SETUP_GUIDE.md": {
+      "filePath": "GEMINI_SETUP_GUIDE.md",
+      "contentHash": "b7955dde99bbe7b6895bf436e5e8285cd21e082dbac0b8a30fd7af70c8de382c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 201,
+      "hasStructuralAnalysis": true
+    },
+    "IMPLEMENTATION_COMPLETE_FRONTEND.md": {
+      "filePath": "IMPLEMENTATION_COMPLETE_FRONTEND.md",
+      "contentHash": "40a3bfe8c70fb6286dcee40adb6dc439ebfbd38833c4a474b98f8972d157a780",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 319,
+      "hasStructuralAnalysis": true
+    },
+    "MONGODB_LOCAL_SETUP.md": {
+      "filePath": "MONGODB_LOCAL_SETUP.md",
+      "contentHash": "a46a6a13a3d8bf8085a8590fc80110df6d6694fad1bcd99b39208e0b58c13361",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 225,
+      "hasStructuralAnalysis": true
+    },
+    "PROJECT_COMPLETE.md": {
+      "filePath": "PROJECT_COMPLETE.md",
+      "contentHash": "9b46a8d646709d4a5d84355a62250b53fa86c50390199a535311b5b5c50a7a99",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 399,
+      "hasStructuralAnalysis": true
+    },
+    "PROJECT_STRUCTURE.md": {
+      "filePath": "PROJECT_STRUCTURE.md",
+      "contentHash": "55dcb67d8cacbd7e21c84f8158347ae04581a85820ed925835a15c98a7454663",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 94,
+      "hasStructuralAnalysis": true
+    },
+    "PROJECT_SUMMARY.md": {
+      "filePath": "PROJECT_SUMMARY.md",
+      "contentHash": "b6fd23cc3461f911cd9c3cfc6a1adeedc98a94b5e2d67911581a51bb38ba2a53",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 80,
+      "hasStructuralAnalysis": true
+    },
+    "QUICK_START_FRONTEND.md": {
+      "filePath": "QUICK_START_FRONTEND.md",
+      "contentHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 1,
+      "hasStructuralAnalysis": true
+    },
+    "QUICK_START.md": {
+      "filePath": "QUICK_START.md",
+      "contentHash": "9e955bd9c5f435f213073220f6f7586b040962ffee0f0be9d8b94321e6499d84",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 293,
+      "hasStructuralAnalysis": true
+    },
+    "README.md": {
+      "filePath": "README.md",
+      "contentHash": "e6539922d437b150a1ff5aa0ed77875eb03bfeafb94941db75ee641aa2c9b742",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 193,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/ai_comic_studio_dashboard/code.html": {
+      "filePath": "Reference/ai_comic_studio_dashboard/code.html",
+      "contentHash": "4c37b66ec4a63019837b904150556a223d81465847c9529749dd4cef0b74f316",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 322,
+      "hasStructuralAnalysis": false
+    },
+    "Reference/character_consistency_manager/code.html": {
+      "filePath": "Reference/character_consistency_manager/code.html",
+      "contentHash": "0807ab68705c98ec36303c432a3a98b26a426574db74effe7aa5220228019ada",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 329,
+      "hasStructuralAnalysis": false
+    },
+    "Reference/character_consistency_setup/code.html": {
+      "filePath": "Reference/character_consistency_setup/code.html",
+      "contentHash": "729e3a3a9c290e3a99a36d2730e9b9ad0eb94384fc1c61c8e166d0b6ebe0f082",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 281,
+      "hasStructuralAnalysis": false
+    },
+    "Reference/comic_editor_workspace/code.html": {
+      "filePath": "Reference/comic_editor_workspace/code.html",
+      "contentHash": "e5cfaa79ffd218c8e95e989fa1ddde0b05a8d59a55991668016467456d7be457",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 302,
+      "hasStructuralAnalysis": false
+    },
+    "Reference/export_publish/code.html": {
+      "filePath": "Reference/export_publish/code.html",
+      "contentHash": "455721c2e5a9c70ad0174d61bb9265c20e0bf68caeeca2b086393d819bb0d76b",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 259,
+      "hasStructuralAnalysis": false
+    },
+    "Reference/index.html": {
+      "filePath": "Reference/index.html",
+      "contentHash": "b5a1b4bb457eded1c68ffa133748651b475b26f62f55a4e4b8b9495e18e045d7",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 14,
+      "hasStructuralAnalysis": false
+    },
+    "Reference/layout_engine_control_widget/code.html": {
+      "filePath": "Reference/layout_engine_control_widget/code.html",
+      "contentHash": "f8c0801a9c08a397c4b276268b538d9b280ebb64d13603a0609d89d09d70213b",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 151,
+      "hasStructuralAnalysis": false
+    },
+    "Reference/metadata.json": {
+      "filePath": "Reference/metadata.json",
+      "contentHash": "5889c831e38cc4066462222278d26661e9a28f0bf40570e5be7a96d16cbe89bc",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 7,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/package.json": {
+      "filePath": "Reference/package.json",
+      "contentHash": "9e9bc7f89cbdb140cfb248896aa317d77df4922314f95bb3970d18e4a93d535c",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 39,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/README.md": {
+      "filePath": "Reference/README.md",
+      "contentHash": "d75572c0f19498a6b1bcad186079f5c61a59d8a424267352329b9f837b96f2c6",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 21,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/src/App.tsx": {
+      "filePath": "Reference/src/App.tsx",
+      "contentHash": "062e3dff78a30f587d70251ebbe2e88173767c4fdc38fc75c0a7c6ed20e3e866",
+      "functions": [
+        {
+          "name": "App",
+          "params": [],
+          "exported": true,
+          "lineCount": 24
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react-router-dom",
+          "specifiers": [
+            "BrowserRouter",
+            "Routes",
+            "Route",
+            "Navigate"
+          ]
+        },
+        {
+          "source": "./components/layout/MainLayout",
+          "specifiers": [
+            "MainLayout"
+          ]
+        },
+        {
+          "source": "./pages/Dashboard",
+          "specifiers": [
+            "Dashboard"
+          ]
+        },
+        {
+          "source": "./pages/CharacterManager",
+          "specifiers": [
+            "CharacterManager"
+          ]
+        },
+        {
+          "source": "./pages/CharacterTuning",
+          "specifiers": [
+            "CharacterTuning"
+          ]
+        },
+        {
+          "source": "./pages/StorySetup",
+          "specifiers": [
+            "StorySetup"
+          ]
+        },
+        {
+          "source": "./pages/EditorWorkspace",
+          "specifiers": [
+            "EditorWorkspace"
+          ]
+        },
+        {
+          "source": "./pages/ExportStudio",
+          "specifiers": [
+            "ExportStudio"
+          ]
+        },
+        {
+          "source": "./pages/LandingPage",
+          "specifiers": [
+            "LandingPage"
+          ]
+        }
+      ],
+      "exports": [
+        "App"
+      ],
+      "totalLines": 41,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/src/components/layout/MainLayout.tsx": {
+      "filePath": "Reference/src/components/layout/MainLayout.tsx",
+      "contentHash": "a03c640795184ec992b813cc7cf369da752e66666634b93e5cab47d55e58fcd4",
+      "functions": [
+        {
+          "name": "MainLayout",
+          "params": [],
+          "exported": true,
+          "lineCount": 11
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react-router-dom",
+          "specifiers": [
+            "Outlet"
+          ]
+        },
+        {
+          "source": "./SideNavBar",
+          "specifiers": [
+            "SideNavBar"
+          ]
+        },
+        {
+          "source": "./TopNavBar",
+          "specifiers": [
+            "TopNavBar"
+          ]
+        }
+      ],
+      "exports": [
+        "MainLayout"
+      ],
+      "totalLines": 16,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/src/components/layout/SideNavBar.tsx": {
+      "filePath": "Reference/src/components/layout/SideNavBar.tsx",
+      "contentHash": "45ffa147651df7ae4d051b6da39c4bda38062d74ea394c3d763378b17668f24d",
+      "functions": [
+        {
+          "name": "NavItem",
+          "params": [
+            "{ to, icon: Icon, label }"
+          ],
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "SideNavBar",
+          "params": [],
+          "exported": true,
+          "lineCount": 44
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "lucide-react",
+          "specifiers": [
+            "LucideIcon",
+            "Home",
+            "BookOpen",
+            "UserCircle",
+            "Settings",
+            "ChevronRight",
+            "HelpCircle",
+            "LogOut",
+            "Plus",
+            "Star",
+            "ShieldCheck"
+          ]
+        },
+        {
+          "source": "react-router-dom",
+          "specifiers": [
+            "NavLink"
+          ]
+        },
+        {
+          "source": "@/src/lib/utils",
+          "specifiers": [
+            "cn"
+          ]
+        },
+        {
+          "source": "framer-motion",
+          "specifiers": [
+            "motion"
+          ]
+        }
+      ],
+      "exports": [
+        "SideNavBar"
+      ],
+      "totalLines": 76,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/src/components/layout/TopNavBar.tsx": {
+      "filePath": "Reference/src/components/layout/TopNavBar.tsx",
+      "contentHash": "9521f7c4206bdda3be045ca9564c3f404bf3a5b68b76fb792ff2a67c13743c91",
+      "functions": [
+        {
+          "name": "TopNavBar",
+          "params": [],
+          "exported": true,
+          "lineCount": 36
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "lucide-react",
+          "specifiers": [
+            "Search",
+            "Bell",
+            "HelpCircle",
+            "Plus"
+          ]
+        },
+        {
+          "source": "framer-motion",
+          "specifiers": [
+            "motion"
+          ]
+        }
+      ],
+      "exports": [
+        "TopNavBar"
+      ],
+      "totalLines": 40,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/src/index.css": {
+      "filePath": "Reference/src/index.css",
+      "contentHash": "8af5e180c760912b10e05723a1f58ead45e3e8a9dee34ecded191fc6873da71e",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 52,
+      "hasStructuralAnalysis": false
+    },
+    "Reference/src/lib/utils.ts": {
+      "filePath": "Reference/src/lib/utils.ts",
+      "contentHash": "9304a861c8673bee09e0f12de31773abbde503b02e59dfd74763ddec2e37cf05",
+      "functions": [
+        {
+          "name": "cn",
+          "params": [
+            "...inputs"
+          ],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "clsx",
+          "specifiers": [
+            "clsx",
+            "ClassValue"
+          ]
+        },
+        {
+          "source": "tailwind-merge",
+          "specifiers": [
+            "twMerge"
+          ]
+        }
+      ],
+      "exports": [
+        "cn"
+      ],
+      "totalLines": 7,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/src/main.tsx": {
+      "filePath": "Reference/src/main.tsx",
+      "contentHash": "5580d48b0fec68698a113d45a640b88d479dc35eb1f4b87c51f67c6cc81cee9b",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "react",
+          "specifiers": [
+            "StrictMode"
+          ]
+        },
+        {
+          "source": "react-dom/client",
+          "specifiers": [
+            "createRoot"
+          ]
+        },
+        {
+          "source": "./App.tsx",
+          "specifiers": [
+            "App"
+          ]
+        },
+        {
+          "source": "./index.css",
+          "specifiers": []
+        }
+      ],
+      "exports": [],
+      "totalLines": 11,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/src/pages/CharacterManager.tsx": {
+      "filePath": "Reference/src/pages/CharacterManager.tsx",
+      "contentHash": "7ada59009514bb6a8206b9c60118710c595c3a2aa278622772905cffe504b99f",
+      "functions": [
+        {
+          "name": "CharacterManager",
+          "params": [],
+          "exported": true,
+          "lineCount": 155
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "framer-motion",
+          "specifiers": [
+            "motion"
+          ]
+        },
+        {
+          "source": "lucide-react",
+          "specifiers": [
+            "Edit2",
+            "Sparkles",
+            "Plus",
+            "MoreVertical",
+            "Lock",
+            "ShieldCheck",
+            "Brush",
+            "LayoutGrid",
+            "Eye"
+          ]
+        },
+        {
+          "source": "@/src/lib/utils",
+          "specifiers": [
+            "cn"
+          ]
+        },
+        {
+          "source": "react",
+          "specifiers": [
+            "useState"
+          ]
+        }
+      ],
+      "exports": [
+        "CharacterManager"
+      ],
+      "totalLines": 194,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/src/pages/CharacterTuning.tsx": {
+      "filePath": "Reference/src/pages/CharacterTuning.tsx",
+      "contentHash": "61b5700d662ddd009c79599a5127b757b97f27d8597469d2022272fc53c36ceb",
+      "functions": [
+        {
+          "name": "CharacterTuning",
+          "params": [],
+          "exported": true,
+          "lineCount": 120
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "framer-motion",
+          "specifiers": [
+            "motion",
+            "AnimatePresence"
+          ]
+        },
+        {
+          "source": "lucide-react",
+          "specifiers": [
+            "Sparkles",
+            "Dice5",
+            "Check",
+            "ChevronRight",
+            "Edit3",
+            "Wand2",
+            "Grid",
+            "ListIcon",
+            "Zap"
+          ]
+        },
+        {
+          "source": "react",
+          "specifiers": [
+            "useState"
+          ]
+        },
+        {
+          "source": "@/src/lib/utils",
+          "specifiers": [
+            "cn"
+          ]
+        }
+      ],
+      "exports": [
+        "CharacterTuning"
+      ],
+      "totalLines": 144,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/src/pages/Dashboard.tsx": {
+      "filePath": "Reference/src/pages/Dashboard.tsx",
+      "contentHash": "ecb5314a949b82fba3c43d5539eb854bc1a972549da9903684e0b68e85de53d4",
+      "functions": [
+        {
+          "name": "Dashboard",
+          "params": [],
+          "exported": true,
+          "lineCount": 143
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "framer-motion",
+          "specifiers": [
+            "motion"
+          ]
+        },
+        {
+          "source": "lucide-react",
+          "specifiers": [
+            "ChevronRight",
+            "Clock",
+            "MoreHorizontal",
+            "Play",
+            "Verified",
+            "Star",
+            "PlusCircle"
+          ]
+        },
+        {
+          "source": "@/src/lib/utils",
+          "specifiers": [
+            "cn"
+          ]
+        }
+      ],
+      "exports": [
+        "Dashboard"
+      ],
+      "totalLines": 207,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/src/pages/EditorWorkspace.tsx": {
+      "filePath": "Reference/src/pages/EditorWorkspace.tsx",
+      "contentHash": "52da2e035f2d09e695b00a5280539c84f35fc316b1e81ccc10bf1f1dc3db971d",
+      "functions": [
+        {
+          "name": "EditorWorkspace",
+          "params": [],
+          "exported": true,
+          "lineCount": 129
+        },
+        {
+          "name": "ToolbarButton",
+          "params": [
+            "{ icon: Icon, active, size = 20 }"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "ControlButton",
+          "params": [
+            "{ icon: Icon }"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "MorphOption",
+          "params": [
+            "{ label, active, rounded }"
+          ],
+          "exported": false,
+          "lineCount": 10
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "framer-motion",
+          "specifiers": [
+            "motion"
+          ]
+        },
+        {
+          "source": "lucide-react",
+          "specifiers": [
+            "Layers",
+            "MousePointer2",
+            "Type",
+            "Square",
+            "ImageIcon",
+            "Wand2",
+            "Download",
+            "Share2",
+            "ZoomIn",
+            "ZoomOut",
+            "Maximize2",
+            "Move",
+            "Undo2",
+            "Redo2",
+            "Palette",
+            "PenTool",
+            "LayoutIcon",
+            "Plus"
+          ]
+        },
+        {
+          "source": "react",
+          "specifiers": [
+            "useState"
+          ]
+        },
+        {
+          "source": "@/src/lib/utils",
+          "specifiers": [
+            "cn"
+          ]
+        }
+      ],
+      "exports": [
+        "EditorWorkspace"
+      ],
+      "totalLines": 165,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/src/pages/ExportStudio.tsx": {
+      "filePath": "Reference/src/pages/ExportStudio.tsx",
+      "contentHash": "a4836606ad8180e4e09ead77ac7d42e5f1e4a34cce031e1484360fddd649da34",
+      "functions": [
+        {
+          "name": "ExportStudio",
+          "params": [],
+          "exported": true,
+          "lineCount": 113
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "framer-motion",
+          "specifiers": [
+            "motion"
+          ]
+        },
+        {
+          "source": "lucide-react",
+          "specifiers": [
+            "Download",
+            "Share2",
+            "Eye",
+            "Printer",
+            "FileText",
+            "ImageIcon",
+            "Table",
+            "ChevronRight",
+            "CheckCircle2",
+            "ShieldCheck",
+            "Globe",
+            "Lock"
+          ]
+        },
+        {
+          "source": "@/src/lib/utils",
+          "specifiers": [
+            "cn"
+          ]
+        }
+      ],
+      "exports": [
+        "ExportStudio"
+      ],
+      "totalLines": 124,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/src/pages/LandingPage.tsx": {
+      "filePath": "Reference/src/pages/LandingPage.tsx",
+      "contentHash": "7ca898371de9a8a0c786195d4ef49a64cff26a9f0e4bf11d5108d483ddbbd75f",
+      "functions": [
+        {
+          "name": "LandingPage",
+          "params": [],
+          "exported": true,
+          "lineCount": 168
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "framer-motion",
+          "specifiers": [
+            "motion"
+          ]
+        },
+        {
+          "source": "lucide-react",
+          "specifiers": [
+            "Sparkles",
+            "ArrowRight",
+            "Zap",
+            "Shield",
+            "Play",
+            "ChevronRight",
+            "PenTool",
+            "LayoutIcon",
+            "Wand2"
+          ]
+        },
+        {
+          "source": "react-router-dom",
+          "specifiers": [
+            "NavLink"
+          ]
+        }
+      ],
+      "exports": [
+        "LandingPage"
+      ],
+      "totalLines": 173,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/src/pages/StorySetup.tsx": {
+      "filePath": "Reference/src/pages/StorySetup.tsx",
+      "contentHash": "2426e7609891ae69bee64f89ef9256935d10fef6b407ac085415664638378ca1",
+      "functions": [
+        {
+          "name": "StorySetup",
+          "params": [],
+          "exported": true,
+          "lineCount": 148
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "framer-motion",
+          "specifiers": [
+            "motion"
+          ]
+        },
+        {
+          "source": "lucide-react",
+          "specifiers": [
+            "Edit3",
+            "Wand2",
+            "Plus",
+            "Info",
+            "LayoutTemplate",
+            "Layers",
+            "MousePointer2",
+            "ChevronRight",
+            "Zap"
+          ]
+        },
+        {
+          "source": "react",
+          "specifiers": [
+            "useState"
+          ]
+        },
+        {
+          "source": "@/src/lib/utils",
+          "specifiers": [
+            "cn"
+          ]
+        }
+      ],
+      "exports": [
+        "StorySetup"
+      ],
+      "totalLines": 154,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/story_input_setup/code.html": {
+      "filePath": "Reference/story_input_setup/code.html",
+      "contentHash": "dfe2daada85182cbc60260e85db5951e0addd017d45deae7c6da83fcff4e63bf",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 251,
+      "hasStructuralAnalysis": false
+    },
+    "Reference/tsconfig.json": {
+      "filePath": "Reference/tsconfig.json",
+      "contentHash": "e93e15c3794e43a117964ea191ae985cbedea70c41d3d82b2e20aa8d07374fe4",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 27,
+      "hasStructuralAnalysis": true
+    },
+    "Reference/vite.config.ts": {
+      "filePath": "Reference/vite.config.ts",
+      "contentHash": "36dc668d5acdd80c4aeb3c40c95e311d8eba8512af283cb9344355caa8269f4c",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "@tailwindcss/vite",
+          "specifiers": [
+            "tailwindcss"
+          ]
+        },
+        {
+          "source": "@vitejs/plugin-react",
+          "specifiers": [
+            "react"
+          ]
+        },
+        {
+          "source": "path",
+          "specifiers": [
+            "path"
+          ]
+        },
+        {
+          "source": "vite",
+          "specifiers": [
+            "defineConfig",
+            "loadEnv"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 25,
+      "hasStructuralAnalysis": true
+    },
+    "SESSION_LOG.md": {
+      "filePath": "SESSION_LOG.md",
+      "contentHash": "d5cf442457aba92073e87c220333dfdb7b234bff5790dd0119e6dc11f4892f4b",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 171,
+      "hasStructuralAnalysis": true
+    },
+    "SETUP_SUMMARY_LOCAL_MONGODB.md": {
+      "filePath": "SETUP_SUMMARY_LOCAL_MONGODB.md",
+      "contentHash": "58834f5b73cfe0053555db29aee63056477914a58ed3e4283f6a47b002318b67",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 260,
+      "hasStructuralAnalysis": true
+    },
+    "SETUP_SUMMARY.md": {
+      "filePath": "SETUP_SUMMARY.md",
+      "contentHash": "e9e2c035ab2c9a20a5294b71dbbddd3eebafedc1a17b6f08ce29002513ff703e",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 166,
+      "hasStructuralAnalysis": true
+    },
+    "setup-gemini.bat": {
+      "filePath": "setup-gemini.bat",
+      "contentHash": "9fa5da79651373d804273d1ab9a6f61a69e3eccbc248b4aefb71ccf0e0e74c02",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 66,
+      "hasStructuralAnalysis": false
+    },
+    "setup-gemini.ps1": {
+      "filePath": "setup-gemini.ps1",
+      "contentHash": "b8d833750db58a454164b10fff53feb1c56b1d58386dc5ca1fe9c51cc56e30e0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 87,
+      "hasStructuralAnalysis": false
+    },
+    "START_GEMINI_HERE.md": {
+      "filePath": "START_GEMINI_HERE.md",
+      "contentHash": "7d338f3d9396b03c23d95f0257bcabaa7ffbd06550f42f0848cb99278ecf0bcb",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 303,
+      "hasStructuralAnalysis": true
+    },
+    "START_HERE.md": {
+      "filePath": "START_HERE.md",
+      "contentHash": "ca2f1ebb98b62405eb507e7b6c86bf5845dd45638bf475de9ae08199d234e28f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 354,
+      "hasStructuralAnalysis": true
+    },
+    "TEXT_GENERATION_STREAMING.md": {
+      "filePath": "TEXT_GENERATION_STREAMING.md",
+      "contentHash": "e912faaabbbea43df2bf986f2f493c5001b604b84356d1b2387a8b6f40ad0839",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 266,
+      "hasStructuralAnalysis": true
+    },
+    "VERIFICATION_CHECKLIST.md": {
+      "filePath": "VERIFICATION_CHECKLIST.md",
+      "contentHash": "c5d4453e74fdb0dad012f3b846534c2204aa876025d00fe0b92136a716dc28a2",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 308,
+      "hasStructuralAnalysis": true
+    }
+  }
+}

@@ -1,0 +1,1533 @@
+{
+  "name": "mOhiOm",
+  "description": "An AI-powered comic generation platform with a Next.js 14 frontend and FastAPI backend, enabling users to create comics from text inputs using Gemini AI for story analysis, character generation, and image synthesis.",
+  "languages": [
+    "batch",
+    "config",
+    "css",
+    "dockerfile",
+    "html",
+    "javascript",
+    "json",
+    "markdown",
+    "powershell",
+    "python",
+    "sql",
+    "txt",
+    "typescript",
+    "yaml"
+  ],
+  "frameworks": [
+    "Next.js",
+    "React",
+    "FastAPI",
+    "Tailwind CSS",
+    "Docker",
+    "Docker Compose",
+    "PyMongo",
+    "Pydantic",
+    "framer-motion"
+  ],
+  "files": [
+    {
+      "path": ".claude/settings.json",
+      "language": "json",
+      "sizeLines": 17,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".claude/skills/run-stack/SKILL.md",
+      "language": "markdown",
+      "sizeLines": 23,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".continue/agents/new-config.yaml",
+      "language": "yaml",
+      "sizeLines": 23,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".github/agents/My.agent.md",
+      "language": "markdown",
+      "sizeLines": 4,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".understand-anything/.understandignore",
+      "language": "unknown",
+      "sizeLines": 33,
+      "fileCategory": "code"
+    },
+    {
+      "path": "00_READ_ME_FIRST.md",
+      "language": "markdown",
+      "sizeLines": 282,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "backend/.env.example",
+      "language": "config",
+      "sizeLines": 10,
+      "fileCategory": "config"
+    },
+    {
+      "path": "backend/app/__init__.py",
+      "language": "python",
+      "sizeLines": 4,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/config.py",
+      "language": "python",
+      "sizeLines": 75,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/crud.py",
+      "language": "python",
+      "sizeLines": 167,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/database.py",
+      "language": "python",
+      "sizeLines": 34,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/emailer.py",
+      "language": "python",
+      "sizeLines": 34,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/lifespan.py",
+      "language": "python",
+      "sizeLines": 17,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/main.py",
+      "language": "python",
+      "sizeLines": 57,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/rate_limit.py",
+      "language": "python",
+      "sizeLines": 82,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/routers/__init__.py",
+      "language": "python",
+      "sizeLines": 5,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/routers/.gitkeep",
+      "language": "unknown",
+      "sizeLines": 2,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/routers/auth.py",
+      "language": "python",
+      "sizeLines": 375,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/routers/gemini.py",
+      "language": "python",
+      "sizeLines": 612,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/routers/items.py",
+      "language": "python",
+      "sizeLines": 59,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/routers/projects.py",
+      "language": "python",
+      "sizeLines": 227,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/routers/text_to_comic.py",
+      "language": "python",
+      "sizeLines": 297,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas.py",
+      "language": "python",
+      "sizeLines": 150,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/security.py",
+      "language": "python",
+      "sizeLines": 40,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services.py",
+      "language": "python",
+      "sizeLines": 2072,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/Dockerfile",
+      "language": "dockerfile",
+      "sizeLines": 13,
+      "fileCategory": "infra"
+    },
+    {
+      "path": "backend/README.md",
+      "language": "markdown",
+      "sizeLines": 97,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "backend/requirements.txt",
+      "language": "txt",
+      "sizeLines": 12,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "backend/RESET_PASSWORD_README.md",
+      "language": "markdown",
+      "sizeLines": 63,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "backend/scripts/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/scripts/auth_smoke.py",
+      "language": "python",
+      "sizeLines": 42,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/scripts/README.md",
+      "language": "markdown",
+      "sizeLines": 16,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "backend/start-pipeline.ps1",
+      "language": "powershell",
+      "sizeLines": 235,
+      "fileCategory": "script"
+    },
+    {
+      "path": "backend/test_gemini_integration.py",
+      "language": "python",
+      "sizeLines": 299,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/test_text_to_comic_pipeline.py",
+      "language": "python",
+      "sizeLines": 312,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/text_to_comic_pipeline.py",
+      "language": "python",
+      "sizeLines": 618,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/TEXT_TO_COMIC_QUICK_REFERENCE.md",
+      "language": "markdown",
+      "sizeLines": 249,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "backend/TEXT_TO_COMIC_README.md",
+      "language": "markdown",
+      "sizeLines": 387,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "backend/TEXT_TO_COMIC_SETUP_GUIDE.md",
+      "language": "markdown",
+      "sizeLines": 481,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "CLAUDE.md",
+      "language": "markdown",
+      "sizeLines": 91,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "COMPLETE_SETUP_GUIDE.md",
+      "language": "markdown",
+      "sizeLines": 399,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "database/docker-compose.yml",
+      "language": "yaml",
+      "sizeLines": 25,
+      "fileCategory": "infra"
+    },
+    {
+      "path": "database/init-mongo.js",
+      "language": "javascript",
+      "sizeLines": 13,
+      "fileCategory": "code"
+    },
+    {
+      "path": "database/init.sql",
+      "language": "sql",
+      "sizeLines": 0,
+      "fileCategory": "data"
+    },
+    {
+      "path": "database/README.md",
+      "language": "markdown",
+      "sizeLines": 150,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docker-compose.yml",
+      "language": "yaml",
+      "sizeLines": 67,
+      "fileCategory": "infra"
+    },
+    {
+      "path": "DOCUMENTATION_INDEX.md",
+      "language": "markdown",
+      "sizeLines": 316,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "FILE_MANIFEST.md",
+      "language": "markdown",
+      "sizeLines": 365,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/.env.local.example",
+      "language": "config",
+      "sizeLines": 2,
+      "fileCategory": "config"
+    },
+    {
+      "path": "frontend/Dockerfile",
+      "language": "dockerfile",
+      "sizeLines": 13,
+      "fileCategory": "infra"
+    },
+    {
+      "path": "frontend/FINAL_CHECKLIST.md",
+      "language": "markdown",
+      "sizeLines": 385,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/FIXES_APPLIED.md",
+      "language": "markdown",
+      "sizeLines": 71,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/IMPLEMENTATION_COMPLETE.md",
+      "language": "markdown",
+      "sizeLines": 423,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/INSTALLATION_SUMMARY.md",
+      "language": "markdown",
+      "sizeLines": 428,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/next.config.js",
+      "language": "javascript",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/package.json",
+      "language": "json",
+      "sizeLines": 32,
+      "fileCategory": "config"
+    },
+    {
+      "path": "frontend/postcss.config.js",
+      "language": "javascript",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/public/.gitkeep",
+      "language": "unknown",
+      "sizeLines": 2,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/QUICK_REFERENCE.md",
+      "language": "markdown",
+      "sizeLines": 264,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/QUICK_START_COMIC_APP.md",
+      "language": "markdown",
+      "sizeLines": 0,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/QUICK_START.txt",
+      "language": "txt",
+      "sizeLines": 50,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/README.md",
+      "language": "markdown",
+      "sizeLines": 59,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/src/app/.gitkeep",
+      "language": "unknown",
+      "sizeLines": 2,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/(auth)/callback/page.tsx",
+      "language": "typescript",
+      "sizeLines": 64,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/(auth)/forgot-password/page.tsx",
+      "language": "typescript",
+      "sizeLines": 130,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/(auth)/layout.tsx",
+      "language": "typescript",
+      "sizeLines": 4,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/(auth)/login/page.tsx",
+      "language": "typescript",
+      "sizeLines": 233,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/(auth)/register/page.tsx",
+      "language": "typescript",
+      "sizeLines": 328,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/(auth)/reset-password/page.tsx",
+      "language": "typescript",
+      "sizeLines": 143,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/(auth)/reset-password/placeholder.txt",
+      "language": "txt",
+      "sizeLines": 0,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/src/app/admin/analytics/page.tsx",
+      "language": "typescript",
+      "sizeLines": 319,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/admin/moderation/page.tsx",
+      "language": "typescript",
+      "sizeLines": 307,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/api/image-proxy/route.ts",
+      "language": "typescript",
+      "sizeLines": 120,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/demo/page.tsx",
+      "language": "typescript",
+      "sizeLines": 9,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/gallery/page.tsx",
+      "language": "typescript",
+      "sizeLines": 254,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/layout.tsx",
+      "language": "typescript",
+      "sizeLines": 17,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/page.tsx",
+      "language": "typescript",
+      "sizeLines": 213,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/pricing/page.tsx",
+      "language": "typescript",
+      "sizeLines": 214,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/reset_password_tmp.tsx",
+      "language": "typescript",
+      "sizeLines": 1,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/settings/page.tsx",
+      "language": "typescript",
+      "sizeLines": 130,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/studio/character-manager/page.tsx",
+      "language": "typescript",
+      "sizeLines": 565,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/studio/character-setup/page.tsx",
+      "language": "typescript",
+      "sizeLines": 156,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/studio/dashboard/page.tsx",
+      "language": "typescript",
+      "sizeLines": 276,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/studio/editor/page.tsx",
+      "language": "typescript",
+      "sizeLines": 178,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/studio/export/page.tsx",
+      "language": "typescript",
+      "sizeLines": 178,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/studio/layout-engine/page.tsx",
+      "language": "typescript",
+      "sizeLines": 64,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/studio/page.tsx",
+      "language": "typescript",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/studio/story-setup/page.tsx",
+      "language": "typescript",
+      "sizeLines": 153,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/.gitkeep",
+      "language": "unknown",
+      "sizeLines": 2,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/auth/AuthShell.tsx",
+      "language": "typescript",
+      "sizeLines": 49,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/CharacterLibraryModal.tsx",
+      "language": "typescript",
+      "sizeLines": 250,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/CreateCharacterModal.tsx",
+      "language": "typescript",
+      "sizeLines": 455,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ProjectsDrawer.tsx",
+      "language": "typescript",
+      "sizeLines": 197,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/story-setup/CharacterWordCounter.tsx",
+      "language": "typescript",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/story-setup/EnhancedTextarea.tsx",
+      "language": "typescript",
+      "sizeLines": 325,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/story-setup/ErrorMessage.tsx",
+      "language": "typescript",
+      "sizeLines": 17,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/story-setup/FileUploadZone.tsx",
+      "language": "typescript",
+      "sizeLines": 174,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/story-setup/FormField.tsx",
+      "language": "typescript",
+      "sizeLines": 56,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/story-setup/HelperText.tsx",
+      "language": "typescript",
+      "sizeLines": 17,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/story-setup/NumberInput.tsx",
+      "language": "typescript",
+      "sizeLines": 125,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/story-setup/PresetButtons.tsx",
+      "language": "typescript",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/story-setup/README.md",
+      "language": "markdown",
+      "sizeLines": 30,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/src/components/story-setup/SaveIndicator.tsx",
+      "language": "typescript",
+      "sizeLines": 44,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/story-setup/Step1.tsx",
+      "language": "typescript",
+      "sizeLines": 681,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/story-setup/Tooltip.tsx",
+      "language": "typescript",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/story-setup/types.ts",
+      "language": "typescript",
+      "sizeLines": 55,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/studio-steps/CharacterModePanel.tsx",
+      "language": "typescript",
+      "sizeLines": 167,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/studio-steps/ImageGenModePanel.tsx",
+      "language": "typescript",
+      "sizeLines": 173,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/studio-steps/Step0Setup.tsx",
+      "language": "typescript",
+      "sizeLines": 8,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/studio-steps/Step1Analysis.tsx",
+      "language": "typescript",
+      "sizeLines": 130,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/studio-steps/Step2Characters.tsx",
+      "language": "typescript",
+      "sizeLines": 301,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/studio-steps/Step3Script.tsx",
+      "language": "typescript",
+      "sizeLines": 102,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/studio-steps/Step4Generation.tsx",
+      "language": "typescript",
+      "sizeLines": 246,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/StudioSidebar.tsx",
+      "language": "typescript",
+      "sizeLines": 127,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/StudioTopBar.tsx",
+      "language": "typescript",
+      "sizeLines": 43,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/TextGenerationDemo.tsx",
+      "language": "typescript",
+      "sizeLines": 153,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/TextToComicGenerator.tsx",
+      "language": "typescript",
+      "sizeLines": 155,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/context/AuthContext.tsx",
+      "language": "typescript",
+      "sizeLines": 84,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/context/ComicGenerationContext.tsx",
+      "language": "typescript",
+      "sizeLines": 2434,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/hooks/useAutosave.ts",
+      "language": "typescript",
+      "sizeLines": 74,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/hooks/useDraftRecovery.ts",
+      "language": "typescript",
+      "sizeLines": 35,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/hooks/useFileUpload.ts",
+      "language": "typescript",
+      "sizeLines": 192,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/hooks/useFormValidation.ts",
+      "language": "typescript",
+      "sizeLines": 103,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/services/api.ts",
+      "language": "typescript",
+      "sizeLines": 893,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/styles/.gitkeep",
+      "language": "unknown",
+      "sizeLines": 2,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/styles/globals.css",
+      "language": "css",
+      "sizeLines": 64,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "frontend/src/utils/.gitkeep",
+      "language": "unknown",
+      "sizeLines": 2,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/utils/draftStorage.ts",
+      "language": "typescript",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/utils/fileValidation.ts",
+      "language": "typescript",
+      "sizeLines": 40,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/tailwind.config.js",
+      "language": "javascript",
+      "sizeLines": 31,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/TEXT_TO_COMIC_SETUP_GUIDE.md",
+      "language": "markdown",
+      "sizeLines": 234,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/tsconfig.json",
+      "language": "json",
+      "sizeLines": 43,
+      "fileCategory": "config"
+    },
+    {
+      "path": "frontend/VERIFICATION_CHECKLIST.md",
+      "language": "markdown",
+      "sizeLines": 0,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/VISUAL_OVERVIEW.md",
+      "language": "markdown",
+      "sizeLines": 358,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "GEMINI_ARCHITECTURE.md",
+      "language": "markdown",
+      "sizeLines": 244,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "GEMINI_INTEGRATION_INDEX.md",
+      "language": "markdown",
+      "sizeLines": 373,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "GEMINI_INTEGRATION_SUMMARY.md",
+      "language": "markdown",
+      "sizeLines": 233,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "GEMINI_QUICK_REFERENCE.md",
+      "language": "markdown",
+      "sizeLines": 138,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "GEMINI_SETUP_GUIDE.md",
+      "language": "markdown",
+      "sizeLines": 200,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "IMPLEMENTATION_COMPLETE_FRONTEND.md",
+      "language": "markdown",
+      "sizeLines": 318,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "MONGODB_LOCAL_SETUP.md",
+      "language": "markdown",
+      "sizeLines": 224,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "PROJECT_COMPLETE.md",
+      "language": "markdown",
+      "sizeLines": 398,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "PROJECT_STRUCTURE.md",
+      "language": "markdown",
+      "sizeLines": 93,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "PROJECT_SUMMARY.md",
+      "language": "markdown",
+      "sizeLines": 79,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "QUICK_START_FRONTEND.md",
+      "language": "markdown",
+      "sizeLines": 0,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "QUICK_START.md",
+      "language": "markdown",
+      "sizeLines": 292,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "README.md",
+      "language": "markdown",
+      "sizeLines": 192,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "Reference/ai_comic_studio_dashboard/code.html",
+      "language": "html",
+      "sizeLines": 321,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "Reference/character_consistency_manager/code.html",
+      "language": "html",
+      "sizeLines": 328,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "Reference/character_consistency_setup/code.html",
+      "language": "html",
+      "sizeLines": 280,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "Reference/comic_editor_workspace/code.html",
+      "language": "html",
+      "sizeLines": 301,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "Reference/export_publish/code.html",
+      "language": "html",
+      "sizeLines": 258,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "Reference/index.html",
+      "language": "html",
+      "sizeLines": 13,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "Reference/layout_engine_control_widget/code.html",
+      "language": "html",
+      "sizeLines": 150,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "Reference/metadata.json",
+      "language": "json",
+      "sizeLines": 6,
+      "fileCategory": "config"
+    },
+    {
+      "path": "Reference/package.json",
+      "language": "json",
+      "sizeLines": 38,
+      "fileCategory": "config"
+    },
+    {
+      "path": "Reference/README.md",
+      "language": "markdown",
+      "sizeLines": 20,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "Reference/src/App.tsx",
+      "language": "typescript",
+      "sizeLines": 40,
+      "fileCategory": "code"
+    },
+    {
+      "path": "Reference/src/components/layout/MainLayout.tsx",
+      "language": "typescript",
+      "sizeLines": 15,
+      "fileCategory": "code"
+    },
+    {
+      "path": "Reference/src/components/layout/SideNavBar.tsx",
+      "language": "typescript",
+      "sizeLines": 75,
+      "fileCategory": "code"
+    },
+    {
+      "path": "Reference/src/components/layout/TopNavBar.tsx",
+      "language": "typescript",
+      "sizeLines": 39,
+      "fileCategory": "code"
+    },
+    {
+      "path": "Reference/src/index.css",
+      "language": "css",
+      "sizeLines": 51,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "Reference/src/lib/utils.ts",
+      "language": "typescript",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "Reference/src/main.tsx",
+      "language": "typescript",
+      "sizeLines": 10,
+      "fileCategory": "code"
+    },
+    {
+      "path": "Reference/src/pages/CharacterManager.tsx",
+      "language": "typescript",
+      "sizeLines": 193,
+      "fileCategory": "code"
+    },
+    {
+      "path": "Reference/src/pages/CharacterTuning.tsx",
+      "language": "typescript",
+      "sizeLines": 143,
+      "fileCategory": "code"
+    },
+    {
+      "path": "Reference/src/pages/Dashboard.tsx",
+      "language": "typescript",
+      "sizeLines": 206,
+      "fileCategory": "code"
+    },
+    {
+      "path": "Reference/src/pages/EditorWorkspace.tsx",
+      "language": "typescript",
+      "sizeLines": 164,
+      "fileCategory": "code"
+    },
+    {
+      "path": "Reference/src/pages/ExportStudio.tsx",
+      "language": "typescript",
+      "sizeLines": 123,
+      "fileCategory": "code"
+    },
+    {
+      "path": "Reference/src/pages/LandingPage.tsx",
+      "language": "typescript",
+      "sizeLines": 172,
+      "fileCategory": "code"
+    },
+    {
+      "path": "Reference/src/pages/StorySetup.tsx",
+      "language": "typescript",
+      "sizeLines": 153,
+      "fileCategory": "code"
+    },
+    {
+      "path": "Reference/story_input_setup/code.html",
+      "language": "html",
+      "sizeLines": 250,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "Reference/tsconfig.json",
+      "language": "json",
+      "sizeLines": 26,
+      "fileCategory": "config"
+    },
+    {
+      "path": "Reference/vite.config.ts",
+      "language": "typescript",
+      "sizeLines": 24,
+      "fileCategory": "code"
+    },
+    {
+      "path": "SESSION_LOG.md",
+      "language": "markdown",
+      "sizeLines": 170,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "SETUP_SUMMARY_LOCAL_MONGODB.md",
+      "language": "markdown",
+      "sizeLines": 259,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "SETUP_SUMMARY.md",
+      "language": "markdown",
+      "sizeLines": 165,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "setup-gemini.bat",
+      "language": "batch",
+      "sizeLines": 65,
+      "fileCategory": "script"
+    },
+    {
+      "path": "setup-gemini.ps1",
+      "language": "powershell",
+      "sizeLines": 86,
+      "fileCategory": "script"
+    },
+    {
+      "path": "START_GEMINI_HERE.md",
+      "language": "markdown",
+      "sizeLines": 302,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "START_HERE.md",
+      "language": "markdown",
+      "sizeLines": 353,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "TEXT_GENERATION_STREAMING.md",
+      "language": "markdown",
+      "sizeLines": 265,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "VERIFICATION_CHECKLIST.md",
+      "language": "markdown",
+      "sizeLines": 307,
+      "fileCategory": "docs"
+    }
+  ],
+  "totalFiles": 183,
+  "filteredByIgnore": 0,
+  "estimatedComplexity": "large",
+  "importMap": {
+    ".claude/settings.json": [],
+    ".claude/skills/run-stack/SKILL.md": [],
+    ".continue/agents/new-config.yaml": [],
+    ".github/agents/My.agent.md": [],
+    ".understand-anything/.understandignore": [],
+    "00_READ_ME_FIRST.md": [],
+    "backend/.env.example": [],
+    "backend/app/__init__.py": [],
+    "backend/app/config.py": [],
+    "backend/app/crud.py": [
+      "backend/app/schemas.py"
+    ],
+    "backend/app/database.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/emailer.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/lifespan.py": [
+      "backend/app/database.py"
+    ],
+    "backend/app/main.py": [
+      "backend/app/config.py",
+      "backend/app/database.py",
+      "backend/app/routers/__init__.py",
+      "backend/app/routers/auth.py",
+      "backend/app/routers/gemini.py",
+      "backend/app/routers/items.py",
+      "backend/app/routers/projects.py",
+      "backend/app/routers/text_to_comic.py"
+    ],
+    "backend/app/rate_limit.py": [],
+    "backend/app/routers/__init__.py": [
+      "backend/app/routers/__init__.py",
+      "backend/app/routers/auth.py",
+      "backend/app/routers/gemini.py",
+      "backend/app/routers/items.py",
+      "backend/app/routers/text_to_comic.py"
+    ],
+    "backend/app/routers/.gitkeep": [],
+    "backend/app/routers/auth.py": [
+      "backend/app/config.py",
+      "backend/app/crud.py",
+      "backend/app/database.py",
+      "backend/app/emailer.py",
+      "backend/app/schemas.py",
+      "backend/app/security.py"
+    ],
+    "backend/app/routers/gemini.py": [
+      "backend/app/config.py",
+      "backend/app/rate_limit.py",
+      "backend/app/services.py"
+    ],
+    "backend/app/routers/items.py": [
+      "backend/app/crud.py",
+      "backend/app/database.py",
+      "backend/app/schemas.py"
+    ],
+    "backend/app/routers/projects.py": [
+      "backend/app/database.py",
+      "backend/app/schemas.py"
+    ],
+    "backend/app/routers/text_to_comic.py": [
+      "backend/text_to_comic_pipeline.py"
+    ],
+    "backend/app/schemas.py": [],
+    "backend/app/security.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/services.py": [
+      "backend/app/config.py"
+    ],
+    "backend/Dockerfile": [],
+    "backend/README.md": [],
+    "backend/requirements.txt": [],
+    "backend/RESET_PASSWORD_README.md": [],
+    "backend/scripts/__init__.py": [],
+    "backend/scripts/auth_smoke.py": [
+      "backend/app/main.py"
+    ],
+    "backend/scripts/README.md": [],
+    "backend/start-pipeline.ps1": [],
+    "backend/test_gemini_integration.py": [],
+    "backend/test_text_to_comic_pipeline.py": [],
+    "backend/text_to_comic_pipeline.py": [],
+    "backend/TEXT_TO_COMIC_QUICK_REFERENCE.md": [],
+    "backend/TEXT_TO_COMIC_README.md": [],
+    "backend/TEXT_TO_COMIC_SETUP_GUIDE.md": [],
+    "CLAUDE.md": [],
+    "COMPLETE_SETUP_GUIDE.md": [],
+    "database/docker-compose.yml": [],
+    "database/init-mongo.js": [],
+    "database/init.sql": [],
+    "database/README.md": [],
+    "docker-compose.yml": [],
+    "DOCUMENTATION_INDEX.md": [],
+    "FILE_MANIFEST.md": [],
+    "frontend/.env.local.example": [],
+    "frontend/Dockerfile": [],
+    "frontend/FINAL_CHECKLIST.md": [],
+    "frontend/FIXES_APPLIED.md": [],
+    "frontend/IMPLEMENTATION_COMPLETE.md": [],
+    "frontend/INSTALLATION_SUMMARY.md": [],
+    "frontend/next.config.js": [],
+    "frontend/package.json": [],
+    "frontend/postcss.config.js": [],
+    "frontend/public/.gitkeep": [],
+    "frontend/QUICK_REFERENCE.md": [],
+    "frontend/QUICK_START_COMIC_APP.md": [],
+    "frontend/QUICK_START.txt": [],
+    "frontend/README.md": [],
+    "frontend/src/app/.gitkeep": [],
+    "frontend/src/app/(auth)/callback/page.tsx": [
+      "frontend/src/components/auth/AuthShell.tsx",
+      "frontend/src/context/AuthContext.tsx"
+    ],
+    "frontend/src/app/(auth)/forgot-password/page.tsx": [
+      "frontend/src/components/auth/AuthShell.tsx",
+      "frontend/src/services/api.ts"
+    ],
+    "frontend/src/app/(auth)/layout.tsx": [],
+    "frontend/src/app/(auth)/login/page.tsx": [
+      "frontend/src/components/auth/AuthShell.tsx",
+      "frontend/src/context/AuthContext.tsx",
+      "frontend/src/services/api.ts"
+    ],
+    "frontend/src/app/(auth)/register/page.tsx": [
+      "frontend/src/components/auth/AuthShell.tsx",
+      "frontend/src/context/AuthContext.tsx",
+      "frontend/src/services/api.ts"
+    ],
+    "frontend/src/app/(auth)/reset-password/page.tsx": [
+      "frontend/src/components/auth/AuthShell.tsx",
+      "frontend/src/services/api.ts"
+    ],
+    "frontend/src/app/(auth)/reset-password/placeholder.txt": [],
+    "frontend/src/app/admin/analytics/page.tsx": [],
+    "frontend/src/app/admin/moderation/page.tsx": [],
+    "frontend/src/app/api/image-proxy/route.ts": [],
+    "frontend/src/app/demo/page.tsx": [
+      "frontend/src/components/TextGenerationDemo.tsx"
+    ],
+    "frontend/src/app/gallery/page.tsx": [],
+    "frontend/src/app/layout.tsx": [
+      "frontend/src/context/AuthContext.tsx",
+      "frontend/src/styles/globals.css"
+    ],
+    "frontend/src/app/page.tsx": [],
+    "frontend/src/app/pricing/page.tsx": [],
+    "frontend/src/app/reset_password_tmp.tsx": [],
+    "frontend/src/app/settings/page.tsx": [
+      "frontend/src/components/StudioSidebar.tsx",
+      "frontend/src/components/StudioTopBar.tsx"
+    ],
+    "frontend/src/app/studio/character-manager/page.tsx": [
+      "frontend/src/components/CreateCharacterModal.tsx",
+      "frontend/src/components/StudioSidebar.tsx",
+      "frontend/src/components/StudioTopBar.tsx",
+      "frontend/src/services/api.ts"
+    ],
+    "frontend/src/app/studio/character-setup/page.tsx": [
+      "frontend/src/components/StudioSidebar.tsx",
+      "frontend/src/components/StudioTopBar.tsx"
+    ],
+    "frontend/src/app/studio/dashboard/page.tsx": [
+      "frontend/src/components/StudioSidebar.tsx",
+      "frontend/src/components/StudioTopBar.tsx",
+      "frontend/src/services/api.ts"
+    ],
+    "frontend/src/app/studio/editor/page.tsx": [
+      "frontend/src/components/StudioSidebar.tsx",
+      "frontend/src/components/StudioTopBar.tsx"
+    ],
+    "frontend/src/app/studio/export/page.tsx": [
+      "frontend/src/components/StudioSidebar.tsx",
+      "frontend/src/components/StudioTopBar.tsx"
+    ],
+    "frontend/src/app/studio/layout-engine/page.tsx": [
+      "frontend/src/components/StudioSidebar.tsx",
+      "frontend/src/components/StudioTopBar.tsx"
+    ],
+    "frontend/src/app/studio/page.tsx": [
+      "frontend/src/components/TextToComicGenerator.tsx"
+    ],
+    "frontend/src/app/studio/story-setup/page.tsx": [
+      "frontend/src/components/StudioSidebar.tsx",
+      "frontend/src/components/StudioTopBar.tsx"
+    ],
+    "frontend/src/components/.gitkeep": [],
+    "frontend/src/components/auth/AuthShell.tsx": [],
+    "frontend/src/components/CharacterLibraryModal.tsx": [
+      "frontend/src/services/api.ts"
+    ],
+    "frontend/src/components/CreateCharacterModal.tsx": [
+      "frontend/src/services/api.ts"
+    ],
+    "frontend/src/components/ProjectsDrawer.tsx": [
+      "frontend/src/context/ComicGenerationContext.tsx",
+      "frontend/src/services/api.ts"
+    ],
+    "frontend/src/components/story-setup/CharacterWordCounter.tsx": [],
+    "frontend/src/components/story-setup/EnhancedTextarea.tsx": [
+      "frontend/src/components/story-setup/CharacterWordCounter.tsx",
+      "frontend/src/components/story-setup/ErrorMessage.tsx",
+      "frontend/src/components/story-setup/HelperText.tsx",
+      "frontend/src/components/story-setup/SaveIndicator.tsx",
+      "frontend/src/components/story-setup/Tooltip.tsx",
+      "frontend/src/components/story-setup/types.ts",
+      "frontend/src/hooks/useAutosave.ts",
+      "frontend/src/hooks/useDraftRecovery.ts"
+    ],
+    "frontend/src/components/story-setup/ErrorMessage.tsx": [],
+    "frontend/src/components/story-setup/FileUploadZone.tsx": [
+      "frontend/src/components/story-setup/types.ts",
+      "frontend/src/hooks/useFileUpload.ts"
+    ],
+    "frontend/src/components/story-setup/FormField.tsx": [
+      "frontend/src/components/story-setup/ErrorMessage.tsx",
+      "frontend/src/components/story-setup/HelperText.tsx",
+      "frontend/src/components/story-setup/Tooltip.tsx"
+    ],
+    "frontend/src/components/story-setup/HelperText.tsx": [],
+    "frontend/src/components/story-setup/NumberInput.tsx": [
+      "frontend/src/components/story-setup/FormField.tsx"
+    ],
+    "frontend/src/components/story-setup/PresetButtons.tsx": [],
+    "frontend/src/components/story-setup/README.md": [],
+    "frontend/src/components/story-setup/SaveIndicator.tsx": [
+      "frontend/src/components/story-setup/types.ts"
+    ],
+    "frontend/src/components/story-setup/Step1.tsx": [
+      "frontend/src/components/ProjectsDrawer.tsx",
+      "frontend/src/components/story-setup/EnhancedTextarea.tsx",
+      "frontend/src/components/story-setup/ErrorMessage.tsx",
+      "frontend/src/components/story-setup/FileUploadZone.tsx",
+      "frontend/src/components/story-setup/FormField.tsx",
+      "frontend/src/components/story-setup/NumberInput.tsx",
+      "frontend/src/components/story-setup/PresetButtons.tsx",
+      "frontend/src/components/story-setup/Tooltip.tsx",
+      "frontend/src/components/story-setup/types.ts",
+      "frontend/src/context/ComicGenerationContext.tsx",
+      "frontend/src/hooks/useFormValidation.ts"
+    ],
+    "frontend/src/components/story-setup/Tooltip.tsx": [],
+    "frontend/src/components/story-setup/types.ts": [],
+    "frontend/src/components/studio-steps/CharacterModePanel.tsx": [
+      "frontend/src/context/ComicGenerationContext.tsx"
+    ],
+    "frontend/src/components/studio-steps/ImageGenModePanel.tsx": [
+      "frontend/src/context/ComicGenerationContext.tsx"
+    ],
+    "frontend/src/components/studio-steps/Step0Setup.tsx": [
+      "frontend/src/components/story-setup/Step1.tsx"
+    ],
+    "frontend/src/components/studio-steps/Step1Analysis.tsx": [
+      "frontend/src/context/ComicGenerationContext.tsx"
+    ],
+    "frontend/src/components/studio-steps/Step2Characters.tsx": [
+      "frontend/src/components/CharacterLibraryModal.tsx",
+      "frontend/src/components/studio-steps/CharacterModePanel.tsx",
+      "frontend/src/context/ComicGenerationContext.tsx"
+    ],
+    "frontend/src/components/studio-steps/Step3Script.tsx": [
+      "frontend/src/context/ComicGenerationContext.tsx"
+    ],
+    "frontend/src/components/studio-steps/Step4Generation.tsx": [
+      "frontend/src/components/ProjectsDrawer.tsx",
+      "frontend/src/components/studio-steps/ImageGenModePanel.tsx",
+      "frontend/src/context/ComicGenerationContext.tsx"
+    ],
+    "frontend/src/components/StudioSidebar.tsx": [],
+    "frontend/src/components/StudioTopBar.tsx": [],
+    "frontend/src/components/TextGenerationDemo.tsx": [
+      "frontend/src/services/api.ts"
+    ],
+    "frontend/src/components/TextToComicGenerator.tsx": [
+      "frontend/src/components/studio-steps/Step0Setup.tsx",
+      "frontend/src/components/studio-steps/Step1Analysis.tsx",
+      "frontend/src/components/studio-steps/Step2Characters.tsx",
+      "frontend/src/components/studio-steps/Step3Script.tsx",
+      "frontend/src/components/studio-steps/Step4Generation.tsx",
+      "frontend/src/components/StudioSidebar.tsx",
+      "frontend/src/components/StudioTopBar.tsx",
+      "frontend/src/context/ComicGenerationContext.tsx"
+    ],
+    "frontend/src/context/AuthContext.tsx": [
+      "frontend/src/services/api.ts"
+    ],
+    "frontend/src/context/ComicGenerationContext.tsx": [
+      "frontend/src/services/api.ts"
+    ],
+    "frontend/src/hooks/useAutosave.ts": [
+      "frontend/src/components/story-setup/types.ts",
+      "frontend/src/utils/draftStorage.ts"
+    ],
+    "frontend/src/hooks/useDraftRecovery.ts": [
+      "frontend/src/components/story-setup/types.ts",
+      "frontend/src/utils/draftStorage.ts"
+    ],
+    "frontend/src/hooks/useFileUpload.ts": [
+      "frontend/src/components/story-setup/types.ts",
+      "frontend/src/utils/fileValidation.ts"
+    ],
+    "frontend/src/hooks/useFormValidation.ts": [
+      "frontend/src/components/story-setup/types.ts"
+    ],
+    "frontend/src/services/api.ts": [],
+    "frontend/src/styles/.gitkeep": [],
+    "frontend/src/styles/globals.css": [],
+    "frontend/src/utils/.gitkeep": [],
+    "frontend/src/utils/draftStorage.ts": [
+      "frontend/src/components/story-setup/types.ts"
+    ],
+    "frontend/src/utils/fileValidation.ts": [],
+    "frontend/tailwind.config.js": [],
+    "frontend/TEXT_TO_COMIC_SETUP_GUIDE.md": [],
+    "frontend/tsconfig.json": [],
+    "frontend/VERIFICATION_CHECKLIST.md": [],
+    "frontend/VISUAL_OVERVIEW.md": [],
+    "GEMINI_ARCHITECTURE.md": [],
+    "GEMINI_INTEGRATION_INDEX.md": [],
+    "GEMINI_INTEGRATION_SUMMARY.md": [],
+    "GEMINI_QUICK_REFERENCE.md": [],
+    "GEMINI_SETUP_GUIDE.md": [],
+    "IMPLEMENTATION_COMPLETE_FRONTEND.md": [],
+    "MONGODB_LOCAL_SETUP.md": [],
+    "PROJECT_COMPLETE.md": [],
+    "PROJECT_STRUCTURE.md": [],
+    "PROJECT_SUMMARY.md": [],
+    "QUICK_START_FRONTEND.md": [],
+    "QUICK_START.md": [],
+    "README.md": [],
+    "Reference/ai_comic_studio_dashboard/code.html": [],
+    "Reference/character_consistency_manager/code.html": [],
+    "Reference/character_consistency_setup/code.html": [],
+    "Reference/comic_editor_workspace/code.html": [],
+    "Reference/export_publish/code.html": [],
+    "Reference/index.html": [],
+    "Reference/layout_engine_control_widget/code.html": [],
+    "Reference/metadata.json": [],
+    "Reference/package.json": [],
+    "Reference/README.md": [],
+    "Reference/src/App.tsx": [
+      "Reference/src/components/layout/MainLayout.tsx",
+      "Reference/src/pages/CharacterManager.tsx",
+      "Reference/src/pages/CharacterTuning.tsx",
+      "Reference/src/pages/Dashboard.tsx",
+      "Reference/src/pages/EditorWorkspace.tsx",
+      "Reference/src/pages/ExportStudio.tsx",
+      "Reference/src/pages/LandingPage.tsx",
+      "Reference/src/pages/StorySetup.tsx"
+    ],
+    "Reference/src/components/layout/MainLayout.tsx": [
+      "Reference/src/components/layout/SideNavBar.tsx",
+      "Reference/src/components/layout/TopNavBar.tsx"
+    ],
+    "Reference/src/components/layout/SideNavBar.tsx": [
+      "Reference/src/lib/utils.ts"
+    ],
+    "Reference/src/components/layout/TopNavBar.tsx": [],
+    "Reference/src/index.css": [],
+    "Reference/src/lib/utils.ts": [],
+    "Reference/src/main.tsx": [
+      "Reference/src/App.tsx",
+      "Reference/src/index.css"
+    ],
+    "Reference/src/pages/CharacterManager.tsx": [
+      "Reference/src/lib/utils.ts"
+    ],
+    "Reference/src/pages/CharacterTuning.tsx": [
+      "Reference/src/lib/utils.ts"
+    ],
+    "Reference/src/pages/Dashboard.tsx": [
+      "Reference/src/lib/utils.ts"
+    ],
+    "Reference/src/pages/EditorWorkspace.tsx": [
+      "Reference/src/lib/utils.ts"
+    ],
+    "Reference/src/pages/ExportStudio.tsx": [
+      "Reference/src/lib/utils.ts"
+    ],
+    "Reference/src/pages/LandingPage.tsx": [],
+    "Reference/src/pages/StorySetup.tsx": [
+      "Reference/src/lib/utils.ts"
+    ],
+    "Reference/story_input_setup/code.html": [],
+    "Reference/tsconfig.json": [],
+    "Reference/vite.config.ts": [],
+    "SESSION_LOG.md": [],
+    "SETUP_SUMMARY_LOCAL_MONGODB.md": [],
+    "SETUP_SUMMARY.md": [],
+    "setup-gemini.bat": [],
+    "setup-gemini.ps1": [],
+    "START_GEMINI_HERE.md": [],
+    "START_HERE.md": [],
+    "TEXT_GENERATION_STREAMING.md": [],
+    "VERIFICATION_CHECKLIST.md": []
+  }
+}

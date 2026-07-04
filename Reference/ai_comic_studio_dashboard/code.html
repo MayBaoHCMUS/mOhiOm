@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ComicGen AI - Creative Hub</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f9f9ff;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .premium-shadow {
+            box-shadow: 0 4px 20px rgba(20, 27, 43, 0.03);
+        }
+        .ambient-lift {
+            box-shadow: 0 20px 40px rgba(0, 88, 190, 0.05);
+        }
+        .text-editorial {
+            letter-spacing: -0.02em;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "tertiary-fixed": "#ffddb8",
+                      "on-surface-variant": "#424754",
+                      "primary": "#0058be",
+                      "on-primary-container": "#fefcff",
+                      "on-error-container": "#93000a",
+                      "on-secondary-fixed-variant": "#005236",
+                      "background": "#f9f9ff",
+                      "surface-bright": "#f9f9ff",
+                      "primary-fixed": "#d8e2ff",
+                      "inverse-surface": "#293040",
+                      "on-tertiary-container": "#fffbff",
+                      "on-error": "#ffffff",
+                      "secondary-container": "#6cf8bb",
+                      "on-background": "#141b2b",
+                      "primary-fixed-dim": "#adc6ff",
+                      "error-container": "#ffdad6",
+                      "tertiary-fixed-dim": "#ffb95f",
+                      "on-surface": "#141b2b",
+                      "error": "#ba1a1a",
+                      "on-tertiary-fixed": "#2a1700",
+                      "surface-dim": "#d3daef",
+                      "secondary-fixed-dim": "#4edea3",
+                      "outline": "#727785",
+                      "on-secondary-container": "#00714d",
+                      "inverse-on-surface": "#edf0ff",
+                      "surface-container-lowest": "#ffffff",
+                      "surface-container-high": "#e1e8fd",
+                      "surface-container-low": "#f1f3ff",
+                      "surface-container": "#e9edff",
+                      "outline-variant": "#c2c6d6",
+                      "on-tertiary-fixed-variant": "#653e00",
+                      "secondary": "#006c49",
+                      "on-primary-fixed": "#001a42",
+                      "surface-container-highest": "#dce2f7",
+                      "surface": "#f9f9ff",
+                      "on-primary-fixed-variant": "#004395",
+                      "tertiary-container": "#a36700",
+                      "surface-variant": "#dce2f7",
+                      "tertiary": "#825100",
+                      "surface-tint": "#005ac2",
+                      "primary-container": "#2170e4",
+                      "inverse-primary": "#adc6ff",
+                      "secondary-fixed": "#6ffbbe",
+                      "on-tertiary": "#ffffff",
+                      "on-secondary": "#ffffff",
+                      "on-secondary-fixed": "#002113",
+                      "on-primary": "#ffffff"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "fontFamily": {
+                      "headline": ["Plus Jakarta Sans"],
+                      "body": ["Plus Jakarta Sans"],
+                      "label": ["Plus Jakarta Sans"]
+              }
+            },
+          },
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface antialiased">
+<!-- SideNavBar -->
+<aside class="h-screen w-64 fixed left-0 top-0 bg-slate-50 border-r-0 z-[60] flex flex-col p-4 font-['Plus_Jakarta_Sans'] antialiased">
+<div class="mb-8 px-2 pt-4">
+<h1 class="text-xl font-bold tracking-tight text-slate-900">ComicGen AI</h1>
+<p class="text-xs text-slate-500 font-medium tracking-wide mt-1">Creative Hub</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 text-blue-600 bg-white rounded-lg shadow-sm transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="home">home</span>
+<span class="font-semibold text-sm">Home</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 transition-all duration-200 scale-95 active:scale-90" href="#">
+<span class="material-symbols-outlined" data-icon="auto_stories">auto_stories</span>
+<span class="text-sm">My Comics</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 transition-all duration-200 scale-95 active:scale-90" href="#">
+<span class="material-symbols-outlined" data-icon="face_6">face_6</span>
+<span class="text-sm">Character Library</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 transition-all duration-200 scale-95 active:scale-90" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-sm">Settings</span>
+</a>
+</nav>
+<div class="mt-auto pt-6 space-y-4">
+<button class="w-full bg-primary-container text-white py-3 rounded-xl font-semibold text-sm shadow-sm transition-transform active:scale-95">
+                Upgrade to Pro
+            </button>
+<div class="flex items-center gap-3 px-2 py-4 border-t border-slate-200/50">
+<img alt="User avatar" class="w-10 h-10 rounded-full object-cover" data-alt="close-up portrait of a digital artist with creative accessories in a bright studio environment" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1K3JyojfDa09ZT0Jo9CtSiAFvzzeO0elWMvXORRnyXKaiFcpkE-vcHL31HRjVeeRjaVxf_xuui3wHmvTYPVw41Ldbgs-PLn3GDQP7tcj59xvMojLBSTwYtS4qFtt4lxRXnUh5NKbS1G-emVds5iXZoFSQxR0DBV0QsEDmZft4FmvVqWn9Ox6UwpO4Dz-JAZk445jdxSwkFtnr20GE_FfqaQv5dfPl0gs9dxi7TujN5HRuyzabr7Fg6VDLG0RAY6Btoe58s-Nhfcw"/>
+<div class="flex flex-col">
+<span class="text-sm font-bold">Alex Rivera</span>
+<span class="text-xs text-slate-500">Free Tier</span>
+</div>
+</div>
+</div>
+</aside>
+<!-- TopNavBar -->
+<header class="fixed top-0 right-0 left-64 h-16 z-50 glass-nav flex items-center justify-between px-8 w-full shadow-[0_4px_20px_rgba(0,0,0,0.03)] font-['Plus_Jakarta_Sans'] tracking-tight">
+<div class="flex-1 max-w-xl">
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-4 text-outline" data-icon="search">search</span>
+<input class="w-full pl-12 pr-4 py-2 bg-surface-container-low border-none rounded-full text-sm focus:ring-2 focus:ring-primary/20 focus:bg-surface-container-lowest transition-all" placeholder="Search your creative universe..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-4 text-slate-500">
+<button class="hover:opacity-80 transition-opacity"><span class="material-symbols-outlined" data-icon="notifications">notifications</span></button>
+<button class="hover:opacity-80 transition-opacity"><span class="material-symbols-outlined" data-icon="help">help</span></button>
+</div>
+<button class="bg-gradient-to-br from-primary to-primary-container text-white px-6 py-2.5 rounded-full font-bold text-sm transition-transform active:scale-95 flex items-center gap-2">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+                Create New Comic
+            </button>
+</div>
+</header>
+<!-- Main Content -->
+<main class="ml-64 pt-24 px-8 pb-12 min-h-screen">
+<!-- Welcome Hero Section -->
+<section class="mb-12">
+<div class="bg-surface-container-low rounded-[2rem] p-10 relative overflow-hidden flex items-center">
+<div class="relative z-10 max-w-2xl">
+<h2 class="text-4xl font-extrabold text-on-surface text-editorial mb-4 leading-tight">Welcome back, Storyteller.</h2>
+<p class="text-on-surface-variant text-lg leading-relaxed mb-6">Your latest masterpiece is waiting. Use AI to blend cinematic landscapes with deep character emotions.</p>
+<div class="flex gap-4">
+<button class="px-6 py-3 bg-white text-primary font-bold rounded-full premium-shadow hover:bg-slate-50 transition-colors">Resume Last Project</button>
+<button class="px-6 py-3 text-on-surface-variant font-bold hover:text-primary transition-colors">View Inspiration</button>
+</div>
+</div>
+<!-- Abstract Hero Graphic -->
+<div class="absolute right-[-10%] top-[-10%] w-[500px] h-[500px] bg-primary/5 rounded-full blur-3xl"></div>
+<div class="absolute right-[10%] bottom-[-20%] w-[300px] h-[300px] bg-secondary-container/20 rounded-full blur-2xl"></div>
+</div>
+</section>
+<!-- Recent Projects Section -->
+<section class="mb-16">
+<div class="flex items-center justify-between mb-8">
+<div>
+<h3 class="text-2xl font-bold text-on-surface text-editorial">Recent Projects</h3>
+<p class="text-on-surface-variant text-sm mt-1">Pick up where you left off</p>
+</div>
+<button class="text-primary font-semibold text-sm flex items-center gap-1 hover:gap-2 transition-all">
+                    View all collections <span class="material-symbols-outlined text-sm" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+<!-- Bento-style Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+<!-- Project Card 1 -->
+<div class="group bg-surface-container-lowest rounded-3xl overflow-hidden ambient-lift transition-all hover:-translate-y-1">
+<div class="aspect-[16/10] overflow-hidden relative">
+<img alt="Neon city comic panel" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" data-alt="cinematic anime style wide shot of a futuristic neon-drenched cityscape at night with glowing blue and purple lights" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCFiDmHITo6EL0AeqV43I-2me2mE-E1KO1476RP7tQj49zcgc5_caDWF3su8n9Gy9wTTCBZ_UR-5mCU77kYhfHlncij4xhXcGgN_R6BZm7A3mcEDnFHn2XVBmzUWDgkxO-DkHBPAIRk4rd_jIJce-YKv9_sido7j0DSomvYpT93X22-NgavFe-Td2TsIlhLuPgswxsJN1mr-Qn26909MRB7gDKo4Bt_XpLySsPCl9Q3_UIzK3HBrFtrBI7BwN5jl2PO_NbVxz024Uc"/>
+<div class="absolute top-4 left-4">
+<span class="bg-black/40 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">Sci-Fi</span>
+</div>
+</div>
+<div class="p-6">
+<div class="flex justify-between items-start mb-2">
+<h4 class="text-lg font-bold">Midnight in Neo-Tokyo</h4>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="more_horiz">more_horiz</span>
+</button>
+</div>
+<div class="flex items-center gap-2 text-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-sm" data-icon="schedule">schedule</span>
+                            Last edited 2 hours ago
+                        </div>
+</div>
+</div>
+<!-- Project Card 2 -->
+<div class="group bg-surface-container-lowest rounded-3xl overflow-hidden ambient-lift transition-all hover:-translate-y-1">
+<div class="aspect-[16/10] overflow-hidden relative">
+<img alt="Fantasy forest comic panel" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" data-alt="dreamy oil painting style illustration of an enchanted forest with ethereal glowing mushrooms and sunlight beams" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBx2a2ZzAyS-1ub5UlJ8h2W194zrPQufQnGXI_VQkjbUiwz6IoJ80XSalnN0CgoISP5oc-TCTrZkXSZBvlB-xuT6ns9ah-gsLxxBv6sKyb1EFm5D0SHm5K7zVOc9gtjGFMUUHprJIs52eV3P-30BGJBhUS3OM6IuY3G1xb2rz0jQkDTiRXmoHR_FTKYd2y7cqVFi2g8JApNFXnnhbtUXy5-waG_iJxcmeQ6dcCd5g7yVycvfKcf_SKbj0qqIO280ob3W_f8We6yI2Y"/>
+<div class="absolute top-4 left-4">
+<span class="bg-black/40 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">Fantasy</span>
+</div>
+</div>
+<div class="p-6">
+<div class="flex justify-between items-start mb-2">
+<h4 class="text-lg font-bold">The Silent Woods</h4>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="more_horiz">more_horiz</span>
+</button>
+</div>
+<div class="flex items-center gap-2 text-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-sm" data-icon="schedule">schedule</span>
+                            Last edited 5 hours ago
+                        </div>
+</div>
+</div>
+<!-- Project Card 3 -->
+<div class="group bg-surface-container-lowest rounded-3xl overflow-hidden ambient-lift transition-all hover:-translate-y-1">
+<div class="aspect-[16/10] overflow-hidden relative">
+<img alt="Vintage noir comic panel" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" data-alt="gritty monochrome noir comic panel of a detective standing under a street lamp in the rain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBa7K5Xk8EDGQHeTAYHT7tGdaIQKbH99GIjXSQfSjCpN9Y8SNPyj8aqrt61Dej6PAu9gUOHczGNvh9tTIfhQzn_ZewVShhjmS8T7q6WzPOz6LheIvx5G6oQjLp22JFHVTnFlC4rSIJiFRJt1IR-aVh0oh4TeDriGLp2CxepwD37N3CnKBh_xC9h2dUI71eR8_XQ0Ta5SNFKgdyR1m5kev7SiIh1BD5kOpAOjaF9o6d75dgO1A1KecsTVJHcmrOQOGBvjy5w_Ex87zY"/>
+<div class="absolute top-4 left-4">
+<span class="bg-black/40 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">Noir</span>
+</div>
+</div>
+<div class="p-6">
+<div class="flex justify-between items-start mb-2">
+<h4 class="text-lg font-bold">Case #402: Red Herring</h4>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="more_horiz">more_horiz</span>
+</button>
+</div>
+<div class="flex items-center gap-2 text-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-sm" data-icon="schedule">schedule</span>
+                            Last edited 1 day ago
+                        </div>
+</div>
+</div>
+</div>
+</section>
+<!-- Saved Characters Section -->
+<section>
+<div class="flex items-center justify-between mb-8">
+<div>
+<h3 class="text-2xl font-bold text-on-surface text-editorial">Saved Characters</h3>
+<p class="text-on-surface-variant text-sm mt-1">Maintain consistency across panels</p>
+</div>
+<div class="flex gap-2">
+<button class="p-2 rounded-full border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined" data-icon="tune">tune</span>
+</button>
+<button class="p-2 rounded-full border border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined" data-icon="grid_view">grid_view</span>
+</button>
+</div>
+</div>
+<div class="flex flex-wrap gap-10">
+<!-- Character Avatar 1 -->
+<div class="flex flex-col items-center group cursor-pointer">
+<div class="relative mb-3">
+<div class="w-24 h-24 rounded-full p-1 bg-gradient-to-tr from-primary to-secondary-container transition-transform group-hover:rotate-12">
+<img alt="Emma character avatar" class="w-full h-full rounded-full object-cover border-2 border-white" data-alt="digital painting profile of a young woman with curly auburn hair and green eyes wearing a denim jacket" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBT3qrDo6xdeUwAyrEyMyCVoIxTWB-dNLQJbcmmznYLCjODTk9K63dPLw-rBj4-pAAyOt2s-l79EIfeVs-9E5noXrDo2PZdxLviHpoQ8WR_YTBDFNWDoEvtaKkAOR46wjrP4oCv4C7YhC6UgfiJjx4ZIkFMJqWMpV7PUO5tYdZilqoMCxdIZa6KcOxdyYH1sLOfyf-iPbIr0oaBzsf1JiNI-S-QiVdD9LQfxnyrP_-iLRKXCxC8MszuMDQare8y43yIjzY7HLMsbMs"/>
+</div>
+<div class="absolute bottom-0 right-0 w-8 h-8 bg-surface-container-lowest rounded-full premium-shadow flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-lg" data-icon="verified" style="font-variation-settings: 'FILL' 1;">verified</span>
+</div>
+</div>
+<span class="font-bold text-on-surface">Emma</span>
+<span class="text-[10px] font-mono text-on-surface-variant/70 mt-1 uppercase tracking-tighter">Seed: #88219</span>
+</div>
+<!-- Character Avatar 2 -->
+<div class="flex flex-col items-center group cursor-pointer">
+<div class="relative mb-3">
+<div class="w-24 h-24 rounded-full p-1 bg-slate-200 group-hover:bg-primary/20 transition-all group-hover:-rotate-6">
+<img alt="Minh character avatar" class="w-full h-full rounded-full object-cover border-2 border-white" data-alt="stylized character design of a male with sharp jawline and short black hair wearing techwear gear" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDWHsKkEo8B9V6y1c-kfRA8b9tZeN4-zk3IvSu8sI42qpu-bwjqfVNA5aiaLmqQRG1ywO85SyoWcdMGx2BLugmzwwbq42d0def8cpht7dU0g-G1csm1w-slCUxIcQO2CuVTR5YTcgTDnetPWbhLJz0eaqb5KfIVrtXPYUiY7Tppr8mxAVvLZlRHwQ5R4nF4Pj30q8lh00McUqb6uHwTGEctwSYJ2qMbc0IRFMK65QFY00x4gYVXr-UKpzSgVZHz8I_yuZfm8tEbY0E"/>
+</div>
+<div class="absolute bottom-0 right-0 w-8 h-8 bg-surface-container-lowest rounded-full premium-shadow flex items-center justify-center">
+<span class="material-symbols-outlined text-slate-400 text-lg" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+</div>
+</div>
+<span class="font-bold text-on-surface">Minh</span>
+<span class="text-[10px] font-mono text-on-surface-variant/70 mt-1 uppercase tracking-tighter">Seed: #44012</span>
+</div>
+<!-- Character Avatar 3 (Kael) -->
+<div class="flex flex-col items-center group cursor-pointer">
+<div class="relative mb-3">
+<div class="w-24 h-24 rounded-full p-1 bg-slate-200 group-hover:bg-primary/20 transition-all group-hover:rotate-3">
+<img alt="Kael character avatar" class="w-full h-full rounded-full object-cover border-2 border-white" data-alt="vibrant fantasy character portrait of an elf with silver hair and luminous blue markings on cheeks" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCyc5XSMujQEJzsFKtzmOyyTdNFd7Dl1822j-Y-BGRYpSfbXOtqdpNpTt4euiSJgetillZU5j039XfNCIyUnNDhtmrbzVH3D5XPOFzOF_joICY9g0WjmMFIGj4j1RJI69pZGnQhACLxHGebD5VI7n5ptJbH4DyX6GwWj-_mVYZsUpA8Ms2tWBYzMPZjCXz036BRK4WHHqHieTyJZ7JaYABDCBQz7A_X1l-Jxwq5z8TWzHobjuL1dRAhU1-8FYvlqW_tpqhmzWTxISQ"/>
+</div>
+</div>
+<span class="font-bold text-on-surface">Kael</span>
+<span class="text-[10px] font-mono text-on-surface-variant/70 mt-1 uppercase tracking-tighter">Seed: #12993</span>
+</div>
+<!-- New Character CTA -->
+<button class="flex flex-col items-center group">
+<div class="w-24 h-24 rounded-full border-2 border-dashed border-outline-variant/50 flex items-center justify-center mb-3 group-hover:bg-surface-container-low transition-colors group-hover:border-primary/50">
+<span class="material-symbols-outlined text-outline-variant group-hover:text-primary transition-colors text-3xl" data-icon="add_circle">add_circle</span>
+</div>
+<span class="font-bold text-on-surface-variant group-hover:text-primary transition-colors">Add New</span>
+<span class="text-[10px] text-on-surface-variant/50 mt-1 uppercase">Custom Seed</span>
+</button>
+</div>
+</section>
+</main>
+</body></html>
