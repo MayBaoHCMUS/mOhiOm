@@ -1797,42 +1797,86 @@ export function ComicGenerationProvider({
       },
     }));
 
-    const generatedCharacters = await Promise.all(
-      characters.map(async (character) => {
-        try {
-          const charSettings = settingsMap?.[character.characterId] ?? { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale, storyId: projectId, style: imageGenStyle };
-          const imageUrl = await fetchImageFromAI(character.prompt, localImageApiUrl || undefined, charSettings);
-          const candidateId = `${character.characterId}-${Date.now()}`;
+    // Characters are generated one at a time (not via Promise.all) because the
+    // external Kaggle-tunnel image server chokes under concurrent load — same
+    // reason panel generation batches/delays its requests (see generatePanelImages).
+    for (let i = 0; i < characters.length; i++) {
+      const character = characters[i];
+
+      setStep2ImageReview((prev) => {
+        if (!prev.data) return prev;
+        return {
+          ...prev,
+          data: {
+            ...prev.data,
+            characters: prev.data.characters.map((c) =>
+              c.characterId === character.characterId ? { ...c, status: 'loading', error: null } : c
+            ),
+          },
+        };
+      });
+
+      try {
+        const charSettings = settingsMap?.[character.characterId] ?? { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale, storyId: projectId, style: imageGenStyle };
+        const imageUrl = await withRetry(
+          () => fetchImageFromAI(character.prompt, localImageApiUrl || undefined, charSettings),
+          3,
+          3000
+        );
+        const candidateId = `${character.characterId}-${Date.now()}`;
+
+        setStep2ImageReview((prev) => {
+          if (!prev.data) return prev;
           return {
-            ...character,
-            status: 'success' as const,
-            candidates: [
-              {
-                id: candidateId,
-                imageUrl,
-                createdAt: new Date().toISOString(),
-              },
-            ],
-            selectedCandidateId: candidateId,
+            ...prev,
+            data: {
+              ...prev.data,
+              characters: prev.data.characters.map((c) =>
+                c.characterId === character.characterId
+                  ? {
+                      ...c,
+                      status: 'success',
+                      error: null,
+                      candidates: [
+                        {
+                          id: candidateId,
+                          imageUrl,
+                          createdAt: new Date().toISOString(),
+                        },
+                      ],
+                      selectedCandidateId: candidateId,
+                    }
+                  : c
+              ),
+            },
           };
-        } catch (error) {
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to generate image.';
+        setStep2ImageReview((prev) => {
+          if (!prev.data) return prev;
           return {
-            ...character,
-            status: 'error' as const,
-            error: error instanceof Error ? error.message : 'Failed to generate image.',
+            ...prev,
+            data: {
+              ...prev.data,
+              characters: prev.data.characters.map((c) =>
+                c.characterId === character.characterId ? { ...c, status: 'error', error: message } : c
+              ),
+            },
           };
-        }
-      })
-    );
+        });
+      }
+
+      if (i < characters.length - 1) {
+        await sleep(10000);
+      }
+    }
 
     setStep2ImageReview((prev) => ({
       ...prev,
       isLoading: false,
       lastUpdated: new Date().toISOString(),
-      data: {
-        characters: generatedCharacters,
-        isGenerating: false,
-      },
+      data: prev.data ? { ...prev.data, isGenerating: false } : prev.data,
     }));
   };
 
