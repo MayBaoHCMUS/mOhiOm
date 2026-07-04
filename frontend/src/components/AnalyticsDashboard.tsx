@@ -4,6 +4,7 @@ import {
   Chart,
   registerables,
   type ChartConfiguration,
+  type ScriptableContext,
 } from 'chart.js'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -407,7 +408,7 @@ function ActivityLineChart({ data }: { data: { date: string; count: number }[] }
         datasets: [{
           data: data.map(d => d.count),
           borderColor: '#2563EB',
-          backgroundColor: (ctx) => {
+          backgroundColor: (ctx: ScriptableContext<'line'>) => {
             const canvas = ctx.chart.canvas
             const gradient = canvas.getContext('2d')?.createLinearGradient(0, 0, 0, 280)
             if (!gradient) return 'rgba(239,246,255,0.4)'

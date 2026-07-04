@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import '../styles/globals.css';
 import { AuthProvider } from '@/context/AuthContext';
+import { OnboardingProvider } from '@/context/OnboardingContext';
+import OnboardingOrchestrator from '@/components/onboarding/OnboardingOrchestrator';
 
 export const metadata: Metadata = {
   title: {
@@ -23,7 +25,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <OnboardingProvider>
+            {children}
+            <OnboardingOrchestrator />
+          </OnboardingProvider>
+        </AuthProvider>
       </body>
     </html>
   );

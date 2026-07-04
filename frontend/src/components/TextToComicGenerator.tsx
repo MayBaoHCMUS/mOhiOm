@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
 import { ComicGenerationProvider, StepKey, WizardStepKey, useComicGeneration } from '@/context/ComicGenerationContext';
+import { useOnboardingContext } from '@/context/OnboardingContext';
 import Step0Setup from '@/components/studio-steps/Step0Setup';
 import Step1Analysis from '@/components/studio-steps/Step1Analysis';
 import Step2Characters from '@/components/studio-steps/Step2Characters';
@@ -22,6 +23,11 @@ const wizardSteps = [
 
 function WizardContent() {
   const { activeStep, setActiveStep, stepMap, setupValidation, handleGenerate, step1 } = useComicGeneration();
+  const { markChecklistItem } = useOnboardingContext();
+
+  useEffect(() => {
+    if (activeStep === 4) markChecklistItem('runPipeline');
+  }, [activeStep, markChecklistItem]);
 
   const current = wizardSteps.find((step) => step.key === activeStep) ?? wizardSteps[0];
   const CurrentComponent = current.Component;
@@ -65,6 +71,7 @@ function WizardContent() {
       if (!step1.isLoading && !step1.data) {
         handleGenerate(1);
       }
+      markChecklistItem('createStory');
       setActiveStep(1); // advance immediately so user watches the stream on Step 1
       return;
     }

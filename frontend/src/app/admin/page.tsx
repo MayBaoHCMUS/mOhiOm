@@ -547,7 +547,7 @@ function RegenerationTab({ adminKey, days }: { adminKey: string; days: string })
   const { overview, most_regenned, before_after_samples, trigger_reactions, regen_depth } = data;
 
   const reactionEmoji: Record<string, string> = { love: "❤️", good: "👍", neutral: "😐", bad: "👎" };
-  const reactionColor: Record<string, string> = { love: "#e11d48", good: "#10b981", neutral: "#f59e0b", bad: "#9ca3af" };
+  const _reactionColor: Record<string, string> = { love: "#e11d48", good: "#10b981", neutral: "#f59e0b", bad: "#9ca3af" };
 
   const triggerData = [
     { label: "Love ❤️",    value: trigger_reactions?.["love"]    ?? 0 },
@@ -672,7 +672,7 @@ function RegenerationTab({ adminKey, days }: { adminKey: string; days: string })
                   <span className="text-on-surface-variant text-xs font-mono w-5 text-right">{i + 1}.</span>
                   <span className="text-on-surface-variant font-mono text-xs truncate max-w-xs">{r.panel_id}</span>
                 </div>
-                <span className="text-primary font-semibold">{r.total_regens}× regen'd</span>
+                <span className="text-primary font-semibold">{r.total_regens}× regen&apos;d</span>
               </div>
             ))}
           </div>

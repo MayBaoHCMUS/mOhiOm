@@ -3,8 +3,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import mongo_db
-from app.routers import items, gemini, text_to_comic, auth, projects, gallery, ratings, admin_analytics, analytics, bubbles, comic_generation
+from app.routers import items, gemini, text_to_comic, auth, projects, gallery, ratings, admin_analytics, analytics, bubbles, comic_generation, onboarding, images
 from app.routers import settings as settings_router
+from app import r2_storage
 
 
 @asynccontextmanager
@@ -46,6 +47,8 @@ app.include_router(analytics.router, prefix=settings.API_PREFIX)
 app.include_router(bubbles.router, prefix=settings.API_PREFIX)
 app.include_router(comic_generation.router, prefix=settings.API_PREFIX)
 app.include_router(settings_router.router, prefix=settings.API_PREFIX)
+app.include_router(onboarding.router, prefix=settings.API_PREFIX)
+app.include_router(images.router, prefix=settings.API_PREFIX)
 
 
 
@@ -56,7 +59,7 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    return {"status": "healthy", "r2_configured": r2_storage.configured()}
 
 
 if __name__ == "__main__":

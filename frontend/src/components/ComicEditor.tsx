@@ -17,7 +17,6 @@ import {
   Layers,
   Loader2,
   Palette,
-  Plus,
   X,
 } from 'lucide-react'
 import { useComicGeneration } from '@/context/ComicGenerationContext'

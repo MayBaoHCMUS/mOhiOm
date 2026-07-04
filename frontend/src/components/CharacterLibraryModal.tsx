@@ -132,7 +132,7 @@ export default function CharacterLibraryModal({ isOpen, onClose, existingIds, on
   const toggle = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };
@@ -175,7 +175,7 @@ export default function CharacterLibraryModal({ isOpen, onClose, existingIds, on
           <div>
             <h2 className="text-xl font-bold text-on-surface">Character Library</h2>
             <p className="text-sm text-on-surface-variant mt-0.5">
-              Select characters to add to this project's reference review
+              Select characters to add to this project&apos;s reference review
             </p>
           </div>
           <button

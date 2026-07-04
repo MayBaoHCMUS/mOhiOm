@@ -14,12 +14,15 @@ export const COVER_H = 1600
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-function loadImage(b64: string): Promise<HTMLImageElement> {
+function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
+    img.crossOrigin = 'anonymous'
     img.onload  = () => resolve(img)
     img.onerror = () => reject(new Error('Failed to load image'))
-    img.src = b64.startsWith('data:') ? b64 : `data:image/png;base64,${b64}`
+    img.src = (src.startsWith('data:') || src.startsWith('blob:') || src.startsWith('http'))
+      ? src
+      : `data:image/png;base64,${src}`
   })
 }
 

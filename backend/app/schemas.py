@@ -297,8 +297,8 @@ class LayoutDimensionsResponse(BaseModel):
 
 
 class ProjectImageEntry(BaseModel):
-    image_key: str   # "panel:p1-n1" or "page:page-1"
-    image_data: str  # base64 data URL
+    image_key: str  # "panel:p1-n1" or "page:page-1"
+    image_url: str  # R2 public URL
 
 
 class ProjectImagesSaveRequest(BaseModel):
@@ -307,4 +307,13 @@ class ProjectImagesSaveRequest(BaseModel):
 
 class ProjectImagesResponse(BaseModel):
     images: List[ProjectImageEntry]
+
+
+class ImageUploadRequest(BaseModel):
+    image_base64: str
+    folder: str = "misc"
+
+
+class ImageUploadResponse(BaseModel):
+    image_url: str
 

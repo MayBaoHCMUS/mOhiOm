@@ -12,7 +12,7 @@ const PAGE_W = 1240;
 const PAGE_H = 1754;
 
 // ── Layout template constants ────────────────────────────────────────────────
-const MANGA_TEMPLATES_BY_COUNT: Record<number, string[]> = {
+const _MANGA_TEMPLATES_BY_COUNT: Record<number, string[]> = {
   1: ['full_bleed'],
   2: ['diagonal_split_2', 'one_large_two_small', 'two_small_one_large'],
   3: ['three_panels_row', 'one_large_two_small', 'two_small_one_large', 'diagonal_3_panels', 'cinematic_strips'],
@@ -48,7 +48,7 @@ const LAYOUT_ICONS: Record<string, React.ReactNode> = {
   manga_classic_5: <><rect x="0.5" y="0.5" width="18" height="8" rx="0.5" fill="#E5E7EB" stroke="#9CA3AF" strokeWidth="0.5"/><rect x="20" y="0.5" width="11.5" height="8" rx="0.5" fill="#E5E7EB" stroke="#9CA3AF" strokeWidth="0.5"/><rect x="0.5" y="10" width="8" height="5" rx="0.5" fill="#E5E7EB" stroke="#9CA3AF" strokeWidth="0.5"/><rect x="10" y="10" width="21.5" height="5" rx="0.5" fill="#E5E7EB" stroke="#9CA3AF" strokeWidth="0.5"/><rect x="0.5" y="17" width="31" height="4.5" rx="0.5" fill="#E5E7EB" stroke="#9CA3AF" strokeWidth="0.5"/></>,
 };
 
-const MANGA_SCENE_TYPES = [
+const _MANGA_SCENE_TYPES = [
   { value: 'default', label: 'Auto' }, { value: 'action', label: 'Action' },
   { value: 'dialogue', label: 'Dialogue' }, { value: 'emotional', label: 'Emotional' },
   { value: 'establishing', label: 'Establishing' }, { value: 'climax', label: 'Climax' },
@@ -914,7 +914,7 @@ export default function Step4CanvasEditor() {
   const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
 
   const [pagePolygonLayout, setPagePolygonLayout] = useState<Record<number, string>>({});
-  const [pageSceneType, setPageSceneType] = useState<Record<number, string>>({});
+  const [pageSceneType] = useState<Record<number, string>>({});
   const [confirmedLayouts, setConfirmedLayouts] = useState<Record<number, ConfirmLayoutResponse>>({});
   const [layoutSuggestions, setLayoutSuggestions] = useState<Record<number, SuggestLayoutResponse>>({});
   const [suggestionLoading, setSuggestionLoading] = useState<Record<number, boolean>>({});
@@ -1043,7 +1043,7 @@ export default function Step4CanvasEditor() {
     }
   }, [step4PanelsByPage, projectId]);
 
-  const saveBubbles = useCallback((panelId: string, bubbles: PanelBubbles) => {
+  const _saveBubbles = useCallback((panelId: string, bubbles: PanelBubbles) => {
     setPanelBubbles(prev => ({ ...prev, [panelId]: bubbles }));
     if (projectId) bubblesApi.upsert(panelId, projectId, bubbles as BubbleDataPayload[]).catch(() => {});
   }, [projectId]);

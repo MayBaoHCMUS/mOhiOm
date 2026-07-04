@@ -9,6 +9,7 @@ import { authApi, projectsApi, settingsApi, toApiError } from '@/services/api';
 import type { TextGenMode, SaveTextGenConfigPayload, TextGenProvider } from '@/services/api';
 import { getImageApiUrl, setImageApiUrl } from '@/lib/imageApiUrl';
 import PasswordStrengthMeter from '@/components/PasswordStrengthMeter';
+import { useOnboardingContext } from '@/context/OnboardingContext';
 
 // ─── Panel card ───────────────────────────────────────────────────────────────
 
@@ -89,7 +90,9 @@ function Field({ label, type = 'text', value, onChange, placeholder }: {
 
 export default function SettingsPage() {
   const { user, isLoading, refresh, logout } = useAuth();
+  const { resetOnboarding } = useOnboardingContext();
   const router = useRouter();
+  const [onboardingReset, setOnboardingReset] = useState(false);
 
   // Preferences state — initialised from localStorage
   const [comicStyle, setComicStyle] = useState(() =>
@@ -707,7 +710,19 @@ export default function SettingsPage() {
                 <p className="text-sm text-on-surface-variant mb-6 max-w-lg">
                   In compliance with GDPR, deleting your account permanently erases all generated images and scripts. This cannot be undone.
                 </p>
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    onClick={() => {
+                      resetOnboarding();
+                      setOnboardingReset(true);
+                      setTimeout(() => setOnboardingReset(false), 2000);
+                    }}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold border border-outline-variant bg-white text-on-surface hover:bg-surface-container transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-base">restart_alt</span>
+                    Reset Onboarding Tour
+                  </button>
+                  {onboardingReset && <span className="text-[11px] text-green-600">Reset ✓</span>}
                   <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold border border-outline-variant bg-white text-on-surface hover:bg-surface-container transition-colors">
                     <span className="material-symbols-outlined text-base">archive</span>
                     Export All My Data

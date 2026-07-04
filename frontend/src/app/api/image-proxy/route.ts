@@ -1,6 +1,23 @@
 import { NextResponse } from "next/server";
 
 const REQUEST_TIMEOUT_MS = 120000;
+const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+
+// Uploads base64 image data to the FastAPI backend, which stores it in
+// Cloudflare R2 and returns a public URL — MongoDB never sees base64.
+async function uploadToBackend(imageBase64: string, folder: string): Promise<string> {
+  const res = await fetch(`${BACKEND_API_URL}/images/upload`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image_base64: imageBase64, folder }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Image upload to backend failed (${res.status}): ${detail}`);
+  }
+  const data = (await res.json()) as { image_url: string };
+  return data.image_url;
+}
 
 type ProxyRequestBody = {
   url?: string;
@@ -107,23 +124,28 @@ export async function POST(request: Request) {
       if (data.image_base64) {
         console.log(
           "[image-proxy]   image_base64 :",
-          `[base64, ${String(data.image_base64).length} chars]`
+          `[base64, ${String(data.image_base64).length} chars] — uploading to R2`
         );
+        const { image_base64: _imageBase64, ...rest } = data;
+        const image_url = await uploadToBackend(String(data.image_base64), "panels");
+        return NextResponse.json({ ...rest, image_url });
       }
       return NextResponse.json(data);
     }
 
-    // Plain-text / binary fallback — wrap in the expected shape
+    // Plain-text / binary fallback — upload then wrap in the expected shape
     const text = await response.text();
     console.log("[image-proxy] ✔ Plain-text response length:", text.length);
-    return NextResponse.json({ status: "success", image_base64: text });
+    const image_url = await uploadToBackend(text, "panels");
+    return NextResponse.json({ status: "success", image_url });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       console.error("[image-proxy] ✖ Request timed out after", REQUEST_TIMEOUT_MS, "ms");
       return NextResponse.json({ error: "Image API request timed out." }, { status: 504 });
     }
-    console.error("[image-proxy] ✖ Fetch failed:", error);
-    return NextResponse.json({ error: "Failed to reach image API." }, { status: 502 });
+    console.error("[image-proxy] ✖ Fetch or upload failed:", error);
+    const message = error instanceof Error ? error.message : "Failed to reach image API or upload image.";
+    return NextResponse.json({ error: message }, { status: 502 });
   } finally {
     clearTimeout(timeout);
   }

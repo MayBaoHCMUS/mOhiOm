@@ -225,7 +225,7 @@ function buildBubbleContent(bubble: SingleBubble, w: number, h: number): string 
     ? 'monospace'
     : "'Comic Neue', 'Comic Sans MS', cursive";
   const fontWeight = type === 'shout' || type === 'scream' ? 700 : 400;
-  const fontStyle  = type === 'narration' || type === 'whisper' || type === 'wobbly' ? 'italic' : 'normal';
+  const _fontStyle = type === 'narration' || type === 'whisper' || type === 'wobbly' ? 'italic' : 'normal';
   const textFill   = userTextColor ?? (type === 'narration' ? '#22224a' : type === 'scream' ? '#660000' : '#111111');
   const textAnchor: 'middle' | 'start' = 'middle';
   const textCX     = cx;
@@ -301,11 +301,11 @@ function buildBubbleContent(bubble: SingleBubble, w: number, h: number): string 
     const dotR1 = Math.max(3.5, minDim * 0.048);
     const dotR2 = Math.max(2.5, minDim * 0.034);
     const dotR3 = Math.max(1.5, minDim * 0.021);
-    const trail = tailDir !== 'none' ? thoughtTrailCircles(tailDir, cx, cy, rx, ry) : '';
+    const _trail = tailDir !== 'none' ? thoughtTrailCircles(tailDir, cx, cy, rx, ry) : '';
     const pathStr = `<path d="${buildCloudPath(w, h)}" fill="${fill}" stroke="#1a1a1a" stroke-width="${sw}" stroke-linejoin="round"/>`;
     // Tail dots sized per thoughtTrailCircles (r values already set); supplement dotR scaling for the 3 dots
     const trailDots = tailDir !== 'none' ? (() => {
-      const pts = thoughtTrailCircles(tailDir, cx, cy, rx, ry);
+      const _pts = thoughtTrailCircles(tailDir, cx, cy, rx, ry);
       // thoughtTrailCircles returns an SVG string — rebuild with scaled radii
       const { x: tx, y: ty } = (() => {
         const map: Record<string, { x: number; y: number }> = {
@@ -385,6 +385,7 @@ function buildOverlaySvg(bubbles: SingleBubble[], W: number, H: number): string 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new window.Image();
+    img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Failed to load image`));
     img.src = src;

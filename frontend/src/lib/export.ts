@@ -35,10 +35,27 @@ export function triggerDownload(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-function stripDataPrefix(dataUrl: string): { base64: string; mimeType: string } {
-  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+// Pages are now R2 URLs rather than embedded base64, so fetch and encode
+// on demand when the source isn't already a data: URL.
+async function stripDataPrefix(src: string): Promise<{ base64: string; mimeType: string }> {
+  const match = src.match(/^data:([^;]+);base64,(.+)$/);
   if (match) return { mimeType: match[1], base64: match[2] };
-  return { mimeType: 'image/png', base64: dataUrl };
+  if (src.startsWith('http') || src.startsWith('blob:')) {
+    const res = await fetch(src);
+    const mimeType = res.headers.get('content-type') || 'image/png';
+    return { mimeType, base64: arrayBufferToBase64(await res.arrayBuffer()) };
+  }
+  return { mimeType: 'image/png', base64: src };
 }
 
 function sanitizeFilename(name: string): string {
@@ -68,7 +85,7 @@ export async function exportAsZip(pages: ExportPage[], opts: ExportOpts): Promis
   const folder = zip.folder(stem) ?? zip;
 
   for (const page of pages) {
-    const { base64 } = stripDataPrefix(page.imageUrl);
+    const { base64 } = await stripDataPrefix(page.imageUrl);
     const filename = `page_${String(page.pageNumber).padStart(2, '0')}.png`;
     folder.file(filename, base64, { base64: true });
   }
@@ -104,7 +121,7 @@ export async function exportAsCbz(pages: ExportPage[], opts: ExportOpts): Promis
   const stem = stemFor(opts)
   const zip  = new JSZip()
   for (const page of pages) {
-    const { base64 } = stripDataPrefix(page.imageUrl)
+    const { base64 } = await stripDataPrefix(page.imageUrl)
     zip.file(`page_${String(page.pageNumber).padStart(3, '0')}.png`, base64, { base64: true })
   }
   const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } })
@@ -121,6 +138,7 @@ const MARK_W    = 2;
 function loadImageEl(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.onload  = () => resolve(img);
     img.onerror = reject;
     img.src = src.startsWith('data:') || src.startsWith('blob:') || src.startsWith('http')
@@ -193,7 +211,7 @@ export async function exportAsPdf(pages: ExportPage[], opts: ExportOpts): Promis
       imageUrl = await addBleedAndCropMarks(imageUrl);
     }
 
-    const { base64, mimeType } = stripDataPrefix(imageUrl);
+    const { base64, mimeType } = await stripDataPrefix(imageUrl);
     const imgBytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
 
     const pngImage = mimeType.includes('jpeg') || mimeType.includes('jpg')
@@ -248,7 +266,7 @@ export async function exportAsEpub(pages: ExportPage[], opts: ExportOpts): Promi
     const xhtmlFile = `page_${n}.xhtml`;
     const chTitle = `Page ${page.pageNumber}`;
 
-    const { base64 } = stripDataPrefix(page.imageUrl);
+    const { base64 } = await stripDataPrefix(page.imageUrl);
     imgs.file(imgFile, base64, { base64: true });
 
     epub.file(

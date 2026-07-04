@@ -2,6 +2,8 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import type { Step4Panel, Step4PanelState } from '@/context/ComicGenerationContext';
+import { useOnboardingContext } from '@/context/OnboardingContext';
+import ContextualTip from '@/components/onboarding/ContextualTip';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -788,7 +790,7 @@ function PanelCell({
     }
   }, [computePatch, panel.id, onBubbleUpdate, onDragCommit]);
 
-  const handleCellClick = useCallback((e: React.MouseEvent) => {
+  const _handleCellClick = useCallback((e: React.MouseEvent) => {
     if (isDraggingRef.current) return;
     if (!cellRef.current) return;
     const rect = cellRef.current.getBoundingClientRect();
@@ -797,7 +799,7 @@ function PanelCell({
     onBubbleAdd(panel.id, clamp(normX, 0.05, 0.95), clamp(normY, 0.05, 0.95));
   }, [panel.id, onBubbleAdd]);
 
-  const handleAddClick = useCallback((e: React.MouseEvent) => {
+  const _handleAddClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onBubbleAdd(panel.id, 0.5, 0.35);
   }, [panel.id, onBubbleAdd]);
@@ -1325,7 +1327,7 @@ function BubbleSidebar({
       <div style={{ width: 280, borderLeft: '1px solid var(--color-outline)', display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto', background: 'var(--color-surface-container-lowest)' }}>
         {palette}
         <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--color-outline)' }}>
-          <button type="button" onClick={onAutoImport}
+          <button type="button" onClick={onAutoImport} data-tour="auto-import-btn"
             style={{
               width: '100%', padding: '7px 12px', borderRadius: 8,
               border: `1px solid ${primaryColor}`,
@@ -1336,6 +1338,13 @@ function BubbleSidebar({
             <span className="material-symbols-outlined" style={{ fontSize: 14 }}>bolt</span>
             Auto-import from script
           </button>
+          <ContextualTip
+            id="auto-import-tip"
+            target='[data-tour="auto-import-btn"]'
+            title="Import dialogue automatically"
+            body="Auto-import pulls dialogue from your panel script directly into speech bubbles."
+            position="left"
+          />
         </div>
         <div style={{ padding: '10px 12px', flex: 1 }}>
           <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: mutedColor, marginBottom: 6 }}>
@@ -1696,8 +1705,9 @@ function ContextMenu({ x, y, isCrossPanel, onBringFront, onSendBack, onDuplicate
 
 export default function DialogueEditor({
   panelsByPage, panelStates, pageStates, panelBubbles, pageLayoutNames, comicPageMode,
-  onSaveBubbles, onExport, onAutoImport,
+  onSaveBubbles, onExport: _onExport, onAutoImport,
 }: DialogueEditorProps) {
+  const { markChecklistItem } = useOnboardingContext();
   const pageIds = panelsByPage.map(([n]) => n);
   const allPanels = panelsByPage.flatMap(([, ps]) => ps);
 
@@ -1843,9 +1853,10 @@ export default function DialogueEditor({
     };
     const updated = [...existing, newBubble];
     triggerSave(panelId, updated);
+    markChecklistItem('addDialogue');
     setSelectedBubble({ panelId, bubbleId: newBubble.id });
     setEditingBubbleId(newBubble.id);
-  }, [panelBubbles, triggerSave]);
+  }, [panelBubbles, triggerSave, markChecklistItem]);
 
   // Update + save — called on drag end and sidebar changes
   const updateBubble = useCallback((panelId: string, bubbleId: string, patch: Partial<SingleBubble>) => {
@@ -1904,14 +1915,14 @@ export default function DialogueEditor({
     return bs.length > 0 && bs.some(b => !isNoneText(b.dialogue));
   };
 
-  const filledCount = allPanels.filter(p => panelHasDialogue(p.id)).length;
+  const _filledCount = allPanels.filter(p => panelHasDialogue(p.id)).length;
 
   const currentPageIdx = pageIds.indexOf(currentPage);
   const layoutName = pageLayoutNames[currentPage] ?? 'stacked';
   const layoutRows = LAYOUT_ROW_STRUCTURES[layoutName] ?? [[0]];
 
   // Page dot color: green=all done, orange=partial, gray=none
-  const pageDotColor = (pageNum: number): string => {
+  const _pageDotColor = (pageNum: number): string => {
     const panels = panelsByPage.find(([n]) => n === pageNum)?.[1] ?? [];
     const filled = panels.filter(p => panelHasDialogue(p.id)).length;
     if (filled === panels.length && panels.length > 0) return '#1D9E75';
@@ -1987,7 +1998,6 @@ export default function DialogueEditor({
               {(() => {
                 const absBboxes = ABSOLUTE_LAYOUT_BBOXES[layoutName];
                 const sharedPanelProps = (panel: Step4Panel, idx: number) => ({
-                  key: panel.id,
                   panel,
                   panelIndex: idx,
                   imageUrl: panelStates[panel.id]?.imageUrl ?? null,
@@ -2032,7 +2042,7 @@ export default function DialogueEditor({
                         const absoluteStyle: React.CSSProperties | undefined = bb
                           ? { position: 'absolute', left: `${bb.l}%`, top: `${bb.t}%`, width: `${bb.w}%`, height: `${bb.h}%` }
                           : undefined;
-                        return <PanelCell {...sharedPanelProps(panel, idx)} absoluteStyle={absoluteStyle} />;
+                        return <PanelCell key={panel.id} {...sharedPanelProps(panel, idx)} absoluteStyle={absoluteStyle} />;
                       })}
                     </div>
                   );
@@ -2050,7 +2060,7 @@ export default function DialogueEditor({
                     )}
                     <div style={buildGridStyle(layoutRows)}>
                       {currentPanels.map((panel, idx) => (
-                        <PanelCell {...sharedPanelProps(panel, idx)} />
+                        <PanelCell key={panel.id} {...sharedPanelProps(panel, idx)} />
                       ))}
                     </div>
                   </div>

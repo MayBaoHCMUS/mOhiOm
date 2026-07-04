@@ -543,7 +543,7 @@ function CharacterDesignInfo({
 
   const CHIP_SECTIONS = new Set(['physical', 'outfit']);
 
-  const extractTraitChips = (text: string): string[] =>
+  const _extractTraitChips = (text: string): string[] =>
     text
       .split(/[,;·•]+/)
       .map((p) => p.trim().replace(/^[-*]\s*/, ''))
@@ -1912,10 +1912,10 @@ export default function Step2Characters() {
   else if (step2.data)                                          state = 3;
 
   const approvedCount      = approvedCharIds.size;
-  const allCharsApproved   = characters.length === 0 || approvedCount === characters.length;
+  const _allCharsApproved  = characters.length === 0 || approvedCount === characters.length;
   const generatedCount     = characters.filter((c) => c.candidates.length > 0 && !approvedCharIds.has(c.characterId)).length;
   const noCandidatesCount  = characters.filter((c) => c.candidates.length === 0).length;
-  const pendingCount       = characters.filter((c) => !approvedCharIds.has(c.characterId)).length;
+  const _pendingCount      = characters.filter((c) => !approvedCharIds.has(c.characterId)).length;
   const charsWithCandidates = characters.filter((c) => c.candidates.length > 0);
   const charsWithSelection  = charsWithCandidates.filter((c) => c.selectedCandidateId !== null);
   const allCharsHaveSelection = charsWithCandidates.length === 0 ||

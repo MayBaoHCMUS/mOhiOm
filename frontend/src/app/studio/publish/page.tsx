@@ -14,6 +14,7 @@ import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
 import { downloadSocialPack, PLATFORMS } from '@/lib/socialPack';
 import { recordPublish } from '@/lib/publishHistory';
 import { getImageApiUrl } from '@/lib/imageApiUrl';
+import { useOnboardingContext } from '@/context/OnboardingContext';
 import {
   AlertTriangle, CheckCircle2, ChevronDown, Eye, EyeOff, ExternalLink,
   MoreHorizontal, RefreshCw,
@@ -37,6 +38,20 @@ function gradientFor(id: string) {
   return PROJECT_GRADIENTS[hash % PROJECT_GRADIENTS.length];
 }
 
+// publishComic sends raw base64 page bytes to the external comic-reader server.
+// Page images are now R2 URLs rather than data: URLs, so fetch-and-convert any
+// plain URL to base64 right before publishing (data: URLs pass through as-is).
+async function ensureBase64DataUrl(src: string): Promise<string> {
+  if (src.startsWith('data:')) return src;
+  const blob = await (await fetch(src)).blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 // Step badge uses 1-indexed display: has_step4 = step 5 in the pipeline UI
 function getMaxStep(p: CloudProjectListItem): number {
   if (p.has_step4) return 5;
@@ -50,7 +65,7 @@ function truncateTitle(title: string, maxLen = 24): string {
   return title.length > maxLen ? title.slice(0, maxLen - 2) + '…' : title;
 }
 
-function formatDate(iso: string) {
+function _formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
@@ -806,6 +821,7 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
 
 // ── Publish Page ──────────────────────────────────────────────────────
 export default function PublishPage() {
+  const { markChecklistItem } = useOnboardingContext();
   const [apiUrl, setApiUrl] = useState('');
   const [projects, setProjects] = useState<CloudProjectListItem[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
@@ -867,7 +883,7 @@ export default function PublishPage() {
       let pages: string[];
 
       if (pageEntries.length > 0) {
-        pages = pageEntries.map(e => e.image_data);
+        pages = pageEntries.map(e => e.image_url);
       } else {
         const steps = (projectRes.data.steps ?? {}) as Record<string, unknown>;
         const step4Wrapper = (steps.step4 ?? {}) as Record<string, unknown>;
@@ -882,8 +898,8 @@ export default function PublishPage() {
         const borderConfig: BorderConfig = { ...DEFAULT_BORDER_CONFIG, ...savedBorderCfg };
 
         const imageMap: Record<string, string> = {};
-        for (const { image_key, image_data } of allImages) {
-          if (image_key.startsWith('panel:')) imageMap[image_key.slice(6)] = image_data;
+        for (const { image_key, image_url } of allImages) {
+          if (image_key.startsWith('panel:')) imageMap[image_key.slice(6)] = image_url;
         }
 
         const byPage = new Map<number, Array<{ id: string; panelNumber: number }>>();
@@ -944,7 +960,9 @@ export default function PublishPage() {
 
       pagesCache.current.set(projectId, pages);
       setCard(projectId, { status: 'publishing' });
-      const result = await publishComic(apiUrl, pages, projectId, '');
+      const base64Pages = await Promise.all(pages.map(ensureBase64DataUrl));
+      const result = await publishComic(apiUrl, base64Pages, projectId, '');
+      markChecklistItem('publishComic');
 
       recordPublish({
         comic_id:     result.comic_id,
@@ -1015,7 +1033,7 @@ export default function PublishPage() {
 
     let pages: string[];
     if (pageEntries.length > 0) {
-      pages = pageEntries.map(e => `data:image/png;base64,${e.image_data}`);
+      pages = pageEntries.map(e => e.image_url);
     } else {
       const steps = (projectRes.data.steps ?? {}) as Record<string, unknown>;
       const step4Data = ((steps.step4 as Record<string, unknown>)?.data ?? {}) as Record<string, unknown>;
@@ -1027,8 +1045,8 @@ export default function PublishPage() {
       const savedBorderCfg = (imageGenSettings.border_config ?? {}) as Partial<BorderConfig>;
       const borderConfig: BorderConfig = { ...DEFAULT_BORDER_CONFIG, ...savedBorderCfg };
       const imageMap: Record<string, string> = {};
-      for (const { image_key, image_data } of allImages) {
-        if (image_key.startsWith('panel:')) imageMap[image_key.slice(6)] = image_data;
+      for (const { image_key, image_url } of allImages) {
+        if (image_key.startsWith('panel:')) imageMap[image_key.slice(6)] = image_url;
       }
       const byPage = new Map<number, Array<{ id: string; panelNumber: number }>>();
       for (const p of panels) {

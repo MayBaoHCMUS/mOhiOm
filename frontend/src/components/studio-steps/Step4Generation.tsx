@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
+import { useOnboardingContext } from '@/context/OnboardingContext';
 import type { Step4Panel, PanelVersion } from '@/context/ComicGenerationContext';
 import { bubblesApi, comicLayoutApi } from '@/services/api';
 import type { BubbleDataPayload } from '@/services/api';
@@ -778,8 +779,8 @@ function LayoutStudioSidebar({
   panelStats,
   isImageGenerating,
   isPaused,
-  comicPageMode,
-  onSetPageMode,
+  comicPageMode: _comicPageMode,
+  onSetPageMode: _onSetPageMode,
   onGenerateAll,
   onPause,
   onResume,
@@ -944,6 +945,8 @@ export default function Step4Generation() {
     handleRetry,
     handleStartFullGeneration,
     handleStartPanelGeneration,
+    panelAutoRetryInfo,
+    cancelPanelAutoRetry,
     handleRegenerateSinglePanel,
     handleRegeneratePage,
     handleRegenerateWithFeedback,
@@ -956,12 +959,13 @@ export default function Step4Generation() {
     sfxMode,
     setSfxMode,
     pageLayoutNames,
-    pagePanelDimensions,
+    pagePanelDimensions: _pagePanelDimensions,
     setPageLayout,
     comicPageMode: contextComicPageMode,
     setComicPageMode: setContextComicPageMode,
     resetComicPageMode,
   } = useComicGeneration();
+  const { markChecklistItem } = useOnboardingContext();
 
   const [isPaused, setIsPaused] = useState(false);
   const [showFinishErrorModal, setShowFinishErrorModal] = useState(false);
@@ -1194,6 +1198,10 @@ export default function Step4Generation() {
       : { total: step4Stats.total, success: step4Stats.success, loading: step4Stats.loading, error: step4Stats.error },
   [comicPageMode, panelStats, step4Stats]);
 
+  useEffect(() => {
+    if (activeStats.success > 0) markChecklistItem('generateImage');
+  }, [activeStats.success, markChecklistItem]);
+
   const retryErrorPages = () => {
     if (!step4.data?.pageStates) return;
     const errorPages = Object.entries(step4.data.pageStates as Record<string, { status: string }>)
@@ -1388,6 +1396,21 @@ export default function Step4Generation() {
           </div>
         ) : (
         <div className="space-y-6">
+
+          {/* Auto-retry banner — shown while handleStartPanelGeneration is backing off
+              and retrying panels that failed in a previous round (rounds 2-5). */}
+          {panelAutoRetryInfo && (
+            <div className="rounded-[12px] border border-amber-200 p-4 flex items-center justify-between animate-slide-down"
+              style={{ background: 'linear-gradient(135deg, #FFFBEB, #FEF9F0)' }}>
+              <span className="text-sm font-semibold text-amber-700">
+                ↺ Auto-retrying failed panels — round {panelAutoRetryInfo.round}/{panelAutoRetryInfo.totalRounds}, {panelAutoRetryInfo.remaining} remaining…
+              </span>
+              <button type="button" onClick={cancelPanelAutoRetry}
+                className="px-3 py-1.5 rounded-full border border-amber-300 bg-amber-50 text-amber-700 text-xs font-bold hover:bg-amber-100 transition-colors">
+                Stop
+              </button>
+            </div>
+          )}
 
           {/* Generation Dashboard */}
           {(() => {

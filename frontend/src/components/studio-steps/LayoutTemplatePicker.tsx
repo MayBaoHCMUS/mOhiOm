@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { TEMPLATES_BY_COUNT, LAYOUT_DISPLAY_NAMES_MAP, LAYOUT_SVGS } from './Step4Generation';
+import ContextualTip from '@/components/onboarding/ContextualTip';
 
 const LAYOUT_GROUPS: Record<string, string> = {
   single: 'standard', horizontal_duo: 'standard', vertical_trio: 'standard',
@@ -44,12 +45,19 @@ export function LayoutTemplatePicker({
     <div className="space-y-3">
       {/* AI Suggest button */}
       <div className="flex items-center gap-2 flex-wrap">
-        <button type="button" onClick={onGetSuggestion} disabled={isSuggLoading}
+        <button type="button" onClick={onGetSuggestion} disabled={isSuggLoading} data-tour="ai-suggest-btn"
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 transition-colors disabled:opacity-50">
           {isSuggLoading
             ? <><span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />Thinking…</>
             : '✨ AI Suggest Layout'}
         </button>
+        <ContextualTip
+          id="ai-suggest-tip"
+          target='[data-tour="ai-suggest-btn"]'
+          title="Let AI choose your layout"
+          body="Click AI Suggest and the system will pick the best panel layout for this scene."
+          position="bottom"
+        />
         {suggestion && (
           <span className="text-xs text-on-surface-variant">
             → <span className="font-semibold text-on-surface">{LAYOUT_DISPLAY_NAMES_MAP[suggestion.suggested] ?? suggestion.suggested}</span>
