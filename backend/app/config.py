@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://localhost:8000",
+        "https://m-ohi-om.vercel.app",   # your Vercel frontend
+        "http://localhost:5173",           # if using Vite
     ]
 
     # Auth
