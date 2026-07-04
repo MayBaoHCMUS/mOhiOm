@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-
+export const maxDuration = 60;
 /**
  * Generic server-side proxy for the Kaggle manga API server.
  * Bypasses browser CORS restrictions by making the fetch server-side.
