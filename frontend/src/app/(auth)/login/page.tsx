@@ -49,7 +49,7 @@ export default function LoginPage() {
       setStatusSuccess(response.data.message || 'Signed in successfully.');
 
       window.setTimeout(() => {
-        router.push('/studio');
+        router.push('/studio/dashboard');
       }, 900);
     } catch (error) {
       const apiError = toApiError(error);

@@ -258,7 +258,7 @@ export default function StudioDashboardPage() {
               projects.slice(0, 6).map((project) => (
                 <div
                   key={project.project_id}
-                  className="group bg-surface-container-lowest rounded-3xl overflow-hidden ambient-lift transition-all hover:-translate-y-1 cursor-pointer"
+                  className="animate-skel-reveal group bg-surface-container-lowest rounded-3xl overflow-hidden ambient-lift transition-all hover:-translate-y-1 cursor-pointer"
                   onClick={() => handleLoadProject(project.project_id)}
                 >
                   {/* Cover — gradient with step badges */}
@@ -323,7 +323,7 @@ export default function StudioDashboardPage() {
               characters.slice(0, 12).map((char) => (
                 <div
                   key={char.character_id}
-                  className="flex flex-col items-center group cursor-pointer"
+                  className="animate-skel-reveal flex flex-col items-center group cursor-pointer"
                   title={char.project_id ? `From project: ${char.project_id}` : 'My Library'}
                   onClick={() => char.project_id ? handleLoadProject(char.project_id) : undefined}
                   style={{ cursor: char.project_id ? 'pointer' : 'default' }}

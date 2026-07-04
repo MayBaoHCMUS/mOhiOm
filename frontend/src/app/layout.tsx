@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import '../styles/globals.css';
 import { AuthProvider } from '@/context/AuthContext';
+import { NotificationProvider } from '@/context/NotificationContext';
 import { OnboardingProvider } from '@/context/OnboardingContext';
 import OnboardingOrchestrator from '@/components/onboarding/OnboardingOrchestrator';
 
@@ -26,10 +27,12 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <AuthProvider>
-          <OnboardingProvider>
-            {children}
-            <OnboardingOrchestrator />
-          </OnboardingProvider>
+          <NotificationProvider>
+            <OnboardingProvider>
+              {children}
+              <OnboardingOrchestrator />
+            </OnboardingProvider>
+          </NotificationProvider>
         </AuthProvider>
       </body>
     </html>

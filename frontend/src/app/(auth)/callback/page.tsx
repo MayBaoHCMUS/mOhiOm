@@ -31,7 +31,7 @@ function AuthCallbackInner() {
       setStatus('success');
       setMessage(`Signed in with ${provider || 'OAuth'}${mode ? ` (${mode})` : ''}. Redirecting...`);
       window.setTimeout(() => {
-        router.push('/studio');
+        router.push('/studio/dashboard');
       }, 1200);
     };
 

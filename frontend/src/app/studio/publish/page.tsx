@@ -17,7 +17,7 @@ import { getImageApiUrl } from '@/lib/imageApiUrl';
 import { useOnboardingContext } from '@/context/OnboardingContext';
 import {
   AlertTriangle, CheckCircle2, ChevronDown, Eye, EyeOff, ExternalLink,
-  MoreHorizontal, RefreshCw,
+  MoreHorizontal, RefreshCw, X,
 } from 'lucide-react';
 
 const CARD_STATES_KEY = 'mohiom-export-card-states';
@@ -116,13 +116,6 @@ function PortalMenu({ isOpen, onClose, triggerRef, children }: {
       setPos({ top: rect.bottom + window.scrollY + 6, right: window.innerWidth - rect.right });
     }
   }, [isOpen, triggerRef]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const h = (e: MouseEvent) => { if (!triggerRef.current?.contains(e.target as Node)) onClose(); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, [isOpen, onClose, triggerRef]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -554,6 +547,13 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
     }
   }
 
+  useEffect(() => {
+    if (!showConfirm) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !unpublishing) setShowConfirm(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [showConfirm, unpublishing]);
+
   return (
     <>
       <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
@@ -720,9 +720,9 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
                   ))}
                 </div>
 
-                {/* Share tab */}
-                {activeTab === 'share' && (
-                  <div className="space-y-2">
+                {/* Tab panels */}
+                <div className="t-page-slide" data-page={activeTab === 'share' ? '1' : '2'}>
+                  <div className="t-page space-y-2" data-page-id="1">
                     <div className="flex gap-1.5">
                       <input type="text" value={shareUrl} readOnly onFocus={e => e.target.select()}
                         className="flex-1 min-w-0 px-2.5 py-1.5 text-[11px] font-mono bg-surface-container border border-outline-variant/30 rounded-lg text-on-surface-variant outline-none overflow-hidden text-ellipsis" />
@@ -745,11 +745,9 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
                       </button>
                     </div>
                   </div>
-                )}
 
-                {/* Embed tab — FIX 12 applied via IframeSnippet */}
-                {activeTab === 'embed' && (
-                  <div className="space-y-2.5">
+                  {/* Embed tab — FIX 12 applied via IframeSnippet */}
+                  <div className="t-page space-y-2.5" data-page-id="2">
                     <div className="flex gap-1.5">
                       {EMBED_SIZES.map(({ key, label, hint }) => (
                         <button key={key} type="button" onClick={() => setEmbedSize(key)}
@@ -766,7 +764,7 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
                       Preview embed
                     </button>
                   </div>
-                )}
+                </div>
               </div>
             </div>
           )}
@@ -789,25 +787,36 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
 
       {/* FIX 5: Unpublish confirmation dialog */}
       {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-[2px]"
           onClick={() => { if (!unpublishing) setShowConfirm(false); }}>
-          <div className="bg-surface rounded-2xl shadow-2xl p-6 w-[400px] max-w-[calc(100vw-32px)]" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start gap-3 mb-4">
-              <AlertTriangle size={24} className="text-red-600 shrink-0 mt-0.5" />
+          <div className="relative bg-white rounded-2xl shadow-2xl p-7 pt-6 w-[400px] max-w-[calc(100vw-32px)] animate-panel-appear" onClick={e => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setShowConfirm(false)}
+              disabled={unpublishing}
+              aria-label="Close"
+              className="absolute top-3.5 right-3.5 w-7 h-7 rounded-md flex items-center justify-center text-outline hover:bg-surface-container-low hover:text-on-surface-variant transition-colors disabled:opacity-50"
+            >
+              <X size={16} />
+            </button>
+            <div className="flex items-start gap-3.5 mb-4 pr-6">
+              <span className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
+                <AlertTriangle size={20} className="text-red-600" />
+              </span>
               <div>
-                <p className="text-[16px] font-bold text-on-surface">Remove from public access?</p>
-                <p className="text-[13px] text-on-surface-variant mt-2">
-                  Readers will immediately lose access to <strong>{truncateTitle(formatProjectTitle(project.project_id))}</strong>. This cannot be undone without re-publishing.
+                <p className="text-[17px] font-bold text-on-surface">Remove from public access?</p>
+                <p className="text-[14px] text-on-surface-variant mt-1.5 leading-relaxed">
+                  Readers will immediately lose access to <strong className="text-on-surface">{truncateTitle(formatProjectTitle(project.project_id))}</strong>. This cannot be undone without republishing.
                 </p>
               </div>
             </div>
-            <div className="flex gap-2 mt-5">
+            <div className="flex gap-2.5 mt-5">
               <button type="button" onClick={() => setShowConfirm(false)} disabled={unpublishing}
-                className="flex-1 h-[38px] rounded-lg text-[13px] font-medium bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors disabled:opacity-50">
+                className="flex-1 h-[42px] rounded-[9px] text-[14px] font-medium bg-white border-[1.5px] border-outline-variant text-on-surface-variant hover:bg-surface-container-low hover:border-outline transition-colors disabled:opacity-50">
                 Cancel
               </button>
               <button type="button" onClick={confirmUnpublish} disabled={unpublishing}
-                className="flex-1 h-[38px] rounded-lg text-[13px] font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-70 flex items-center justify-center gap-2">
+                className="flex-1 h-[42px] rounded-[9px] text-[14px] font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-70 flex items-center justify-center gap-2">
                 {unpublishing && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />}
                 {unpublishing ? 'Removing…' : 'Yes, remove'}
               </button>
