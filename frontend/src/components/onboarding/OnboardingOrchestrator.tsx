@@ -73,7 +73,7 @@ export default function OnboardingOrchestrator() {
         />
       )}
 
-      {state.welcomeSeen && !showTour && <OnboardingChecklist />}
+      {state.welcomeSeen && !showTour && !state.completed && <OnboardingChecklist />}
     </>
   );
 }

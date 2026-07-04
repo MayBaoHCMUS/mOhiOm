@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import type { ImageGenMode, ImageGenSettings } from '@/context/ComicGenerationContext';
@@ -9,6 +10,7 @@ import GalleryModal from '@/components/GalleryModal';
 import Markdown from '@/components/Markdown';
 import { apiClient } from '@/services/api';
 import type { CharacterSummary } from '@/services/api';
+import { GenerationStatusBar, type GenerationProgress } from '@/components/GenerationStatusBar';
 
 // ── Design section definitions ────────────────────────────────────────────────
 
@@ -763,7 +765,7 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
     };
 
     return (
-      <div ref={ref} className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden">
+      <div ref={ref} className="t-acc rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden" data-open={isOpen ? 'true' : 'false'}>
         <div
           role="button"
           tabIndex={0}
@@ -822,46 +824,48 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
           </div>
         </div>
 
-        {isOpen && (
-          <div className="px-5 pb-5 border-t border-outline-variant/10">
-            {isEditing ? (
-              <div className="space-y-2 pt-4">
-                {/* Markdown toolbar */}
-                <div className="flex items-center gap-1 pb-2 border-b border-outline-variant/10">
-                  <button type="button" onClick={() => insertMarkdown('**', '**')} title="Bold"
-                    className="px-2 py-1 text-xs font-bold rounded hover:bg-surface-container transition-colors">B</button>
-                  <button type="button" onClick={() => insertMarkdown('*', '*')} title="Italic"
-                    className="px-2 py-1 text-xs italic rounded hover:bg-surface-container transition-colors">I</button>
-                  <button type="button" onClick={() => insertMarkdown('\n- ', '')} title="Bullet list"
-                    className="px-2 py-1 text-xs rounded hover:bg-surface-container transition-colors">• List</button>
-                  <div className="flex-1" />
-                  <button type="button" onClick={onEditCancel}
-                    className="px-3 py-1.5 text-xs rounded-xl bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors">
-                    Cancel
-                  </button>
-                  <button type="button" onClick={onEditSave}
-                    className="px-3 py-1.5 text-xs rounded-xl bg-gray-900 text-white hover:opacity-90 font-semibold transition-opacity">
-                    Save changes
-                  </button>
+        <div className="t-acc-panel">
+          <div className="t-acc-panel-inner">
+            <div className="px-5 pb-5 border-t border-outline-variant/10">
+              {isEditing ? (
+                <div className="space-y-2 pt-4">
+                  {/* Markdown toolbar */}
+                  <div className="flex items-center gap-1 pb-2 border-b border-outline-variant/10">
+                    <button type="button" onClick={() => insertMarkdown('**', '**')} title="Bold"
+                      className="px-2 py-1 text-xs font-bold rounded hover:bg-surface-container transition-colors">B</button>
+                    <button type="button" onClick={() => insertMarkdown('*', '*')} title="Italic"
+                      className="px-2 py-1 text-xs italic rounded hover:bg-surface-container transition-colors">I</button>
+                    <button type="button" onClick={() => insertMarkdown('\n- ', '')} title="Bullet list"
+                      className="px-2 py-1 text-xs rounded hover:bg-surface-container transition-colors">• List</button>
+                    <div className="flex-1" />
+                    <button type="button" onClick={onEditCancel}
+                      className="px-3 py-1.5 text-xs rounded-xl bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors">
+                      Cancel
+                    </button>
+                    <button type="button" onClick={onEditSave}
+                      className="px-3 py-1.5 text-xs rounded-xl bg-gray-900 text-white hover:opacity-90 font-semibold transition-opacity">
+                      Save changes
+                    </button>
+                  </div>
+                  <textarea
+                    ref={taRef}
+                    value={editBuffer}
+                    onChange={(e) => onEditChange(e.target.value)}
+                    className="w-full min-h-[220px] rounded-xl bg-surface-container px-4 py-3 text-sm font-mono focus:outline-none border border-outline-variant/20 focus:border-primary/40 resize-y leading-relaxed"
+                  />
                 </div>
-                <textarea
-                  ref={taRef}
-                  value={editBuffer}
-                  onChange={(e) => onEditChange(e.target.value)}
-                  className="w-full min-h-[220px] rounded-xl bg-surface-container px-4 py-3 text-sm font-mono focus:outline-none border border-outline-variant/20 focus:border-primary/40 resize-y leading-relaxed"
-                />
-              </div>
-            ) : isSkeleton ? (
-              <div className="pt-4"><SkeletonLines /></div>
-            ) : displayContent ? (
-              <div className="pt-4">
-                <Markdown className="[&>*:last-child]:mb-0">{displayContent}</Markdown>
-              </div>
-            ) : isActive ? (
-              <div className="pt-4"><SkeletonLines count={3} /></div>
-            ) : null}
+              ) : isSkeleton ? (
+                <div className="pt-4"><SkeletonLines /></div>
+              ) : displayContent ? (
+                <div className="pt-4">
+                  <Markdown className="[&>*:last-child]:mb-0">{displayContent}</Markdown>
+                </div>
+              ) : isActive ? (
+                <div className="pt-4"><SkeletonLines count={3} /></div>
+              ) : null}
+            </div>
           </div>
-        )}
+        </div>
       </div>
     );
   },
@@ -1905,6 +1909,31 @@ export default function Step2Characters() {
   const isImageGenerating    = !!step2ImageReview.data?.isGenerating;
   const existingCharacterIds = new Set(characters.map((c) => c.characterId));
 
+  const charGenRunRef = useRef<{ startTime: number } | null>(null);
+  useEffect(() => {
+    if (isImageGenerating) {
+      if (!charGenRunRef.current) charGenRunRef.current = { startTime: Date.now() };
+    } else {
+      charGenRunRef.current = null;
+    }
+  }, [isImageGenerating]);
+
+  const charGenProgress: GenerationProgress = useMemo(() => {
+    const total = characters.length;
+    const completed = characters.filter((c) => c.status === 'success').length;
+    const failed = characters.filter((c) => c.status === 'error').length;
+    const currentLabel = characters.find((c) => c.status === 'loading')?.name ?? null;
+    const done = completed + failed;
+    const remaining = Math.max(0, total - done);
+    let etaSeconds: number | null = null;
+    if (isImageGenerating && remaining > 0) {
+      const elapsedMs = charGenRunRef.current ? Date.now() - charGenRunRef.current.startTime : 0;
+      const avgMsPerItem = done > 0 ? elapsedMs / done : 10000;
+      etaSeconds = Math.round((remaining * avgMsPerItem) / 1000);
+    }
+    return { total, completed, failed, currentLabel, etaSeconds };
+  }, [characters, isImageGenerating]);
+
   let state: State = 1;
   if (isGenerating)                                              state = 2;
   else if (step2.isApproved && !step2.regeneratedAfterApproval) state = 4;
@@ -2345,9 +2374,18 @@ export default function Step2Characters() {
         </div>
       )}
 
-      {/* ══ TAB 1: Design Sheets ══════════════════════════════════════════════ */}
-      {(activeTab === 'designs' || state < 2) && (
-        <>
+      {(() => {
+        const currentTab = activeTab === 'designs' || state < 2 ? 'designs' : 'references';
+        return (
+          <AnimatePresence mode="wait">
+            {currentTab === 'designs' ? (
+              <motion.div
+                key="designs"
+                initial={{ opacity: 0, x: -8, filter: 'blur(3px)' }}
+                animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, x: -8, filter: 'blur(3px)' }}
+                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+              >
           {state === 1 && (
             <div className="rounded-3xl border-2 border-dashed border-outline-variant/20 py-16 flex flex-col items-center gap-4">
               <span
@@ -2424,12 +2462,16 @@ export default function Step2Characters() {
             </div>
             </>
           )}
-        </>
-      )}
-
-      {/* ══ TAB 2: Reference Images ═══════════════════════════════════════════ */}
-      {activeTab === 'references' && state >= 2 && (
-        <div className="space-y-4">
+              </motion.div>
+            ) : (
+              <motion.div
+                key="references"
+                initial={{ opacity: 0, x: 8, filter: 'blur(3px)' }}
+                animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, x: 8, filter: 'blur(3px)' }}
+                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                className="space-y-4"
+              >
 
           {/* Global toolbar — visually grouped */}
           <div className="flex flex-wrap items-center gap-3">
@@ -2588,8 +2630,11 @@ export default function Step2Characters() {
               </p>
             </div>
           )}
-        </div>
-      )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        );
+      })()}
 
       {/* ── Sticky bottom action bar ── */}
       <div
@@ -2626,6 +2671,40 @@ export default function Step2Characters() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Live character-generation progress — persists across tabs while generating */}
+        {isImageGenerating && (
+          <div className="px-10 py-3 max-w-6xl mx-auto border-b border-gray-100">
+            <GenerationStatusBar
+              progress={charGenProgress}
+              label="Generating character references"
+              itemNoun="character"
+              renderDetail={() => (
+                <div className="space-y-1.5">
+                  {characters.map((c) => (
+                    <div key={c.characterId} className="flex items-center gap-2 text-xs">
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                          c.status === 'success'
+                            ? 'bg-emerald-500'
+                            : c.status === 'error'
+                              ? 'bg-red-500'
+                              : c.status === 'loading'
+                                ? 'bg-blue-500 animate-pulse'
+                                : 'bg-outline-variant/40'
+                        }`}
+                      />
+                      <span className="truncate text-on-surface-variant">{c.name}</span>
+                      {c.status === 'error' && c.error && (
+                        <span className="text-red-500 truncate">— {c.error}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            />
           </div>
         )}
 

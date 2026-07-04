@@ -155,7 +155,7 @@ async def forgot_password(payload: ForgotPasswordRequest):
             f"{settings.AUTH_FRONTEND_URL}/reset-password"
             f"?token={quote(token)}&email={quote(payload.email)}"
         )
-        send_password_reset_email(payload.email, reset_url)
+        await send_password_reset_email(payload.email, reset_url)
 
     return MessageResponse(message="If the account exists, a reset link will be sent.")
 

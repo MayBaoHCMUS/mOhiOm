@@ -540,7 +540,7 @@ export default function CharacterManagerPage() {
               ) : filtered.length === 0 ? (
                 <p className="text-center text-sm text-outline py-8">No characters match &quot;{search}&quot;.</p>
               ) : (
-                <div className="space-y-3">
+                <div className="animate-skel-reveal space-y-3">
                   {filtered.map((char) => (
                     <CharacterCard
                       key={char.character_id}

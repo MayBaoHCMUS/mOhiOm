@@ -20,6 +20,7 @@ import { trackEvent } from '@/lib/analytics';
 import { getImageApiUrl, setImageApiUrl } from '@/lib/imageApiUrl';
 import type { ExportPage } from '@/lib/export';
 import type { SingleBubble } from '@/components/studio-steps/DialogueEditor';
+import { useNotifications } from '@/context/NotificationContext';
 
 export type StepKey = 1 | 2 | 3 | 4 | 5;
 export type WizardStepKey = 0 | StepKey;
@@ -657,6 +658,7 @@ export function ComicGenerationProvider({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { addNotification } = useNotifications();
   const [projectId, setProjectId] = useState('three_little_pigs_manga_001');
   const [storyFile, setStoryFile] = useState<File | null>(null);
   const [storyText, setStoryText] = useState('');
@@ -1800,6 +1802,7 @@ export function ComicGenerationProvider({
     // Characters are generated one at a time (not via Promise.all) because the
     // external Kaggle-tunnel image server chokes under concurrent load — same
     // reason panel generation batches/delays its requests (see generatePanelImages).
+    const charResults: Record<string, 'success' | 'error'> = {};
     for (let i = 0; i < characters.length; i++) {
       const character = characters[i];
 
@@ -1851,6 +1854,7 @@ export function ComicGenerationProvider({
             },
           };
         });
+        charResults[character.characterId] = 'success';
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to generate image.';
         setStep2ImageReview((prev) => {
@@ -1865,12 +1869,25 @@ export function ComicGenerationProvider({
             },
           };
         });
+        charResults[character.characterId] = 'error';
       }
 
       if (i < characters.length - 1) {
         await sleep(10000);
       }
     }
+
+    const charTotal = characters.length;
+    const charSucceeded = Object.values(charResults).filter((r) => r === 'success').length;
+    addNotification({
+      title: 'Character images ready',
+      message:
+        charSucceeded === charTotal
+          ? `All ${charTotal} character image${charTotal === 1 ? '' : 's'} generated.`
+          : `${charSucceeded}/${charTotal} character images generated, ${charTotal - charSucceeded} failed.`,
+      variant: charSucceeded === charTotal ? 'success' : charSucceeded > 0 ? 'partial' : 'error',
+      projectId,
+    });
 
     setStep2ImageReview((prev) => ({
       ...prev,
@@ -1936,6 +1953,12 @@ export function ComicGenerationProvider({
           },
         };
       });
+      addNotification({
+        title: 'Character image regenerated',
+        message: target.name,
+        variant: 'success',
+        projectId,
+      });
     } catch (error) {
       setStep2ImageReview((prev) => {
         if (!prev.data) return prev;
@@ -1955,6 +1978,12 @@ export function ComicGenerationProvider({
             ),
           },
         };
+      });
+      addNotification({
+        title: 'Character regeneration failed',
+        message: target.name,
+        variant: 'error',
+        projectId,
       });
     }
   };
@@ -2183,11 +2212,12 @@ export function ComicGenerationProvider({
   const generatePageImages = async (
     pageEntries: Array<[number, Step4Panel[]]>,
     options?: { batchSize?: number; delayMs?: number }
-  ) => {
+  ): Promise<Record<string, { status: 'success' | 'error'; imageUrl: string | null; error: string | null }>> => {
     const batchSize = Math.max(1, options?.batchSize ?? 1);
     const delayMs = Math.max(0, options?.delayMs ?? 10000);
     const characterRefs = getSelectedCharacterReferences();
     const firstCharName = characterRefs[0]?.name?.toLowerCase() || '';
+    const allResults: Record<string, { status: 'success' | 'error'; imageUrl: string | null; error: string | null }> = {};
 
     for (let i = 0; i < pageEntries.length; i += batchSize) {
       const batch = pageEntries.slice(i, i + batchSize);
@@ -2250,6 +2280,10 @@ export function ComicGenerationProvider({
         })
       );
 
+      results.forEach((r) => {
+        allResults[r.pageId] = { status: r.status, imageUrl: r.imageUrl, error: r.error };
+      });
+
       setStep4((prev) => {
         if (!prev.data) return prev;
         const nextPageStates = { ...prev.data.pageStates };
@@ -2265,6 +2299,8 @@ export function ComicGenerationProvider({
 
       if (i + batchSize < pageEntries.length) await sleep(delayMs);
     }
+
+    return allResults;
   };
 
   const handleStartFullGeneration = async () => {
@@ -2290,7 +2326,18 @@ export function ComicGenerationProvider({
     });
 
     try {
-      await generatePageImages(targets, { batchSize: 1, delayMs: 10000 });
+      const results = await generatePageImages(targets, { batchSize: 1, delayMs: 10000 });
+      const pageTotal = Object.keys(results).length;
+      const pageSucceeded = Object.values(results).filter((r) => r.status === 'success').length;
+      addNotification({
+        title: 'Page generation complete',
+        message:
+          pageSucceeded === pageTotal
+            ? `All ${pageTotal} page${pageTotal === 1 ? '' : 's'} generated.`
+            : `${pageSucceeded}/${pageTotal} pages generated, ${pageTotal - pageSucceeded} failed.`,
+        variant: pageSucceeded === pageTotal ? 'success' : pageSucceeded > 0 ? 'partial' : 'error',
+        projectId,
+      });
     } finally {
       setStep4((prev) => {
         if (!prev.data) return prev;
@@ -2324,6 +2371,7 @@ export function ComicGenerationProvider({
       return !state || state.status === 'idle' || state.status === 'error';
     });
     if (!pending.length) return;
+    const panelTotal = pending.length;
 
     panelAutoRetryCancelRef.current = false;
     setStep4((prev) => {
@@ -2343,6 +2391,19 @@ export function ComicGenerationProvider({
         pending = pending.filter((p) => results[p.id]?.status === 'error');
         round += 1;
       }
+      if (!panelAutoRetryCancelRef.current) {
+        const panelFailed = pending.length;
+        const panelSucceeded = panelTotal - panelFailed;
+        addNotification({
+          title: 'Panel generation complete',
+          message:
+            panelFailed === 0
+              ? `All ${panelTotal} panel${panelTotal === 1 ? '' : 's'} generated.`
+              : `${panelSucceeded}/${panelTotal} panels generated, ${panelFailed} failed after retries.`,
+          variant: panelFailed === 0 ? 'success' : panelSucceeded > 0 ? 'partial' : 'error',
+          projectId,
+        });
+      }
     } finally {
       setPanelAutoRetryInfo(null);
       setStep4((prev) => {
@@ -2354,7 +2415,14 @@ export function ComicGenerationProvider({
 
   const handleRegenerateSinglePanel = async (panel: Step4Panel) => {
     if (!step4.data) return;
-    await generatePanelImages([panel], { batchSize: 1, delayMs: 0 });
+    const results = await generatePanelImages([panel], { batchSize: 1, delayMs: 0 });
+    const outcome = results[panel.id];
+    addNotification({
+      title: outcome?.status === 'success' ? 'Panel regenerated' : 'Panel regeneration failed',
+      message: `Page ${panel.pageNumber}, panel ${panel.panelNumber}`,
+      variant: outcome?.status === 'success' ? 'success' : 'error',
+      projectId,
+    });
   };
 
   const handleRegeneratePage = async (pageNumber: number) => {
@@ -2370,7 +2438,14 @@ export function ComicGenerationProvider({
     });
 
     try {
-      await generatePageImages([[pageNumber, panels]], { batchSize: 1, delayMs: 0 });
+      const results = await generatePageImages([[pageNumber, panels]], { batchSize: 1, delayMs: 0 });
+      const outcome = results[`page-${pageNumber}`];
+      addNotification({
+        title: outcome?.status === 'success' ? 'Page regenerated' : 'Page regeneration failed',
+        message: `Page ${pageNumber}`,
+        variant: outcome?.status === 'success' ? 'success' : 'error',
+        projectId,
+      });
     } finally {
       setStep4((prev) => {
         if (!prev.data) return prev;
@@ -2462,6 +2537,12 @@ export function ComicGenerationProvider({
           lastUpdated: new Date().toISOString(),
         };
       });
+      addNotification({
+        title: 'Page regenerated with feedback',
+        message: `Page ${pageNumber} — review the updated version.`,
+        variant: 'success',
+        projectId,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Image generation failed.';
       setStep4((prev) => {
@@ -2482,6 +2563,12 @@ export function ComicGenerationProvider({
             },
           },
         };
+      });
+      addNotification({
+        title: 'Feedback regeneration failed',
+        message: `Page ${pageNumber}: ${message}`,
+        variant: 'error',
+        projectId,
       });
     }
   };
@@ -3528,5 +3615,11 @@ export function useComicGeneration(): ComicGenerationContextValue {
     throw new Error('useComicGeneration must be used within a ComicGenerationProvider.');
   }
   return context;
+}
+
+// For shared components (e.g. StudioTopBar) that render on routes both inside
+// and outside the ComicGenerationProvider — returns null instead of throwing.
+export function useComicGenerationOptional(): ComicGenerationContextValue | null {
+  return useContext(ComicGenerationContext);
 }
 

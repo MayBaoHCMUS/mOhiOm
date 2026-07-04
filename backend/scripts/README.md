@@ -12,7 +12,7 @@ python -m scripts.auth_smoke
 
 - Requires MongoDB configured in `backend/.env`.
 - OAuth flows require provider credentials; they are not exercised here.
-- Password reset emails require SMTP configuration.
+- Password reset emails require Resend configuration (`RESEND_API_KEY` / `RESEND_FROM` in `backend/.env`).
 
 # Configure R2 CORS
 

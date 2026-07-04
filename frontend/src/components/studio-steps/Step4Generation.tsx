@@ -11,6 +11,8 @@ import DialogueEditor, { type PanelBubbles, type SingleBubble, type BubbleType }
 import GenerationModeModal from '@/components/GenerationModeModal';
 import Markdown from '@/components/Markdown';
 import { LayoutTemplatePicker } from '@/components/studio-steps/LayoutTemplatePicker';
+import { SegmentedProgressBar } from '@/components/SegmentedProgressBar';
+import { GenerationStatusBar, type GenerationProgress } from '@/components/GenerationStatusBar';
 
 type State = 1 | 2 | 3 | 4 | 5;
 
@@ -58,33 +60,6 @@ function PanelStatusDot({ status }: { status: string }) {
 }
 
 
-
-
-// ── Segmented progress bar: green=done, amber=errors, shimmer=loading ────────
-function SegmentedProgressBar({ total, success, error, loading, height = 12 }: {
-  total: number; success: number; error: number; loading: number; height?: number;
-}) {
-  if (total === 0) return <div className="rounded-full bg-[#E5E7EB]" style={{ height }} />;
-  const sPct = (success / total) * 100;
-  const ePct = (error / total) * 100;
-  const lPct = (loading / total) * 100;
-  return (
-    <div className="rounded-full bg-[#E5E7EB] overflow-hidden relative" style={{ height }}>
-      {loading > 0 && (
-        <div className="absolute top-0 h-full animate-shimmer"
-          style={{ left: `${sPct + ePct}%`, width: `${lPct}%`,
-            background: 'linear-gradient(90deg,#C7D2FE 25%,#A5B4FC 50%,#C7D2FE 75%)',
-            backgroundSize: '200% 100%' }} />
-      )}
-      {error > 0 && (
-        <div className="absolute top-0 h-full transition-all duration-500 bg-amber-400"
-          style={{ left: `${sPct}%`, width: `${ePct}%` }} />
-      )}
-      <div className="absolute top-0 left-0 h-full rounded-l-full transition-all duration-500 bg-emerald-500"
-        style={{ width: `${sPct}%` }} />
-    </div>
-  );
-}
 
 
 
@@ -1202,6 +1177,30 @@ export default function Step4Generation() {
     if (activeStats.success > 0) markChecklistItem('generateImage');
   }, [activeStats.success, markChecklistItem]);
 
+  const panelGenRunRef = useRef<{ startTime: number } | null>(null);
+  useEffect(() => {
+    if (isImageGenerating) {
+      if (!panelGenRunRef.current) panelGenRunRef.current = { startTime: Date.now() };
+    } else {
+      panelGenRunRef.current = null;
+    }
+  }, [isImageGenerating]);
+
+  const panelGenProgress: GenerationProgress = useMemo(() => {
+    const total = activeStats.total;
+    const completed = activeStats.success;
+    const failed = activeStats.error;
+    const done = completed + failed;
+    const remaining = Math.max(0, total - done);
+    let etaSeconds: number | null = null;
+    if (isImageGenerating && remaining > 0) {
+      const elapsedMs = panelGenRunRef.current ? Date.now() - panelGenRunRef.current.startTime : 0;
+      const avgMsPerItem = done > 0 ? elapsedMs / done : 10000;
+      etaSeconds = Math.round((remaining * avgMsPerItem) / 1000);
+    }
+    return { total, completed, failed, currentLabel: currentlyDrawing, etaSeconds };
+  }, [activeStats, isImageGenerating, currentlyDrawing]);
+
   const retryErrorPages = () => {
     if (!step4.data?.pageStates) return;
     const errorPages = Object.entries(step4.data.pageStates as Record<string, { status: string }>)
@@ -1750,6 +1749,32 @@ export default function Step4Generation() {
       {/* ── Simple bottom bar ── */}
       <div className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
         style={{ left: 'var(--studio-sidebar-width)' }}>
+        {(isImageGenerating || !!panelAutoRetryInfo) && (
+          <div className="px-10 py-3 max-w-6xl mx-auto border-b border-gray-200">
+            <GenerationStatusBar
+              progress={panelGenProgress}
+              label={
+                panelAutoRetryInfo
+                  ? `Auto-retrying — round ${panelAutoRetryInfo.round}/${panelAutoRetryInfo.totalRounds}`
+                  : isPaused
+                    ? 'Paused'
+                    : 'Generating images'
+              }
+              itemNoun={comicPageMode === 'panel' ? 'panel' : 'page'}
+              renderDetail={() => (
+                <div className="flex flex-wrap gap-1.5">
+                  {comicPageMode === 'panel'
+                    ? allPanels.map((panel) => (
+                        <PanelStatusDot key={panel.id} status={step4.data?.panelStates?.[panel.id]?.status ?? 'idle'} />
+                      ))
+                    : step4PanelsByPage.map(([pageNumber]) => (
+                        <PanelStatusDot key={pageNumber} status={step4.data?.pageStates?.[`page-${pageNumber}`]?.status ?? 'idle'} />
+                      ))}
+                </div>
+              )}
+            />
+          </div>
+        )}
         <div className="px-10 max-w-6xl mx-auto flex items-center justify-between gap-4" style={{ height: 56 }}>
           <button type="button"
             onClick={() => {

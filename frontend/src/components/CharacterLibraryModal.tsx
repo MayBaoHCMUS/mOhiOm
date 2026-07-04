@@ -234,7 +234,7 @@ export default function CharacterLibraryModal({ isOpen, onClose, existingIds, on
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
+            <div className="animate-skel-reveal grid grid-cols-3 sm:grid-cols-4 gap-4">
               {filtered.map((char) => {
                 const isAdded = existingIds.has(char.character_id);
                 const isSelected = selectedIds.has(char.character_id);

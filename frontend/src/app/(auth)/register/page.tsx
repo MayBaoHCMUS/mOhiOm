@@ -82,7 +82,7 @@ export default function RegisterPage() {
       setStatusSuccess(response.data.message || 'Account created successfully.');
 
       window.setTimeout(() => {
-        router.push('/studio');
+        router.push('/studio/dashboard');
       }, 900);
     } catch (error) {
       const apiError = toApiError(error);

@@ -151,7 +151,7 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
     const showEditBtn = isOpen && !isStreaming && !isSkeleton;
 
     return (
-      <div ref={ref} className="rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden">
+      <div ref={ref} className="t-acc rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden" data-open={isOpen ? 'true' : 'false'}>
         {/* Header — use div+role to avoid nested <button> elements */}
         <div
           role="button"
@@ -215,76 +215,78 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
         </div>
 
         {/* Body */}
-        {isOpen && (
-          <div className="px-5 pb-5">
-            {isEditing ? (
-              <div className="space-y-2">
-                {/* Edit toolbar */}
-                <div className="flex items-center gap-1 pb-2 border-b border-outline-variant/10">
-                  <button
-                    type="button"
-                    onClick={() => insertMarkdown('**', '**')}
-                    className="px-2 py-1 text-xs font-bold rounded hover:bg-surface-container transition-colors"
-                    title="Bold"
-                  >
-                    B
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => insertMarkdown('*', '*')}
-                    className="px-2 py-1 text-xs italic rounded hover:bg-surface-container transition-colors"
-                    title="Italic"
-                  >
-                    I
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => insertMarkdown('\n- ', '')}
-                    className="px-2 py-1 text-xs rounded hover:bg-surface-container transition-colors"
-                    title="Bullet list"
-                  >
-                    • List
-                  </button>
-                  <div className="flex-1" />
-                  <button
-                    type="button"
-                    onClick={onEditCancel}
-                    className="px-3 py-1.5 text-xs rounded-xl bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onEditSave}
-                    className="px-3 py-1.5 text-xs rounded-xl bg-gray-900 text-white hover:opacity-90 font-semibold transition-opacity"
-                  >
-                    Save changes
-                  </button>
-                </div>
-
-                {section.id === 6 && (
-                  <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-700">
-                    <span className="material-symbols-outlined text-sm">lock</span>
-                    Numerical statistics in this section feed into later pipeline steps. Adjust targets in Story Setup instead.
+        <div className="t-acc-panel">
+          <div className="t-acc-panel-inner">
+            <div className="px-5 pb-5">
+              {isEditing ? (
+                <div className="space-y-2">
+                  {/* Edit toolbar */}
+                  <div className="flex items-center gap-1 pb-2 border-b border-outline-variant/10">
+                    <button
+                      type="button"
+                      onClick={() => insertMarkdown('**', '**')}
+                      className="px-2 py-1 text-xs font-bold rounded hover:bg-surface-container transition-colors"
+                      title="Bold"
+                    >
+                      B
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => insertMarkdown('*', '*')}
+                      className="px-2 py-1 text-xs italic rounded hover:bg-surface-container transition-colors"
+                      title="Italic"
+                    >
+                      I
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => insertMarkdown('\n- ', '')}
+                      className="px-2 py-1 text-xs rounded hover:bg-surface-container transition-colors"
+                      title="Bullet list"
+                    >
+                      • List
+                    </button>
+                    <div className="flex-1" />
+                    <button
+                      type="button"
+                      onClick={onEditCancel}
+                      className="px-3 py-1.5 text-xs rounded-xl bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onEditSave}
+                      className="px-3 py-1.5 text-xs rounded-xl bg-gray-900 text-white hover:opacity-90 font-semibold transition-opacity"
+                    >
+                      Save changes
+                    </button>
                   </div>
-                )}
 
-                <textarea
-                  ref={taRef}
-                  value={editBuffer}
-                  onChange={(e) => onEditChange(e.target.value)}
-                  className="w-full min-h-[220px] rounded-xl bg-surface-container px-4 py-3 text-sm font-mono focus:outline-none border border-outline-variant/20 focus:border-primary/40 resize-y leading-relaxed"
-                />
-              </div>
-            ) : isSkeleton ? (
-              <SkeletonLines />
-            ) : displayContent ? (
-              <Markdown className="[&>*:last-child]:mb-0">{displayContent}</Markdown>
-            ) : isActive ? (
-              <SkeletonLines count={3} />
-            ) : null}
+                  {section.id === 6 && (
+                    <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-700">
+                      <span className="material-symbols-outlined text-sm">lock</span>
+                      Numerical statistics in this section feed into later pipeline steps. Adjust targets in Story Setup instead.
+                    </div>
+                  )}
+
+                  <textarea
+                    ref={taRef}
+                    value={editBuffer}
+                    onChange={(e) => onEditChange(e.target.value)}
+                    className="w-full min-h-[220px] rounded-xl bg-surface-container px-4 py-3 text-sm font-mono focus:outline-none border border-outline-variant/20 focus:border-primary/40 resize-y leading-relaxed"
+                  />
+                </div>
+              ) : isSkeleton ? (
+                <SkeletonLines />
+              ) : displayContent ? (
+                <Markdown className="[&>*:last-child]:mb-0">{displayContent}</Markdown>
+              ) : isActive ? (
+                <SkeletonLines count={3} />
+              ) : null}
+            </div>
           </div>
-        )}
+        </div>
       </div>
     );
   },
@@ -368,11 +370,14 @@ function CharCardItem({ card }: { card: CharCard }) {
   const hasDetail = !!(card.role || card.visualHook);
 
   return (
-    <div className={`rounded-2xl border overflow-hidden ${
-      card.isMain
-        ? 'bg-emerald-50/60 border-emerald-200/60'
-        : 'bg-amber-50/40 border-amber-200/40'
-    }`}>
+    <div
+      className={`t-acc rounded-2xl border overflow-hidden ${
+        card.isMain
+          ? 'bg-emerald-50/60 border-emerald-200/60'
+          : 'bg-amber-50/40 border-amber-200/40'
+      }`}
+      data-open={isOpen ? 'true' : 'false'}
+    >
       <button
         type="button"
         onClick={() => hasDetail && setIsOpen(v => !v)}
@@ -395,14 +400,18 @@ function CharCardItem({ card }: { card: CharCard }) {
         )}
       </button>
 
-      {isOpen && hasDetail && (
-        <div className={`px-3 pb-3 pt-1 space-y-1 border-t ${card.isMain ? 'border-emerald-200/40' : 'border-amber-200/40'}`}>
-          {card.role && (
-            <p className="text-xs text-on-surface-variant leading-snug">{card.role}</p>
-          )}
-          {card.visualHook && (
-            <p className="text-[11px] text-on-surface-variant/60 leading-snug italic">{card.visualHook}</p>
-          )}
+      {hasDetail && (
+        <div className="t-acc-panel">
+          <div className="t-acc-panel-inner">
+            <div className={`px-3 pb-3 pt-1 space-y-1 border-t ${card.isMain ? 'border-emerald-200/40' : 'border-amber-200/40'}`}>
+              {card.role && (
+                <p className="text-xs text-on-surface-variant leading-snug">{card.role}</p>
+              )}
+              {card.visualHook && (
+                <p className="text-[11px] text-on-surface-variant/60 leading-snug italic">{card.visualHook}</p>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

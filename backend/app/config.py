@@ -63,12 +63,10 @@ class Settings(BaseSettings):
 
     PASSWORD_RESET_TOKEN_EXPIRES_MINUTES: int = 30
 
-    SMTP_HOST: str = ""
-    SMTP_PORT: int = 587
-    SMTP_USERNAME: str = ""
-    SMTP_PASSWORD: str = ""
-    SMTP_FROM: str = ""
-    SMTP_USE_TLS: bool = True
+    # Resend (transactional email API over HTTPS — avoids SMTP ports being
+    # blocked on hosts like Render's free tier)
+    RESEND_API_KEY: str = ""
+    RESEND_FROM: str = ""
 
     # Admin dashboard
     ADMIN_SECRET_KEY: str = "mohiom-admin-2024"
