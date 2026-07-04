@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 const REQUEST_TIMEOUT_MS = 120000;
+export const maxDuration = 60;
 const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 // Uploads base64 image data to the FastAPI backend, which stores it in
