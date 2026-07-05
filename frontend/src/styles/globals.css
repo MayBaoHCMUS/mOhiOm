@@ -493,3 +493,33 @@
     animation: none !important;
   }
 }
+
+/* Smooth scroll for nav anchor links */
+html {
+  scroll-behavior: smooth;
+}
+
+/* FAQ accordion — keyboard focus ring */
+.landing-root button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Infinite marquee strip */
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+.marquee-track {
+  animation: marquee-scroll 20s linear infinite;
+  width: max-content;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
+}
