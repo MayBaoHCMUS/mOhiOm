@@ -1,8 +1,10 @@
 'use client';
 
 import { useRef } from 'react';
+import Link from 'next/link';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { Sparkles, MessageCircle, PenTool, BookOpen, Star } from 'lucide-react';
+import { AvatarStack } from './AvatarStack';
 
 const O_SIZE = 'clamp(64px, 14vw, 105px)';
 const BASE_BORDER = 16;
@@ -92,15 +94,41 @@ export function ScrollZoomHero() {
           </motion.span>
 
           <motion.div
-            className="pointer-events-none absolute z-[6] max-w-2xl px-6 text-center"
+            className="absolute z-[6] max-w-2xl px-6 text-center"
             style={{ opacity: introOpacity, y: introY }}
           >
-            <h2 className="text-3xl font-black leading-snug text-white md:text-4xl">
-              mOhiOm is an AI-powered comic studio.
-            </h2>
-            <p className="mt-5 text-lg text-white/70">
+            <span className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-white">
+              <Sparkles size={14} strokeWidth={2} />
+              AI Comic Generator
+            </span>
+            <h1 className="text-4xl font-black leading-snug text-white md:text-6xl">
+              Turn Any Story Into a
+              <br />
+              <span className="font-[family-name:var(--font-bangers)] text-5xl tracking-wide md:text-7xl">
+                Comic
+              </span>
+            </h1>
+            <p className="mx-auto mt-5 max-w-md text-lg text-white/70">
               Write, design, and publish comics with generative AI — no drawing skill required.
             </p>
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+              <Link
+                href="/register"
+                className="rounded-full bg-surface px-7 py-3 text-sm font-bold uppercase tracking-widest text-on-surface shadow-lg transition-transform hover:scale-105 active:scale-95"
+              >
+                Create Your First Comic →
+              </Link>
+              <Link
+                href="/demo"
+                className="rounded-full border border-white/40 px-7 py-3 text-sm font-bold uppercase tracking-widest text-white transition-transform hover:scale-105 active:scale-95"
+              >
+                Watch Demo
+              </Link>
+            </div>
+            <div className="mt-8 flex items-center justify-center gap-3">
+              <AvatarStack />
+              <p className="text-sm text-white/60">Built for writers, artists &amp; educators</p>
+            </div>
           </motion.div>
         </div>
 

@@ -69,3 +69,4 @@ env/
 .DS_Store
 Thumbs.db
 
+/scripts/configure_r2_cors.py

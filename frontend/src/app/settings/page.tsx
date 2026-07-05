@@ -683,10 +683,10 @@ export default function SettingsPage() {
                 type="url"
                 value={imageApiUrlValue}
                 onChange={(e) => handleImageApiUrlChange(e.target.value)}
-                placeholder="https://xxxx.trycloudflare.com"
+                placeholder="https://gpu.mohiom.me"
                 className="field w-full font-mono text-sm"
               />
-              <p className="mt-2 text-[11px] text-outline">Your Cloudflare tunnel URL — used for image generation in Step 1 and publishing.</p>
+              <p className="mt-2 text-[11px] text-outline">Defaults to gpu.mohiom.me — only set this to override with a different image server (e.g. local testing).</p>
               {imageApiUrlSaved && <p className="mt-1 text-[11px] text-green-600">Saved</p>}
             </div>
           </Panel>

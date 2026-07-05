@@ -28,7 +28,7 @@ const DOODLES = [
 
 export function ShowcaseSection() {
   return (
-    <section className="relative z-10 overflow-hidden bg-surface-container-low px-6 py-20 md:px-12">
+    <section id="testimonials" className="relative z-10 overflow-hidden bg-surface-container-low px-6 py-20 md:px-12">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         {DOODLES.map(({ Icon, top, left, size, rotate, color }, i) => (
           <div key={i} className="absolute" style={{ top, left, color, transform: `translate(-50%, -50%) rotate(${rotate}deg)` }}>
@@ -36,6 +36,11 @@ export function ShowcaseSection() {
           </div>
         ))}
       </div>
+
+      <h2 className="relative mb-12 flex items-center justify-center gap-2 text-center text-3xl font-black tracking-tight text-on-surface md:text-5xl">
+        Loved by Creators Worldwide
+        <Sparkles size={28} strokeWidth={1.75} className="text-primary" />
+      </h2>
 
       <div className="relative mx-auto grid grid-cols-1 gap-8 md:grid-cols-3" style={{ maxWidth: 1100 }}>
         {SHOWCASE_ITEMS.map(({ quote, persona }) => (
