@@ -1,0 +1,122 @@
+'use client';
+
+import { useRef } from 'react';
+import { motion, useScroll, useTransform } from 'framer-motion';
+import { Sparkles, MessageCircle, PenTool, BookOpen, Star } from 'lucide-react';
+
+const O_SIZE = 'clamp(64px, 14vw, 105px)';
+const BASE_BORDER = 16;
+
+const DOODLES = [
+  { Icon: Sparkles, top: '16%', left: '20%', size: 28, rotate: -12, color: 'rgba(0, 88, 190, 0.3)' },
+  { Icon: MessageCircle, top: '22%', left: '78%', size: 34, rotate: 8, color: 'rgba(20, 27, 43, 0.15)' },
+  { Icon: PenTool, top: '74%', left: '16%', size: 26, rotate: 18, color: 'rgba(20, 27, 43, 0.15)' },
+  { Icon: Star, top: '70%', left: '82%', size: 22, rotate: -10, color: 'rgba(0, 88, 190, 0.3)' },
+  { Icon: BookOpen, top: '14%', left: '50%', size: 24, rotate: -6, color: 'rgba(20, 27, 43, 0.1)' },
+] as const;
+
+export function ScrollZoomHero() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({ target: containerRef, offset: ['start start', 'end end'] });
+
+  const oScale = useTransform(scrollYProgress, [0, 1], [1, 22]);
+  const oBorderWidth = useTransform(oScale, (s) => Math.max(0, BASE_BORDER / s));
+  const fadeOpacity = useTransform(scrollYProgress, [0, 0.45], [1, 0]);
+  const introOpacity = useTransform(scrollYProgress, [0.85, 1], [0, 1]);
+  const introY = useTransform(scrollYProgress, [0.85, 1], [30, 0]);
+
+  return (
+    <div ref={containerRef} className="relative bg-surface" style={{ height: '260vh' }}>
+      <div className="sticky top-0 flex h-screen w-full items-center justify-center overflow-hidden">
+        <div className="relative flex h-full w-full items-center justify-center">
+          {DOODLES.map(({ Icon, top, left, size, rotate, color }, i) => (
+            <motion.div
+              key={i}
+              aria-hidden="true"
+              className="absolute"
+              style={{
+                top,
+                left,
+                x: '-50%',
+                y: '-50%',
+                rotate,
+                color,
+                opacity: fadeOpacity,
+              }}
+            >
+              <Icon size={size} strokeWidth={1.5} />
+            </motion.div>
+          ))}
+
+          <motion.span
+            className="absolute font-black text-on-surface"
+            style={{
+              right: `calc(50% + (${O_SIZE} / 2) + 20px)`,
+              fontSize: 'clamp(2.5rem, 9vw, 7.2rem)',
+              letterSpacing: '-0.03em',
+              opacity: fadeOpacity,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            mOhi
+          </motion.span>
+
+          <motion.div
+            aria-hidden="true"
+            className="absolute rounded-full border-primary bg-primary"
+            style={{
+              left: '50%',
+              top: '50%',
+              x: '-50%',
+              y: '-50%',
+              width: O_SIZE,
+              height: O_SIZE,
+              borderStyle: 'solid',
+              borderWidth: oBorderWidth,
+              scale: oScale,
+              zIndex: 5,
+            }}
+          />
+
+          <motion.span
+            className="absolute font-black text-on-surface"
+            style={{
+              left: `calc(50% + (${O_SIZE} / 2) + 20px)`,
+              fontSize: 'clamp(2.5rem, 9vw, 7.2rem)',
+              letterSpacing: '-0.03em',
+              opacity: fadeOpacity,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            m
+          </motion.span>
+
+          <motion.div
+            className="pointer-events-none absolute z-[6] max-w-2xl px-6 text-center"
+            style={{ opacity: introOpacity, y: introY }}
+          >
+            <h2 className="text-3xl font-black leading-snug text-white md:text-4xl">
+              mOhiOm is an AI-powered comic studio.
+            </h2>
+            <p className="mt-5 text-lg text-white/70">
+              Write, design, and publish comics with generative AI — no drawing skill required.
+            </p>
+          </motion.div>
+        </div>
+
+        <motion.span
+          className="absolute font-bold italic text-primary"
+          style={{
+            bottom: 'clamp(24px, 6vw, 40px)',
+            right: 'clamp(20px, 6vw, 50px)',
+            fontSize: 'clamp(1.25rem, 3.5vw, 1.8rem)',
+            zIndex: 10,
+            opacity: fadeOpacity,
+          }}
+        >
+          AI Comic Studio
+        </motion.span>
+      </div>
+    </div>
+  );
+}
