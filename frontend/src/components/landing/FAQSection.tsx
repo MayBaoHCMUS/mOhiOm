@@ -25,7 +25,7 @@ const FAQ_ITEMS = [
 
 export function FAQSection() {
   return (
-    <section className="relative z-10 bg-surface px-6 py-20 md:px-12">
+    <section id="faq" className="relative z-10 bg-surface px-6 py-20 md:px-12">
       <div className="mx-auto" style={{ maxWidth: 1100 }}>
         <h2 className="mb-10 text-4xl font-black tracking-tight text-on-surface md:text-6xl">Questions</h2>
         <div className="flex flex-col gap-4">

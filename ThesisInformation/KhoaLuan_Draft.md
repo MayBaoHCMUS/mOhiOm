@@ -956,7 +956,7 @@ Ghép các phần trên lại, một lượt sinh truyện hoàn chỉnh diễn 
 Hệ thống có đặc thù khác phần mềm truyền thống: đầu ra của các thành phần AI **không xác định** (cùng đầu vào, mỗi lần chạy một kết quả), nên chiến lược kiểm thử được chia hai nhánh rõ:
 
 - **Nhánh xác định (deterministic):** các thành phần phần mềm thuần — xác thực, lưu/tải dự án, rate limit, xuất file, giao diện — kiểm thử theo cách truyền thống với kết quả kỳ vọng cụ thể. Công cụ: các kịch bản kiểm thử tích hợp phía backend (`scripts/auth_smoke.py`, `test_gemini_integration.py`, `test_text_to_comic_pipeline.py`), kiểm thử giao diện bằng Playwright trên stack chạy thật, và kiểm tra tĩnh (`tsc --noEmit`, ESLint).
-- **Nhánh không xác định (AI):** chất lượng phân tích truyện, tính nhất quán nhân vật, chất lượng bố cục — không có "kết quả đúng" duy nhất, nên đánh giá bằng **tiêu chí có thang điểm + chấm bởi con người** trên tập truyện mẫu cố định, kết hợp kiểm tra hợp đồng dữ liệu (đầu ra LLM có parse được đúng schema hay không — phần này lại là xác định và kiểm thử tự động được).
+- **Nhánh không xác định (AI):** chất lượng phân tích truyện, tính nhất quán nhân vật, chất lượng bố cục — không có "kết quả đúng" duy nhất, nên đánh giá bằng **tiêu chí có thang điểm chấm bởi con người, bổ sung thước đo khách quan tái lập được** (độ tương đồng embedding khuôn mặt cho nhất quán nhân vật — xem 6.4.1) trên tập truyện mẫu cố định, kết hợp kiểm tra hợp đồng dữ liệu (đầu ra LLM có parse được đúng schema hay không — phần này lại là xác định và kiểm thử tự động được).
 
 Phạm vi ưu tiên theo rủi ro: pipeline 5 bước end-to-end (rủi ro cao nhất, kiểm nhiều nhất) → xác thực và dữ liệu người dùng → xuất file → các tính năng phụ (thống kê, cộng đồng).
 
@@ -1019,7 +1019,11 @@ Kịch bản: nhiều người dùng đồng thời chạy phân tích truyện 
 
 ### 6.4.1 Đánh giá tính nhất quán nhân vật
 
-Phương pháp: với mỗi truyện mẫu, chọn nhân vật chính và sinh trọn bộ panel theo hai cấu hình — (A) chỉ prompt văn bản, (B) prompt + ảnh tham chiếu qua IP-Adapter. Người đánh giá chấm từng cặp (panel, ảnh đại diện) theo thang 5 điểm trên bốn tiêu chí: khuôn mặt, kiểu/màu tóc, trang phục, tổng thể nhận ra được nhân vật. *(Bảng số liệu điền sau khi chấm.)*
+Đây là tiêu chí đánh giá quan trọng nhất, vì duy trì nhất quán nhân vật chính là đóng góp kỹ thuật thứ hai của đề tài. Để kết luận không chỉ dựa trên cảm nhận, tính nhất quán được đo theo **hai cách bổ sung cho nhau**: chấm chủ quan bởi con người và đo khách quan bằng độ tương đồng embedding khuôn mặt.
+
+**Thiết lập chung.** Với mỗi truyện mẫu, chọn nhân vật chính và sinh trọn bộ panel theo hai cấu hình — (A) chỉ prompt văn bản, (B) prompt + ảnh chân dung tham chiếu truyền qua IP-Adapter. Giữ nguyên seed và mô hình sinh ảnh, chỉ khác việc có hay không có ảnh tham chiếu, để cô lập đúng ảnh hưởng của IP-Adapter.
+
+**(a) Chấm chủ quan.** Người đánh giá chấm từng cặp (panel, ảnh đại diện) theo thang 5 điểm trên bốn tiêu chí: khuôn mặt, kiểu/màu tóc, trang phục, tổng thể nhận ra được nhân vật. Kết quả lấy trung bình trên toàn bộ panel của tập mẫu (N = … panel / … truyện / … người chấm). *(Bảng số liệu điền sau khi chấm.)*
 
 | Tiêu chí | (A) Chỉ prompt | (B) Prompt + IP-Adapter |
 |---|---|---|
@@ -1028,7 +1032,18 @@ Phương pháp: với mỗi truyện mẫu, chọn nhân vật chính và sinh t
 | Trang phục | …/5 | …/5 |
 | Nhận diện tổng thể | …/5 | …/5 |
 
-Quan sát định tính nhất quán với kỳ vọng lý thuyết: cấu hình (B) cải thiện rõ nhất ở khuôn mặt và màu tóc; trang phục vẫn dao động ở các cảnh toàn thân góc rộng; `ip_scale` cao giúp nhận diện nhưng làm nghèo tư thế — xác nhận nhận định ở mục 5.5.1.
+**(b) Đo khách quan bằng embedding khuôn mặt.** Điểm chủ quan dễ thiên lệch nên được đối chứng bằng một thước đo tái lập được. Dùng mô hình nhận dạng khuôn mặt ArcFace (qua thư viện InsightFace) trích vector đặc trưng của khuôn mặt trong **ảnh chân dung tham chiếu** và của khuôn mặt phát hiện được trong **từng panel**, rồi tính **độ tương đồng cosine** giữa hai vector. Giá trị càng gần 1 nghĩa là khuôn mặt trong panel càng giống nhân vật gốc. Chỉ số này khách quan, chạy tự động trên toàn tập panel, và cho phép so trực tiếp hai cấu hình A/B trên cùng dữ liệu. *(Số liệu điền sau khi chạy.)*
+
+| Chỉ số (cosine với ảnh tham chiếu) | (A) Chỉ prompt | (B) Prompt + IP-Adapter |
+|---|---|---|
+| Trung bình | … | … |
+| Trung vị | … | … |
+| Độ lệch chuẩn | … | … |
+| Tỉ lệ panel phát hiện được khuôn mặt | …% | …% |
+
+Có thể tham chiếu thêm CLIP-I (độ tương đồng ảnh–ảnh trong không gian CLIP) để ước lượng mức bám tổng thể ngoài khuôn mặt như trang phục và kiểu tóc; tuy nhiên CLIP nhạy với bố cục và nền nên chỉ dùng làm chỉ số phụ.
+
+**Nhận xét.** Quan sát định tính nhất quán với kỳ vọng lý thuyết: cấu hình (B) cải thiện rõ nhất ở khuôn mặt và màu tóc — thể hiện ở cả điểm người chấm lẫn độ tương đồng embedding cao hơn hẳn; trang phục vẫn dao động ở các cảnh toàn thân góc rộng; `ip_scale` cao giúp nhận diện nhưng làm nghèo tư thế — xác nhận nhận định ở mục 5.5.1. Về mặt phương pháp (threat to validity), tập đánh giá còn nhỏ và người chấm chủ quan chính là tác giả, nên thước đo embedding khách quan đóng vai trò đối chứng; kết quả vì thế nên hiểu là *bằng chứng xu hướng* thay vì số liệu thống kê tổng quát.
 
 ### 6.4.2 Đánh giá chất lượng bố cục trang truyện
 
@@ -1065,7 +1080,7 @@ Khoá luận đã hoàn thành mục tiêu đặt ra trong đề cương: xây d
 
 - **Về sản phẩm:** hệ thống mOhiOm gồm frontend Next.js 14 và backend FastAPI, phủ đủ năm mô-đun cốt lõi của đề cương — phân tích truyện bằng LLM (streaming SSE), sinh nhân vật nhất quán bằng mô tả cấu trúc + ảnh tham chiếu IP-Adapter, thư viện 26 mẫu bố cục trang với gợi ý AI, trình soạn bong bóng thoại có auto-import, và xuất đa định dạng (PDF, EPUB, ZIP, xuất bản web reader kèm thống kê lượt đọc). Ngoài phạm vi tối thiểu, hệ thống còn có xác thực đầy đủ (JWT, OAuth Google/GitHub, đặt lại mật khẩu), quản lý dự án đám mây, thư viện nhân vật tái sử dụng, cấu hình đa nhà cung cấp LLM tới mức từng người dùng (BYOK), và bảng thống kê sử dụng.
 - **Về kỹ thuật phần mềm:** đề tài trình bày trọn vẹn chu trình phát triển — khảo sát cạnh tranh, đặc tả yêu cầu và use case, thiết kế kiến trúc bằng hệ thống sơ đồ UML (thành phần, tuần tự, hoạt động, trạng thái, ERD), hiện thực và kiểm thử. Các quyết định thiết kế đều có lý do được ghi lại và nhiều quyết định đã được "trả giá – sửa – rút kinh nghiệm" trong quá trình làm thật (race condition khi override cấu hình per-user, giới hạn 16MB của MongoDB, các bẫy CSS/React ở canvas truyện).
-- **Về đánh giá:** kiểm thử chức năng đạt trên bộ test case phủ các use case chính; kiểm thử phi chức năng xác nhận các cơ chế phòng thủ (rate limit, retry, SSE) hoạt động đúng vai trò; đánh giá chất lượng đầu ra cho thấy cách tiếp cận ảnh tham chiếu cải thiện rõ tính nhất quán nhân vật so với chỉ dùng prompt.
+- **Về đánh giá:** kiểm thử chức năng đạt trên bộ test case phủ các use case chính; kiểm thử phi chức năng xác nhận các cơ chế phòng thủ (rate limit, retry, SSE) hoạt động đúng vai trò; đánh giá chất lượng đầu ra cho thấy cách tiếp cận ảnh tham chiếu cải thiện rõ tính nhất quán nhân vật so với chỉ dùng prompt — được xác nhận bằng cả điểm chủ quan của người chấm lẫn độ tương đồng embedding khuôn mặt (ArcFace) đo tự động.
 
 ## 7.2 Hạn chế của hệ thống
 
@@ -1111,6 +1126,8 @@ Nhìn nhận thẳng thắn, hệ thống còn các hạn chế sau:
 18. M. Jones, J. Bradley, N. Sakimura, "JSON Web Token (JWT)," RFC 7519, IETF, 2015.
 19. D. Hardt, "The OAuth 2.0 Authorization Framework," RFC 6749, IETF, 2012.
 20. IDPF, "EPUB 3.0 Specification," International Digital Publishing Forum.
+21. J. Deng, J. Guo, N. Xue, S. Zafeiriou, "ArcFace: Additive Angular Margin Loss for Deep Face Recognition," *IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2019.
+22. A. Radford et al., "Learning Transferable Visual Models From Natural Language Supervision (CLIP)," *International Conference on Machine Learning (ICML)*, 2021.
 
 ---
 

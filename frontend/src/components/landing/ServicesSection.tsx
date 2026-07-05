@@ -54,7 +54,7 @@ const DOODLES = [
 
 export function ServicesSection() {
   return (
-    <section className="relative z-10 bg-surface-container-low px-6 py-24 md:px-12">
+    <section id="features" className="relative z-10 bg-surface-container-low px-6 py-24 md:px-12">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
         {DOODLES.map(({ Icon, top, left, size, rotate, color }, i) => (
           <div key={i} className="absolute" style={{ top, left, color, transform: `translate(-50%, -50%) rotate(${rotate}deg)` }}>
@@ -62,6 +62,10 @@ export function ServicesSection() {
           </div>
         ))}
       </div>
+
+      <h2 className="relative mb-14 text-center text-3xl font-black tracking-tight text-on-surface md:text-5xl">
+        Features
+      </h2>
 
       <div className="relative mx-auto flex flex-col gap-8" style={{ maxWidth: 1100 }}>
         {SERVICES.map(({ icon: Icon, title, description, className, top }) => (
