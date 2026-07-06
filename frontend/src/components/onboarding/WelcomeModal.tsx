@@ -81,9 +81,8 @@ export default function WelcomeModal({ isOpen, onStartTour, onSkip }: Props) {
                 <Sparkles size={28} />
               </motion.div>
               <p className="text-[12px] font-bold tracking-[0.1em] text-[rgba(255,255,255,0.9)]">
-                ✦ ComicGen AI
+                ✦ mOhiOm
               </p>
-              <p className="text-[10px] text-[rgba(255,255,255,0.5)] mt-0.5">by mOhiOm Studio</p>
               <h2 className="mt-2 text-2xl font-extrabold leading-tight text-on-primary">
                 Turn your story into a comic — automatically.
               </h2>
@@ -102,7 +101,7 @@ export default function WelcomeModal({ isOpen, onStartTour, onSkip }: Props) {
                 <X size={18} />
               </button>
               <p className="text-xs font-semibold tracking-[0.08em] uppercase text-on-surface-variant mb-4">
-                What you can do with ComicGen AI
+                What you can do with mOhiOm
               </p>
               <div className="flex flex-col">
                 {FEATURES.map(({ icon: Icon, title, description }, i) => (

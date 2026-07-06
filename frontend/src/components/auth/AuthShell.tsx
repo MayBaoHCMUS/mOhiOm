@@ -1,6 +1,6 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import type { ReactNode } from 'react';
-import { Sparkles } from 'lucide-react';
 
 interface AuthShellProps {
   title: string;
@@ -14,11 +14,8 @@ export default function AuthShell({ title, subtitle, children, footer, aside }: 
   return (
     <div className="min-h-screen bg-surface text-on-surface">
       <header className="fixed top-0 right-0 left-0 h-16 z-50 glass-nav flex items-center justify-between px-8 w-full shadow-sm">
-        <Link href="/" className="flex items-center gap-2 text-on-surface hover:text-primary transition-colors">
-          <span className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center">
-            <Sparkles className="text-on-primary" size={20} strokeWidth={2.5} fill="currentColor" />
-          </span>
-          <span className="text-lg font-black tracking-tighter">ComicGen AI</span>
+        <Link href="/" className="flex items-center text-on-surface hover:text-primary transition-colors">
+          <Image src="/images/landing/logo-nav.png" alt="mOhiOm" width={160} height={30} className="h-7 w-auto" priority />
         </Link>
       </header>
 
@@ -31,7 +28,7 @@ export default function AuthShell({ title, subtitle, children, footer, aside }: 
         <section className="flex-1 flex flex-col items-center justify-center p-8 md:p-20">
           <div className="w-full max-w-[460px] space-y-8">
             <header className="space-y-3">
-              <p className="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant/70">ComicGen AI</p>
+              <p className="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant/70">mOhiOm</p>
               <h1 className="text-4xl font-extrabold tracking-tight">{title}</h1>
               <p className="text-on-surface-variant text-base leading-relaxed">{subtitle}</p>
             </header>

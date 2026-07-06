@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ExternalLink, FolderOpen, Plus } from 'lucide-react';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
+import { projectsApi } from '@/services/api';
 import type { CloudProjectListItem } from '@/services/api';
 
 interface Props {
@@ -97,6 +98,8 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('recent');
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [publishErrors, setPublishErrors] = useState<Record<string, string>>({});
 
   const sorted = useMemo(() => sortProjects(projects, sortKey), [projects, sortKey]);
 
@@ -113,12 +116,42 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
   }, [listCloudProjects]);
 
   useEffect(() => {
-    if (isOpen) fetchProjects();
+    if (isOpen) {
+      setPublishErrors({});
+      fetchProjects();
+    }
   }, [isOpen, fetchProjects]);
 
   const handleSave = async () => {
     await saveToCloud();
     await fetchProjects();
+  };
+
+  const handleTogglePublish = async (projectId: string, currentValue: boolean) => {
+    if (publishingId) return;
+    const next = !currentValue;
+
+    setPublishErrors((prev) => {
+      if (!(projectId in prev)) return prev;
+      const { [projectId]: _removed, ...rest } = prev;
+      return rest;
+    });
+    setProjects((prev) => prev.map((p) => (p.project_id === projectId ? { ...p, is_public: next } : p)));
+    setPublishingId(projectId);
+
+    try {
+      const response = await projectsApi.publishProject(projectId, next);
+      const isPublic = response.data.is_public;
+      setProjects((prev) => prev.map((p) => (p.project_id === projectId ? { ...p, is_public: isPublic } : p)));
+    } catch {
+      setProjects((prev) => prev.map((p) => (p.project_id === projectId ? { ...p, is_public: currentValue } : p)));
+      setPublishErrors((prev) => ({
+        ...prev,
+        [projectId]: next ? 'Could not publish to the gallery. Try again.' : 'Could not unpublish. Try again.',
+      }));
+    } finally {
+      setPublishingId(null);
+    }
   };
 
   const handleLoad = async (projectId: string) => {
@@ -324,6 +357,74 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
                         );
                       })}
                     </div>
+
+                    {/* Share to Community Gallery */}
+                    {hasStep5 && (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 8,
+                          padding: '8px 10px',
+                          marginBottom: 12,
+                          borderRadius: 8,
+                          background: '#F9FAFB',
+                          border: '1px solid #F3F4F6',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#6366F1' }}>
+                            public
+                          </span>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ fontSize: 11, fontWeight: 700, color: '#111827', margin: 0 }}>
+                              Share to Community Gallery
+                            </p>
+                            <p style={{ fontSize: 10, color: '#9CA3AF', margin: 0, marginTop: 1 }}>
+                              {p.is_public ? 'Visible in the public gallery' : 'Only you can see this comic'}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={publishingId === p.project_id}
+                          onClick={() => handleTogglePublish(p.project_id, !!p.is_public)}
+                          aria-label={p.is_public ? 'Unpublish from Community Gallery' : 'Publish to Community Gallery'}
+                          style={{
+                            position: 'relative',
+                            width: 36,
+                            height: 20,
+                            borderRadius: 10,
+                            border: 'none',
+                            flexShrink: 0,
+                            background: p.is_public ? '#6366F1' : '#E5E7EB',
+                            cursor: publishingId === p.project_id ? 'not-allowed' : 'pointer',
+                            opacity: publishingId === p.project_id ? 0.6 : 1,
+                            transition: 'background 0.15s ease',
+                          }}
+                        >
+                          <span
+                            style={{
+                              position: 'absolute',
+                              top: 2,
+                              left: p.is_public ? 18 : 2,
+                              width: 16,
+                              height: 16,
+                              borderRadius: '50%',
+                              background: '#FFFFFF',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                              transition: 'left 0.15s ease',
+                            }}
+                          />
+                        </button>
+                      </div>
+                    )}
+                    {publishErrors[p.project_id] && (
+                      <p style={{ fontSize: 10, color: '#DC2626', margin: 0, marginTop: -8, marginBottom: 10 }}>
+                        {publishErrors[p.project_id]}
+                      </p>
+                    )}
 
                     {/* Actions */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

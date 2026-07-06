@@ -157,7 +157,7 @@ export function MetadataEditor({ metadata, onChange }: MetadataEditorProps) {
           type="text"
           value={metadata.publisher}
           onChange={e => update('publisher', e.target.value)}
-          placeholder="ComicGen AI"
+          placeholder="mOhiOm"
           maxLength={80}
           className="w-full px-2.5 py-1.5 rounded-lg border border-outline-variant/30 bg-transparent text-on-surface text-xs focus:outline-none focus:border-primary/60 transition-colors"
         />

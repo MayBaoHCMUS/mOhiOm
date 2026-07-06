@@ -17,7 +17,7 @@ export const DEFAULT_METADATA: ComicMetadata = {
   series:      '',
   volume:      '',
   year:        new Date().getFullYear().toString(),
-  publisher:   'ComicGen AI',
+  publisher:   'mOhiOm',
 }
 
 const STORAGE_KEY = 'comic_metadata'

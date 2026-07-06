@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -19,6 +20,7 @@ const POST_PRODUCTION: NavItem[] = [
 
 const LIBRARY: NavItem[] = [
   { href: '/studio/my-stories', label: 'My Stories', icon: 'library_books' },
+  { href: '/gallery',           label: 'Gallery',     icon: 'photo_library' },
   { href: '/studio/analytics',  label: 'Analytics',  icon: 'bar_chart' },
 ];
 
@@ -101,9 +103,11 @@ export default function StudioSidebar() {
       <div className={`mb-6 ${isCollapsed ? 'px-1 pt-2' : 'px-2 pt-4'}`}>
         <div className="flex items-start justify-between">
           <div className={isCollapsed ? 'flex flex-col items-center gap-1' : ''}>
-            <h1 className={`font-bold tracking-tight ${isCollapsed ? 'text-lg' : 'text-xl'}`}>
-              {isCollapsed ? 'CG' : 'ComicGen AI'}
-            </h1>
+            {isCollapsed ? (
+              <Image src="/favicon-icon.png" alt="mOhiOm" width={32} height={32} className="h-8 w-8" />
+            ) : (
+              <Image src="/images/landing/logo-nav.png" alt="mOhiOm" width={160} height={30} className="h-7 w-auto" />
+            )}
             {!isCollapsed && (
               <p className="text-xs text-on-surface-variant font-medium tracking-wide mt-1">Creative Hub</p>
             )}

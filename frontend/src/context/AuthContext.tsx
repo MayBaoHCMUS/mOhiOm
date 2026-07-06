@@ -14,6 +14,7 @@ export type AuthUser = {
 type AuthContextValue = {
   user: AuthUser | null;
   isLoading: boolean;
+  isInitialized: boolean;
   error: string | null;
   refresh: () => Promise<AuthUser | null>;
   logout: () => Promise<void>;
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -46,6 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return null;
     } finally {
       setIsLoading(false);
+      setIsInitialized(true);
     }
   }, []);
 
@@ -67,11 +70,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       user,
       isLoading,
+      isInitialized,
       error,
       refresh,
       logout,
     }),
-    [user, isLoading, error, refresh, logout]
+    [user, isLoading, isInitialized, error, refresh, logout]
   );
 
   useEffect(() => {

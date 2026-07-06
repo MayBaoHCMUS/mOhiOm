@@ -201,8 +201,8 @@ export async function exportAsPdf(pages: ExportPage[], opts: ExportOpts): Promis
   pdfDoc.setAuthor(meta?.author || '');
   pdfDoc.setSubject(meta?.description || '');
   pdfDoc.setKeywords([meta?.series, meta?.volume].filter(Boolean) as string[]);
-  pdfDoc.setCreator('ComicGen AI');
-  pdfDoc.setProducer('ComicGen AI');
+  pdfDoc.setCreator('mOhiOm');
+  pdfDoc.setProducer('mOhiOm');
   pdfDoc.setCreationDate(new Date());
 
   for (const page of pages) {

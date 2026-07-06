@@ -1903,8 +1903,9 @@ export default function Step2Characters() {
   const isGenerating  = step2.isLoading;
   const canGenerate   = !isGenerating && cooldown === 0;
 
-  const characters        = (step2ImageReview.data?.characters ?? []).filter(
-    (c) => !/^\d+[\.\)]\s/.test(c.name.trim()),
+  const characters = useMemo(
+    () => (step2ImageReview.data?.characters ?? []).filter((c) => !/^\d+[\.\)]\s/.test(c.name.trim())),
+    [step2ImageReview.data?.characters],
   );
   const isImageGenerating    = !!step2ImageReview.data?.isGenerating;
   const existingCharacterIds = new Set(characters.map((c) => c.characterId));
@@ -2052,9 +2053,11 @@ export default function Step2Characters() {
   // Pre-populate approvedCharIds on reload
   useEffect(() => {
     if (step2ImageReview.isApproved && characters.length > 0) {
-      setApprovedCharIds(
-        new Set(characters.filter((c) => c.selectedCandidateId).map((c) => c.characterId)),
-      );
+      const nextIds = characters.filter((c) => c.selectedCandidateId).map((c) => c.characterId);
+      setApprovedCharIds((prev) => {
+        const same = prev.size === nextIds.length && nextIds.every((id) => prev.has(id));
+        return same ? prev : new Set(nextIds);
+      });
     }
   }, [step2ImageReview.isApproved, characters]);
 
