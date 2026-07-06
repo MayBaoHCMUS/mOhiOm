@@ -1,19 +1,12 @@
 export const IMAGE_API_URL_KEY = 'mohiom-image-api-url';
 
-const DEFAULT_IMAGE_API_URL =
-  process.env.NEXT_PUBLIC_GPU_API_URL || 'https://gpu.mohiom.me';
+// Locked to the permanent, named GPU tunnel — no longer user-overridable.
+const IMAGE_API_URL = process.env.NEXT_PUBLIC_GPU_API_URL || 'https://gpu.mohiom.me';
 
 export function getImageApiUrl(): string {
-  if (typeof window === 'undefined') return DEFAULT_IMAGE_API_URL;
-  return window.localStorage.getItem(IMAGE_API_URL_KEY) ?? DEFAULT_IMAGE_API_URL;
+  return IMAGE_API_URL;
 }
 
-export function setImageApiUrl(url: string): void {
-  if (typeof window === 'undefined') return;
-  const trimmed = url.trim().replace(/\/$/, '');
-  if (trimmed) {
-    window.localStorage.setItem(IMAGE_API_URL_KEY, trimmed);
-  } else {
-    window.localStorage.removeItem(IMAGE_API_URL_KEY);
-  }
-}
+// No-op: kept so existing call sites don't need to change, but the image
+// API URL is now a fixed constant and can no longer be overridden.
+export function setImageApiUrl(_url: string): void {}

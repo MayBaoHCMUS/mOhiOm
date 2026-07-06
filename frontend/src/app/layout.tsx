@@ -12,9 +12,9 @@ export const metadata: Metadata = {
   },
   description: 'AI-powered comic generation studio. Write, design, and publish comics with generative AI.',
   icons: {
-    icon: '/favicon.svg',
-    shortcut: '/favicon.svg',
-    apple: '/favicon.svg',
+    icon: '/favicon-icon.png',
+    shortcut: '/favicon-icon.png',
+    apple: '/favicon-icon.png',
   },
 };
 

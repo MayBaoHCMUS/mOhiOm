@@ -7,7 +7,7 @@ import StudioTopBar from '@/components/StudioTopBar';
 import { useAuth } from '@/context/AuthContext';
 import { authApi, projectsApi, settingsApi, toApiError } from '@/services/api';
 import type { TextGenMode, SaveTextGenConfigPayload, TextGenProvider } from '@/services/api';
-import { getImageApiUrl, setImageApiUrl } from '@/lib/imageApiUrl';
+import { getImageApiUrl } from '@/lib/imageApiUrl';
 import PasswordStrengthMeter from '@/components/PasswordStrengthMeter';
 import { useOnboardingContext } from '@/context/OnboardingContext';
 
@@ -136,9 +136,8 @@ export default function SettingsPage() {
   const [textGenMsg, setTextGenMsg] = useState('');
   const [textGenError, setTextGenError] = useState('');
 
-  // Image generation server URL
+  // Image generation server URL — locked to the permanent GPU tunnel
   const [imageApiUrlValue, setImageApiUrlValue] = useState('');
-  const [imageApiUrlSaved, setImageApiUrlSaved] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -298,13 +297,6 @@ export default function SettingsPage() {
     } finally {
       setTextGenSaving(false);
     }
-  };
-
-  const handleImageApiUrlChange = (val: string) => {
-    setImageApiUrlValue(val);
-    setImageApiUrl(val);
-    setImageApiUrlSaved(true);
-    setTimeout(() => setImageApiUrlSaved(false), 1500);
   };
 
   return (
@@ -682,12 +674,11 @@ export default function SettingsPage() {
               <input
                 type="url"
                 value={imageApiUrlValue}
-                onChange={(e) => handleImageApiUrlChange(e.target.value)}
-                placeholder="https://gpu.mohiom.me"
-                className="field w-full font-mono text-sm"
+                disabled
+                readOnly
+                className="field w-full font-mono text-sm opacity-60 cursor-not-allowed"
               />
-              <p className="mt-2 text-[11px] text-outline">Defaults to gpu.mohiom.me — only set this to override with a different image server (e.g. local testing).</p>
-              {imageApiUrlSaved && <p className="mt-1 text-[11px] text-green-600">Saved</p>}
+              <p className="mt-2 text-[11px] text-outline">Fixed to the permanent GPU tunnel — no longer user-configurable.</p>
             </div>
           </Panel>
 

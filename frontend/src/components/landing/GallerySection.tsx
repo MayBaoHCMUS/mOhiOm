@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import Image from 'next/image';
 import { Sparkles } from 'lucide-react';
 
@@ -38,7 +37,11 @@ const GALLERY_ITEMS: GalleryMockItem[] = [
   { id: 'crown-heist', title: 'The Crown Heist', genre: 'Fantasy', image: '/images/landing/gallery-crown-heist.png' },
 ];
 
-export function GallerySection() {
+interface GallerySectionProps {
+  onOpenGallery: () => void;
+}
+
+export function GallerySection({ onOpenGallery }: GallerySectionProps) {
   const [active, setActive] = useState<'All' | Genre>('All');
   const items = GALLERY_ITEMS.filter((item) => active === 'All' || item.genre === active);
 
@@ -92,12 +95,13 @@ export function GallerySection() {
         </div>
 
         <div className="mt-10 text-center">
-          <Link
-            href="/gallery"
+          <button
+            type="button"
+            onClick={onOpenGallery}
             className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-primary hover:underline"
           >
             Browse full gallery →
-          </Link>
+          </button>
         </div>
       </div>
     </section>

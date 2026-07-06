@@ -2,6 +2,7 @@
 
 import { useRef } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { Sparkles, MessageCircle, PenTool, BookOpen, Star } from 'lucide-react';
 import { AvatarStack } from './AvatarStack';
@@ -94,6 +95,26 @@ export function ScrollZoomHero() {
           </motion.span>
 
           <motion.div
+            aria-hidden="true"
+            className="absolute h-20 w-20 md:h-36 md:w-36"
+            style={{
+              left: `calc(50% + (${O_SIZE} / 2) + 20px + clamp(48px, 8vw, 110px))`,
+              top: '50%',
+              y: '-50%',
+              opacity: fadeOpacity,
+            }}
+          >
+            <motion.div
+              className="relative h-full w-full"
+              style={{ rotate: -6 }}
+              animate={{ y: [0, -10, 0] }}
+              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            >
+              <Image src="/images/landing/mascot-bot.png" alt="" fill sizes="80px" className="object-contain" />
+            </motion.div>
+          </motion.div>
+
+          <motion.div
             className="absolute z-[6] max-w-2xl px-6 text-center"
             style={{ opacity: introOpacity, y: introY }}
           >
@@ -117,12 +138,6 @@ export function ScrollZoomHero() {
                 className="rounded-full bg-surface px-7 py-3 text-sm font-bold uppercase tracking-widest text-on-surface shadow-lg transition-transform hover:scale-105 active:scale-95"
               >
                 Create Your First Comic →
-              </Link>
-              <Link
-                href="/demo"
-                className="rounded-full border border-white/40 px-7 py-3 text-sm font-bold uppercase tracking-widest text-white transition-transform hover:scale-105 active:scale-95"
-              >
-                Watch Demo
               </Link>
             </div>
             <div className="mt-8 flex items-center justify-center gap-3">

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useComicGenerationOptional } from '@/context/ComicGenerationContext';
 import NotificationBell from '@/components/NotificationBell';
-import SpeederLoader from '@/components/SpeederLoader';
+import StepLoader from '@/components/StepLoader';
 
 type StudioTopBarProps = {
   leftOffset?: boolean;
@@ -28,9 +28,31 @@ function UserAvatar({ size = 'sm' }: { size?: 'sm' | 'md' }) {
 
 export default function StudioTopBar({ leftOffset = true }: StudioTopBarProps) {
   const comicGeneration = useComicGenerationOptional();
-  const isTaskRunning = !!(
-    comicGeneration?.step2ImageReview.data?.isGenerating || comicGeneration?.step4.data?.isGenerating
-  );
+  const isAnalyzing       = !!comicGeneration?.step1.isLoading;
+  const isDesigning       = !!comicGeneration?.step2.isLoading;
+  const isCharGenerating  = !!comicGeneration?.step2ImageReview.data?.isGenerating;
+  const isScripting       = !!comicGeneration?.step3.isLoading;
+  const isPanelGenerating = !!comicGeneration?.step4.data?.isGenerating;
+  const isTaskRunning = isAnalyzing || isDesigning || isCharGenerating || isScripting || isPanelGenerating;
+
+  let loaderLabel = 'Generating';
+  let loaderWords: [string, string, string, string] = ['characters', 'faces', 'outfits', 'poses'];
+  if (isAnalyzing) {
+    loaderLabel = 'Analyzing';
+    loaderWords = ['story', 'themes', 'characters', 'tone'];
+  } else if (isDesigning) {
+    loaderLabel = 'Designing';
+    loaderWords = ['characters', 'traits', 'looks', 'style'];
+  } else if (isCharGenerating) {
+    loaderLabel = 'Generating';
+    loaderWords = ['characters', 'faces', 'outfits', 'poses'];
+  } else if (isScripting) {
+    loaderLabel = 'Writing';
+    loaderWords = ['script', 'panels', 'dialogue', 'pacing'];
+  } else if (isPanelGenerating) {
+    loaderLabel = 'Generating';
+    loaderWords = ['panels', 'scenes', 'linework', 'colors'];
+  }
 
   return (
     <header
@@ -39,7 +61,7 @@ export default function StudioTopBar({ leftOffset = true }: StudioTopBarProps) {
       } z-50 glass-nav flex items-center justify-between px-8 h-16 text-on-surface shadow-[0_4px_20px_rgba(0,0,0,0.03)]`}
     >
       <div className="flex items-center">
-        {isTaskRunning && <SpeederLoader />}
+        {isTaskRunning && <StepLoader label={loaderLabel} words={loaderWords} />}
       </div>
       <div className="flex items-center gap-4">
         <NotificationBell />

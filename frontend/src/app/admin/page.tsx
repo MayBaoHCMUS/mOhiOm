@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
@@ -1212,8 +1213,8 @@ export default function AdminDashboardPage() {
       <div className="border-b border-outline-variant bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-              <span className="text-xl">📊</span>
+            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center overflow-hidden">
+              <Image src="/favicon-icon.png" alt="mOhiOm" width={28} height={28} className="h-7 w-7" />
             </div>
             <div>
               <h1 className="text-on-surface font-bold text-lg">mOhiOm Analytics</h1>
