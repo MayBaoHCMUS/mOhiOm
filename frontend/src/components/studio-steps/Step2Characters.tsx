@@ -11,6 +11,9 @@ import Markdown from '@/components/Markdown';
 import { apiClient } from '@/services/api';
 import type { CharacterSummary } from '@/services/api';
 import { GenerationStatusBar, type GenerationProgress } from '@/components/GenerationStatusBar';
+import ShapeLoader from '@/components/ShapeLoader';
+import { useAutoScrollStreamingPref } from '@/hooks/useAutoScrollStreamingPref';
+import { useScrollIntentDetector } from '@/hooks/useScrollIntentDetector';
 
 // ── Design section definitions ────────────────────────────────────────────────
 
@@ -80,36 +83,12 @@ const DEFAULT_SETTINGS: ImageGenSettings = {
 
 type State = 1 | 2 | 3 | 4 | 5;
 
-function StateBadge({
-  state,
-  streamProgress,
-}: {
-  state: State;
-  streamProgress?: { current: number; total: number } | null;
-}) {
+function StateBadge({ state }: { state: State }) {
   if (state === 1) return null;
+  // Text label + progress bar are intentionally omitted here — the Design Sheets
+  // right panel below already shows section count and the active section title.
   if (state === 2) {
-    return (
-      <div className="flex flex-col items-end gap-2">
-        <div className="flex items-center gap-2 text-sm text-on-surface-variant">
-          <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 motion-safe:animate-pulse" />
-          Designing characters…
-        </div>
-        {streamProgress && streamProgress.current > 0 && (
-          <div className="flex items-center gap-2 min-w-[160px]">
-            <div className="flex-1 h-1 rounded-full bg-on-surface/10 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-blue-500 transition-all duration-500"
-                style={{ width: `${Math.round((streamProgress.current / streamProgress.total) * 100)}%` }}
-              />
-            </div>
-            <span className="text-xs text-on-surface-variant flex-shrink-0 tabular-nums">
-              {streamProgress.current} / {streamProgress.total}
-            </span>
-          </div>
-        )}
-      </div>
-    );
+    return <ShapeLoader scale={0.4} />;
   }
   if (state === 4) {
     return (
@@ -726,6 +705,7 @@ interface SectionAccordionProps {
   isOpen:         boolean;
   onToggle:       () => void;
   isStreaming:    boolean;
+  isReviewed:     boolean;
   isEdited:       boolean;
   isEditing:      boolean;
   editBuffer:     string;
@@ -738,7 +718,7 @@ interface SectionAccordionProps {
 const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>(
   (
     {
-      section, displayContent, isOpen, onToggle, isStreaming,
+      section, displayContent, isOpen, onToggle, isStreaming, isReviewed,
       isEdited, isEditing, editBuffer,
       onEditStart, onEditChange, onEditSave, onEditCancel,
     },
@@ -765,7 +745,12 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
     };
 
     return (
-      <div ref={ref} className="t-acc rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden" data-open={isOpen ? 'true' : 'false'}>
+      <div
+        ref={ref}
+        className="t-acc rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden"
+        data-open={isOpen ? 'true' : 'false'}
+        style={{ scrollMarginTop: 96, scrollMarginBottom: 120 }}
+      >
         <div
           role="button"
           tabIndex={0}
@@ -780,13 +765,20 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
             {isActive && (
               <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 motion-safe:animate-pulse" />
             )}
+            {/* Matches SectionDot in the right-rail preview: checked while streaming
+                (completion so far), but after the stream ends it only checks once the
+                user has actually opened the section — not merely because it generated. */}
             {status === 'complete' && (
-              <span
-                className="material-symbols-outlined text-sm text-emerald-500 flex-shrink-0"
-                style={{ fontVariationSettings: "'FILL' 1" }}
-              >
-                check_circle
-              </span>
+              isStreaming || isReviewed ? (
+                <span
+                  className="material-symbols-outlined text-sm text-emerald-500 flex-shrink-0"
+                  style={{ fontVariationSettings: "'FILL' 1" }}
+                >
+                  check_circle
+                </span>
+              ) : (
+                <span className="w-2.5 h-2.5 rounded-full border-2 border-emerald-400 flex-shrink-0" />
+              )
             )}
             <span className={`font-semibold text-sm truncate ${isSkeleton ? 'text-on-surface-variant/50' : 'text-on-surface'}`}>
               {title}
@@ -1089,10 +1081,10 @@ function VersionFilmstrip({
 // ── Character rating constants ────────────────────────────────────────────────
 
 const CHAR_REACTIONS = [
-  { id: 'love',    emoji: '😍', label: 'Perfect', tooltip: 'nails the character exactly', bg: '#F0FDF4', border: '#86EFAC', color: '#166534' },
-  { id: 'good',    emoji: '👍', label: 'Close',   tooltip: 'mostly right, minor issues',  bg: '#EFF6FF', border: '#93C5FD', color: '#1E40AF' },
-  { id: 'neutral', emoji: '😐', label: 'Okay',    tooltip: 'acceptable but not ideal',    bg: '#FFFBEB', border: '#FCD34D', color: '#92400E' },
-  { id: 'bad',     emoji: '👎', label: 'Off',     tooltip: "doesn't match my vision",     bg: '#FEF2F2', border: '#FCA5A5', color: '#991B1B' },
+  { id: 'love',    emoji: '😍', label: 'Perfect', tooltip: 'nails the character exactly', bg: '#ECFDF5', border: '#10B981', color: '#065F46' },
+  { id: 'good',    emoji: '👍', label: 'Close',   tooltip: 'mostly right, minor issues',  bg: '#EFF6FF', border: '#3B82F6', color: '#1D4ED8' },
+  { id: 'neutral', emoji: '😐', label: 'Okay',    tooltip: 'acceptable but not ideal',    bg: '#FFFBEB', border: '#F59E0B', color: '#92400E' },
+  { id: 'bad',     emoji: '👎', label: 'Off',     tooltip: "doesn't match my vision",     bg: '#FEF2F2', border: '#EF4444', color: '#991B1B' },
 ] as const;
 
 type CharReaction = typeof CHAR_REACTIONS[number]['id'];
@@ -1129,12 +1121,15 @@ function CharacterRatingWidget({
   const showNegative = reaction === 'neutral' || reaction === 'bad';
 
   return (
-    <div className="space-y-3 pt-3 border-t border-outline-variant/10">
-      <p className="text-[11px] font-semibold uppercase text-[#9CA3AF]" style={{ letterSpacing: '0.06em' }}>
+    <div className="pt-3 border-t border-outline-variant/10" style={{ padding: '4px 0' }}>
+      <p
+        className="uppercase"
+        style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.06em', marginBottom: 10 }}
+      >
         How well does this match your vision?
       </p>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap" style={{ gap: 6 }}>
         {CHAR_REACTIONS.map((r) => {
           const sel = reaction === r.id;
           return (
@@ -1142,17 +1137,21 @@ function CharacterRatingWidget({
               key={r.id}
               type="button"
               title={r.tooltip}
+              aria-pressed={sel}
               onClick={() => onRate(r.id)}
-              className="flex items-center gap-1.5 h-9 rounded-[20px] text-sm font-medium transition-all"
+              className={`flex items-center transition-all ${!sel ? 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300 text-gray-700' : ''}`}
               style={{
-                padding:    '0 14px',
-                background: sel ? r.bg    : 'white',
-                border:     `1px solid ${sel ? r.border : '#E5E7EB'}`,
-                color:      sel ? r.color : '#374151',
+                gap:          4,
+                borderRadius: 999,
+                padding:      '6px 12px',
+                fontSize:     12,
+                fontWeight:   sel ? 600 : 500,
+                ...(sel ? { background: r.bg, border: `1.5px solid ${r.border}`, color: r.color } : { borderWidth: 1.5, borderStyle: 'solid' }),
               }}
             >
               <span>{r.emoji}</span>
               <span>{r.label}</span>
+              {sel && <span aria-hidden="true">✓</span>}
             </button>
           );
         })}
@@ -1413,24 +1412,33 @@ function ImageGenPanel({
         />
       )}
 
+      {/* Helper text — purely visual nudge; does not gate the real disabled logic below */}
+      {hasAnyImages && !isApproved && !charRating && (
+        <p style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center', marginTop: 8 }}>
+          Please select a rating to continue
+        </p>
+      )}
+
       {/* Action row */}
-      <div className="flex items-center gap-2 pt-2 border-t border-outline-variant/10">
+      <div className="flex items-center" style={{ gap: 8, marginTop: 16 }}>
         <button
           type="button"
           onClick={onRegenerate}
           disabled={isAnyGenerating}
-          className="flex items-center gap-1.5 flex-1 justify-center px-3 py-2.5 rounded-2xl text-xs font-bold border border-outline-variant/20 text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors disabled:opacity-40"
+          className="flex items-center justify-center bg-white text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40 text-xs font-semibold"
+          style={{ flex: 1, gap: 6, height: 40, borderRadius: 12, border: '1.5px solid #E5E7EB' }}
         >
-          <span className="material-symbols-outlined text-sm">refresh</span>
+          <span className="material-symbols-outlined text-base">refresh</span>
           {character.candidates.length > 0 ? 'Regenerate' : 'Generate'}
         </button>
         {isApproved ? (
           <button
             type="button"
             onClick={onRevoke}
-            className="flex items-center gap-1.5 flex-1 justify-center px-3 py-2.5 rounded-2xl text-xs font-semibold text-emerald-600 hover:bg-emerald-500/5 border border-emerald-500/20 transition-colors"
+            className="flex items-center justify-center text-emerald-600 hover:bg-emerald-500/5 border border-emerald-500/20 transition-colors text-xs font-semibold"
+            style={{ flex: 1.4, gap: 6, height: 40, borderRadius: 12 }}
           >
-            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+            <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
             Approved — Revoke
           </button>
         ) : (
@@ -1439,9 +1447,14 @@ function ImageGenPanel({
             onClick={onApprove}
             disabled={isAnyGenerating || !character.selectedCandidateId}
             title={!character.selectedCandidateId ? 'Select an image first' : undefined}
-            className="flex items-center gap-1.5 flex-1 justify-center px-3 py-2.5 rounded-2xl text-xs font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity disabled:opacity-40"
+            className="flex items-center justify-center bg-gray-900 text-white hover:opacity-90 transition-opacity disabled:opacity-40 text-xs font-semibold"
+            style={{
+              flex: 1.4, gap: 6, height: 40, borderRadius: 12,
+              opacity: charRating ? 1 : 0.5,
+              cursor: charRating ? undefined : 'not-allowed',
+            }}
           >
-            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+            <span className="material-symbols-outlined text-base">check</span>
             Approve
           </button>
         )}
@@ -1498,6 +1511,7 @@ function CharacterAccordionCard({
   character,
   isExpanded,
   onToggle,
+  isReviewed,
   settings,
   aspectRatio,
   versions,
@@ -1530,6 +1544,7 @@ function CharacterAccordionCard({
   };
   isExpanded:          boolean;
   onToggle:            () => void;
+  isReviewed:          boolean;
   settings:            ImageGenSettings;
   aspectRatio:         string;
   versions:            Candidate[][];
@@ -1679,6 +1694,22 @@ function CharacterAccordionCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="text-[10px] font-bold text-on-surface-variant/30 flex-shrink-0">#{idx + 1}</span>
+              {/* Reviewed indicator — matches the Story Breakdown / Design Sheets
+                  section dots: checked only once the user has opened this card
+                  since its current image was generated, not merely because it's done. */}
+              {character.candidates.length > 0 && !isLoading && (
+                isReviewed ? (
+                  <span
+                    className="material-symbols-outlined text-sm text-emerald-500 flex-shrink-0"
+                    style={{ fontVariationSettings: "'FILL' 1" }}
+                    title="Reviewed"
+                  >
+                    check_circle
+                  </span>
+                ) : (
+                  <span className="w-2.5 h-2.5 rounded-full border-2 border-emerald-400 flex-shrink-0" title="Not yet reviewed" />
+                )
+              )}
               <p className="font-semibold text-sm text-on-surface truncate">{character.name}</p>
               {currentRating && (
                 <span className="text-sm leading-none flex-shrink-0" title={`Rated: ${CHAR_REACTIONS.find((r) => r.id === currentRating)?.label}`}>
@@ -1735,7 +1766,7 @@ function CharacterAccordionCard({
                 title={!character.selectedCandidateId ? 'Select an image first' : undefined}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-gray-900 text-white hover:opacity-90 disabled:opacity-40 transition-opacity"
               >
-                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                <span className="material-symbols-outlined text-sm">check</span>
                 Approve
               </button>
             )}
@@ -1800,21 +1831,34 @@ function CharacterAccordionCard({
       {/* Per-card regen confirm */}
       {showRegenConfirm && (
         <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 space-y-4">
+          <div
+            className="bg-white rounded-2xl max-w-[360px] w-full p-6 space-y-4 border-l-4 border-red-600"
+            style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}
+          >
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-                <span className="material-symbols-outlined text-amber-600" style={{ fontVariationSettings: "'FILL' 1" }}>refresh</span>
+              <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-red-600" style={{ fontVariationSettings: "'FILL' 1" }}>refresh</span>
               </div>
               <div>
-                <p className="font-bold text-gray-900">Regenerate {character.name}?</p>
+                <p className="font-bold text-gray-900 text-[17px]">Regenerate {character.name}?</p>
                 <p className="text-sm text-gray-500 mt-1">This will remove the current approval and generate new images.</p>
               </div>
             </div>
-            <div className="flex gap-3">
-              <button type="button" onClick={() => setShowRegenConfirm(false)} className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors">
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowRegenConfirm(false)}
+                aria-label="Cancel regenerate"
+                className="flex-1 h-12 rounded-xl text-sm font-semibold bg-transparent border-[1.5px] border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600 focus-visible:outline-offset-2"
+              >
                 Cancel
               </button>
-              <button type="button" onClick={handleConfirmRegen} className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity">
+              <button
+                type="button"
+                onClick={handleConfirmRegen}
+                aria-label={`Confirm regenerate ${character.name}`}
+                className="flex-1 h-12 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-700 active:bg-red-800 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600 focus-visible:outline-offset-2"
+              >
                 Regenerate
               </button>
             </div>
@@ -1845,6 +1889,7 @@ export default function Step2Characters() {
     setActiveStep,
     projectId,
   } = useComicGeneration();
+  const { autoScroll, setAutoScroll } = useAutoScrollStreamingPref();
 
   // ── Reference Images tab state ────────────────────────────────────────────
   const [charSettings, setCharSettings]               = useState<Record<string, ImageGenSettings>>({});
@@ -1866,6 +1911,11 @@ export default function Step2Characters() {
   const [allCharReactions, setAllCharReactions]       = useState<Record<string, Record<number, string>>>({});
   const [showCharSetRating, setShowCharSetRating]     = useState(false);
   const stepStartRef = useRef(Date.now());
+
+  // ── Reference Images review tracking (mirrors Story Breakdown / Design Sheets) ──
+  const [reviewedCharIds, setReviewedCharIds]         = useState<Set<string>>(new Set());
+  const [showCharReviewWarning, setShowCharReviewWarning] = useState(false);
+  const charRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // ── Design Sheets accordion state ─────────────────────────────────────────
   const [openSections, setOpenSections]           = useState<Set<number>>(new Set([1]));
@@ -1892,12 +1942,27 @@ export default function Step2Characters() {
   const revokeChar  = (id: string) =>
     setApprovedCharIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
 
+  // "Reviewed" is keyed to the specific image the user looked at (characterId +
+  // its selected candidate id), not just the character id. That way a fresh
+  // regenerate is automatically unreviewed the instant its new candidate exists
+  // — no imperative "clear this one id" bookkeeping tied to generation timing.
+  const reviewKeyFor = (charId: string): string => {
+    const char = characters.find((c) => c.characterId === charId);
+    return `${charId}::${char?.selectedCandidateId ?? ''}`;
+  };
+
+  // Accordion: opening a card closes whichever one was open before it — matches
+  // the Story Breakdown / Design Sheets sections elsewhere in the wizard.
   const toggleCharExpanded = (id: string) =>
     setExpandedCharIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
+      if (prev.has(id)) return new Set();
+      setReviewedCharIds((r) => new Set([...r, reviewKeyFor(id)]));
+      return new Set([id]);
     });
+
+  const scrollToChar = (id: string) => {
+    charRefs.current.get(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
 
   const cooldown      = getCooldownSeconds(2);
   const isGenerating  = step2.isLoading;
@@ -1909,6 +1974,9 @@ export default function Step2Characters() {
   );
   const isImageGenerating    = !!step2ImageReview.data?.isGenerating;
   const existingCharacterIds = new Set(characters.map((c) => c.characterId));
+  // Watches for manual scroll during either tab's auto-scroll (Design Sheets
+  // streaming text, or References cards auto-following image generation).
+  const [scrollConflict, dismissScrollConflict] = useScrollIntentDetector((isGenerating || isImageGenerating) && autoScroll);
 
   const charGenRunRef = useRef<{ startTime: number } | null>(null);
   useEffect(() => {
@@ -1917,6 +1985,38 @@ export default function Step2Characters() {
     } else {
       charGenRunRef.current = null;
     }
+  }, [isImageGenerating]);
+
+  // Auto-expand the character currently generating — replacing (not adding to)
+  // the expanded set, so only one card is open at a time. Mirrors the
+  // auto-open-active-section behavior in Story Breakdown / Design Sheets, and
+  // follows the card down the page the same way (centered, respecting the
+  // "auto-scroll while generating" preference). Review status itself needs no
+  // handling here — reviewKeyFor() naturally treats a new candidate as
+  // unreviewed the moment it exists, regardless of generation timing.
+  const prevGeneratingCharRef = useRef<string | null>(null);
+  useEffect(() => {
+    const generatingChar = characters.find((c) => c.status === 'loading');
+    if (generatingChar && generatingChar.characterId !== prevGeneratingCharRef.current) {
+      prevGeneratingCharRef.current = generatingChar.characterId;
+      setExpandedCharIds(new Set([generatingChar.characterId]));
+      if (autoScroll) {
+        charRefs.current.get(generatingChar.characterId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [characters, autoScroll]);
+
+  // When the whole batch finishes, collapse everything so the user has to
+  // reopen (and thereby review) whichever card was left expanded — mirrors the
+  // state 2→3 "collapse every section" transition elsewhere. Review status
+  // itself is handled per-character above, not reset wholesale here.
+  const wasImageGeneratingRef = useRef(false);
+  useEffect(() => {
+    if (!isImageGenerating && wasImageGeneratingRef.current) {
+      setExpandedCharIds(new Set());
+      prevGeneratingCharRef.current = null;
+    }
+    wasImageGeneratingRef.current = isImageGenerating;
   }, [isImageGenerating]);
 
   const charGenProgress: GenerationProgress = useMemo(() => {
@@ -1950,6 +2050,17 @@ export default function Step2Characters() {
   const charsWithSelection  = charsWithCandidates.filter((c) => c.selectedCandidateId !== null);
   const allCharsHaveSelection = charsWithCandidates.length === 0 ||
     charsWithCandidates.every((c) => c.selectedCandidateId !== null);
+  // Characters with generated candidates the user hasn't opened yet (for the review warning).
+  // Keyed to the current candidate, so a freshly regenerated image counts as unreviewed
+  // even if an older version of this same character was reviewed before.
+  const unreviewedChars = charsWithCandidates.filter(
+    (c) => !reviewedCharIds.has(`${c.characterId}::${c.selectedCandidateId ?? ''}`)
+  );
+
+  const scrollToFirstUnreviewedChar = () => {
+    const first = unreviewedChars[0];
+    if (first) scrollToChar(first.characterId);
+  };
 
   // ── Section parsing ───────────────────────────────────────────────────────
   const streamText = isGenerating
@@ -1983,6 +2094,10 @@ export default function Step2Characters() {
   }, [showReviewWarning, unreviewedSections.length]);
 
   useEffect(() => {
+    if (showCharReviewWarning && unreviewedChars.length === 0) setShowCharReviewWarning(false);
+  }, [showCharReviewWarning, unreviewedChars.length]);
+
+  useEffect(() => {
     if (isGenerating && !wasLoadingRef.current) {
       setOpenSections(new Set([1]));
       prevActiveRef.current = null;
@@ -1990,19 +2105,23 @@ export default function Step2Characters() {
     wasLoadingRef.current = isGenerating;
   }, [isGenerating]);
 
+  // When stream completes (state 2→3): reset review tracking (stream auto-opens
+  // don't count), then collapse every section.
   useEffect(() => {
     if (state >= 3 && prevStateRef.current === 2) {
       setReviewedSections(new Set());
-      setOpenSections(new Set([1]));
+      setOpenSections(new Set());
     }
     prevStateRef.current = state;
   }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-open the section the stream is currently writing into — replacing (not
+  // adding to) the open set, so only one section is ever expanded at a time.
   useEffect(() => {
     const active = parsedSections.find((s) => s.status === 'active');
     if (active && active.id !== prevActiveRef.current) {
       prevActiveRef.current = active.id;
-      setOpenSections((prev) => new Set([...prev, active.id]));
+      setOpenSections(new Set([active.id]));
     }
   }, [parsedSections]);
 
@@ -2012,16 +2131,24 @@ export default function Step2Characters() {
     sectionRefs.current.get(id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
 
+  // Follow the streaming section down the page as its text grows, when the user
+  // has the "auto-scroll while generating" preference on (default: on). Centered
+  // (rather than 'nearest') so the growing text lands away from the fixed top bar
+  // and the sticky bottom action bar, instead of hiding right behind either one.
+  useEffect(() => {
+    if (!isGenerating || !autoScroll) return;
+    const active = parsedSections.find((s) => s.status === 'active');
+    if (active) sectionRefs.current.get(active.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [parsedSections, isGenerating, autoScroll]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Accordion: opening a section closes whichever one was open before it.
   const toggleSection = (id: number) => {
     setOpenSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-        setReviewedSections((r) => new Set([...r, id]));
+      if (prev.has(id)) {
+        return new Set();
       }
-      return next;
+      setReviewedSections((r) => new Set([...r, id]));
+      return new Set([id]);
     });
   };
 
@@ -2093,6 +2220,7 @@ export default function Step2Characters() {
   const handleConfirmRegen = useCallback(() => {
     setShowRegenConfirm(false);
     setApprovedCharIds(new Set());
+    setReviewedCharIds(new Set());
     setEditedContent(new Map());
     setEditingSection(null);
     setEditBuffer('');
@@ -2144,8 +2272,14 @@ export default function Step2Characters() {
   const handleApproveAndContinue = useCallback(() => {
     if (step2ImageReview.isApproved) { setActiveStep(3); return; }
     if (!allCharsHaveSelection) { setShowSelectionAlert(true); return; }
+    if (unreviewedChars.length > 0) { setShowCharReviewWarning(true); return; }
     setShowCharSetRating(true);
-  }, [step2ImageReview.isApproved, allCharsHaveSelection, setActiveStep]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step2ImageReview.isApproved, allCharsHaveSelection, unreviewedChars, setActiveStep]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleForceApproveChars = useCallback(() => {
+    setShowCharReviewWarning(false);
+    setShowCharSetRating(true);
+  }, []);
 
   const handleCharSetRatingSave = useCallback((stars: number | null, comment: string) => {
     setShowCharSetRating(false);
@@ -2307,14 +2441,14 @@ export default function Step2Characters() {
           )}
         </div>
 
-        {/* Top-right badge: progress in references tab, state badge in design sheets */}
-        {activeTab === 'references' && characters.length > 0 ? (
+        {/* Top-right badge: progress in references tab, state badge in design sheets —
+            the shape loader shows in both tabs while their respective generation runs. */}
+        {activeTab === 'references' && isImageGenerating ? (
+          <ShapeLoader scale={0.4} />
+        ) : activeTab === 'references' && characters.length > 0 ? (
           <ApprovalProgressBadge approved={approvedCount} total={characters.length} />
         ) : (
-          <StateBadge
-            state={state}
-            streamProgress={isGenerating ? { current: progressCount, total: TOTAL_SECTIONS } : null}
-          />
+          <StateBadge state={state} />
         )}
       </div>
 
@@ -2329,7 +2463,7 @@ export default function Step2Characters() {
             <span className="material-symbols-outlined text-base">replay</span>
             Retry
           </button>
-          <span className="text-sm text-red-500">{step2.error}</span>
+          <span className="text-sm text-red-500 line-clamp-2 min-w-0">{step2.error}</span>
         </div>
       )}
 
@@ -2439,6 +2573,7 @@ export default function Step2Characters() {
                     isOpen={openSections.has(sec.id)}
                     onToggle={() => toggleSection(sec.id)}
                     isStreaming={isGenerating}
+                    isReviewed={reviewedSections.has(sec.id)}
                     isEdited={editedContent.has(sec.id)}
                     isEditing={editingSection === sec.id}
                     editBuffer={editingSection === sec.id ? editBuffer : ''}
@@ -2546,17 +2681,28 @@ export default function Step2Characters() {
           {/* Regenerate all confirmation */}
           {showRegenAllConfirm && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-              <div className="bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full mx-4 space-y-4">
-                <h3 className="font-bold text-on-surface text-lg">Regenerate all images?</h3>
-                <p className="text-sm text-on-surface-variant leading-relaxed">
-                  This will regenerate reference images for all characters and clear all approvals.
-                  Previous versions will not be recoverable.
-                </p>
-                <div className="flex gap-3">
+              <div
+                className="bg-white rounded-2xl p-6 max-w-[360px] w-full mx-4 space-y-4 border-l-4 border-red-600"
+                style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                    <span className="material-symbols-outlined text-red-600" style={{ fontVariationSettings: "'FILL' 1" }}>refresh</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900 text-[17px]">Regenerate all images?</p>
+                    <p className="text-sm text-gray-500 mt-1 leading-relaxed">
+                      This will regenerate reference images for all characters and clear all approvals.
+                      Previous versions <span className="font-semibold text-red-600">will not be recoverable</span>.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2.5">
                   <button
                     type="button"
                     onClick={() => setShowRegenAllConfirm(false)}
-                    className="flex-1 px-4 py-2.5 rounded-2xl text-sm font-bold border border-outline-variant/20 text-on-surface-variant hover:bg-surface-container transition-colors"
+                    aria-label="Cancel regenerate all"
+                    className="flex-1 h-12 rounded-xl text-sm font-semibold bg-transparent border-[1.5px] border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600 focus-visible:outline-offset-2"
                   >
                     Cancel
                   </button>
@@ -2565,11 +2711,13 @@ export default function Step2Characters() {
                     onClick={() => {
                       setShowRegenAllConfirm(false);
                       setApprovedCharIds(new Set());
+                      setReviewedCharIds(new Set());
                       setVersionBoundaries({});
                       setActiveVersionTabs({});
                       handleGenerateCharacterReferences(charSettings);
                     }}
-                    className="flex-1 px-4 py-2.5 rounded-2xl text-sm font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity"
+                    aria-label="Confirm regenerate all images"
+                    className="flex-1 h-12 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-700 active:bg-red-800 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600 focus-visible:outline-offset-2"
                   >
                     Regenerate all
                   </button>
@@ -2587,32 +2735,41 @@ export default function Step2Characters() {
                 const activeVer = activeVersionTabs[charId] ?? Math.max(0, versions.length - 1);
 
                 return (
-                  <CharacterAccordionCard
+                  <div
                     key={charId}
-                    idx={idx}
-                    character={character}
-                    isExpanded={expandedCharIds.has(charId)}
-                    onToggle={() => toggleCharExpanded(charId)}
-                    settings={getCharSettings(charId)}
-                    aspectRatio={getAspectRatio(charId)}
-                    versions={versions}
-                    activeVersion={activeVer}
-                    onVersionChange={(v) => setActiveVersionTabs((prev) => ({ ...prev, [charId]: v }))}
-                    isApproved={approvedCharIds.has(charId)}
-                    isAnyGenerating={isImageGenerating}
-                    onRegenerate={() => setCharRegenModal({ charId, charName: character.name, settings: getCharSettings(charId) })}
-                    onSelectCandidate={(id) => handleSelectCharacterCandidate(charId, id)}
-                    onUpdateSettings={(s) => updateCharSettings(charId, s)}
-                    onAspectRatioChange={(r) => updateAspectRatio(charId, r)}
-                    onApprove={() => approveChar(charId)}
-                    onRevoke={() => revokeChar(charId)}
-                    designMarkdown={step2.data?.designMarkdown ?? null}
-                    projectId={projectId ?? ''}
-                    onReactionChange={handleReactionChange}
-                    onPickReferenceFromLibrary={() => setLibraryTargetCharId(charId)}
-                    onPickReferenceFromCommunity={() => setGalleryTargetCharId(charId)}
-                    onUseAsCharacterImage={(base64) => handleUseAsCharacterImage(charId, base64)}
-                  />
+                    ref={(el) => {
+                      if (el) charRefs.current.set(charId, el);
+                      else charRefs.current.delete(charId);
+                    }}
+                    style={{ scrollMarginTop: 96, scrollMarginBottom: 120 }}
+                  >
+                    <CharacterAccordionCard
+                      idx={idx}
+                      character={character}
+                      isExpanded={expandedCharIds.has(charId)}
+                      onToggle={() => toggleCharExpanded(charId)}
+                      isReviewed={reviewedCharIds.has(`${charId}::${character.selectedCandidateId ?? ''}`)}
+                      settings={getCharSettings(charId)}
+                      aspectRatio={getAspectRatio(charId)}
+                      versions={versions}
+                      activeVersion={activeVer}
+                      onVersionChange={(v) => setActiveVersionTabs((prev) => ({ ...prev, [charId]: v }))}
+                      isApproved={approvedCharIds.has(charId)}
+                      isAnyGenerating={isImageGenerating}
+                      onRegenerate={() => setCharRegenModal({ charId, charName: character.name, settings: getCharSettings(charId) })}
+                      onSelectCandidate={(id) => handleSelectCharacterCandidate(charId, id)}
+                      onUpdateSettings={(s) => updateCharSettings(charId, s)}
+                      onAspectRatioChange={(r) => updateAspectRatio(charId, r)}
+                      onApprove={() => approveChar(charId)}
+                      onRevoke={() => revokeChar(charId)}
+                      designMarkdown={step2.data?.designMarkdown ?? null}
+                      projectId={projectId ?? ''}
+                      onReactionChange={handleReactionChange}
+                      onPickReferenceFromLibrary={() => setLibraryTargetCharId(charId)}
+                      onPickReferenceFromCommunity={() => setGalleryTargetCharId(charId)}
+                      onUseAsCharacterImage={(base64) => handleUseAsCharacterImage(charId, base64)}
+                    />
+                  </div>
                 );
               })}
             </div>
@@ -2668,6 +2825,39 @@ export default function Step2Characters() {
                 <button
                   type="button"
                   onClick={handleForceApprove}
+                  className="text-xs font-semibold text-white bg-gray-900 rounded-lg px-3 py-1.5 hover:opacity-90 whitespace-nowrap"
+                >
+                  Approve anyway →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Review warning — References tab only */}
+        {showCharReviewWarning && unreviewedChars.length > 0 && activeTab === 'references' && (
+          <div className="px-10 py-3 max-w-6xl mx-auto border-b border-gray-100">
+            <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
+              <span className="material-symbols-outlined text-amber-500 text-sm mt-0.5">warning</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-amber-900">
+                  You&apos;ve reviewed {charsWithCandidates.length - unreviewedChars.length} / {charsWithCandidates.length} characters
+                </p>
+                <p className="text-xs text-amber-700 mt-0.5 truncate">
+                  Unreviewed: {unreviewedChars.map((c) => c.name).join(', ')}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={scrollToFirstUnreviewedChar}
+                  className="text-xs font-semibold text-amber-800 hover:text-amber-900 underline underline-offset-2 whitespace-nowrap"
+                >
+                  Review characters ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={handleForceApproveChars}
                   className="text-xs font-semibold text-white bg-gray-900 rounded-lg px-3 py-1.5 hover:opacity-90 whitespace-nowrap"
                 >
                   Approve anyway →
@@ -2824,35 +3014,40 @@ export default function Step2Characters() {
       {/* ── Global regenerate confirm modal ── */}
       {showRegenConfirm && (
         <div className="fixed inset-0 z-[90] bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 flex flex-col gap-4">
+          <div
+            className="bg-white rounded-2xl max-w-[360px] w-full p-6 flex flex-col gap-4 border-l-4 border-red-600"
+            style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}
+          >
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center flex-shrink-0">
                 <span
-                  className="material-symbols-outlined text-amber-600"
+                  className="material-symbols-outlined text-red-600"
                   style={{ fontVariationSettings: "'FILL' 1" }}
                 >
                   refresh
                 </span>
               </div>
               <div>
-                <p className="font-bold text-gray-900">Regenerate designs?</p>
+                <p className="font-bold text-gray-900 text-[17px]">Regenerate designs?</p>
                 <p className="text-sm text-gray-500 mt-1">
-                  This will replace all current designs and remove any per-character approvals. This cannot be undone.
+                  This will replace all current designs and remove any per-character approvals. This <span className="font-semibold text-red-600">cannot be undone</span>.
                 </p>
               </div>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-2.5">
               <button
                 type="button"
                 onClick={() => setShowRegenConfirm(false)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                aria-label="Cancel regenerate"
+                className="flex-1 h-12 rounded-xl text-sm font-semibold bg-transparent border-[1.5px] border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600 focus-visible:outline-offset-2"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleConfirmRegen}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity"
+                aria-label="Confirm regenerate designs"
+                className="flex-1 h-12 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-700 active:bg-red-800 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600 focus-visible:outline-offset-2"
               >
                 Regenerate
               </button>
@@ -2924,6 +3119,43 @@ export default function Step2Characters() {
           onSkip={handleCharSetRatingSkip}
           onSave={handleCharSetRatingSave}
         />
+      )}
+
+      {/* ── Scroll-conflict toast ── */}
+      {scrollConflict && (
+        <div className="fixed top-6 right-6 z-[60] pointer-events-none">
+          <div className="pointer-events-auto flex items-start gap-3 bg-white border border-gray-200 rounded-2xl shadow-xl px-4 py-3 w-[300px] animate-panel-appear">
+            <span className="text-amber-500 text-lg mt-0.5 flex-shrink-0">⚠</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900">Auto-scroll is following the text</p>
+              <p className="text-xs text-gray-500 mt-0.5">Manual scrolling may fight it while content is generating.</p>
+              <div className="flex items-center gap-3 mt-1.5">
+                <button
+                  type="button"
+                  onClick={dismissScrollConflict}
+                  className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  Keep auto-scroll
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAutoScroll(false); dismissScrollConflict(); }}
+                  className="text-xs font-semibold text-red-600 hover:text-red-800 transition-colors"
+                >
+                  Turn off auto-scroll
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={dismissScrollConflict}
+              aria-label="Dismiss"
+              className="flex-shrink-0 text-gray-300 hover:text-gray-500 transition-colors mt-0.5"
+            >
+              <span className="material-symbols-outlined text-base">close</span>
+            </button>
+          </div>
+        </div>
       )}
     </section>
   );

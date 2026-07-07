@@ -30,6 +30,17 @@ def _require_user(x_user_id: Optional[str]) -> str:
     return x_user_id
 
 
+def _has_success_page(steps: Dict[str, Any]) -> bool:
+    """True if step4 has at least one page that actually finished rendering.
+    Mirrors gallery.py's cover-image check, since only such projects will show up
+    in the public gallery once published."""
+    page_states = (((steps.get("step4") or {}).get("data") or {}).get("pageStates") or {})
+    return any(
+        state.get("status") == "success" and state.get("imageUrl")
+        for state in page_states.values()
+    )
+
+
 def _maybe_upload(url: Optional[str], folder: str) -> Optional[str]:
     """Safety net for character endpoints, which never go through save_project()'s
     steps-blob sanitizer: upload a lingering base64 data URL to R2 if one slips
@@ -86,6 +97,7 @@ def list_projects(
                 step2_images_approved=bool(s2ir.get("isApproved")),
                 step3_approved=bool(s3.get("isApproved")),
                 is_public=bool(doc.get("is_public", False)),
+                is_publishable=_has_success_page(steps),
             )
         )
     return sorted(result, key=lambda x: x.saved_at, reverse=True)

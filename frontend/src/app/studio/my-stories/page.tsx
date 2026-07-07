@@ -1,12 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
 import { useStoryLibrary } from '@/hooks/useStoryLibrary';
 import type { SavedStory } from '@/hooks/useStoryLibrary';
+import { projectsApi } from '@/services/api';
+import type { CloudProjectListItem } from '@/services/api';
+import ComicReaderModal from '@/components/ComicReaderModal';
 
 function wordCount(text: string) {
   return text.trim().split(/\s+/).filter(Boolean).length;
@@ -20,17 +23,12 @@ const STORY_GRADIENTS = [
   'from-emerald-900 via-teal-800 to-cyan-900',
   'from-indigo-900 via-violet-800 to-purple-900',
 ];
-const STORY_ACCENT_COLORS = [
-  '#7C3AED', '#0891B2', '#059669', '#DC2626',
-  '#D97706', '#2563EB', '#DB2777', '#65A30D',
-];
 function hashId(id: string): number {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
   return h;
 }
 const storyGradient = (id: string) => STORY_GRADIENTS[hashId(id) % STORY_GRADIENTS.length];
-const storyAccent   = (id: string) => STORY_ACCENT_COLORS[hashId(id) % STORY_ACCENT_COLORS.length];
 
 function formatRelativeDate(iso: string): string {
   const date = new Date(iso);
@@ -54,6 +52,53 @@ export default function MyStoriesPage() {
   const { stories, remove, duplicate } = useStoryLibrary();
   const [confirmDelete, setConfirmDelete] = useState<SavedStory | null>(null);
   const [search, setSearch] = useState('');
+  const [cloudProjects, setCloudProjects] = useState<Record<string, CloudProjectListItem>>({});
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [publishErrors, setPublishErrors] = useState<Record<string, string>>({});
+  const [previewProjectId, setPreviewProjectId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    projectsApi.list()
+      .then((res) => {
+        if (cancelled) return;
+        const map: Record<string, CloudProjectListItem> = {};
+        for (const p of res.data) map[p.project_id] = p;
+        setCloudProjects(map);
+      })
+      .catch(() => { /* gallery-sharing status is best-effort */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleTogglePublish = async (story: SavedStory) => {
+    const cloud = cloudProjects[story.projectId];
+    if (!cloud?.is_publishable || publishingId) return;
+    const next = !cloud.is_public;
+
+    setPublishErrors((prev) => {
+      if (!(story.projectId in prev)) return prev;
+      const { [story.projectId]: _removed, ...rest } = prev;
+      return rest;
+    });
+    setCloudProjects((prev) => ({ ...prev, [story.projectId]: { ...prev[story.projectId], is_public: next } }));
+    setPublishingId(story.projectId);
+
+    try {
+      const response = await projectsApi.publishProject(story.projectId, next);
+      setCloudProjects((prev) => ({
+        ...prev,
+        [story.projectId]: { ...prev[story.projectId], is_public: response.data.is_public },
+      }));
+    } catch {
+      setCloudProjects((prev) => ({ ...prev, [story.projectId]: { ...prev[story.projectId], is_public: !next } }));
+      setPublishErrors((prev) => ({
+        ...prev,
+        [story.projectId]: next ? 'Could not publish to the gallery. Try again.' : 'Could not unpublish. Try again.',
+      }));
+    } finally {
+      setPublishingId(null);
+    }
+  };
 
   const filtered = stories.filter((s) => {
     if (!search.trim()) return true;
@@ -155,66 +200,121 @@ export default function MyStoriesPage() {
               const wc = wordCount(story.adaptedStory ?? story.storyText);
               const genre = story.genre?.split('/')[0].split(',')[0].trim();
               const grad = storyGradient(story.id);
-              const accent = storyAccent(story.id);
               return (
                 <div
                   key={story.id}
-                  className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:translate-y-[-2px] transition-all"
+                  className="bg-surface-container-lowest rounded-2xl overflow-hidden shadow-[0_4px_16px_rgba(0,0,0,0.08)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)] hover:translate-y-[-2px] transition-all"
                 >
-                  {/* Gradient thumbnail */}
-                  <div className={`relative h-[72px] bg-gradient-to-br ${grad} flex flex-col justify-between p-3`}>
+                  {/* Gradient header — title, genre pill, and metadata live here (single source of truth for the title) */}
+                  <div className={`relative bg-gradient-to-br ${grad} px-4 pt-3 pb-8 flex flex-col gap-2`}>
                     {genre && (
-                      <span className="self-start text-[9px] font-bold uppercase tracking-[0.06em] text-white bg-black/30 rounded px-1.5 py-0.5">
+                      <span className="self-start text-[9px] font-bold uppercase tracking-[0.06em] text-white bg-black/30 rounded-full px-2.5 py-1">
                         {genre}
                       </span>
                     )}
-                    <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.90)', textShadow: '0 1px 3px rgba(0,0,0,0.30)', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {story.title || 'Untitled'}
-                    </span>
-                  </div>
-
-                  {/* Card body */}
-                  <div className="px-4 py-3 flex flex-col gap-2" style={{ borderLeft: `4px solid ${accent}` }}>
-                    {/* Title + word count */}
                     <div>
-                      <p className="text-[13px] font-bold text-on-surface truncate">{story.title || 'Untitled'}</p>
-                      <p className="text-[11px] text-on-surface-variant"
-                        title={new Date(story.savedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}>
+                      <p
+                        className="truncate"
+                        style={{ fontSize: 20, fontWeight: 700, color: '#FFFFFF', textShadow: '0 1px 3px rgba(0,0,0,0.30)', lineHeight: 1.2 }}
+                      >
+                        {story.title || 'Untitled'}
+                      </p>
+                      <p
+                        style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 4 }}
+                        title={new Date(story.savedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                      >
                         {[genre && `${wc.toLocaleString()} words`, `Last saved ${formatRelativeDate(story.savedAt)}`].filter(Boolean).join(' · ')}
                       </p>
                     </div>
+                  </div>
 
+                  {/* Content body — rounded top overlaps the header slightly so the two blend instead of cutting hard */}
+                  <div className="relative -mt-4 rounded-t-2xl bg-surface-container-lowest" style={{ padding: '12px 16px' }}>
                     {/* Story excerpt */}
-                    <p className="text-[11px] text-on-surface-variant line-clamp-2 leading-relaxed">
+                    <p
+                      className="line-clamp-2 leading-relaxed"
+                      style={{ fontSize: 14, color: '#444', marginBottom: 8 }}
+                    >
                       {(story.adaptedStory ?? story.storyText).slice(0, 150)}…
                     </p>
 
-                    {/* Actions */}
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => handleLoadInSetup(story)}
-                        className="flex-1 h-9 rounded-xl border-[1.5px] border-primary text-primary text-[13px] font-semibold hover:bg-primary/5 transition-colors"
-                      >
-                        Load in Setup
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => duplicate(story.id)}
-                        title="Duplicate"
-                        className="w-9 h-9 rounded-xl flex items-center justify-center bg-surface-container text-on-surface-variant hover:bg-surface-container-high transition-colors"
-                      >
-                        <span className="material-symbols-outlined text-sm">content_copy</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDelete(story)}
-                        title="Delete"
-                        className="w-9 h-9 rounded-xl flex items-center justify-center bg-surface-container text-error hover:bg-error/10 transition-colors"
-                      >
-                        <span className="material-symbols-outlined text-sm">delete</span>
-                      </button>
-                    </div>
+                    {/* Action bar */}
+                    {(() => {
+                      const cloud = cloudProjects[story.projectId];
+                      const isPublishable = !!cloud?.is_publishable;
+                      const isPublished = !!cloud?.is_public;
+                      const isPublishing = publishingId === story.projectId;
+                      const shareTitle = !isPublishable
+                        ? 'Finish generating at least one comic page image before sharing to the gallery'
+                        : isPublished
+                        ? 'Published — View in Gallery'
+                        : 'Publish / View in Gallery';
+                      const error = publishErrors[story.projectId];
+                      return (
+                        <div className="flex flex-col gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleLoadInSetup(story)}
+                            className="w-full h-11 rounded-[10px] bg-primary text-on-primary text-sm font-bold hover:opacity-90 transition-opacity"
+                          >
+                            Load in Setup
+                          </button>
+
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isPublished && !error && (
+                              <span className="flex items-center gap-1 mr-1 text-[11px] font-semibold text-emerald-600">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                Published
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setPreviewProjectId(story.projectId)}
+                              disabled={!isPublishable}
+                              title={isPublishable ? 'Preview Comic' : 'Generate comic images in Setup to preview'}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors ${
+                                !isPublishable ? 'opacity-40 cursor-not-allowed' : ''
+                              }`}
+                            >
+                              <span className="material-symbols-outlined text-[18px]">visibility</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePublish(story)}
+                              disabled={!isPublishable || isPublishing}
+                              title={shareTitle}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                                isPublished
+                                  ? 'bg-primary/10 text-primary'
+                                  : 'text-on-surface-variant hover:bg-surface-container-high'
+                              } ${!isPublishable ? 'opacity-40 cursor-not-allowed' : ''}`}
+                            >
+                              <span className={`material-symbols-outlined text-[18px] ${isPublishing ? 'animate-spin' : ''}`}>
+                                {isPublishing ? 'progress_activity' : isPublished ? 'public' : 'share'}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => duplicate(story.id)}
+                              title="Duplicate Story"
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">content_copy</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDelete(story)}
+                              title="Delete Story"
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">delete</span>
+                            </button>
+                          </div>
+
+                          {error && <p className="text-[11px] text-error text-right">{error}</p>}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -251,6 +351,15 @@ export default function MyStoriesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Comic preview modal */}
+      {previewProjectId && (
+        <ComicReaderModal
+          projectId={previewProjectId}
+          mode="owned"
+          onClose={() => setPreviewProjectId(null)}
+        />
       )}
     </div>
   );

@@ -10,6 +10,7 @@ import type { TextGenMode, SaveTextGenConfigPayload, TextGenProvider } from '@/s
 import { getImageApiUrl } from '@/lib/imageApiUrl';
 import PasswordStrengthMeter from '@/components/PasswordStrengthMeter';
 import { useOnboardingContext } from '@/context/OnboardingContext';
+import { useAutoScrollStreamingPref } from '@/hooks/useAutoScrollStreamingPref';
 
 // ─── Panel card ───────────────────────────────────────────────────────────────
 
@@ -93,6 +94,7 @@ export default function SettingsPage() {
   const { resetOnboarding } = useOnboardingContext();
   const router = useRouter();
   const [onboardingReset, setOnboardingReset] = useState(false);
+  const { autoScroll, setAutoScroll } = useAutoScrollStreamingPref();
 
   // Preferences state — initialised from localStorage
   const [comicStyle, setComicStyle] = useState(() =>
@@ -426,6 +428,29 @@ export default function SettingsPage() {
                 </select>
                 <p className="mt-2 text-[11px] text-outline">Format used when exporting completed comics.</p>
               </div>
+            </div>
+            <div className="mt-5 pt-5 border-t border-on-surface/8">
+              <label className="flex items-center justify-between gap-3 cursor-pointer">
+                <div>
+                  <span className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider">Auto-scroll while generating</span>
+                  <p className="mt-1 text-[11px] text-outline">
+                    Follow the page down as AI text streams in during Story Analysis and Character Design. Turn off to keep scroll position under manual control.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={autoScroll}
+                  onClick={() => {
+                    setAutoScroll(!autoScroll);
+                    setPrefSaved(true);
+                    setTimeout(() => setPrefSaved(false), 2000);
+                  }}
+                  className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${autoScroll ? 'bg-primary' : 'bg-outline-variant'}`}
+                >
+                  <span className={`block w-4 h-4 rounded-full bg-white shadow transition-transform mx-0.5 ${autoScroll ? 'translate-x-4' : 'translate-x-0'}`} />
+                </button>
+              </label>
             </div>
           </Panel>
 

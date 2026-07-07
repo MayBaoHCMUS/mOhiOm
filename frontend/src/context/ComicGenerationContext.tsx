@@ -220,6 +220,19 @@ const emptyStepState = <T,>(locked: boolean): StepState<T> => ({
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
+// Some upstream failures (proxy/CDN outages) surface a raw error page body in
+// the message (e.g. "...Body preview: <!DOCTYPE html>..."). Strip that before
+// it reaches the UI — it's debug info, not something a user should ever see.
+function friendlyErrorMessage(raw: string | null | undefined): string {
+  if (!raw) return 'Something went wrong. Please try again.';
+  const htmlIdx = raw.search(/<!DOCTYPE|<html/i);
+  const trimmed = (htmlIdx !== -1 ? raw.slice(0, htmlIdx) : raw)
+    .replace(/\s*Body preview:\s*$/i, '')
+    .trim();
+  const base = trimmed || 'Request failed. Please try again.';
+  return base.length > 180 ? `${base.slice(0, 177)}…` : base;
+}
+
 async function withRetry<T>(fn: () => Promise<T>, maxAttempts: number, retryDelayMs: number): Promise<T> {
   let lastErr: unknown
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -1578,6 +1591,12 @@ export function ComicGenerationProvider({
                 streamingText: null,
               });
               setActiveStep(1);
+              addNotification({
+                title: 'Story analysis ready',
+                message: 'AI analysis generated successfully.',
+                variant: 'success',
+                projectId,
+              });
               resolve();
             },
             onError(message, statusCode) {
@@ -1590,12 +1609,19 @@ export function ComicGenerationProvider({
                   1: Date.now() + retryAfterSeconds * 1000,
                 }));
               }
+              const cleanMessage = friendlyErrorMessage(message);
               setStep1((prev) => ({
                 ...prev,
                 isLoading: false,
                 streamingText: null,
-                error: message,
+                error: cleanMessage,
               }));
+              addNotification({
+                title: 'Story analysis failed',
+                message: cleanMessage,
+                variant: 'error',
+                projectId,
+              });
               resolve();
             },
           },
@@ -1636,6 +1662,12 @@ export function ComicGenerationProvider({
               });
               setStep2ImageReview((prev) => ({ ...prev, locked: false }));
               setActiveStep(2);
+              addNotification({
+                title: 'Character designs ready',
+                message: 'AI design sheets generated successfully.',
+                variant: 'success',
+                projectId,
+              });
               resolve();
             },
             onError(message, statusCode) {
@@ -1643,7 +1675,14 @@ export function ComicGenerationProvider({
                 const match = message.match(/(\d+(?:\.\d+)?)\s*s/);
                 setCooldownUntil((prev) => ({ ...prev, 2: Date.now() + (match ? parseFloat(match[1]) : 30) * 1000 }));
               }
-              setStep2((prev) => ({ ...prev, isLoading: false, streamingText: null, error: message }));
+              const cleanMessage = friendlyErrorMessage(message);
+              setStep2((prev) => ({ ...prev, isLoading: false, streamingText: null, error: cleanMessage }));
+              addNotification({
+                title: 'Character design generation failed',
+                message: cleanMessage,
+                variant: 'error',
+                projectId,
+              });
               resolve();
             },
           },
@@ -1683,6 +1722,12 @@ export function ComicGenerationProvider({
               });
               setStep4((prev) => ({ ...prev, locked: false }));
               setActiveStep(3);
+              addNotification({
+                title: 'Panel script ready',
+                message: 'AI panel script generated successfully.',
+                variant: 'success',
+                projectId,
+              });
               resolve();
             },
             onError(message, statusCode) {
@@ -1690,7 +1735,14 @@ export function ComicGenerationProvider({
                 const match = message.match(/(\d+(?:\.\d+)?)\s*s/);
                 setCooldownUntil((prev) => ({ ...prev, 3: Date.now() + (match ? parseFloat(match[1]) : 30) * 1000 }));
               }
-              setStep3((prev) => ({ ...prev, isLoading: false, streamingText: null, error: message }));
+              const cleanMessage = friendlyErrorMessage(message);
+              setStep3((prev) => ({ ...prev, isLoading: false, streamingText: null, error: cleanMessage }));
+              addNotification({
+                title: 'Panel script generation failed',
+                message: cleanMessage,
+                variant: 'error',
+                projectId,
+              });
               resolve();
             },
           },
