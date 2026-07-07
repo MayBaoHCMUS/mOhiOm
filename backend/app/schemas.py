@@ -121,6 +121,7 @@ class ProjectListItem(BaseModel):
     step2_images_approved: bool
     step3_approved: bool
     is_public: bool = False
+    is_publishable: bool = False
 
 
 class CharacterSummary(BaseModel):

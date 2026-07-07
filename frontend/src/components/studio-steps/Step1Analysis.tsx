@@ -3,6 +3,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import Markdown from '@/components/Markdown';
+import ShapeLoader from '@/components/ShapeLoader';
+import { useAutoScrollStreamingPref } from '@/hooks/useAutoScrollStreamingPref';
+import { useScrollIntentDetector } from '@/hooks/useScrollIntentDetector';
 
 // ── Section definitions ────────────────────────────────────────────────────────
 
@@ -117,6 +120,7 @@ interface SectionAccordionProps {
   onEditSave: () => void;
   onEditCancel: () => void;
   isStreaming: boolean;
+  isReviewed: boolean;
 }
 
 const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>(
@@ -125,7 +129,7 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
       section, displayContent, isOpen, onToggle,
       isEdited, isEditing, editBuffer,
       onEditStart, onEditChange, onEditSave, onEditCancel,
-      isStreaming,
+      isStreaming, isReviewed,
     },
     ref,
   ) => {
@@ -151,7 +155,12 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
     const showEditBtn = isOpen && !isStreaming && !isSkeleton;
 
     return (
-      <div ref={ref} className="t-acc rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden" data-open={isOpen ? 'true' : 'false'}>
+      <div
+        ref={ref}
+        className="t-acc rounded-2xl bg-surface-container-lowest border border-outline-variant/10 overflow-hidden"
+        data-open={isOpen ? 'true' : 'false'}
+        style={{ scrollMarginTop: 96, scrollMarginBottom: 120 }}
+      >
         {/* Header — use div+role to avoid nested <button> elements */}
         <div
           role="button"
@@ -167,13 +176,20 @@ const SectionAccordion = React.forwardRef<HTMLDivElement, SectionAccordionProps>
             {isActive && (
               <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 motion-safe:animate-pulse" />
             )}
+            {/* Matches SectionDot in the right-rail preview: checked while streaming
+                (completion so far), but after the stream ends it only checks once the
+                user has actually opened the section — not merely because it generated. */}
             {status === 'complete' && (
-              <span
-                className="material-symbols-outlined text-sm text-emerald-500 flex-shrink-0"
-                style={{ fontVariationSettings: "'FILL' 1" }}
-              >
-                check_circle
-              </span>
+              isStreaming || isReviewed ? (
+                <span
+                  className="material-symbols-outlined text-sm text-emerald-500 flex-shrink-0"
+                  style={{ fontVariationSettings: "'FILL' 1" }}
+                >
+                  check_circle
+                </span>
+              ) : (
+                <span className="w-2.5 h-2.5 rounded-full border-2 border-emerald-400 flex-shrink-0" />
+              )
             )}
             <span className={`font-semibold text-sm truncate ${isSkeleton ? 'text-on-surface-variant/50' : 'text-on-surface'}`}>
               {title}
@@ -646,37 +662,13 @@ function RightNavPanel({
 
 type State = 1 | 2 | 3 | 4 | 5;
 
-function StateBadge({
-  state,
-  streamProgress,
-}: {
-  state: State;
-  streamProgress?: { current: number; total: number } | null;
-}) {
+function StateBadge({ state }: { state: State }) {
   if (state === 1) return null;
 
+  // Text label + progress bar are intentionally omitted here — the Progress
+  // panel further down the page already shows section count and active title.
   if (state === 2) {
-    return (
-      <div className="flex flex-col items-end gap-2">
-        <div className="flex items-center gap-2 text-sm text-on-surface-variant">
-          <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 motion-safe:animate-pulse" />
-          Analyzing your story…
-        </div>
-        {streamProgress && streamProgress.current > 0 && (
-          <div className="flex items-center gap-2 min-w-[160px]">
-            <div className="flex-1 h-1 rounded-full bg-on-surface/10 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-blue-500 transition-all duration-500"
-                style={{ width: `${Math.round((streamProgress.current / streamProgress.total) * 100)}%` }}
-              />
-            </div>
-            <span className="text-xs text-on-surface-variant flex-shrink-0 tabular-nums">
-              {streamProgress.current} / {streamProgress.total}
-            </span>
-          </div>
-        )}
-      </div>
-    );
+    return <ShapeLoader scale={0.4} />;
   }
 
   if (state === 3) {
@@ -737,10 +729,12 @@ export default function Step1Analysis() {
     getCooldownSeconds,
     setActiveStep,
   } = useComicGeneration();
+  const { autoScroll, setAutoScroll } = useAutoScrollStreamingPref();
 
   const cooldown     = getCooldownSeconds(1);
   const isGenerating = step1.isLoading;
   const canGenerate  = !isGenerating && cooldown === 0;
+  const [scrollConflict, dismissScrollConflict] = useScrollIntentDetector(isGenerating && autoScroll);
 
   let state: State = 1;
   if (isGenerating)                                               state = 2;
@@ -778,11 +772,11 @@ export default function Step1Analysis() {
   }, [isGenerating]);
 
   // When stream completes (state 2→3): reset review tracking (stream auto-opens
-  // don't count), then collapse to only section 1 open.
+  // don't count), then collapse every section.
   useEffect(() => {
     if (state >= 3 && prevStateRef.current === 2) {
       setReviewedSections(new Set());
-      setOpenSections(new Set([1]));
+      setOpenSections(new Set());
     }
     prevStateRef.current = state;
   }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -819,13 +813,14 @@ export default function Step1Analysis() {
     }
   }, [showReviewWarning, unreviewedSections.length]);
 
-  // Auto-open the section the stream is currently writing into.
+  // Auto-open the section the stream is currently writing into — replacing (not
+  // adding to) the open set, so only one section is ever expanded at a time.
   // Do NOT mark as reviewed — only user-triggered expands count.
   useEffect(() => {
     const active = parsedSections.find(s => s.status === 'active');
     if (active && active.id !== prevActiveRef.current) {
       prevActiveRef.current = active.id;
-      setOpenSections(prev => new Set([...prev, active.id]));
+      setOpenSections(new Set([active.id]));
     }
   }, [parsedSections]);
 
@@ -835,16 +830,24 @@ export default function Step1Analysis() {
     sectionRefs.current.get(id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
 
+  // Follow the streaming section down the page as its text grows, when the user
+  // has the "auto-scroll while generating" preference on (default: on). Centered
+  // (rather than 'nearest') so the growing text lands away from the fixed top bar
+  // and the sticky bottom action bar, instead of hiding right behind either one.
+  useEffect(() => {
+    if (!isGenerating || !autoScroll) return;
+    const active = parsedSections.find(s => s.status === 'active');
+    if (active) sectionRefs.current.get(active.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [parsedSections, isGenerating, autoScroll]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Accordion: opening a section closes whichever one was open before it.
   const toggleSection = (id: number) => {
     setOpenSections(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-        setReviewedSections(r => new Set([...r, id]));
+      if (prev.has(id)) {
+        return new Set();
       }
-      return next;
+      setReviewedSections(r => new Set([...r, id]));
+      return new Set([id]);
     });
   };
 
@@ -963,10 +966,7 @@ export default function Step1Analysis() {
             Narrative insights, character arcs, and structural breakdown
           </p>
         </div>
-        <StateBadge
-          state={state}
-          streamProgress={isGenerating ? { current: progressCount, total: 6 } : null}
-        />
+        <StateBadge state={state} />
       </div>
 
       {/* ── Top action bar — Revoke Approval + error/retry only ── */}
@@ -992,7 +992,7 @@ export default function Step1Analysis() {
               Retry
             </button>
           )}
-          {step1.error && <span className="text-sm text-red-500">{step1.error}</span>}
+          {step1.error && <span className="text-sm text-red-500 line-clamp-2">{step1.error}</span>}
         </div>
       )}
 
@@ -1055,6 +1055,7 @@ export default function Step1Analysis() {
                 onEditSave={handleEditSave}
                 onEditCancel={handleEditCancel}
                 isStreaming={isGenerating}
+                isReviewed={reviewedSections.has(sec.id)}
               />
             ))}
           </div>
@@ -1193,38 +1194,80 @@ export default function Step1Analysis() {
       {/* ── Regenerate confirmation modal ── */}
       {showRegenConfirm && (
         <div className="fixed inset-0 z-[90] bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 flex flex-col gap-4">
+          <div
+            className="bg-white rounded-2xl max-w-[360px] w-full p-6 flex flex-col gap-4 border-l-4 border-red-600"
+            style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}
+          >
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-                <span className="material-symbols-outlined text-amber-600" style={{ fontVariationSettings: "'FILL' 1" }}>refresh</span>
+              <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-red-600" style={{ fontVariationSettings: "'FILL' 1" }}>refresh</span>
               </div>
               <div>
-                <p className="font-bold text-gray-900">Regenerate analysis?</p>
+                <p className="font-bold text-gray-900 text-[17px]">Regenerate analysis?</p>
                 <p className="text-sm text-gray-500 mt-1">
                   This will replace all current analysis
                   {editedCount > 0
                     ? ` and remove your ${editedCount} manual edit${editedCount > 1 ? 's' : ''}`
                     : ''
-                  }. This cannot be undone.
+                  }. This <span className="font-semibold text-red-600">cannot be undone</span>.
                 </p>
               </div>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-2.5">
               <button
                 type="button"
                 onClick={() => setShowRegenConfirm(false)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                aria-label="Cancel regenerate"
+                className="flex-1 h-12 rounded-xl text-sm font-semibold bg-transparent border-[1.5px] border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600 focus-visible:outline-offset-2"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleConfirmRegen}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity"
+                aria-label="Confirm regenerate analysis"
+                className="flex-1 h-12 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-700 active:bg-red-800 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600 focus-visible:outline-offset-2"
               >
                 Regenerate
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Scroll-conflict toast ── */}
+      {scrollConflict && (
+        <div className="fixed top-6 right-6 z-[60] pointer-events-none">
+          <div className="pointer-events-auto flex items-start gap-3 bg-white border border-gray-200 rounded-2xl shadow-xl px-4 py-3 w-[300px] animate-panel-appear">
+            <span className="text-amber-500 text-lg mt-0.5 flex-shrink-0">⚠</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900">Auto-scroll is following the text</p>
+              <p className="text-xs text-gray-500 mt-0.5">Manual scrolling may fight it while analysis is generating.</p>
+              <div className="flex items-center gap-3 mt-1.5">
+                <button
+                  type="button"
+                  onClick={dismissScrollConflict}
+                  className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  Keep auto-scroll
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAutoScroll(false); dismissScrollConflict(); }}
+                  className="text-xs font-semibold text-red-600 hover:text-red-800 transition-colors"
+                >
+                  Turn off auto-scroll
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={dismissScrollConflict}
+              aria-label="Dismiss"
+              className="flex-shrink-0 text-gray-300 hover:text-gray-500 transition-colors mt-0.5"
+            >
+              <span className="material-symbols-outlined text-base">close</span>
+            </button>
           </div>
         </div>
       )}

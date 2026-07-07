@@ -1,15 +1,50 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { galleryApi } from '@/services/api';
-import type { GalleryComicDetail } from '@/services/api';
+import { galleryApi, projectsApi } from '@/services/api';
+import type { GalleryComicDetail, FullProjectSave } from '@/services/api';
 
 interface Props {
   projectId: string;
   onClose: () => void;
+  /** 'public' reads the published gallery record; 'owned' reads the signed-in user's
+   * own project (published or not) so drafts can be previewed before sharing. */
+  mode?: 'public' | 'owned';
+  /** When provided, shows an "Add to My Stories" action in the top bar so a reader
+   * can save this comic to their own library right from the preview. */
+  onAddToLibrary?: () => void;
+  addToLibraryStatus?: 'idle' | 'adding' | 'added';
 }
 
-export default function ComicReaderModal({ projectId, onClose }: Props) {
+function extractOwnedComicDetail(project: FullProjectSave): GalleryComicDetail {
+  const steps = project.steps as { step4?: { data?: { pageStates?: Record<string, { status?: string; imageUrl?: string | null }> } } };
+  const pageStates = steps?.step4?.data?.pageStates ?? {};
+  const pages = Object.keys(pageStates)
+    .sort()
+    .map((key) => {
+      const state = pageStates[key];
+      if (state?.status !== 'success' || !state?.imageUrl) return null;
+      const pageNumber = parseInt(key.replace('page-', ''), 10) || 0;
+      return { page_number: pageNumber, image_url: state.imageUrl as string };
+    })
+    .filter((p): p is { page_number: number; image_url: string } => p !== null);
+
+  const userInputs = project.user_inputs as Record<string, unknown>;
+  const story = (userInputs.story_content as string) || (userInputs.storyText as string) || '';
+  const title = story.trim().split('\n')[0]?.slice(0, 80) || 'Untitled';
+
+  return {
+    project_id: project.project_id,
+    title,
+    genre: (userInputs.manga_genre as string) || (userInputs.genre as string) || '',
+    art_style: (userInputs.art_style as string) || '',
+    story_content: story,
+    main_characters: (userInputs.main_characters as string) || (userInputs.mainCharacters as string) || '',
+    pages,
+  };
+}
+
+export default function ComicReaderModal({ projectId, onClose, mode = 'public', onAddToLibrary, addToLibraryStatus = 'idle' }: Props) {
   const [comic, setComic] = useState<GalleryComicDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,11 +57,14 @@ export default function ComicReaderModal({ projectId, onClose }: Props) {
     setError(null);
     setScreen(0);
     setShowStory(false);
-    galleryApi.comicDetail(projectId)
-      .then((r) => setComic(r.data))
+    const request = mode === 'owned'
+      ? projectsApi.load(projectId).then((r) => extractOwnedComicDetail(r.data))
+      : galleryApi.comicDetail(projectId).then((r) => r.data);
+    request
+      .then((data) => setComic(data))
       .catch(() => setError('Failed to load comic.'))
       .finally(() => setLoading(false));
-  }, [projectId]);
+  }, [projectId, mode]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -67,6 +105,23 @@ export default function ComicReaderModal({ projectId, onClose }: Props) {
           )}
         </div>
         <div className="flex items-center gap-3">
+          {onAddToLibrary && (
+            <button
+              type="button"
+              onClick={onAddToLibrary}
+              disabled={addToLibraryStatus !== 'idle'}
+              title="Add to My Stories"
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                addToLibraryStatus === 'added'
+                  ? 'bg-emerald-500/90 text-white cursor-default'
+                  : addToLibraryStatus === 'adding'
+                  ? 'bg-white/10 text-white/50 cursor-not-allowed'
+                  : 'bg-white/10 text-white hover:bg-white/20'
+              }`}
+            >
+              {addToLibraryStatus === 'added' ? '✓ Added' : addToLibraryStatus === 'adding' ? 'Adding…' : 'Add to My Stories'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowStory((v) => !v)}

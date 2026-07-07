@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
 type NavItem = { href: string; label: string; icon: string; tour?: string };
@@ -23,6 +23,11 @@ const LIBRARY: NavItem[] = [
   { href: '/gallery',           label: 'Gallery',     icon: 'photo_library' },
   { href: '/studio/analytics',  label: 'Analytics',  icon: 'bar_chart' },
 ];
+
+// Items the sliding pill glides between — Home and the Comic Pipeline card sit
+// outside this set since they're visually distinct (a single anchor, and a
+// permanently-colored featured card), not plain list-style feature tabs.
+const PILL_NAV_ITEMS: NavItem[] = [...PRE_PRODUCTION, ...POST_PRODUCTION, ...LIBRARY];
 
 export default function StudioSidebar() {
   const pathname = usePathname();
@@ -59,12 +64,84 @@ export default function StudioSidebar() {
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
-  const navItemClass = (active: boolean) =>
-    `flex items-center gap-3 rounded-lg transition-all duration-200 ${
+  // ── Sliding pill behind the active nav item ────────────────────────────────
+  const pillGroupRef = useRef<HTMLDivElement>(null);
+  const pillRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
+
+  const registerItemRef = (href: string) => (el: HTMLAnchorElement | null) => {
+    if (el) itemRefs.current.set(href, el);
+    else itemRefs.current.delete(href);
+  };
+
+  const updatePill = (skipTransition = false) => {
+    const container = pillGroupRef.current;
+    const pill = pillRef.current;
+    if (!container || !pill) return;
+    const activeHref = PILL_NAV_ITEMS.map((item) => item.href).find(isActive);
+    const activeEl = activeHref ? itemRefs.current.get(activeHref) : undefined;
+
+    if (!activeEl) {
+      pill.style.opacity = '0';
+      return;
+    }
+    const top = activeEl.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    const height = activeEl.offsetHeight;
+
+    const apply = () => {
+      pill.style.opacity = '1';
+      pill.style.transform = `translateY(${top}px)`;
+      pill.style.height = `${height}px`;
+    };
+
+    if (skipTransition) {
+      const prevTransition = pill.style.transition;
+      pill.style.transition = 'none';
+      apply();
+      void pill.offsetHeight; // force reflow so the transition suspension takes effect
+      pill.style.transition = prevTransition;
+    } else {
+      apply();
+    }
+  };
+
+  // First paint — snap into place with no animation.
+  useLayoutEffect(() => {
+    updatePill(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Route changed — glide the pill to the new active item.
+  useEffect(() => {
+    updatePill();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  // Sidebar width/collapse or viewport resize can shift item rects — resync
+  // without animating the pill itself.
+  useEffect(() => {
+    const handleResize = () => updatePill(true);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => updatePill(true), 320);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCollapsed]);
+
+  // `ownBackground` is for items outside the sliding-pill group (e.g. Home) —
+  // they still need their own bg-white highlight since no shared pill sits
+  // behind them. Pill-group items only change text color; the pill (a single
+  // shared element) supplies the background/shadow, animated between them.
+  const navItemClass = (active: boolean, ownBackground = false) =>
+    `relative z-10 flex items-center gap-3 rounded-lg transition-colors duration-200 ${
       isCollapsed ? 'justify-center px-2 py-3' : 'px-4 py-3'
     } ${
       active
-        ? 'text-primary bg-white shadow-sm'
+        ? `text-primary ${ownBackground ? 'bg-white shadow-sm' : ''}`
         : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
     }`;
 
@@ -82,6 +159,7 @@ export default function StudioSidebar() {
         <Link
           key={item.href}
           href={item.href}
+          ref={registerItemRef(item.href)}
           className={navItemClass(active)}
           aria-current={active ? 'page' : undefined}
           title={isCollapsed ? item.label : undefined}
@@ -126,10 +204,10 @@ export default function StudioSidebar() {
         </div>
       </div>
 
-      {/* Home — standalone */}
+      {/* Home — standalone, outside the pill group, so it keeps its own highlight */}
       <Link
         href="/studio/dashboard"
-        className={navItemClass(isActive('/studio/dashboard'))}
+        className={navItemClass(isActive('/studio/dashboard'), true)}
         aria-current={isActive('/studio/dashboard') ? 'page' : undefined}
         title={isCollapsed ? 'Home' : undefined}
       >
@@ -163,22 +241,27 @@ export default function StudioSidebar() {
           </Link>
         </div>
 
-        {/* PRE-PRODUCTION */}
-        <div>
-          {sectionLabel('Pre-Production')}
-          <div className="space-y-0.5">{navItems(PRE_PRODUCTION)}</div>
-        </div>
+        {/* Feature nav — sliding pill glides behind whichever item is active */}
+        <div ref={pillGroupRef} className="relative space-y-5">
+          <div ref={pillRef} className="t-sidebar-pill absolute left-0 right-0 top-0 h-0 rounded-lg bg-white shadow-sm opacity-0 pointer-events-none z-0" />
 
-        {/* POST-PRODUCTION */}
-        <div>
-          {sectionLabel('Post-Production')}
-          <div className="space-y-0.5">{navItems(POST_PRODUCTION)}</div>
-        </div>
+          {/* PRE-PRODUCTION */}
+          <div>
+            {sectionLabel('Pre-Production')}
+            <div className="space-y-0.5">{navItems(PRE_PRODUCTION)}</div>
+          </div>
 
-        {/* LIBRARY */}
-        <div>
-          {sectionLabel('Library')}
-          <div className="space-y-0.5">{navItems(LIBRARY)}</div>
+          {/* POST-PRODUCTION */}
+          <div>
+            {sectionLabel('Post-Production')}
+            <div className="space-y-0.5">{navItems(POST_PRODUCTION)}</div>
+          </div>
+
+          {/* LIBRARY */}
+          <div>
+            {sectionLabel('Library')}
+            <div className="space-y-0.5">{navItems(LIBRARY)}</div>
+          </div>
         </div>
 
       </nav>

@@ -386,6 +386,30 @@ html {
   outline-offset: 2px;
 }
 
+/* Transitions.dev — Tabs sliding, adapted for a vertical sidebar nav.
+   Same idea as the horizontal pill (JS measures the active item's offsetTop/
+   offsetHeight within its relative container and writes transform/height
+   below so the pill glides between items), just sliding on the Y axis
+   instead of X. Position/radius/bg/shadow are plain Tailwind classes on the
+   pill element in StudioSidebar.tsx — only the JS-driven, animated
+   properties live here. */
+:root {
+  --sidebar-pill-dur: 250ms;
+  --sidebar-pill-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+.t-sidebar-pill {
+  transition:
+    transform var(--sidebar-pill-dur) var(--sidebar-pill-ease),
+    height var(--sidebar-pill-dur) var(--sidebar-pill-ease),
+    opacity var(--sidebar-pill-dur) var(--sidebar-pill-ease);
+  will-change: transform, height;
+}
+@media (prefers-reduced-motion: reduce) {
+  .t-sidebar-pill {
+    transition: none !important;
+  }
+}
+
 /* Infinite marquee strip */
 @keyframes marquee-scroll {
   0% {

@@ -1107,6 +1107,7 @@ export interface CloudProjectListItem {
   step2_images_approved: boolean;
   step3_approved: boolean;
   is_public?: boolean;
+  is_publishable?: boolean;
 }
 
 export interface CharacterSummary {
