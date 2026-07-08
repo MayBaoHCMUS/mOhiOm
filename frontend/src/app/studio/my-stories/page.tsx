@@ -7,9 +7,6 @@ import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
 import { useStoryLibrary } from '@/hooks/useStoryLibrary';
 import type { SavedStory } from '@/hooks/useStoryLibrary';
-import { projectsApi } from '@/services/api';
-import type { CloudProjectListItem } from '@/services/api';
-import ComicReaderModal from '@/components/ComicReaderModal';
 
 function wordCount(text: string) {
   return text.trim().split(/\s+/).filter(Boolean).length;
@@ -47,58 +44,84 @@ function formatRelativeDate(iso: string): string {
   });
 }
 
+// ── Story preview modal — full read-only text, no comic data involved ──────
+function StoryPreviewModal({ story, onClose, onLoadInSetup }: {
+  story: SavedStory;
+  onClose: () => void;
+  onLoadInSetup: () => void;
+}) {
+  const hasBoth = !!story.adaptedStory && story.adaptedStory.trim() !== story.storyText.trim();
+  const [showOriginal, setShowOriginal] = useState(false);
+  const text = hasBoth && showOriginal ? story.storyText : (story.adaptedStory ?? story.storyText);
+  const wc = wordCount(text);
+  const genre = story.genre?.split('/')[0].split(',')[0].trim();
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-surface-container-lowest rounded-3xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-outline-variant/15 flex items-start justify-between gap-4 flex-shrink-0">
+          <div className="min-w-0">
+            <p className="text-lg font-bold text-on-surface truncate">{story.title || 'Untitled'}</p>
+            <p className="text-xs text-on-surface-variant mt-1">
+              {[genre, `${wc.toLocaleString()} words`, `Saved ${formatRelativeDate(story.savedAt)}`].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-on-surface-variant hover:text-on-surface text-xl leading-none flex-shrink-0">×</button>
+        </div>
+
+        {/* Original / Adapted toggle — only when both texts exist and differ */}
+        {hasBoth && (
+          <div className="px-6 pt-4 flex-shrink-0">
+            <div className="inline-flex p-0.5 rounded-lg bg-surface-container border border-outline-variant/15">
+              <button type="button" onClick={() => setShowOriginal(false)}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${!showOriginal ? 'bg-white text-on-surface shadow-sm' : 'text-on-surface-variant'}`}>
+                Adapted
+              </button>
+              <button type="button" onClick={() => setShowOriginal(true)}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${showOriginal ? 'bg-white text-on-surface shadow-sm' : 'text-on-surface-variant'}`}>
+                Original
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Body */}
+        <div className="px-6 py-5 overflow-y-auto flex-1">
+          <p className="text-sm text-on-surface leading-relaxed whitespace-pre-wrap">{text}</p>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-outline-variant/15 flex gap-3 flex-shrink-0">
+          <button type="button" onClick={onLoadInSetup}
+            className="flex-1 h-11 rounded-[10px] bg-primary text-on-primary text-sm font-bold hover:opacity-90 transition-opacity">
+            Load in Setup
+          </button>
+          <button type="button" onClick={onClose}
+            className="px-5 h-11 rounded-[10px] text-sm font-bold bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MyStoriesPage() {
   const router = useRouter();
   const { stories, remove, duplicate } = useStoryLibrary();
   const [confirmDelete, setConfirmDelete] = useState<SavedStory | null>(null);
+  const [previewStory, setPreviewStory] = useState<SavedStory | null>(null);
   const [search, setSearch] = useState('');
-  const [cloudProjects, setCloudProjects] = useState<Record<string, CloudProjectListItem>>({});
-  const [publishingId, setPublishingId] = useState<string | null>(null);
-  const [publishErrors, setPublishErrors] = useState<Record<string, string>>({});
-  const [previewProjectId, setPreviewProjectId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    projectsApi.list()
-      .then((res) => {
-        if (cancelled) return;
-        const map: Record<string, CloudProjectListItem> = {};
-        for (const p of res.data) map[p.project_id] = p;
-        setCloudProjects(map);
-      })
-      .catch(() => { /* gallery-sharing status is best-effort */ });
-    return () => { cancelled = true; };
-  }, []);
-
-  const handleTogglePublish = async (story: SavedStory) => {
-    const cloud = cloudProjects[story.projectId];
-    if (!cloud?.is_publishable || publishingId) return;
-    const next = !cloud.is_public;
-
-    setPublishErrors((prev) => {
-      if (!(story.projectId in prev)) return prev;
-      const { [story.projectId]: _removed, ...rest } = prev;
-      return rest;
-    });
-    setCloudProjects((prev) => ({ ...prev, [story.projectId]: { ...prev[story.projectId], is_public: next } }));
-    setPublishingId(story.projectId);
-
-    try {
-      const response = await projectsApi.publishProject(story.projectId, next);
-      setCloudProjects((prev) => ({
-        ...prev,
-        [story.projectId]: { ...prev[story.projectId], is_public: response.data.is_public },
-      }));
-    } catch {
-      setCloudProjects((prev) => ({ ...prev, [story.projectId]: { ...prev[story.projectId], is_public: !next } }));
-      setPublishErrors((prev) => ({
-        ...prev,
-        [story.projectId]: next ? 'Could not publish to the gallery. Try again.' : 'Could not unpublish. Try again.',
-      }));
-    } finally {
-      setPublishingId(null);
-    }
-  };
 
   const filtered = stories.filter((s) => {
     if (!search.trim()) return true;
@@ -131,9 +154,9 @@ export default function MyStoriesPage() {
         <div style={{ background: '#F8FAFF', borderBottom: '1px solid #E5E7EB', padding: '28px 32px 24px 32px', flexShrink: 0 }}>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h1 style={{ fontSize: 28, fontWeight: 700, color: '#111827', margin: 0, marginBottom: 4, lineHeight: 1.2 }}>My Stories</h1>
+              <h1 style={{ fontSize: 28, fontWeight: 700, color: '#111827', margin: 0, marginBottom: 4, lineHeight: 1.2 }}>Story Drafts</h1>
               <p style={{ fontSize: 13, color: '#6B7280', margin: 0 }}>
-                {stories.length} saved stor{stories.length !== 1 ? 'ies' : 'y'}
+                {stories.length} saved draft{stories.length !== 1 ? 's' : ''}
               </p>
             </div>
             <Link
@@ -168,7 +191,7 @@ export default function MyStoriesPage() {
           <div className="flex flex-col items-center justify-center py-24 gap-5 text-center">
             <span className="material-symbols-outlined text-7xl text-on-surface-variant/30">auto_stories</span>
             <div>
-              <p className="text-lg font-semibold text-on-surface-variant">No saved stories yet</p>
+              <p className="text-lg font-semibold text-on-surface-variant">No saved drafts yet</p>
               <p className="text-sm text-on-surface-variant/70 mt-1">
                 Save a story from Story Setup using the &ldquo;More&rdquo; menu.
               </p>
@@ -238,83 +261,43 @@ export default function MyStoriesPage() {
                       {(story.adaptedStory ?? story.storyText).slice(0, 150)}…
                     </p>
 
-                    {/* Action bar */}
-                    {(() => {
-                      const cloud = cloudProjects[story.projectId];
-                      const isPublishable = !!cloud?.is_publishable;
-                      const isPublished = !!cloud?.is_public;
-                      const isPublishing = publishingId === story.projectId;
-                      const shareTitle = !isPublishable
-                        ? 'Finish generating at least one comic page image before sharing to the gallery'
-                        : isPublished
-                        ? 'Published — View in Gallery'
-                        : 'Publish / View in Gallery';
-                      const error = publishErrors[story.projectId];
-                      return (
-                        <div className="flex flex-col gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleLoadInSetup(story)}
-                            className="w-full h-11 rounded-[10px] bg-primary text-on-primary text-sm font-bold hover:opacity-90 transition-opacity"
-                          >
-                            Load in Setup
-                          </button>
+                    {/* Action bar — story text only; comic preview/gallery-sharing live on /studio/publish */}
+                    <div className="flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleLoadInSetup(story)}
+                        className="w-full h-11 rounded-[10px] bg-primary text-on-primary text-sm font-bold hover:opacity-90 transition-opacity"
+                      >
+                        Load in Setup
+                      </button>
 
-                          <div className="flex items-center justify-end gap-1.5">
-                            {isPublished && !error && (
-                              <span className="flex items-center gap-1 mr-1 text-[11px] font-semibold text-emerald-600">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                Published
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => setPreviewProjectId(story.projectId)}
-                              disabled={!isPublishable}
-                              title={isPublishable ? 'Preview Comic' : 'Generate comic images in Setup to preview'}
-                              className={`w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors ${
-                                !isPublishable ? 'opacity-40 cursor-not-allowed' : ''
-                              }`}
-                            >
-                              <span className="material-symbols-outlined text-[18px]">visibility</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleTogglePublish(story)}
-                              disabled={!isPublishable || isPublishing}
-                              title={shareTitle}
-                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
-                                isPublished
-                                  ? 'bg-primary/10 text-primary'
-                                  : 'text-on-surface-variant hover:bg-surface-container-high'
-                              } ${!isPublishable ? 'opacity-40 cursor-not-allowed' : ''}`}
-                            >
-                              <span className={`material-symbols-outlined text-[18px] ${isPublishing ? 'animate-spin' : ''}`}>
-                                {isPublishing ? 'progress_activity' : isPublished ? 'public' : 'share'}
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => duplicate(story.id)}
-                              title="Duplicate Story"
-                              className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-[18px]">content_copy</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDelete(story)}
-                              title="Delete Story"
-                              className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-[18px]">delete</span>
-                            </button>
-                          </div>
-
-                          {error && <p className="text-[11px] text-error text-right">{error}</p>}
-                        </div>
-                      );
-                    })()}
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewStory(story)}
+                          title="Read Story"
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">visibility</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => duplicate(story.id)}
+                          title="Duplicate Story"
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">content_copy</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDelete(story)}
+                          title="Delete Story"
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">delete</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
@@ -353,12 +336,12 @@ export default function MyStoriesPage() {
         </div>
       )}
 
-      {/* Comic preview modal */}
-      {previewProjectId && (
-        <ComicReaderModal
-          projectId={previewProjectId}
-          mode="owned"
-          onClose={() => setPreviewProjectId(null)}
+      {/* Story preview / read modal */}
+      {previewStory && (
+        <StoryPreviewModal
+          story={previewStory}
+          onClose={() => setPreviewStory(null)}
+          onLoadInSetup={() => { handleLoadInSetup(previewStory); setPreviewStory(null); }}
         />
       )}
     </div>

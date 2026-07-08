@@ -404,6 +404,41 @@ flowchart TB
 
 Ở môi trường phát triển, ba tiến trình (Next.js dev server, Uvicorn, MongoDB) chạy trực tiếp trên máy; ở môi trường đóng gói, Docker Compose khởi động cả ba container với MongoDB dùng URI có xác thực riêng. Máy chủ sinh ảnh GPU là thành phần *thay thế được*: hệ thống chỉ cần một URL endpoint tương thích, người dùng cấu hình trong trang Cài đặt.
 
+Hệ thống đã được **triển khai lên môi trường production** và truy cập công khai tại **https://mohiom.me**:
+
+```mermaid
+flowchart TB
+    subgraph UserMachine["Máy người dùng"]
+        Browser["Trình duyệt web"]
+    end
+
+    subgraph Vercel["Vercel"]
+        NextProd["Next.js (SSR/Edge)<br/>mohiom.me / www.mohiom.me"]
+    end
+
+    subgraph RenderHost["Render"]
+        FastProd["FastAPI (Uvicorn)"]
+        MongoProd[("MongoDB")]
+    end
+
+    subgraph External2["Hạ tầng bên ngoài"]
+        GApi2["Google Gemini API / NineRouter"]
+        GPU2["Máy chủ GPU sinh ảnh<br/>(Kaggle + Cloudflare tunnel)"]
+        SMTP2["Máy chủ SMTP"]
+        OAuthP2["Google / GitHub OAuth"]
+    end
+
+    Browser -->|HTTPS| NextProd
+    NextProd -->|REST/SSE, proxy ảnh| FastProd
+    FastProd --> MongoProd
+    FastProd -->|HTTPS| GApi2
+    FastProd -->|HTTPS| OAuthP2
+    FastProd -->|SMTP| SMTP2
+    NextProd -->|proxy HTTPS| GPU2
+```
+
+Frontend triển khai trên **Vercel** (build tự động từ nhánh chính, CDN/edge cho tài nguyên tĩnh); backend FastAPI và MongoDB chạy trên **Render**. Cấu hình khác biệt so với môi trường phát triển chỉ nằm ở biến môi trường: `CORS_ORIGINS` liệt kê `https://mohiom.me`/`https://www.mohiom.me`, `AUTH_FRONTEND_URL`/`AUTH_BACKEND_URL` trỏ về domain thật để luồng OAuth redirect đúng, và `NEXT_PUBLIC_API_URL` trỏ về địa chỉ backend trên Render — mã nguồn giữ nguyên, không có nhánh code riêng cho production.
+
 ## 4.2 Thiết kế cấu trúc tĩnh
 
 ### 4.2.1 Sơ đồ thành phần (Component Diagram)
@@ -868,6 +903,8 @@ Toàn bộ giao diện dùng hệ token Material Design (biến CSS `--color-pri
 
 Quy trình phát triển lặp theo tính năng: mỗi tính năng đi qua chu trình *hiện thực → chạy thử trên stack thật → ghi nhận quyết định thiết kế vào nhật ký phiên (SESSION_LOG.md)*. Nhật ký này đóng vai trò như tài liệu ADR (Architecture Decision Record) thu gọn, giúp truy lại lý do của từng quyết định khi viết khoá luận.
 
+Ngoài môi trường phát triển ở bảng trên, hệ thống **đã được triển khai và đang chạy ở môi trường production**: frontend trên **Vercel**, backend + MongoDB trên **Render**, phục vụ tại tên miền **https://mohiom.me** (chi tiết kiến trúc triển khai ở mục 4.1.2).
+
 ## 5.2 Triển khai backend
 
 ### 5.2.1 Tổ chức ứng dụng FastAPI
@@ -1078,7 +1115,7 @@ Kết quả kiểm thử và đánh giá cho phép rút ra ba nhận định:
 
 ## 7.1 Tóm tắt kết quả đạt được
 
-Khoá luận đã hoàn thành mục tiêu đặt ra trong đề cương: xây dựng được **một nền tảng web hoàn chỉnh, chạy được, chuyển văn bản tường thuật thành truyện tranh** thông qua pipeline 5 bước có kiểm soát của con người. Cụ thể:
+Khoá luận đã hoàn thành mục tiêu đặt ra trong đề cương: xây dựng được **một nền tảng web hoàn chỉnh, chuyển văn bản tường thuật thành truyện tranh** thông qua pipeline 5 bước có kiểm soát của con người — không dừng ở bản chạy cục bộ mà **đã triển khai lên môi trường production, truy cập công khai tại https://mohiom.me** (frontend trên Vercel, backend/MongoDB trên Render). Cụ thể:
 
 - **Về sản phẩm:** hệ thống mOhiOm gồm frontend Next.js 14 và backend FastAPI, phủ đủ năm mô-đun cốt lõi của đề cương — phân tích truyện bằng LLM (streaming SSE), sinh nhân vật nhất quán bằng mô tả cấu trúc + ảnh tham chiếu IP-Adapter, thư viện 26 mẫu bố cục trang với gợi ý AI, trình soạn bong bóng thoại có auto-import, và xuất đa định dạng (PDF, EPUB, ZIP, xuất bản web reader kèm thống kê lượt đọc). Ngoài phạm vi tối thiểu, hệ thống còn có xác thực đầy đủ (JWT, OAuth Google/GitHub, đặt lại mật khẩu), quản lý dự án đám mây, thư viện nhân vật tái sử dụng, cấu hình đa nhà cung cấp LLM tới mức từng người dùng (BYOK), và bảng thống kê sử dụng.
 - **Về kỹ thuật phần mềm:** đề tài trình bày trọn vẹn chu trình phát triển — khảo sát cạnh tranh, đặc tả yêu cầu và use case, thiết kế kiến trúc bằng hệ thống sơ đồ UML (thành phần, tuần tự, hoạt động, trạng thái, ERD), hiện thực và kiểm thử. Các quyết định thiết kế đều có lý do được ghi lại và nhiều quyết định đã được "trả giá – sửa – rút kinh nghiệm" trong quá trình làm thật (race condition khi override cấu hình per-user, giới hạn 16MB của MongoDB, các bẫy CSS/React ở canvas truyện).
@@ -1195,6 +1232,8 @@ npm run dev                             # http://localhost:3000
 ```bash
 docker-compose up -d   # khởi động MongoDB + backend + frontend
 ```
+
+**Cách 3 — production (đang áp dụng cho hệ thống thật tại https://mohiom.me):** frontend triển khai trên **Vercel** (build tự động khi push nhánh chính); backend FastAPI và MongoDB chạy trên **Render**. Không có nhánh mã nguồn riêng cho production — chỉ khác biến môi trường: `CORS_ORIGINS=["https://mohiom.me","https://www.mohiom.me"]`, `AUTH_FRONTEND_URL`/`AUTH_BACKEND_URL` trỏ domain thật (để redirect OAuth đúng), và `NEXT_PUBLIC_API_URL` trỏ về địa chỉ backend trên Render thay vì `localhost:8000`.
 
 Lưu ý cấu hình: `MONGODB_URL` khác nhau giữa chạy local (`mongodb://localhost:27017`) và Docker (URI có xác thực `mongodb://mohiom_user:...@mongodb:27017/mohiom_db`); `CORS_ORIGINS` phải chứa origin của frontend; máy chủ sinh ảnh cấu hình trong trang **Settings → Image Generation** của ứng dụng sau khi đăng nhập. Biến môi trường đầy đủ được liệt kê trong tệp `CLAUDE.md`/`README` của mã nguồn.
 

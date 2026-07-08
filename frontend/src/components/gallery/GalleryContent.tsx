@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { galleryApi, projectsApi } from '@/services/api';
 import type { CharacterSummary, GalleryComicSummary } from '@/services/api';
 import ComicReaderModal from '@/components/ComicReaderModal';
+import CharacterPreviewModal from '@/components/CharacterPreviewModal';
 import { useAuth } from '@/context/AuthContext';
 import { useStoryLibrary } from '@/hooks/useStoryLibrary';
 
@@ -171,142 +173,6 @@ function ComicCard({
   );
 }
 
-function CharacterPreviewModal({
-  char,
-  onClose,
-  onAdd,
-  inLibrary,
-  adding,
-  isAuthed,
-}: {
-  char: CharacterSummary;
-  onClose: () => void;
-  onAdd: () => void;
-  inLibrary: boolean;
-  adding: boolean;
-  isAuthed: boolean;
-}) {
-  // Trait tags parsed from the same prompt string — rendering only, data source unchanged.
-  const traits = (char.prompt ?? '')
-    .split(',')
-    .map((t) => t.trim())
-    .filter(Boolean);
-  const sourceLabel = char.project_id ? char.project_id.replace(/_/g, ' ') : 'Community';
-
-  return (
-    <div
-      className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        className="relative w-full overflow-hidden"
-        style={{ maxWidth: 300, borderRadius: 20, boxShadow: '0 8px 40px rgba(0,0,0,0.18)', background: '#FFFFFF' }}
-      >
-        {/* Image area — ~60% of modal height */}
-        <div className="relative w-full aspect-[3/4] bg-surface-container-high overflow-hidden">
-          {char.selected_image_url ? (
-            <img src={char.selected_image_url} alt={char.name} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <span className="material-symbols-outlined text-7xl text-outline-variant">person</span>
-            </div>
-          )}
-
-          {/* Gradient bridge from image into the content area — dark enough to stay legible over any artwork */}
-          <div
-            className="absolute inset-x-0 bottom-0 h-3/5 pointer-events-none"
-            style={{ background: 'linear-gradient(to bottom, transparent 20%, rgba(0,0,0,0.85) 100%)' }}
-          />
-
-          {/* Name + source badge, overlaid on the image — kept clear of the content panel's overlap below */}
-          <div className="absolute left-3 right-12 bottom-6 flex flex-col gap-1">
-            <p
-              className="truncate"
-              style={{ fontSize: 17, fontWeight: 700, color: '#FFFFFF', textShadow: '0 1px 4px rgba(0,0,0,0.4)', lineHeight: 1.2 }}
-            >
-              {char.name}
-            </p>
-            <span
-              className="self-start"
-              style={{ fontSize: 10, color: '#FFFFFF', background: 'rgba(255,255,255,0.2)', borderRadius: 999, padding: '2px 8px' }}
-            >
-              {sourceLabel}
-            </span>
-          </div>
-
-          {/* Close button — 44x44 touch target, floats above the image */}
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close character preview"
-            className="absolute flex items-center justify-center transition-colors hover:bg-black/60"
-            style={{
-              top: 8, right: 8, width: 44, height: 44, borderRadius: '50%',
-              background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
-              zIndex: 10,
-            }}
-          >
-            <span className="material-symbols-outlined text-white" style={{ fontSize: 18 }}>close</span>
-          </button>
-        </div>
-
-        {/* Content area — overlaps the image slightly so the gradient is the only seam */}
-        <div
-          className="relative bg-surface-container-lowest flex flex-col gap-3"
-          style={{
-            marginTop: -8,
-            borderRadius: '20px 20px 0 0',
-            padding: '14px 16px',
-            paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
-          }}
-        >
-          {/* Trait chip tags (parsed from char.prompt) */}
-          {traits.length > 0 && (
-            <div className="flex flex-wrap" style={{ gap: 5 }}>
-              {traits.map((trait, i) => (
-                <span
-                  key={`${trait}-${i}`}
-                  className="inline-flex"
-                  style={{ background: '#F0F0F5', color: '#333', borderRadius: 999, padding: '3px 10px', fontSize: 12 }}
-                >
-                  {trait}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Primary CTA — same handler and states as before */}
-          {isAuthed ? (
-            <button
-              type="button"
-              onClick={onAdd}
-              disabled={inLibrary || adding}
-              aria-label={inLibrary ? 'Already in your library' : 'Add to My Library'}
-              className={`w-full transition-colors ${
-                inLibrary
-                  ? 'bg-emerald-100 text-emerald-700 cursor-default'
-                  : adding
-                  ? 'bg-surface-container text-outline cursor-not-allowed'
-                  : 'bg-primary text-on-primary hover:opacity-90'
-              }`}
-              style={{ height: 44, borderRadius: 12, fontSize: 14, fontWeight: 600 }}
-            >
-              {inLibrary ? '✓ In Library' : adding ? 'Adding…' : 'Add to My Library'}
-            </button>
-          ) : (
-            <Link
-              href="/login"
-              className="w-full flex items-center justify-center text-center text-on-surface-variant bg-surface-container hover:bg-surface-container-high transition-colors"
-              style={{ height: 44, borderRadius: 12, fontSize: 14, fontWeight: 600 }}
-            >
-              Sign in to save
-            </Link>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function GridSkeleton({ cols }: { cols: string }) {
   return (
@@ -334,6 +200,19 @@ export default function GalleryContent({ showHeading = true }: GalleryContentPro
   const { save: saveStory } = useStoryLibrary();
   const [tab, setTab] = useState<Tab>('comics');
 
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // The open preview is driven by the URL — shareable/bookmarkable, and the
+  // browser back button closes it — rather than local-only component state.
+  const readingProjectId = searchParams.get('comic');
+  const previewCharId = searchParams.get('character');
+
+  const openComicPreview = (projectId: string) => router.push(`${pathname}?comic=${encodeURIComponent(projectId)}`, { scroll: false });
+  const closeComicPreview = () => router.push(pathname, { scroll: false });
+  const openCharPreview = (characterId: string) => router.push(`${pathname}?character=${encodeURIComponent(characterId)}`, { scroll: false });
+  const closeCharPreview = () => router.push(pathname, { scroll: false });
+
   // Characters
   const [characters, setCharacters] = useState<CharacterSummary[]>([]);
   const [charsLoading, setCharsLoading] = useState(false);
@@ -341,14 +220,12 @@ export default function GalleryContent({ showHeading = true }: GalleryContentPro
   const [charsLoadingMore, setCharsLoadingMore] = useState(false);
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [addingId, setAddingId] = useState<string | null>(null);
-  const [previewChar, setPreviewChar] = useState<CharacterSummary | null>(null);
 
   // Comics
   const [comics, setComics] = useState<GalleryComicSummary[]>([]);
   const [comicsLoading, setComicsLoading] = useState(false);
   const [comicsHasMore, setComicsHasMore] = useState(false);
   const [comicsLoadingMore, setComicsLoadingMore] = useState(false);
-  const [readingProjectId, setReadingProjectId] = useState<string | null>(null);
   const [addedComicIds, setAddedComicIds] = useState<Set<string>>(new Set());
   const [addingComicId, setAddingComicId] = useState<string | null>(null);
 
@@ -420,6 +297,7 @@ export default function GalleryContent({ showHeading = true }: GalleryContentPro
   };
 
   const readingComic = comics.find((c) => c.project_id === readingProjectId) ?? null;
+  const previewChar = characters.find((c) => c.character_id === previewCharId) ?? null;
 
   return (
     <>
@@ -472,7 +350,7 @@ export default function GalleryContent({ showHeading = true }: GalleryContentPro
                     adding={addingId === char.character_id}
                     isAuthed={isAuthed}
                     onAdd={() => handleAddToLibrary(char)}
-                    onPreview={() => setPreviewChar(char)}
+                    onPreview={() => openCharPreview(char.character_id)}
                   />
                 ))}
               </div>
@@ -516,7 +394,7 @@ export default function GalleryContent({ showHeading = true }: GalleryContentPro
                   <ComicCard
                     key={comic.project_id}
                     comic={comic}
-                    onPreview={() => setReadingProjectId(comic.project_id)}
+                    onPreview={() => openComicPreview(comic.project_id)}
                     onAdd={() => handleAddComicToLibrary(comic)}
                     inLibrary={addedComicIds.has(comic.project_id)}
                     adding={addingComicId === comic.project_id}
@@ -544,7 +422,7 @@ export default function GalleryContent({ showHeading = true }: GalleryContentPro
       {readingProjectId && (
         <ComicReaderModal
           projectId={readingProjectId}
-          onClose={() => setReadingProjectId(null)}
+          onClose={closeComicPreview}
           onAddToLibrary={isAuthed && readingComic ? () => handleAddComicToLibrary(readingComic) : undefined}
           addToLibraryStatus={
             readingComic
@@ -561,7 +439,7 @@ export default function GalleryContent({ showHeading = true }: GalleryContentPro
       {previewChar && (
         <CharacterPreviewModal
           char={previewChar}
-          onClose={() => setPreviewChar(null)}
+          onClose={closeCharPreview}
           onAdd={() => handleAddToLibrary(previewChar)}
           inLibrary={addedIds.has(previewChar.character_id)}
           adding={addingId === previewChar.character_id}

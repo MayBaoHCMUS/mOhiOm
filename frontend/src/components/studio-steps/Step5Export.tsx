@@ -346,16 +346,6 @@ export default function Step5Export() {
             </div>
           </div>
 
-          {/* Finish & Export */}
-          <div className="border-t border-outline-variant/20 pt-4">
-            <button type="button" onClick={() => handleApprove(5)}
-              disabled={!hasImages}
-              className={`w-full py-3 rounded-2xl text-sm font-bold transition-opacity ${
-                hasImages ? 'bg-emerald-500 text-white hover:opacity-90' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}>
-              ✓ Finish &amp; Export
-            </button>
-          </div>
         </div>
 
       {/* ── Bottom bar ── */}
@@ -370,12 +360,12 @@ export default function Step5Export() {
           </button>
 
           <button type="button"
-            onClick={() => handleApprove(5)}
+            onClick={() => { handleApprove(5); router.push('/studio/publish'); }}
             disabled={!hasImages}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
               !hasImages ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600'
             }`}>
-            ✓ Finish &amp; Export
+            ✓ Finish &amp; Go to Publish →
           </button>
         </div>
       </div>

@@ -19,7 +19,7 @@ const POST_PRODUCTION: NavItem[] = [
 ];
 
 const LIBRARY: NavItem[] = [
-  { href: '/studio/my-stories', label: 'My Stories', icon: 'library_books' },
+  { href: '/studio/my-stories', label: 'Story Drafts', icon: 'library_books' },
   { href: '/gallery',           label: 'Gallery',     icon: 'photo_library' },
   { href: '/studio/analytics',  label: 'Analytics',  icon: 'bar_chart' },
 ];

@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
+import ComicReaderModal from '@/components/ComicReaderModal';
+import CharacterPreviewModal from '@/components/CharacterPreviewModal';
 import { projectsApi } from '@/services/api';
 import type { CloudProjectListItem, CharacterSummary } from '@/services/api';
 
@@ -101,6 +103,8 @@ export default function StudioDashboardPage() {
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingChars, setLoadingChars] = useState(true);
   const [importError, setImportError] = useState<string | null>(null);
+  const [previewProjectId, setPreviewProjectId] = useState<string | null>(null);
+  const [previewChar, setPreviewChar] = useState<CharacterSummary | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -280,6 +284,20 @@ export default function StudioDashboardPage() {
                       </div>
                     </div>
                     <p className="text-white/40 text-xs font-mono truncate">{project.project_id}</p>
+
+                    {project.is_publishable && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setPreviewProjectId(project.project_id); }}
+                        title="Preview"
+                        className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"
+                      >
+                        <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 text-on-surface text-xs font-semibold">
+                          <span className="material-symbols-outlined text-base leading-none">visibility</span>
+                          Preview
+                        </span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="p-6">
@@ -324,9 +342,8 @@ export default function StudioDashboardPage() {
                 <div
                   key={char.character_id}
                   className="animate-skel-reveal flex flex-col items-center group cursor-pointer"
-                  title={char.project_id ? `From project: ${char.project_id}` : 'My Library'}
-                  onClick={() => char.project_id ? handleLoadProject(char.project_id) : undefined}
-                  style={{ cursor: char.project_id ? 'pointer' : 'default' }}
+                  title={`Preview${char.project_id ? ` · from project: ${char.project_id}` : ''}`}
+                  onClick={() => setPreviewChar(char)}
                 >
                   <div className="relative mb-3">
                     <div className="w-24 h-24 rounded-full p-1 bg-gradient-to-br from-primary to-primary-container transition-transform group-hover:rotate-6">
@@ -354,6 +371,21 @@ export default function StudioDashboardPage() {
         </section>
 
       </main>
+
+      {previewProjectId && (
+        <ComicReaderModal
+          projectId={previewProjectId}
+          mode="owned"
+          onClose={() => setPreviewProjectId(null)}
+        />
+      )}
+
+      {previewChar && (
+        <CharacterPreviewModal
+          char={previewChar}
+          onClose={() => setPreviewChar(null)}
+        />
+      )}
     </div>
   );
 }

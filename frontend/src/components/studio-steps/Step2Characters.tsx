@@ -1412,7 +1412,7 @@ function ImageGenPanel({
         />
       )}
 
-      {/* Helper text — purely visual nudge; does not gate the real disabled logic below */}
+      {/* Helper text — approve button below is actually disabled until a rating is given */}
       {hasAnyImages && !isApproved && !charRating && (
         <p style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center', marginTop: 8 }}>
           Please select a rating to continue
@@ -1445,8 +1445,8 @@ function ImageGenPanel({
           <button
             type="button"
             onClick={onApprove}
-            disabled={isAnyGenerating || !character.selectedCandidateId}
-            title={!character.selectedCandidateId ? 'Select an image first' : undefined}
+            disabled={isAnyGenerating || !character.selectedCandidateId || !charRating}
+            title={!character.selectedCandidateId ? 'Select an image first' : !charRating ? 'Please select a rating to continue' : undefined}
             className="flex items-center justify-center bg-gray-900 text-white hover:opacity-90 transition-opacity disabled:opacity-40 text-xs font-semibold"
             style={{
               flex: 1.4, gap: 6, height: 40, borderRadius: 12,

@@ -494,7 +494,10 @@ function EmbedPreviewModal({ url, size, title, onClose }: { url: string; size: E
 }
 
 // ── Comic Card ────────────────────────────────────────────────────────
-function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefreshStats, getPages }: {
+function ComicCard({
+  project, apiUrl, cardState, onPublish, onUnpublish, onRefreshStats, getPages,
+  isGalleryToggling, galleryError, onToggleGallery,
+}: {
   project: CloudProjectListItem;
   apiUrl: string;
   cardState: CardState;
@@ -502,6 +505,9 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
   onUnpublish: (projectId: string, comicId: string) => void;
   onRefreshStats: (projectId: string) => void;
   getPages: (projectId: string) => Promise<string[]>;
+  isGalleryToggling: boolean;
+  galleryError?: string;
+  onToggleGallery: (projectId: string) => void;
 }) {
   const [showQR, setShowQR] = useState(false);
   const [showSocialModal, setShowSocialModal] = useState(false);
@@ -591,44 +597,38 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
                 Step {maxStep} ✓
               </span>
 
-              {/* ⋮ overflow menu via portal */}
-              <button
-                ref={menuButtonRef}
-                type="button"
-                onClick={() => setShowMenu(v => !v)}
-                aria-label="More options"
-                style={{
-                  width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: 'none', borderRadius: 4, cursor: 'pointer', transition: 'background 120ms, color 120ms',
-                  background: showMenu ? '#F3F4F6' : 'transparent',
-                  color: showMenu ? '#374151' : '#9CA3AF',
-                }}
-                onMouseEnter={(e) => { if (!showMenu) { (e.currentTarget as HTMLButtonElement).style.background = '#F3F4F6'; (e.currentTarget as HTMLButtonElement).style.color = '#374151'; } }}
-                onMouseLeave={(e) => { if (!showMenu) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = '#9CA3AF'; } }}
-              >
-                <MoreHorizontal size={15} />
-              </button>
-              <PortalMenu isOpen={showMenu} onClose={() => setShowMenu(false)} triggerRef={menuButtonRef}>
-                {isDone && shareUrl ? (
-                  <>
+              {/* ⋮ overflow menu via portal — only for published cards, whose
+                  actions (open reader / remove access) aren't available anywhere
+                  else. Unpublished cards had nothing but duplicate nav links here,
+                  already reachable from the sidebar, so no trigger renders for them. */}
+              {isDone && shareUrl && (
+                <>
+                  <button
+                    ref={menuButtonRef}
+                    type="button"
+                    onClick={() => setShowMenu(v => !v)}
+                    aria-label="More options"
+                    style={{
+                      width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      border: 'none', borderRadius: 4, cursor: 'pointer', transition: 'background 120ms, color 120ms',
+                      background: showMenu ? '#F3F4F6' : 'transparent',
+                      color: showMenu ? '#374151' : '#9CA3AF',
+                    }}
+                    onMouseEnter={(e) => { if (!showMenu) { (e.currentTarget as HTMLButtonElement).style.background = '#F3F4F6'; (e.currentTarget as HTMLButtonElement).style.color = '#374151'; } }}
+                    onMouseLeave={(e) => { if (!showMenu) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = '#9CA3AF'; } }}
+                  >
+                    <MoreHorizontal size={15} />
+                  </button>
+                  <PortalMenu isOpen={showMenu} onClose={() => setShowMenu(false)} triggerRef={menuButtonRef}>
                     <MenuItemBtn icon={<ExternalLink size={14} />} label="Open reader" onClick={() => { window.open(shareUrl, '_blank'); setShowMenu(false); }} />
                     <Link href={`/studio/editor?project=${encodeURIComponent(project.project_id)}`} onClick={() => setShowMenu(false)}>
                       <MenuItemBtn icon={<span className="material-symbols-outlined text-[14px] leading-none">edit_note</span>} label="Edit in Comic Editor" onClick={() => setShowMenu(false)} />
                     </Link>
                     <div style={{ height: 1, background: '#F3F4F6', margin: '4px 0' }} />
                     <MenuItemBtn icon={<EyeOff size={14} />} label="Remove from public access" onClick={() => { setShowMenu(false); setShowConfirm(true); }} destructive />
-                  </>
-                ) : (
-                  <>
-                    <Link href={`/studio/editor?project=${encodeURIComponent(project.project_id)}`} onClick={() => setShowMenu(false)}>
-                      <MenuItemBtn icon={<span className="material-symbols-outlined text-[14px] leading-none">edit_note</span>} label="Edit in Comic Editor" onClick={() => setShowMenu(false)} />
-                    </Link>
-                    <Link href="/studio" onClick={() => setShowMenu(false)}>
-                      <MenuItemBtn icon={<span className="material-symbols-outlined text-[14px] leading-none">movie_creation</span>} label="View in Pipeline" onClick={() => setShowMenu(false)} />
-                    </Link>
-                  </>
-                )}
-              </PortalMenu>
+                  </PortalMenu>
+                </>
+              )}
 
               {/* Chevron expand/collapse for published cards */}
               {isDone && (
@@ -642,10 +642,33 @@ function ComicCard({ project, apiUrl, cardState, onPublish, onUnpublish, onRefre
           </div>
 
           {/* Subtitle */}
-          <p className="text-[11px] text-on-surface-variant mb-3"
+          <p className="text-[11px] text-on-surface-variant mb-2"
             title={new Date(project.saved_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}>
             {[project.genre?.split('/')[0].split(',')[0].trim(), `Last saved ${formatRelativeDate(project.saved_at)}`].filter(Boolean).join(' · ')}
           </p>
+
+          {/* Gallery sharing — separate from the Web Reader publish flow below */}
+          <div className="flex items-center gap-2 mb-3">
+            <button
+              type="button"
+              onClick={() => onToggleGallery(project.project_id)}
+              disabled={!project.is_publishable || isGalleryToggling}
+              title={!project.is_publishable
+                ? 'Finish generating at least one comic page image before sharing to the gallery'
+                : project.is_public ? 'Published — View in Gallery' : 'Publish / View in Gallery'}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${
+                project.is_public
+                  ? 'bg-primary/10 border-primary/20 text-primary'
+                  : 'border-outline-variant/30 text-on-surface-variant hover:bg-surface-container-low'
+              } ${!project.is_publishable ? 'opacity-40 cursor-not-allowed' : ''}`}
+            >
+              <span className={`material-symbols-outlined text-[14px] ${isGalleryToggling ? 'animate-spin' : ''}`}>
+                {isGalleryToggling ? 'progress_activity' : project.is_public ? 'public' : 'share'}
+              </span>
+              {project.is_public ? 'Published to Gallery' : 'Share to Gallery'}
+            </button>
+            {galleryError && <p className="text-[10px] text-red-600">{galleryError}</p>}
+          </div>
 
           {/* ── Idle: publish button ── */}
           {cardState.status === 'idle' && (
@@ -834,6 +857,8 @@ export default function PublishPage() {
   const [apiUrl, setApiUrl] = useState('');
   const [projects, setProjects] = useState<CloudProjectListItem[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
+  const [galleryTogglingId, setGalleryTogglingId] = useState<string | null>(null);
+  const [galleryErrors, setGalleryErrors] = useState<Record<string, string>>({});
   const [cardStates, setCardStates] = useState<Record<string, CardState>>(() => {
     try {
       const saved = window.sessionStorage.getItem(CARD_STATES_KEY);
@@ -853,6 +878,33 @@ export default function PublishPage() {
       .catch(() => setProjects([]))
       .finally(() => setLoadingProjects(false));
   }, []);
+
+  const handleToggleGallery = useCallback(async (projectId: string) => {
+    const project = projects.find(p => p.project_id === projectId);
+    if (!project?.is_publishable || galleryTogglingId) return;
+    const next = !project.is_public;
+
+    setGalleryErrors(prev => {
+      if (!(projectId in prev)) return prev;
+      const { [projectId]: _removed, ...rest } = prev;
+      return rest;
+    });
+    setProjects(prev => prev.map(p => p.project_id === projectId ? { ...p, is_public: next } : p));
+    setGalleryTogglingId(projectId);
+
+    try {
+      const response = await projectsApi.publishProject(projectId, next);
+      setProjects(prev => prev.map(p => p.project_id === projectId ? { ...p, is_public: response.data.is_public } : p));
+    } catch {
+      setProjects(prev => prev.map(p => p.project_id === projectId ? { ...p, is_public: !next } : p));
+      setGalleryErrors(prev => ({
+        ...prev,
+        [projectId]: next ? 'Could not publish to the gallery. Try again.' : 'Could not unpublish. Try again.',
+      }));
+    } finally {
+      setGalleryTogglingId(null);
+    }
+  }, [projects, galleryTogglingId]);
 
   function setCard(projectId: string, patch: Partial<CardState>) {
     setCardStates(prev => {
@@ -996,6 +1048,10 @@ export default function PublishPage() {
           publishedAt: Date.now(),
         },
       });
+      // A successful publish is direct proof this project has real images —
+      // self-heal is_publishable in case the initial project list fetch was
+      // stale (e.g. images were saved after this page's list load).
+      setProjects(prev => prev.map(p => p.project_id === projectId ? { ...p, is_publishable: true } : p));
     } catch (err) {
       setCard(projectId, { status: 'error', error: err instanceof Error ? err.message : 'Publish failed' });
     }
@@ -1175,6 +1231,9 @@ export default function PublishPage() {
                           onUnpublish={handleUnpublish}
                           onRefreshStats={handleRefreshStats}
                           getPages={getComposedPages}
+                          isGalleryToggling={galleryTogglingId === p.project_id}
+                          galleryError={galleryErrors[p.project_id]}
+                          onToggleGallery={handleToggleGallery}
                         />
                       ))}
                     </div>
@@ -1196,6 +1255,9 @@ export default function PublishPage() {
                         onUnpublish={handleUnpublish}
                         onRefreshStats={handleRefreshStats}
                         getPages={getComposedPages}
+                        isGalleryToggling={galleryTogglingId === p.project_id}
+                        galleryError={galleryErrors[p.project_id]}
+                        onToggleGallery={handleToggleGallery}
                       />
                     ))}
                   </div>
