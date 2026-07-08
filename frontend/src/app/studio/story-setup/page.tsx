@@ -195,7 +195,7 @@ export default function StorySetupPage() {
 
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
 
-  // Load story when navigated from My Stories page
+  // Load story when navigated from Story Drafts page
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -352,7 +352,7 @@ export default function StorySetupPage() {
       analysisResult,
     });
     setMoreMenuOpen(false);
-    setToast({ message: `"${saved.title}" saved to My Stories`, action: { label: 'View →', href: '/studio/my-stories' } });
+    setToast({ message: `"${saved.title}" saved to Story Drafts`, action: { label: 'View →', href: '/studio/my-stories' } });
   }, [saveStory, storyTitle, projectId, storyText, adaptedStory, genre, creativeDirection, analysisResult]);
 
   const handleLoadStory = useCallback((story: SavedStory) => {
@@ -973,9 +973,9 @@ export default function StorySetupPage() {
                               </span>
                             </div>
                             <button type="button"
-                              onClick={() => setAdvancedTargetPages(String(Math.min(200, estPages)))}
+                              onClick={() => setAdvancedTargetPages(String(Math.min(90, estPages)))}
                               className="flex-shrink-0 text-xs font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-xl px-3 py-1.5 whitespace-nowrap">
-                              Adjust to {Math.min(200, estPages)} ↓
+                              Adjust to {Math.min(90, estPages)} ↓
                             </button>
                           </div>
                         )}
@@ -988,9 +988,11 @@ export default function StorySetupPage() {
                     <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2">Quick presets</p>
                     <div className="flex flex-wrap gap-2">
                       {[
-                        { label: 'Quick read', pages: '20', chapters: '2', chars: '3', panels: '5' },
+                        { label: 'Single page', pages: '1',  chapters: '1', chars: '1', panels: '4' },
+                        { label: 'Mini comic',  pages: '5',  chapters: '1', chars: '2', panels: '5' },
+                        { label: 'Quick read',  pages: '20', chapters: '2', chars: '3', panels: '5' },
                         { label: 'Short comic', pages: '50', chapters: '4', chars: '4', panels: '5' },
-                        { label: 'Full book', pages: '200', chapters: '12', chars: '6', panels: '6' },
+                        { label: 'Full book',   pages: '90', chapters: '10', chars: '6', panels: '6' },
                       ].map((p) => (
                         <button key={p.label} type="button"
                           onClick={() => {
@@ -1015,7 +1017,7 @@ export default function StorySetupPage() {
                     {([
                       { id: 'adv-chars',   label: 'Main Characters', min: 1, max: 10,  val: advancedMainChars,   set: setAdvancedMainChars },
                       { id: 'adv-chaps',   label: 'Chapters',        min: 1, max: 20,  val: advancedNumChapters, set: setAdvancedNumChapters },
-                      { id: 'adv-pages',   label: 'Target Pages',    min: 5, max: 200, val: advancedTargetPages, set: setAdvancedTargetPages },
+                      { id: 'adv-pages',   label: 'Target Pages',    min: 1, max: 90,  val: advancedTargetPages, set: setAdvancedTargetPages },
                       { id: 'adv-panels',  label: 'Max Panels/Page', min: 2, max: 8,   val: advancedMaxPanels,   set: setAdvancedMaxPanels },
                     ] as const).map((f) => (
                       <div key={f.id} className="space-y-1.5">

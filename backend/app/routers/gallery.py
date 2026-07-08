@@ -2,12 +2,15 @@
 Public gallery API — community characters and comics (no auth required).
 """
 
+import re
 from fastapi import APIRouter, HTTPException, Query
 from typing import Any, Dict, List
 from app.schemas import CharacterSummary, GalleryComicSummary, GalleryComicDetail
 from app.database import mongo_db
 
 router = APIRouter(prefix="/gallery", tags=["gallery"])
+
+_PANEL_ID_RE = re.compile(r"^panel:p(\d+)-n(\d+)$")
 
 
 def _char_col():
@@ -18,27 +21,36 @@ def _proj_col():
     return mongo_db.get_database()["projects"]
 
 
-def _first_success_page_url(steps: Dict[str, Any]) -> str | None:
-    page_states = (((steps.get("step4") or {}).get("data") or {}).get("pageStates") or {})
-    for key in sorted(page_states.keys()):
-        state = page_states[key]
-        if state.get("status") == "success" and state.get("imageUrl"):
-            return state["imageUrl"]
-    return None
+def _img_col():
+    return mongo_db.get_database()["project_images"]
 
 
-def _success_pages(steps: Dict[str, Any]) -> List[Dict[str, Any]]:
-    page_states = (((steps.get("step4") or {}).get("data") or {}).get("pageStates") or {})
-    pages = []
-    for key in sorted(page_states.keys()):
-        state = page_states[key]
-        if state.get("status") == "success" and state.get("imageUrl"):
+def _project_images_pages(project_id: str) -> List[Dict[str, Any]]:
+    """Real image data lives in project_images (saved via POST /{project_id}/images),
+    not step4.data.pageStates — the current app never populates the latter. Prefer
+    full composed page images; fall back to one "page" per panel image (unassembled,
+    but still real content) when only panel-level images were saved."""
+    docs = list(_img_col().find({"project_id": project_id}, {"_id": 0, "image_key": 1, "image_url": 1}))
+    if not docs:
+        return []
+
+    page_docs = [d for d in docs if d["image_key"].startswith("page:")]
+    if page_docs:
+        def _page_num(d: Dict[str, Any]) -> int:
             try:
-                page_number = int(key.replace("page-", ""))
+                return int(d["image_key"].replace("page:page-", ""))
             except ValueError:
-                page_number = 0
-            pages.append({"page_number": page_number, "image_url": state["imageUrl"]})
-    return pages
+                return 0
+        page_docs.sort(key=_page_num)
+        return [{"page_number": _page_num(d), "image_url": d["image_url"]} for d in page_docs]
+
+    panel_docs = []
+    for d in docs:
+        m = _PANEL_ID_RE.match(d["image_key"])
+        if m:
+            panel_docs.append((int(m.group(1)), int(m.group(2)), d["image_url"]))
+    panel_docs.sort(key=lambda t: (t[0], t[1]))
+    return [{"page_number": i + 1, "image_url": url} for i, (_, __, url) in enumerate(panel_docs)]
 
 
 def _title_from_story(story: str) -> str:
@@ -78,15 +90,15 @@ def list_public_comics(
     docs = list(_proj_col().find({"is_public": True}, {"_id": 0, "user_id": 0}))
     result = []
     for doc in docs:
-        steps = doc.get("steps") or {}
-        cover_url = _first_success_page_url(steps)
-        if not cover_url:
+        project_id = doc.get("project_id", "")
+        pages = _project_images_pages(project_id)
+        if not pages:
             continue
-        pages = _success_pages(steps)
+        cover_url = pages[0]["image_url"]
         user_inputs = doc.get("user_inputs") or {}
         story = user_inputs.get("story_content") or user_inputs.get("storyText") or ""
         result.append(GalleryComicSummary(
-            project_id=doc.get("project_id", ""),
+            project_id=project_id,
             title=_title_from_story(story),
             genre=user_inputs.get("manga_genre") or user_inputs.get("genre") or "",
             art_style=user_inputs.get("art_style") or "",
@@ -105,8 +117,7 @@ def get_public_comic(project_id: str) -> GalleryComicDetail:
     doc = _proj_col().find_one({"project_id": project_id, "is_public": True}, {"_id": 0, "user_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Comic not found or not public")
-    steps = doc.get("steps") or {}
-    pages = _success_pages(steps)
+    pages = _project_images_pages(project_id)
     user_inputs = doc.get("user_inputs") or {}
     story = user_inputs.get("story_content") or user_inputs.get("storyText") or ""
     return GalleryComicDetail(

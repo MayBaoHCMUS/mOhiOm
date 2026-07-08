@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import GalleryContent from '@/components/gallery/GalleryContent';
 
 export function GalleryModal({ onClose }: { onClose: () => void }) {
@@ -26,7 +26,9 @@ export function GalleryModal({ onClose }: { onClose: () => void }) {
         >
           <span className="material-symbols-outlined text-lg">close</span>
         </button>
-        <GalleryContent />
+        <Suspense fallback={null}>
+          <GalleryContent />
+        </Suspense>
       </div>
     </div>
   );

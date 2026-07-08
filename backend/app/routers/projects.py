@@ -32,8 +32,10 @@ def _require_user(x_user_id: Optional[str]) -> str:
 
 def _has_success_page(steps: Dict[str, Any]) -> bool:
     """True if step4 has at least one page that actually finished rendering.
-    Mirrors gallery.py's cover-image check, since only such projects will show up
-    in the public gallery once published."""
+    Legacy path — current saves never populate step4.data.pageStates, so this is
+    effectively always False. Real image data lives in the project_images
+    collection instead; see _has_generated_images below, which is what
+    list_projects() actually relies on."""
     page_states = (((steps.get("step4") or {}).get("data") or {}).get("pageStates") or {})
     return any(
         state.get("status") == "success" and state.get("imageUrl")
@@ -73,6 +75,11 @@ def list_projects(
 ) -> List[Dict[str, Any]]:
     user_id = _require_user(x_user_id)
     docs = list(_col().find({"user_id": user_id}, {"_id": 0, "user_id": 0}))
+    # Real generated-image data lives in project_images (saved via POST
+    # /{project_id}/images), not in step4.data.pageStates — fetch which
+    # projects have at least one saved image in a single query rather than
+    # per-project, since _has_success_page alone is essentially always False.
+    projects_with_images = set(_img_col().distinct("project_id", {"user_id": user_id}))
     result = []
     for doc in docs:
         steps = doc.get("steps") or {}
@@ -82,9 +89,10 @@ def list_projects(
         s3 = steps.get("step3") or {}
         s4 = steps.get("step4") or {}
         user_inputs = doc.get("user_inputs") or {}
+        project_id = doc.get("project_id", "")
         result.append(
             ProjectListItem(
-                project_id=doc.get("project_id", ""),
+                project_id=project_id,
                 saved_at=doc.get("saved_at", ""),
                 genre=user_inputs.get("genre") or None,
                 has_step1=bool(s1.get("data")),
@@ -97,7 +105,7 @@ def list_projects(
                 step2_images_approved=bool(s2ir.get("isApproved")),
                 step3_approved=bool(s3.get("isApproved")),
                 is_public=bool(doc.get("is_public", False)),
-                is_publishable=_has_success_page(steps),
+                is_publishable=project_id in projects_with_images or _has_success_page(steps),
             )
         )
     return sorted(result, key=lambda x: x.saved_at, reverse=True)

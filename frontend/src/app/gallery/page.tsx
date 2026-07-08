@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import StudioSidebar from '@/components/StudioSidebar';
@@ -38,7 +39,9 @@ export default function GalleryPage() {
       )}
 
       <main className={isAuthed ? 'ml-[var(--studio-sidebar-width)] pt-24 px-8 pb-12 min-h-screen' : 'px-8 py-8 pb-12 min-h-screen'}>
-        <GalleryContent />
+        <Suspense fallback={null}>
+          <GalleryContent />
+        </Suspense>
       </main>
     </div>
   );

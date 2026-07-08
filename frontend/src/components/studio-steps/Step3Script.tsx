@@ -552,12 +552,12 @@ function ChapterHeading({ chapter }: { chapter: ParsedChapter }) {
 
 function SceneAccordion({
   chapter, page, isExpanded, isApprovedLocally, isScriptApproved,
-  allPanelsApproved,
+  allPanelsApproved, isRegenerating,
   onToggle, onApproveLocal, onRegen, canApprove, children,
 }: {
   chapter: ParsedChapter; page: ParsedPage;
   isExpanded: boolean; isApprovedLocally: boolean; isScriptApproved: boolean;
-  allPanelsApproved: boolean;
+  allPanelsApproved: boolean; isRegenerating: boolean;
   onToggle: () => void; onApproveLocal: () => void; onRegen: () => void;
   canApprove: boolean; children: React.ReactNode;
 }) {
@@ -627,10 +627,14 @@ function SceneAccordion({
             Approved
           </span>
         ) : (
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+          <div className={`flex items-center gap-1 transition-opacity flex-shrink-0 ${isRegenerating ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
             <button type="button" onClick={(e) => { e.stopPropagation(); onRegen(); }}
-              title="Regenerate script" className="flex items-center px-2 py-1 rounded-md text-[11px] font-semibold text-[#9CA3AF] bg-white border border-[#E0E0E0] hover:text-on-surface hover:border-[#C0C0C0] transition-colors">
-              <span className="material-symbols-outlined text-sm">refresh</span>
+              disabled={isRegenerating}
+              title="Regenerates the full script — this page's panels aren't isolated yet"
+              className="flex items-center px-2 py-1 rounded-md text-[11px] font-semibold text-[#9CA3AF] bg-white border border-[#E0E0E0] hover:text-on-surface hover:border-[#C0C0C0] transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+              {isRegenerating
+                ? <span className="w-3.5 h-3.5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                : <span className="material-symbols-outlined text-sm">refresh</span>}
             </button>
             {canApprove && (
               <button type="button" onClick={(e) => { e.stopPropagation(); onApproveLocal(); }}
@@ -661,14 +665,14 @@ function SceneAccordion({
 function PanelCard({
   panel, chapterNumber, pageNumber, panelKey,
   isExpanded, onToggle, viewMode,
-  isScriptApproved, isApprovedLocally,
-  copiedKey, onCopyPrompt, onApprovePanelLocally,
+  isScriptApproved, isApprovedLocally, isRegenerating,
+  copiedKey, onCopyPrompt, onApprovePanelLocally, onRegen,
 }: {
   panel: ParsedPanel; chapterNumber: number; pageNumber: number; panelKey: string;
   isExpanded: boolean; onToggle: () => void; viewMode: ViewMode;
-  isScriptApproved: boolean; isApprovedLocally: boolean;
+  isScriptApproved: boolean; isApprovedLocally: boolean; isRegenerating: boolean;
   copiedKey: string | null; onCopyPrompt: (k: string, t: string) => void;
-  onApprovePanelLocally: () => void;
+  onApprovePanelLocally: () => void; onRegen: () => void;
 }) {
   const effectiveExpanded = viewMode !== 'compact' && isExpanded;
   const showLeft     = viewMode === 'script' || viewMode === 'dialogue';
@@ -765,19 +769,29 @@ function PanelCard({
               )}
             </div>
             <div className="flex items-center gap-2 px-4 py-3 bg-[#FAFAFA] border-t border-[#E0E0E0]">
-              <button type="button" disabled title="Coming soon" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#9CA3AF] bg-white border border-[#E0E0E0] cursor-not-allowed select-none">
-                <span className="material-symbols-outlined text-sm">refresh</span>Regen
+              <button
+                type="button"
+                onClick={onRegen}
+                disabled={isRegenerating || isApproved}
+                title="Regenerates the full script — this panel isn't isolated yet"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#9CA3AF] bg-white border border-[#E0E0E0] hover:text-on-surface hover:border-[#C0C0C0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-[#9CA3AF] disabled:hover:border-[#E0E0E0]"
+              >
+                {isRegenerating
+                  ? <span className="w-3.5 h-3.5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                  : <span className="material-symbols-outlined text-sm">refresh</span>}
+                {isRegenerating ? 'Regenerating…' : 'Regen'}
               </button>
               <div className="flex-1" />
               {hasPrompt && (
-                <button type="button" onClick={() => onCopyPrompt(panelKey, panel.prompt)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-on-surface-variant bg-white border border-[#E0E0E0] hover:bg-surface-container transition-colors">
+                <button type="button" onClick={() => onCopyPrompt(panelKey, panel.prompt)} disabled={isRegenerating} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-on-surface-variant bg-white border border-[#E0E0E0] hover:bg-surface-container transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                   <span className="material-symbols-outlined text-sm">content_copy</span>Copy Prompt
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => { if (!isApproved) onApprovePanelLocally(); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                disabled={isRegenerating}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   isApproved ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-200 cursor-default' : 'bg-primary text-on-primary hover:opacity-90'
                 }`}
               >
@@ -1680,6 +1694,7 @@ export default function Step3Script() {
                                 setExpandedPageKey(next ?? null);
                               }}
                               onRegen={() => { if (canGenerate) handleGenerate(3); }}
+                              isRegenerating={isGenerating}
                               canApprove={state === 3 || state === 5}
                             >
                               {page.panels.filter((pan) => matchesFilter(pan, filterMode, isApproved, approvedPanelKeys.has(`${chapter.chapterNumber}-${page.pageNumber}-${pan.panelNumber}`))).map((panel) => {
@@ -1694,9 +1709,11 @@ export default function Step3Script() {
                                     viewMode={viewMode}
                                     isScriptApproved={isApproved}
                                     isApprovedLocally={approvedPanelKeys.has(key)}
+                                    isRegenerating={isGenerating}
                                     copiedKey={copiedKey}
                                     onCopyPrompt={handleCopyPrompt}
                                     onApprovePanelLocally={() => approvePanel(key)}
+                                    onRegen={() => { if (canGenerate) handleGenerate(3); }}
                                   />
                                 );
                               })}

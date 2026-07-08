@@ -979,10 +979,6 @@ export default function Step4Generation() {
     }
     return 'layout';
   });
-  const [showCompletionNudge, setShowCompletionNudge] = useState(false);
-  const prevAllImgDoneRef = useRef(false);
-
-
   // ── Panel-level stats (panel mode) ────────────────────────────────────────
   const panelStats = useMemo(() => {
     const allPanels = step4.data?.panels ?? [];
@@ -1215,14 +1211,6 @@ export default function Step4Generation() {
     sessionStorage.setItem('mohiom-step4-tab-v2', activeStep4Tab);
   }, [activeStep4Tab]);
 
-  // Completion nudge
-  useEffect(() => {
-    const isAllDone = activeStats.total > 0 && activeStats.success === activeStats.total && activeStats.error === 0 && !isImageGenerating;
-    if (isAllDone && !prevAllImgDoneRef.current) setShowCompletionNudge(true);
-    prevAllImgDoneRef.current = isAllDone;
-  }, [activeStats, isImageGenerating]);
-
-
   // Tab helpers
   const isTabLocked = useCallback((tab: Step4Tab) => {
     if (tab === 'layout') return false;
@@ -1233,7 +1221,6 @@ export default function Step4Generation() {
   const handleTabChange = useCallback((tab: Step4Tab) => {
     if (isTabLocked(tab)) return;
     setActiveStep4Tab(tab);
-    setShowCompletionNudge(false);
   }, [isTabLocked]);
 
   const panelsWithDialogue = allPanels.filter((p) =>
@@ -1565,21 +1552,6 @@ export default function Step4Generation() {
               </div>
             );
           })()}
-
-          {/* Completion nudge */}
-          {showCompletionNudge && (
-            <div className="rounded-xl border border-[#86EFAC] px-5 py-4 flex items-center justify-between gap-4"
-              style={{ background: '#F0FDF4' }}>
-              <div>
-                <p className="text-sm font-semibold text-emerald-700">✓ All {activeStats.total} panels generated!</p>
-                <p className="text-xs text-emerald-600 mt-0.5">Next: Add dialogue to your panels</p>
-              </div>
-              <button type="button" onClick={() => handleTabChange('dialogue')}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors whitespace-nowrap">
-                Go to Dialogue →
-              </button>
-            </div>
-          )}
 
           {/* Page mode: per-page images */}
           {comicPageMode === 'page' && (state === 3 || state === 4 || state === 5) && step4PanelsByPage.length > 0 && (
