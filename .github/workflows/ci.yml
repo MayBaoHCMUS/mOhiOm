@@ -41,6 +41,11 @@ jobs:
         image: mongo:7
         ports:
           - 27017:27017
+    env:
+      # CI-only dummy values so Settings' fail-fast validator (config.py) doesn't
+      # refuse to boot — never reuse these for a real deployment.
+      JWT_SECRET_KEY: ci-only-jwt-secret-do-not-use-in-production
+      ADMIN_SECRET_KEY: ci-only-admin-secret-do-not-use-in-production
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
