@@ -2992,7 +2992,7 @@ export default function Step2Characters() {
                 <button
                   type="button"
                   onClick={activeTab === 'designs' ? handleDesignApproveClick : handleApproveAndContinue}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 bg-emerald-500 text-white hover:bg-emerald-600"
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 bg-primary text-on-primary hover:opacity-90 t-next-border"
                 >
                   <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
                     {activeTab === 'designs' ? (state === 4 ? 'image' : 'check_circle') : 'check_circle'}

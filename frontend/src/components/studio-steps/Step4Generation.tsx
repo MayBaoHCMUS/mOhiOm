@@ -1766,12 +1766,10 @@ export default function Step4Generation() {
               else { handleApprove(4); setActiveStep(5); }
             }}
             disabled={activeStep4Tab === 'layout' && isTabLocked('dialogue')}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
-              activeStep4Tab === 'dialogue'
-                ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                : isTabLocked('dialogue')
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 border-4 border-transparent ${
+              isTabLocked('dialogue') && activeStep4Tab === 'layout'
                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                : 'bg-primary text-on-primary hover:opacity-90'
+                : 'bg-primary text-on-primary hover:opacity-90 t-next-border'
             }`}>
             {activeStep4Tab === 'layout' ? 'Go to Dialogue →' : 'Continue to Export →'}
           </button>

@@ -428,3 +428,62 @@ html {
     animation: none;
   }
 }
+
+/* Transitions.dev — rotating border sweep (primary "Next step" CTA).
+   Two pseudo-element-and-z-index-based approaches were tried first (a
+   mask-composite cutout ring, then a ::before/::after cover-layer ring) —
+   both looked correct in isolated testing but broke in real use: z-index:-1
+   pseudo-elements escaping their intended stacking context (even with
+   `isolation: isolate`) in ways that varied by browser/DOM context, once
+   rendering as a giant blob detached from the button entirely. Replaced
+   with the standard, pseudo-element-free "double background-layer" gradient
+   border technique: two background-image layers on the button itself —
+   a solid fill clipped to the padding-box, and the rotating gradient
+   clipped to the border-box — so only the border-width ring shows the
+   gradient. No z-index, no stacking context, nothing to escape. The
+   rotation itself is driven by an animatable custom property (@property)
+   rather than a transform, so it composites as a normal background.
+   The fill color must be set explicitly here (can't use `background:
+   inherit` once we're driving background-image directly) — matches
+   bg-primary/text-on-primary used by every Next-step button; hover is a
+   plain opacity dip (hover:opacity-90, applied via Tailwind on the button
+   itself) rather than a fill-color swap, consistent with how bg-primary
+   buttons already behave elsewhere in the app. Only applied on the enabled
+   branch of each Next-step button. */
+@property --t-next-border-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+.t-next-border {
+  --t-next-border-angle: 0deg;
+  --t-next-border-fill: var(--color-primary);
+  position: relative;
+  border: 4px solid transparent;
+  background-image:
+    linear-gradient(var(--t-next-border-fill), var(--t-next-border-fill)),
+    conic-gradient(
+      from var(--t-next-border-angle),
+      transparent 0deg,
+      transparent 130deg,
+      #4285f4 160deg,
+      #8b5cf6 200deg,
+      #d946ef 235deg,
+      #f472b6 270deg,
+      #fb923c 305deg,
+      transparent 360deg
+    );
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  animation: t-next-border-spin 2.4s linear infinite;
+}
+@keyframes t-next-border-spin {
+  to {
+    --t-next-border-angle: 360deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .t-next-border {
+    animation: none;
+  }
+}

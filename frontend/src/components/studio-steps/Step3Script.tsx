@@ -1072,11 +1072,11 @@ function ScriptBottomBar({
               type="button"
               onClick={allDone && !isGenerating ? onContinue : undefined}
               disabled={!allDone || isGenerating}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all duration-300 ${
+              className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all duration-300 border-4 border-transparent ${
                 isGenerating
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   : allDone
-                  ? `bg-emerald-500 text-white hover:bg-emerald-600 shadow-[0_4px_14px_rgba(5,150,105,0.35)] ${pulse ? 'animate-[pulse_0.4s_ease-in-out_2]' : ''}`
+                  ? `bg-primary text-on-primary hover:opacity-90 shadow-[0_4px_14px_rgba(0,88,190,0.35)] t-next-border ${pulse ? 'animate-[pulse_0.4s_ease-in-out_2]' : ''}`
                   : 'bg-gray-200 text-gray-400 cursor-not-allowed'
               }`}
             >
