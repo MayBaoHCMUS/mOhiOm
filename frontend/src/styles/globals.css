@@ -445,10 +445,11 @@ html {
    rather than a transform, so it composites as a normal background.
    The fill color must be set explicitly here (can't use `background:
    inherit` once we're driving background-image directly) — matches
-   bg-emerald-500/600 used by every Next-step button except one branch in
-   Step4Generation.tsx, which overrides --t-next-border-fill via inline
-   style to match its own bg-primary. Only applied on the enabled branch of
-   each Next-step button. */
+   bg-primary/text-on-primary used by every Next-step button; hover is a
+   plain opacity dip (hover:opacity-90, applied via Tailwind on the button
+   itself) rather than a fill-color swap, consistent with how bg-primary
+   buttons already behave elsewhere in the app. Only applied on the enabled
+   branch of each Next-step button. */
 @property --t-next-border-angle {
   syntax: '<angle>';
   initial-value: 0deg;
@@ -456,25 +457,25 @@ html {
 }
 .t-next-border {
   --t-next-border-angle: 0deg;
-  --t-next-border-fill: #10b981; /* emerald-500 */
+  --t-next-border-fill: var(--color-primary);
   position: relative;
-  border: 2px solid transparent;
+  border: 4px solid transparent;
   background-image:
     linear-gradient(var(--t-next-border-fill), var(--t-next-border-fill)),
     conic-gradient(
       from var(--t-next-border-angle),
       transparent 0deg,
-      transparent 180deg,
-      #065f46 230deg,
-      #065f46 310deg,
+      transparent 130deg,
+      #4285f4 160deg,
+      #8b5cf6 200deg,
+      #d946ef 235deg,
+      #f472b6 270deg,
+      #fb923c 305deg,
       transparent 360deg
     );
   background-origin: border-box;
   background-clip: padding-box, border-box;
   animation: t-next-border-spin 2.4s linear infinite;
-}
-.t-next-border:hover {
-  --t-next-border-fill: #059669; /* emerald-600 */
 }
 @keyframes t-next-border-spin {
   to {
