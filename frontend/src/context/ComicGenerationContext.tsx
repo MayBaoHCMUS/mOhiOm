@@ -3,7 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  geminiApi,
+  textGenApi,
   comicLayoutApi,
   analyzeStoryStructuredStream,
   characterDesignsStructuredStream,
@@ -1071,7 +1071,7 @@ export function ComicGenerationProvider({
           setStreamingText('');
           let analysisMarkdown = '';
 
-          geminiApi.analyzeStoryStructuredStream(
+          textGenApi.analyzeStoryStructuredStream(
             {
               project_id: projectId,
               story_text: storyText,
@@ -1101,7 +1101,7 @@ export function ComicGenerationProvider({
           );
         });
       } else {
-        const resp = await geminiApi.analyzeStoryStructured({
+        const resp = await textGenApi.analyzeStoryStructured({
           project_id: projectId,
           story_text: storyText,
           num_chapters: Number(numChapters) || 3,
@@ -1163,7 +1163,7 @@ export function ComicGenerationProvider({
           setStreamingText('');
           let designMarkdown = '';
 
-          geminiApi.generateCharacterDesignsStructuredStream(
+          textGenApi.generateCharacterDesignsStructuredStream(
             step2Params,
             (chunk) => {
               designMarkdown += chunk;
@@ -1193,7 +1193,7 @@ export function ComicGenerationProvider({
           );
         });
       } else {
-        const resp = await geminiApi.generateCharacterDesignsStructured(step2Params);
+        const resp = await textGenApi.generateCharacterDesignsStructured(step2Params);
 
         const designMarkdown: string = resp.data.design_markdown || '';
         const structuredJson = (resp.data.structured_json as Record<string, unknown>) || null;
@@ -1226,7 +1226,7 @@ export function ComicGenerationProvider({
           setStreamingText('');
           let scriptMarkdown = '';
 
-          geminiApi.generatePanelScriptStructuredStream(
+          textGenApi.generatePanelScriptStructuredStream(
             {
               project_id: projectId,
               step1_json: step1Json,
@@ -1254,7 +1254,7 @@ export function ComicGenerationProvider({
           );
         });
       } else {
-        const resp = await geminiApi.generatePanelScriptStructured({
+        const resp = await textGenApi.generatePanelScriptStructured({
           project_id: projectId,
           step1_json: step1Json,
           step2_json: step2Json,

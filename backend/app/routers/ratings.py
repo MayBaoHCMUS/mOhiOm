@@ -1,10 +1,11 @@
 """API routes for user ratings and feedback collection."""
 
 from datetime import datetime, timezone
-from fastapi import APIRouter, Header
-from typing import Optional, Dict, List
+from fastapi import APIRouter, Depends
+from typing import Any, Optional, Dict, List
 from pydantic import BaseModel
 from app.database import mongo_db
+from app.deps import get_current_user_required
 
 router = APIRouter(prefix="/ratings", tags=["ratings"])
 
@@ -45,9 +46,9 @@ class ComicRatingRequest(BaseModel):
 @router.post("/panel")
 def rate_panel(
     payload: PanelRatingRequest,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ):
-    user_id = x_user_id or "anonymous"
+    user_id = str(current_user["_id"])
     doc = {
         **payload.model_dump(),
         "user_id": user_id,
@@ -64,9 +65,9 @@ def rate_panel(
 @router.get("/panels/{comic_id}")
 def get_panel_ratings(
     comic_id: str,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ):
-    user_id = x_user_id or "anonymous"
+    user_id = str(current_user["_id"])
     docs = list(_panel_col().find(
         {"user_id": user_id, "comic_id": comic_id},
         {"_id": 0},
@@ -77,9 +78,9 @@ def get_panel_ratings(
 @router.post("/comic")
 def rate_comic(
     payload: ComicRatingRequest,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ):
-    user_id = x_user_id or "anonymous"
+    user_id = str(current_user["_id"])
     doc = {
         **payload.model_dump(),
         "user_id": user_id,
@@ -96,9 +97,9 @@ def rate_comic(
 @router.get("/comic/{comic_id}")
 def get_comic_rating(
     comic_id: str,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ):
-    user_id = x_user_id or "anonymous"
+    user_id = str(current_user["_id"])
     doc = _comic_col().find_one(
         {"user_id": user_id, "comic_id": comic_id},
         {"_id": 0},
@@ -139,9 +140,9 @@ class CharacterSetRatingRequest(BaseModel):
 @router.post("/character")
 def rate_character(
     payload: CharacterRatingRequest,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ):
-    user_id = x_user_id or "anonymous"
+    user_id = str(current_user["_id"])
     doc = {
         **payload.model_dump(),
         "user_id": user_id,
@@ -158,9 +159,9 @@ def rate_character(
 @router.get("/characters/{comic_id}")
 def get_character_ratings(
     comic_id: str,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ):
-    user_id = x_user_id or "anonymous"
+    user_id = str(current_user["_id"])
     docs = list(_char_col().find({"user_id": user_id, "comic_id": comic_id}, {"_id": 0}))
     return {"ratings": docs}
 
@@ -168,9 +169,9 @@ def get_character_ratings(
 @router.post("/character-set")
 def rate_character_set(
     payload: CharacterSetRatingRequest,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ):
-    user_id = x_user_id or "anonymous"
+    user_id = str(current_user["_id"])
     doc = {
         **payload.model_dump(),
         "user_id": user_id,
@@ -187,8 +188,8 @@ def rate_character_set(
 @router.get("/character-set/{comic_id}")
 def get_character_set_rating(
     comic_id: str,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ):
-    user_id = x_user_id or "anonymous"
+    user_id = str(current_user["_id"])
     doc = _char_set_col().find_one({"user_id": user_id, "comic_id": comic_id}, {"_id": 0})
     return {"rating": doc}

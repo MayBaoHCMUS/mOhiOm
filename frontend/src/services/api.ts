@@ -34,29 +34,11 @@ const fullUrl = (baseURL: string | undefined, url: string | undefined): string =
   return `${baseURL || ""}${url}`;
 };
 
-const USER_ID_STORAGE_KEY = "mohiom-user-id";
-
 type RequestWithMetadata = AxiosRequestConfig & { metadata?: { startedAt: number } };
-
-const getOrCreateUserId = (): string => {
-  if (typeof window === "undefined") return "server";
-  const existing = window.localStorage.getItem(USER_ID_STORAGE_KEY);
-  if (existing) return existing;
-
-  const next =
-    typeof window.crypto !== "undefined" && "randomUUID" in window.crypto
-      ? window.crypto.randomUUID()
-      : `user-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-  window.localStorage.setItem(USER_ID_STORAGE_KEY, next);
-  return next;
-};
-
 
 apiClient.interceptors.request.use((config) => {
   const requestConfig = config as RequestWithMetadata;
   requestConfig.headers = requestConfig.headers || {};
-  requestConfig.headers["X-User-Id"] = getOrCreateUserId();
 
   requestConfig.metadata = { startedAt: Date.now() };
 
@@ -320,19 +302,14 @@ export function adaptStoryStream(
 ): AbortController {
   const ctrl = new AbortController();
 
-  const userId =
-    typeof window !== "undefined"
-      ? (localStorage.getItem("mohiom-user-id") ?? "")
-      : "";
-
   (async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/gemini/adapt-story`, {
+      const response = await fetch(`${API_BASE_URL}/text-gen/adapt-story`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(userId ? { "X-User-Id": userId } : {}),
         },
+        credentials: "include",
         body: JSON.stringify(payload),
         signal: ctrl.signal,
       });
@@ -411,27 +388,13 @@ export function analyzeStoryStructuredStream(
 ): AbortController {
   const controller = new AbortController();
 
-  const getUserId = (): string => {
-    const key = "mohiom-user-id";
-    if (typeof window === "undefined") return "server";
-    const existing = window.localStorage.getItem(key);
-    if (existing) return existing;
-    const next =
-      "randomUUID" in window.crypto
-        ? window.crypto.randomUUID()
-        : `user-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    window.localStorage.setItem(key, next);
-    return next;
-  };
-
   (async () => {
     let response: Response;
     try {
-      response = await fetch(`${API_BASE_URL}/gemini/analyze-story-structured`, {
+      response = await fetch(`${API_BASE_URL}/text-gen/analyze-story-structured`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-User-Id": getUserId(),
         },
         credentials: "include",
         body: JSON.stringify({ ...payload, stream: true }),
@@ -523,25 +486,12 @@ export function analyzeStoryLightweightStream(
 ): AbortController {
   const controller = new AbortController();
 
-  const getUserId = (): string => {
-    const key = "mohiom-user-id";
-    if (typeof window === "undefined") return "server";
-    const existing = window.localStorage.getItem(key);
-    if (existing) return existing;
-    const next =
-      "randomUUID" in window.crypto
-        ? window.crypto.randomUUID()
-        : `user-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    window.localStorage.setItem(key, next);
-    return next;
-  };
-
   (async () => {
     let response: Response;
     try {
-      response = await fetch(`${API_BASE_URL}/gemini/analyze-story-lightweight`, {
+      response = await fetch(`${API_BASE_URL}/text-gen/analyze-story-lightweight`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-User-Id": getUserId() },
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify(payload),
         signal: controller.signal,
@@ -613,25 +563,13 @@ function _readSseStream<TDone>(
   parseDone: (event: Record<string, unknown>) => TDone | null,
 ): AbortController {
   const controller = new AbortController();
-  const getUserId = (): string => {
-    const key = "mohiom-user-id";
-    if (typeof window === "undefined") return "server";
-    const existing = window.localStorage.getItem(key);
-    if (existing) return existing;
-    const next =
-      "randomUUID" in window.crypto
-        ? window.crypto.randomUUID()
-        : `user-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    window.localStorage.setItem(key, next);
-    return next;
-  };
 
   (async () => {
     let response: Response;
     try {
       response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-User-Id": getUserId() },
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ ...body, stream: true }),
         signal: controller.signal,
@@ -686,7 +624,7 @@ export function characterDesignsStructuredStream(
   callbacks: Step2StreamCallbacks,
 ): AbortController {
   return _readSseStream(
-    `${API_BASE_URL}/gemini/character-designs-structured`,
+    `${API_BASE_URL}/text-gen/character-designs-structured`,
     payload,
     callbacks.onToken,
     callbacks.onDone,
@@ -709,7 +647,7 @@ export function panelScriptStructuredStream(
   callbacks: Step3StreamCallbacks,
 ): AbortController {
   return _readSseStream(
-    `${API_BASE_URL}/gemini/panel-script-structured`,
+    `${API_BASE_URL}/text-gen/panel-script-structured`,
     payload,
     callbacks.onToken,
     callbacks.onDone,
@@ -721,10 +659,10 @@ export function panelScriptStructuredStream(
   );
 }
 
-// Gemini API endpoints
-export const geminiApi = {
+// Text generation endpoints (Gemini, 9Router, or a user's BYOK provider — see backend/app/routers/text_gen.py)
+export const textGenApi = {
   generateText: (prompt: string, stream: boolean = false) =>
-    apiClient.post("/gemini/generate-text", { prompt, stream }),
+    apiClient.post("/text-gen/generate-text", { prompt, stream }),
 
   generateTextStream: async (
     prompt: string,
@@ -733,11 +671,10 @@ export const geminiApi = {
     onError: (error: string) => void
   ) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/gemini/generate-text`, {
+      const response = await fetch(`${API_BASE_URL}/text-gen/generate-text`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-User-Id": getOrCreateUserId(),
         },
         body: JSON.stringify({ prompt, stream: true }),
         credentials: "include",
@@ -793,10 +730,10 @@ export const geminiApi = {
   },
 
   analyzeStory: (payload: AnalyzeStoryPayload) =>
-    apiClient.post("/gemini/analyze-story", payload),
+    apiClient.post("/text-gen/analyze-story", payload),
 
   analyzeStoryStructured: (payload: AnalyzeStoryPayload) =>
-    apiClient.post<AnalyzeStoryStructuredResponse>("/gemini/analyze-story-structured", payload),
+    apiClient.post<AnalyzeStoryStructuredResponse>("/text-gen/analyze-story-structured", payload),
 
   analyzeStoryStructuredStream: async (
     payload: AnalyzeStoryPayload,
@@ -805,11 +742,10 @@ export const geminiApi = {
     onError: (error: string) => void
   ) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/gemini/analyze-story-structured`, {
+      const response = await fetch(`${API_BASE_URL}/text-gen/analyze-story-structured`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-User-Id": getOrCreateUserId(),
         },
         body: JSON.stringify({ ...payload, stream: true }),
         credentials: "include",
@@ -873,7 +809,7 @@ export const geminiApi = {
 
   generateCharacterDesignsStructured: (payload: Step2DesignPayload) =>
     apiClient.post<Step2DesignStructuredResponse>(
-      "/gemini/character-designs-structured",
+      "/text-gen/character-designs-structured",
       payload
     ),
 
@@ -884,11 +820,10 @@ export const geminiApi = {
     onError: (error: string) => void
   ) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/gemini/character-designs-structured`, {
+      const response = await fetch(`${API_BASE_URL}/text-gen/character-designs-structured`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-User-Id": getOrCreateUserId(),
         },
         body: JSON.stringify({ ...payload, stream: true }),
         credentials: "include",
@@ -952,7 +887,7 @@ export const geminiApi = {
 
   generatePanelScriptStructured: (payload: Step3ScriptPayload) =>
     apiClient.post<Step3ScriptStructuredResponse>(
-      "/gemini/panel-script-structured",
+      "/text-gen/panel-script-structured",
       payload
     ),
 
@@ -963,11 +898,10 @@ export const geminiApi = {
     onError: (error: string) => void
   ) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/gemini/panel-script-structured`, {
+      const response = await fetch(`${API_BASE_URL}/text-gen/panel-script-structured`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-User-Id": getOrCreateUserId(),
         },
         body: JSON.stringify({ ...payload, stream: true }),
         credentials: "include",
@@ -1030,28 +964,28 @@ export const geminiApi = {
   },
 
   generateCharacterPrompt: (characterDescription: string) =>
-    apiClient.post("/gemini/character-prompt", {
+    apiClient.post("/text-gen/character-prompt", {
       character_description: characterDescription,
     }),
 
   generatePanelScript: (sceneDescription: string) =>
-    apiClient.post("/gemini/panel-script", {
+    apiClient.post("/text-gen/panel-script", {
       scene_description: sceneDescription,
     }),
 
   generatePanelImage: (payload: PanelImagePayload) =>
-    apiClient.post<PanelImageResponse>("/gemini/generate-panel-image", payload),
+    apiClient.post<PanelImageResponse>("/text-gen/generate-panel-image", payload),
 
   composePage: (payload: ComposePageRequest) =>
-    apiClient.post<ComposePageResponse>("/gemini/compose-page", payload),
+    apiClient.post<ComposePageResponse>("/text-gen/compose-page", payload),
 
   autoLayout: (payload: AutoLayoutRequest) =>
-    apiClient.post<AutoLayoutResponse>("/gemini/auto-layout", payload),
+    apiClient.post<AutoLayoutResponse>("/text-gen/auto-layout", payload),
 
   getLayoutDimensions: (payload: LayoutDimensionsRequest) =>
-    apiClient.post<LayoutDimensionsResponse>("/gemini/layout-dimensions", payload),
+    apiClient.post<LayoutDimensionsResponse>("/text-gen/layout-dimensions", payload),
 
-  health: () => apiClient.get("/gemini/health"),
+  health: () => apiClient.get("/text-gen/health"),
 };
 
 // Comic Generation Pipeline endpoints

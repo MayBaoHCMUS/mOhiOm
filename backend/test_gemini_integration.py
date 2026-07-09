@@ -81,7 +81,7 @@ async def test_gemini_health() -> bool:
 
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            response = await client.get(f"{BASE_URL}/gemini/health")
+            response = await client.get(f"{BASE_URL}/text-gen/health")
 
             if response.status_code == 200:
                 data = response.json()
@@ -114,7 +114,7 @@ async def test_generate_text(prompt: str = "Hello, write a short greeting") -> b
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
             payload = {"prompt": prompt}
             response = await client.post(
-                f"{BASE_URL}/gemini/generate-text",
+                f"{BASE_URL}/text-gen/generate-text",
                 json=payload,
                 timeout=60  # Longer timeout for AI generation
             )
@@ -157,7 +157,7 @@ async def test_analyze_story(story: str = "A hero went on a quest.") -> bool:
                 "num_chapters": 3
             }
             response = await client.post(
-                f"{BASE_URL}/gemini/analyze-story",
+                f"{BASE_URL}/text-gen/analyze-story",
                 json=payload,
                 timeout=60
             )
@@ -196,7 +196,7 @@ async def test_character_prompt(character: str = "A brave knight with blue armor
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
             payload = {"character_description": character}
             response = await client.post(
-                f"{BASE_URL}/gemini/character-prompt",
+                f"{BASE_URL}/text-gen/character-prompt",
                 json=payload,
                 timeout=60
             )

@@ -1,5 +1,6 @@
 """Admin analytics endpoints — aggregated data for thesis evaluation dashboard."""
 
+import secrets
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, Header, HTTPException, Query
@@ -10,7 +11,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 def _require_admin(x_admin_key: Optional[str]) -> None:
-    if not x_admin_key or x_admin_key != settings.ADMIN_SECRET_KEY:
+    if not x_admin_key or not secrets.compare_digest(x_admin_key, settings.ADMIN_SECRET_KEY):
         raise HTTPException(status_code=403, detail="Admin access required")
 
 

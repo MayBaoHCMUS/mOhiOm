@@ -17,7 +17,7 @@ from app.schemas import (
     LayoutDimensionsRequest, LayoutDimensionsResponse, PanelCellDimensions,
 )
 
-router = APIRouter(prefix="/gemini", tags=["gemini"])
+router = APIRouter(prefix="/text-gen", tags=["text-gen"])
 
 gemini_rate_limiter = PerUserRateLimiter(
     requests_per_second=settings.GEMINI_REQUESTS_PER_SECOND,

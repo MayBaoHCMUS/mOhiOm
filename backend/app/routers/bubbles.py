@@ -1,9 +1,10 @@
 """API routes for panel bubble data persistence."""
 
-from fastapi import APIRouter, Header, Query
-from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, Depends, Query
+from typing import Any, Optional, List, Dict
 from pydantic import BaseModel
 from app.database import mongo_db
+from app.deps import get_current_user_required
 
 router = APIRouter(prefix="/bubbles", tags=["bubbles"])
 
@@ -38,9 +39,9 @@ class PanelBubblesUpsert(BaseModel):
 @router.get("")
 def get_bubbles_for_comic(
     comicId: str = Query(...),
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ):
-    user_id = x_user_id or "anonymous"
+    user_id = str(current_user["_id"])
     docs = list(_col().find({"comicId": comicId, "userId": user_id}, {"_id": 0}))
     return docs
 
@@ -49,9 +50,9 @@ def get_bubbles_for_comic(
 def upsert_panel_bubbles(
     panel_id: str,
     payload: PanelBubblesUpsert,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ):
-    user_id = x_user_id or "anonymous"
+    user_id = str(current_user["_id"])
     doc = {
         "panelId": panel_id,
         "comicId": payload.comicId,
@@ -70,8 +71,8 @@ def upsert_panel_bubbles(
 def delete_panel_bubbles(
     panel_id: str,
     comicId: str = Query(...),
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ):
-    user_id = x_user_id or "anonymous"
+    user_id = str(current_user["_id"])
     _col().delete_one({"panelId": panel_id, "comicId": comicId, "userId": user_id})
     return {"ok": True, "panelId": panel_id}

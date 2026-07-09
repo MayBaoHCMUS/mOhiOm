@@ -344,7 +344,7 @@ flowchart LR
     end
 
     subgraph Server["Máy chủ ứng dụng"]
-        BE["FastAPI Backend<br/>(12 router: auth, gemini, projects,<br/>gallery, ratings, settings, ...)"]
+        BE["FastAPI Backend<br/>(12 router: auth, text_gen, projects,<br/>gallery, ratings, settings, ...)"]
         RL["Rate Limiter<br/>(theo người dùng)"]
         BE --- RL
     end
@@ -453,7 +453,7 @@ flowchart TB
         Steps["Các Step Component<br/>Step0Setup → Step5Export"]
         Bubble["DialogueEditor<br/>(bong bóng thoại)"]
         Export["Export lib<br/>(pdf-lib, jszip → PDF/EPUB/ZIP)"]
-        ApiClient["api.ts<br/>(REST client, X-User-Id)"]
+        ApiClient["api.ts<br/>(REST client, JWT cookie)"]
         Proxy["Route proxy ảnh<br/>manga-proxy / image-proxy"]
         Wizard --> Ctx
         Ctx --> Steps
@@ -464,7 +464,7 @@ flowchart TB
     end
 
     subgraph Backend["Backend (FastAPI)"]
-        Routers["Tầng Router<br/>auth · gemini · projects · settings ·<br/>gallery · ratings · analytics · bubbles"]
+        Routers["Tầng Router<br/>auth · text_gen · projects · settings ·<br/>gallery · ratings · analytics · bubbles"]
         GSvc["GeminiService<br/>(điều phối LLM, streaming,<br/>override per-request)"]
         Providers["providers.py<br/>(registry BYOK)"]
         RateL["rate_limit.py<br/>(hàng đợi theo user)"]
@@ -603,7 +603,7 @@ sequenceDiagram
 
     Note over U,DB: Bước 2 — Phân tích truyện (SSE)
     U->>FE: Bấm "Phân tích"
-    FE->>BE: POST /api/gemini/analyze-story (stream)
+    FE->>BE: POST /api/text-gen/analyze-story (stream)
     BE->>BE: rate_limiter.acquire(user)
     BE->>LLM: chat/completions (stream)
     loop từng khối token
@@ -616,7 +616,7 @@ sequenceDiagram
     FE->>DB: saveProject — steps.step2
 
     Note over U,DB: Bước 3 — Nhân vật nhất quán
-    FE->>BE: POST /api/gemini/character-designs-structured
+    FE->>BE: POST /api/text-gen/character-designs-structured
     BE->>LLM: sinh mô tả cấu trúc
     LLM-->>BE: JSON thiết kế nhân vật
     loop mỗi nhân vật
@@ -627,7 +627,7 @@ sequenceDiagram
     FE->>DB: saveProject — steps.step2ImageReview
 
     Note over U,DB: Bước 4 — Kịch bản, bố cục, sinh trang
-    FE->>BE: POST /api/gemini/panel-script
+    FE->>BE: POST /api/text-gen/panel-script
     BE->>LLM: sinh kịch bản từng panel
     LLM-->>BE: JSON panel script
     U->>FE: Chọn layout (hoặc AI Suggest), bấm Generate
@@ -798,12 +798,12 @@ Cơ sở dữ liệu `mohiom_db` gồm các collection chính:
 
 ### 4.5.1 Thiết kế REST API
 
-Tất cả endpoint gắn dưới prefix `/api`, dữ liệu JSON, định danh người dùng qua header `X-User-Id` (do client tự động chèn) hoặc JWT cookie cho các thao tác cần xác thực thật. Các nhóm chính (danh sách đầy đủ tại **Phụ lục B**):
+Tất cả endpoint gắn dưới prefix `/api`, dữ liệu JSON. Định danh người dùng cho mọi endpoint đọc/ghi dữ liệu cá nhân (dự án, nhân vật, đánh giá, bong bóng thoại) được suy ra **duy nhất** từ JWT ký số trong cookie `httpOnly` (dependency `get_current_user_optional`/`get_current_user_required`, `app/deps.py`) — không có endpoint nghiệp vụ nào còn tin vào định danh do client tự khai báo qua header (xem mục 5.5.5 về lỗ hổng kiểm soát truy cập được phát hiện và khắc phục theo hướng này). Các nhóm chính (danh sách đầy đủ tại **Phụ lục B**):
 
 | Nhóm | Endpoint tiêu biểu | Chức năng |
 |---|---|---|
 | Xác thực | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/oauth/{provider}`, `POST /api/auth/forgot-password` | đăng ký/đăng nhập, OAuth Google/GitHub, đặt lại mật khẩu |
-| Sinh văn bản | `POST /api/gemini/generate-text`, `POST /api/gemini/analyze-story`, `POST /api/gemini/character-prompt`, `POST /api/gemini/character-designs-structured`, `POST /api/gemini/panel-script` | các bước LLM của pipeline; nhiều endpoint có biến thể streaming |
+| Sinh văn bản | `POST /api/text-gen/generate-text`, `POST /api/text-gen/analyze-story`, `POST /api/text-gen/character-prompt`, `POST /api/text-gen/character-designs-structured`, `POST /api/text-gen/panel-script` | các bước LLM của pipeline (đặt tên trung lập theo nhà cung cấp — router không chỉ phục vụ Gemini mà cả NineRouter/BYOK); nhiều endpoint có biến thể streaming |
 | Dự án | `POST /api/projects/save`, `GET /api/projects/list`, `GET /api/projects/load`, `POST /api/projects/images/save`, `DELETE /api/projects/{id}` | lưu/tải dự án và ảnh, danh sách kèm tiến độ S1–S5 |
 | Nhân vật | `GET/POST/PUT/DELETE /api/projects/characters` | thư viện nhân vật cá nhân + nhân vật trong dự án |
 | Cài đặt | `GET/PUT/DELETE /api/settings/text-gen-config`, `GET /api/settings/text-gen-providers` | cấu hình BYOK/NineRouter/local server |
@@ -952,7 +952,7 @@ Mỗi bước là một component trong `components/studio-steps/`: `Step0Setup`
 
 Ghép các phần trên lại, một lượt sinh truyện hoàn chỉnh diễn ra như sau:
 
-1. **Nhập & phân tích:** văn bản + cấu hình gửi tới `POST /api/gemini/analyze-story` (SSE). Kết quả JSON được parse thành nhân vật/cảnh/thoại, hiển thị cho người dùng hiệu chỉnh, rồi đóng dấu duyệt.
+1. **Nhập & phân tích:** văn bản + cấu hình gửi tới `POST /api/text-gen/analyze-story` (SSE). Kết quả JSON được parse thành nhân vật/cảnh/thoại, hiển thị cho người dùng hiệu chỉnh, rồi đóng dấu duyệt.
 2. **Nhân vật:** `character-designs-structured` sinh bản thiết kế cấu trúc; với mỗi nhân vật, frontend gọi máy chủ sinh ảnh (qua proxy) tạo các ảnh chân dung ứng viên; người dùng chọn ảnh chính thức và gắn ảnh tham chiếu nếu muốn. Nhân vật lưu được vào thư viện dùng lại.
 3. **Kịch bản & bố cục:** `panel-script` sinh kịch bản từng panel theo trang; người dùng chọn mẫu bố cục cho từng trang (hoặc để AI gợi ý — backend phân tích nội dung trang và đề xuất template kèm lý do).
 4. **Sinh ảnh:** với chế độ panel-by-panel, mỗi panel được tính kích thước sinh phù hợp từ bbox của nó trong template (làm tròn bội số 8, chặn trong [256, 1024]); prompt ghép từ kịch bản + mô tả nhân vật + phong cách; ảnh tham chiếu truyền kèm hệ số `ip_scale` để IP-Adapter giữ nhận dạng. Vòng sinh có retry 3 lần/panel và tạm dừng – tiếp tục được.
@@ -985,6 +985,18 @@ Ghép các phần trên lại, một lượt sinh truyện hoàn chỉnh diễn 
 - **`useSearchParams()` của Next.js 14 yêu cầu Suspense boundary:** tránh hoàn toàn bằng cách đọc `searchParams` ở Server Component và dùng `usePathname()`/`useRouter()` phía client khi đồng bộ URL dự án.
 - **Vòng lặp render vô hạn ("Maximum update depth exceeded") ở màn hình quản lý nhân vật:** một mảng dẫn xuất (lọc bằng `.filter()` từ dữ liệu gốc) được tính lại — tức cấp một tham chiếu mới — ở mỗi lần render, trong khi vẫn được dùng làm dependency của `useEffect`; effect đó lại gọi `setState` với một `Set` mới không kiểm tra thay đổi thực sự trước khi cập nhật, tạo vòng lặp render bất tận. Khắc phục bằng cách bọc mảng dẫn xuất trong `useMemo` (ổn định tham chiếu khi dữ liệu gốc không đổi) và thêm điều kiện so sánh nội dung trước khi `setState` trong effect liên quan. Bài học chung: mọi mảng/object dẫn xuất dùng làm dependency của hook đều phải được memo hoá, nếu không dependency array mất tác dụng.
 - **Thiếu lớp bảo vệ xác thực cho toàn bộ khu vực Studio, và một race condition khi sửa:** phát hiện người dùng chưa đăng nhập vẫn truy cập được mọi trang trong khu vực tạo truyện (không có middleware/layout chặn), khiến các lời gọi API chỉ âm thầm thất bại (401/400) thay vì chuyển hướng sang trang đăng nhập. Khắc phục bằng một layout dùng chung ở gốc khu vực này, kiểm tra trạng thái xác thực và chuyển hướng. Trong lúc kiểm thử phát hiện thêm: gọi `router.replace()` của Next.js bên trong `useEffect` có thể bị bỏ qua nếu trùng thời điểm với một lượt chuyển trang phía client đang diễn ra (race condition) — việc chuyển hướng đôi khi không xảy ra dù điều kiện đúng, xác nhận bằng cách quan sát hành vi thay đổi khi thêm một lệnh log gỡ lỗi (đủ để lệch thời điểm thực thi). Khắc phục triệt để bằng cách dùng điều hướng trình duyệt thật (`window.location.replace`) thay cho API điều hướng nội bộ của framework, vốn có thể bị bỏ qua giữa một lượt chuyển trang dang dở.
+
+### 5.5.5 Rà soát bảo mật: lỗ hổng kiểm soát truy cập (IDOR) và secret mặc định không an toàn
+
+Một đợt rà soát bảo mật riêng (đối chiếu với danh sách lỗi điển hình của các ứng dụng "vibe-coded" — quyền hạn xử lý ở frontend, backend không kiểm tra quyền phía server, hardcode secret...) phát hiện hai vấn đề thật trong hệ thống, dù phần lớn hạng mục trong danh sách đó (mật khẩu plaintext, lộ secret trong mã nguồn, frontend nối thẳng CSDL, ẩn nội dung chỉ bằng CSS) đã được xác nhận **không** xảy ra.
+
+*Vấn đề 1 — Broken Object-Level Authorization (kiểu IDOR, OWASP API1:2023):* các router `projects`, `bubbles`, `ratings` xác định danh tính người gọi bằng cách đọc thẳng header `X-User-Id` do **chính client tự gửi** (một UUID sinh và lưu ở `localStorage`), không đối chiếu với phiên đăng nhập đã xác thực nào. Trong khi đó `settings`/`auth` đã dùng đúng dependency JWT (`get_current_user_required`) sẵn có trong `app/deps.py`. Hệ quả: chỉ cần đổi giá trị header này (qua DevTools hoặc `curl`) là đọc/sửa/xoá được dự án, nhân vật, ảnh và đánh giá của **người dùng khác**, bất kể có đăng nhập hay không.
+
+*Khắc phục:* thay toàn bộ tham số `x_user_id: Header(...)` trong ba router trên bằng `Depends(get_current_user_required)`, lấy `user_id` từ `str(current_user["_id"])` của tài liệu Mongo đã được xác thực qua JWT — tái dùng đúng cơ chế đã có sẵn ở `settings.py`, không phát minh thêm cơ chế mới. Loại bỏ luôn header `X-User-Id` và đoạn mã đồng bộ nó vào `localStorage` ở frontend (`api.ts`, `AuthContext.tsx`) vì trở nên thừa. Kiểm chứng bằng `curl` trực tiếp vào API (không qua giao diện): request có header giả nhưng không có cookie phiên hợp lệ nay trả `401` thay vì thành công.
+
+*Vấn đề 2 — Secret mặc định không an toàn:* `app/config.py` có giá trị mặc định cho `JWT_SECRET_KEY` (`"change-me"`) và `ADMIN_SECRET_KEY` (`"mohiom-admin-2024"`) khi biến môi trường tương ứng chưa được cấu hình — nếu triển khai production mà quên đặt, toàn bộ JWT có thể bị giả mạo bằng secret đã biết trước. *Khắc phục:* thêm một `model_validator` ở tầng cấu hình Pydantic khiến ứng dụng **từ chối khởi động** (fail-fast) nếu hai giá trị này còn để trống hoặc còn bằng đúng giá trị mặc định không an toàn, thay vì âm thầm chạy với secret đã biết. Đồng thời chuyển phép so sánh `ADMIN_SECRET_KEY` từ `!=` sang `secrets.compare_digest` để tránh kênh rò rỉ qua thời gian so sánh (timing side-channel).
+
+*Ghi nhận cho Chương 6:* phát hiện này củng cố nhận định ở mục 6.3.2 rằng "token của người dùng A không đọc được dự án người dùng B" — trước đợt rà soát này, khẳng định đó **chưa đúng thực tế** đối với ba router trên dù đã được liệt kê là đã kiểm thử; đây là một nhắc nhở cụ thể rằng kiểm thử bảo mật cần đối chiếu từng endpoint với cơ chế xác thực thực sự đang dùng (JWT) thay vì tin vào bất kỳ định danh nào client gửi kèm, thay vì suy luận từ hành vi đúng của giao diện — giao diện đúng không đồng nghĩa API phía sau đã được bảo vệ đúng.
 
 ---
 
@@ -1045,7 +1057,7 @@ Phương pháp: đo trên tập truyện mẫu cố định (3 truyện: ~300, ~
 
 ### 6.3.2 Kiểm thử bảo mật
 
-- **Xác thực JWT:** truy cập endpoint bảo vệ không kèm token → 401; token hết hạn/chữ ký sai → 401; token của người dùng A không đọc được dự án người dùng B (kiểm tra `user_id` trong truy vấn).
+- **Xác thực JWT:** truy cập endpoint bảo vệ không kèm token → 401; token hết hạn/chữ ký sai → 401; token của người dùng A không đọc được dự án người dùng B (kiểm tra `user_id` trong truy vấn, đối chiếu với danh tính suy ra từ JWT chứ không phải từ giá trị client tự khai báo). Kiểm thử này ban đầu chỉ xác nhận đúng ở router `settings`/`auth`; rà soát riêng sau đó phát hiện ba router `projects`/`bubbles`/`ratings` chưa thực sự tuân thủ (đọc thẳng header `X-User-Id` không xác thực) — đã khắc phục, chi tiết ở mục 5.5.5.
 - **Mật khẩu và khoá:** mật khẩu lưu dạng băm bcrypt (kiểm tra trực tiếp tài liệu trong DB); khoá BYOK trong `text_gen_config` là chuỗi Fernet, không giải mã được nếu thiếu `JWT_SECRET_KEY`; log request tự động che token.
 - **Rate limit:** kịch bản bắn dồn 20 request/giây từ một user → đúng hợp đồng 429/503, user khác không bị ảnh hưởng ngân sách.
 - **OAuth:** luồng đổi mã (code exchange) thực hiện hoàn toàn phía server; `client_secret` không bao giờ xuất hiện phía trình duyệt.
@@ -1186,13 +1198,13 @@ Nhìn nhận thẳng thắn, hệ thống còn các hạn chế sau:
 | `GET /api/auth/oauth/{google\|github}` | Bắt đầu luồng OAuth |
 | `GET /api/auth/oauth/{provider}/callback` | Nhận mã uỷ quyền, hợp nhất tài khoản |
 | `POST /api/auth/forgot-password` · `POST /api/auth/reset-password` | Quên/đặt lại mật khẩu qua email |
-| `POST /api/gemini/generate-text` (+ `/stream`) | Sinh văn bản tự do |
-| `POST /api/gemini/analyze-story` (+ `/stream`) | Phân tích truyện: nhân vật, cảnh, thoại |
-| `POST /api/gemini/adapt-story` | Chuyển thể/rút gọn truyện |
-| `POST /api/gemini/character-prompt` | Sinh prompt ảnh cho nhân vật |
-| `POST /api/gemini/character-designs-structured` | Bản thiết kế nhân vật có cấu trúc |
-| `POST /api/gemini/panel-script` (+ `/stream`) | Kịch bản chi tiết từng panel |
-| `POST /api/gemini/generate-panel-image` | Sinh ảnh panel (đường Gemini) |
+| `POST /api/text-gen/generate-text` (+ `/stream`) | Sinh văn bản tự do |
+| `POST /api/text-gen/analyze-story` (+ `/stream`) | Phân tích truyện: nhân vật, cảnh, thoại |
+| `POST /api/text-gen/adapt-story` | Chuyển thể/rút gọn truyện |
+| `POST /api/text-gen/character-prompt` | Sinh prompt ảnh cho nhân vật |
+| `POST /api/text-gen/character-designs-structured` | Bản thiết kế nhân vật có cấu trúc |
+| `POST /api/text-gen/panel-script` (+ `/stream`) | Kịch bản chi tiết từng panel |
+| `POST /api/text-gen/generate-panel-image` | Sinh ảnh panel (đường Gemini) |
 | `POST /api/projects/save` · `GET /api/projects/load` · `GET /api/projects/list` | Lưu/tải/danh sách dự án (kèm cờ tiến độ has_step1…has_step4) |
 | `POST /api/projects/images/save` · `GET /api/projects/images/load` | Lưu/tải ảnh dự án (collection tách riêng) |
 | `POST /api/projects/publish` · `DELETE /api/projects/{id}` | Xuất bản / xoá dự án |
