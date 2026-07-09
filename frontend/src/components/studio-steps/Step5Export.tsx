@@ -362,8 +362,8 @@ export default function Step5Export() {
           <button type="button"
             onClick={() => { handleApprove(5); router.push('/studio/publish'); }}
             disabled={!hasImages}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 ${
-              !hasImages ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600'
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 border-2 border-transparent ${
+              !hasImages ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600 t-next-border'
             }`}>
             ✓ Finish &amp; Go to Publish →
           </button>

@@ -176,10 +176,10 @@ function WizardContent() {
                 type="button"
                 onClick={handleNext}
                 disabled={isNextDisabled}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-transform ${
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-transform border-2 border-transparent ${
                   isNextDisabled
                     ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    : 'bg-emerald-500 text-white hover:bg-emerald-600 hover:scale-105'
+                    : 'bg-emerald-500 text-white hover:bg-emerald-600 hover:scale-105 t-next-border'
                 }`}
               >
                 {nextLabel}
