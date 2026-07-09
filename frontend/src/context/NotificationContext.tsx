@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
 
 export type NotificationVariant = 'success' | 'partial' | 'error';
 
@@ -35,39 +36,39 @@ const NotificationContext = createContext<NotificationContextValue | undefined>(
 const MAX_STORED_NOTIFICATIONS = 30;
 const STORAGE_PREFIX = 'mohiom-notifications';
 
-function getStorageKey(): string {
-  if (typeof window === 'undefined') return `${STORAGE_PREFIX}:anonymous`;
-  const userId = window.localStorage.getItem('mohiom-user-id');
+function storageKeyFor(userId: string | undefined | null): string {
   return userId ? `${STORAGE_PREFIX}:${userId}` : `${STORAGE_PREFIX}:anonymous`;
 }
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const userId = user?.id;
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    hasLoadedRef.current = false;
     try {
-      const raw = window.localStorage.getItem(getStorageKey());
-      if (raw) {
-        const parsed = JSON.parse(raw) as Notification[];
-        if (Array.isArray(parsed)) setNotifications(parsed);
-      }
+      const raw = window.localStorage.getItem(storageKeyFor(userId));
+      const parsed = raw ? (JSON.parse(raw) as Notification[]) : [];
+      setNotifications(Array.isArray(parsed) ? parsed : []);
     } catch (err) {
       console.warn('[notifications] Could not load from localStorage:', err);
+      setNotifications([]);
     } finally {
       hasLoadedRef.current = true;
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     if (!hasLoadedRef.current || typeof window === 'undefined') return;
     try {
-      window.localStorage.setItem(getStorageKey(), JSON.stringify(notifications));
+      window.localStorage.setItem(storageKeyFor(userId), JSON.stringify(notifications));
     } catch (err) {
       console.warn('[notifications] Could not persist to localStorage:', err);
     }
-  }, [notifications]);
+  }, [notifications, userId]);
 
   const addNotification = useCallback((input: AddNotificationInput) => {
     const next: Notification = {

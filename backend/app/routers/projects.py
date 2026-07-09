@@ -3,8 +3,9 @@ API routes for project save / load.
 """
 
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException
 from typing import Any, Dict, List, Optional
+from app.deps import get_current_user_required
 from app.schemas import ProjectSaveRequest, ProjectListItem, CharacterSummary, CharacterUpsertPayload, CharacterPatchPayload, StatsResponse, ProjectPublishPayload, ProjectImageEntry, ProjectImagesSaveRequest, ProjectImagesResponse
 from app.database import mongo_db
 from app import r2_storage
@@ -22,12 +23,6 @@ def _char_col():
 
 def _img_col():
     return mongo_db.get_database()["project_images"]
-
-
-def _require_user(x_user_id: Optional[str]) -> str:
-    if not x_user_id:
-        raise HTTPException(status_code=400, detail="X-User-Id header required")
-    return x_user_id
 
 
 def _has_success_page(steps: Dict[str, Any]) -> bool:
@@ -55,9 +50,9 @@ def _maybe_upload(url: Optional[str], folder: str) -> Optional[str]:
 @router.post("/save")
 def save_project(
     payload: ProjectSaveRequest,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> Dict[str, str]:
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
     doc = payload.model_dump()
     doc["steps"] = r2_storage.sanitize_base64_in_place(doc["steps"], folder=f"steps/{payload.project_id}")
     doc["user_id"] = user_id
@@ -71,9 +66,9 @@ def save_project(
 
 @router.get("/", response_model=List[ProjectListItem])
 def list_projects(
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> List[Dict[str, Any]]:
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
     docs = list(_col().find({"user_id": user_id}, {"_id": 0, "user_id": 0}))
     # Real generated-image data lives in project_images (saved via POST
     # /{project_id}/images), not in step4.data.pageStates — fetch which
@@ -113,10 +108,10 @@ def list_projects(
 
 @router.get("/characters", response_model=List[CharacterSummary])
 def list_characters(
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> List[Dict[str, Any]]:
     """Return all characters across a user's standalone library and saved projects, deduplicated by character_id."""
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
     seen: set = set()
     result = []
 
@@ -168,10 +163,10 @@ def list_characters(
 @router.post("/characters", response_model=CharacterSummary)
 def create_standalone_character(
     payload: CharacterUpsertPayload,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> CharacterSummary:
     """Save a character to the user's standalone library (no project required)."""
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
     existing = _char_col().find_one({"user_id": user_id, "character_id": payload.character_id})
     if existing:
         raise HTTPException(status_code=409, detail="Character ID already exists")
@@ -199,10 +194,10 @@ def create_standalone_character(
 def update_standalone_character(
     character_id: str,
     payload: CharacterPatchPayload,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> CharacterSummary:
     """Update a standalone character in the user's library."""
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
     char = _char_col().find_one({"user_id": user_id, "character_id": character_id})
     if not char:
         raise HTTPException(status_code=404, detail="Character not found")
@@ -231,10 +226,10 @@ def update_standalone_character(
 @router.delete("/characters/{character_id}")
 def delete_standalone_character(
     character_id: str,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> Dict[str, str]:
     """Delete a standalone character from the user's library."""
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
     char = _char_col().find_one({"user_id": user_id, "character_id": character_id})
     if not char:
         raise HTTPException(status_code=404, detail="Character not found")
@@ -262,9 +257,9 @@ def _set_characters(col, user_id: str, project_id: str, chars: List[Dict[str, An
 def create_character(
     project_id: str,
     payload: CharacterUpsertPayload,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> Dict[str, Any]:
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
     doc = _col().find_one({"user_id": user_id, "project_id": project_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -295,9 +290,9 @@ def update_character(
     project_id: str,
     character_id: str,
     payload: CharacterPatchPayload,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> Dict[str, Any]:
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
     doc = _col().find_one({"user_id": user_id, "project_id": project_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -326,9 +321,9 @@ def update_character(
 def delete_character(
     project_id: str,
     character_id: str,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> Dict[str, str]:
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
     doc = _col().find_one({"user_id": user_id, "project_id": project_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -345,9 +340,9 @@ def delete_character(
 
 @router.get("/stats", response_model=StatsResponse)
 def get_stats(
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> StatsResponse:
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
 
     project_count = _col().count_documents({"user_id": user_id})
 
@@ -380,9 +375,9 @@ def get_stats(
 @router.get("/{project_id}")
 def load_project(
     project_id: str,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> Dict[str, Any]:
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
     doc = _col().find_one(
         {"user_id": user_id, "project_id": project_id},
         {"_id": 0, "user_id": 0},
@@ -396,9 +391,9 @@ def load_project(
 def save_project_images(
     project_id: str,
     payload: ProjectImagesSaveRequest,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> Dict[str, Any]:
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
     if not _col().find_one({"user_id": user_id, "project_id": project_id}):
         raise HTTPException(status_code=404, detail="Project not found")
     now = datetime.now(timezone.utc).isoformat()
@@ -420,9 +415,9 @@ def save_project_images(
 @router.get("/{project_id}/images", response_model=ProjectImagesResponse)
 def load_project_images(
     project_id: str,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> Dict[str, Any]:
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
     docs = list(_img_col().find(
         {"user_id": user_id, "project_id": project_id},
         {"_id": 0, "user_id": 0, "project_id": 0, "saved_at": 0},
@@ -434,10 +429,10 @@ def load_project_images(
 def publish_project(
     project_id: str,
     payload: ProjectPublishPayload,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> Dict[str, Any]:
     """Toggle a project's public visibility in the community gallery."""
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
     result = _col().update_one(
         {"user_id": user_id, "project_id": project_id},
         {"$set": {"is_public": payload.is_public}},
@@ -450,9 +445,9 @@ def publish_project(
 @router.delete("/{project_id}")
 def delete_project(
     project_id: str,
-    x_user_id: Optional[str] = Header(None),
+    current_user: Dict[str, Any] = Depends(get_current_user_required),
 ) -> Dict[str, str]:
-    user_id = _require_user(x_user_id)
+    user_id = str(current_user["_id"])
     if not _col().find_one({"user_id": user_id, "project_id": project_id}, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Project not found")
 

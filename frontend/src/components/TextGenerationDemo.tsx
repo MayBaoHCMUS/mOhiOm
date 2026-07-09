@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { geminiApi } from "@/services/api";
+import { textGenApi } from "@/services/api";
 
 export default function TextGenerationDemo() {
   const [prompt, setPrompt] = useState("");
@@ -22,7 +22,7 @@ export default function TextGenerationDemo() {
     setResponse("");
     setError("");
 
-    await geminiApi.generateTextStream(
+    await textGenApi.generateTextStream(
       prompt,
       (chunk) => {
         setResponse((prev) => prev + chunk);
@@ -50,7 +50,7 @@ export default function TextGenerationDemo() {
     setError("");
 
     try {
-      const result = await geminiApi.generateText(prompt, false);
+      const result = await textGenApi.generateText(prompt, false);
       setResponse(result.data.generated_text);
     } catch (err) {
       const e = err as { response?: { data?: { detail?: { message?: string } } }; message?: string };

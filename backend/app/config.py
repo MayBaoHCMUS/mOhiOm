@@ -1,6 +1,12 @@
 from pathlib import Path
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 from typing import List
+
+_INSECURE_DEFAULTS = {
+    "JWT_SECRET_KEY": "change-me",
+    "ADMIN_SECRET_KEY": "mohiom-admin-2024",
+}
 
 # Resolve the backend root so .env is loaded even when app runs from repo root
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
@@ -86,6 +92,21 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
         case_sensitive = True
         extra = "ignore"
+
+    @model_validator(mode="after")
+    def _reject_insecure_secrets(self) -> "Settings":
+        problems = [
+            name
+            for name, insecure_value in _INSECURE_DEFAULTS.items()
+            if not getattr(self, name) or getattr(self, name) == insecure_value
+        ]
+        if problems:
+            raise ValueError(
+                "Refusing to start: insecure/unset secret(s) detected: "
+                f"{', '.join(problems)}. Set real random values via environment "
+                "variables (see backend/.env.example)."
+            )
+        return self
 
 
 settings = Settings()

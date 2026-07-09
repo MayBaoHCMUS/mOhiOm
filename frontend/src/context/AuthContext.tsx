@@ -36,11 +36,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await authApi.me();
       const nextUser = response.data?.user ?? null;
       setUser(nextUser);
-      // Keep the localStorage user ID in sync with the authenticated user so
-      // that X-User-Id headers on project/character requests match the DB records.
-      if (nextUser?.id && typeof window !== 'undefined') {
-        window.localStorage.setItem('mohiom-user-id', nextUser.id);
-      }
       return nextUser;
     } catch {
       setUser(null);
@@ -59,9 +54,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await authApi.logout();
     } finally {
       setUser(null);
-      if (typeof window !== 'undefined') {
-        window.localStorage.removeItem('mohiom-user-id');
-      }
       setIsLoading(false);
     }
   }, []);
