@@ -38,7 +38,19 @@ function useTargetRect(selector: string) {
 
     // The sidebar's width transition (300ms) changes target geometry without
     // firing scroll/resize, so give it a moment before the first measurement.
-    const initialTimer = window.setTimeout(recalc, 320);
+    const initialTimer = window.setTimeout(() => {
+      recalc();
+      const target = document.querySelector(selector);
+      if (target) {
+        const targetRect = target.getBoundingClientRect();
+        const inView =
+          targetRect.top >= 0 &&
+          targetRect.left >= 0 &&
+          targetRect.bottom <= window.innerHeight &&
+          targetRect.right <= window.innerWidth;
+        if (!inView) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 320);
     recalc();
 
     const el = document.querySelector(selector);
@@ -64,16 +76,48 @@ function useTargetRect(selector: string) {
 function popoverPosition(rect: DOMRect, tooltipHeight: number) {
   const width = 280;
   const gap = 24;
-  let left = rect.right + gap;
-  let top = rect.top + rect.height / 2 - tooltipHeight / 2;
-  let arrow: 'left' | 'top' = 'left';
+  const margin = 16;
 
-  if (left + width > window.innerWidth - 16) {
-    left = rect.right - width; // fall back to below the target if there's no room on the right
+  const spaceRight = window.innerWidth - rect.right - gap;
+  const spaceBelow = window.innerHeight - rect.bottom - gap;
+  const spaceAbove = rect.top - gap;
+
+  let left: number;
+  let top: number;
+  let arrow: 'left' | 'top' | 'bottom';
+
+  if (spaceRight >= width) {
+    // Preferred: to the right, vertically centered on the target.
+    left = rect.right + gap;
+    top = rect.top + rect.height / 2 - tooltipHeight / 2;
+    arrow = 'left';
+  } else if (spaceBelow >= tooltipHeight) {
+    // Below the target, arrow pointing up at it.
+    left = rect.right - width;
     top = rect.bottom + gap;
     arrow = 'top';
+  } else if (spaceAbove >= tooltipHeight) {
+    // Above the target, arrow pointing down at it.
+    left = rect.right - width;
+    top = rect.top - gap - tooltipHeight;
+    arrow = 'bottom';
+  } else {
+    // Neither side fully fits — clamping alone would otherwise cover the
+    // target, so pick whichever side has more room and let the final clamp
+    // below just keep it on-screen.
+    if (spaceBelow >= spaceAbove) {
+      left = rect.right - width;
+      top = rect.bottom + gap;
+      arrow = 'top';
+    } else {
+      left = rect.right - width;
+      top = rect.top - gap - tooltipHeight;
+      arrow = 'bottom';
+    }
   }
-  top = Math.max(16, Math.min(top, window.innerHeight - tooltipHeight - 16));
+
+  left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
+  top = Math.max(margin, Math.min(top, window.innerHeight - tooltipHeight - margin));
 
   return { left, top, width, arrow };
 }
@@ -239,6 +283,15 @@ export default function SpotlightTour({ steps, currentStep, onNext, onPrev, onSk
                   position: 'absolute', top: -9, left: '50%', transform: 'translateX(-50%)',
                   width: 0, height: 0, borderStyle: 'solid', borderWidth: '0 9px 9px 9px',
                   borderColor: 'transparent transparent var(--color-surface-container-lowest) transparent',
+                }}
+              />
+            )}
+            {pos.arrow === 'bottom' && (
+              <div
+                style={{
+                  position: 'absolute', bottom: -9, left: '50%', transform: 'translateX(-50%)',
+                  width: 0, height: 0, borderStyle: 'solid', borderWidth: '9px 9px 0 9px',
+                  borderColor: 'var(--color-surface-container-lowest) transparent transparent transparent',
                 }}
               />
             )}

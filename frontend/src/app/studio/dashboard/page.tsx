@@ -162,6 +162,7 @@ export default function StudioDashboardPage() {
               </p>
               <div className="flex gap-4">
                 <button
+                  data-tour="dashboard-hero-cta"
                   onClick={() => mostRecent ? handleLoadProject(mostRecent.project_id) : router.push('/studio')}
                   className="px-6 py-3 bg-white text-primary font-bold rounded-full premium-shadow hover:bg-surface-container-lowest transition-colors"
                 >
@@ -180,6 +181,7 @@ export default function StudioDashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Link
               href="/studio/story-setup"
+              data-tour="dashboard-entry-story"
               className="group flex flex-col gap-4 rounded-3xl bg-surface-container-lowest border border-outline-variant/20 p-6 hover:border-primary/30 hover:bg-surface-container-low transition-all ambient-lift"
             >
               <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
@@ -198,6 +200,7 @@ export default function StudioDashboardPage() {
             <button
               type="button"
               onClick={() => router.push('/studio')}
+              data-tour="dashboard-entry-open"
               className="group flex flex-col gap-4 rounded-3xl bg-surface-container-lowest border border-outline-variant/20 p-6 hover:border-primary/30 hover:bg-surface-container-low transition-all ambient-lift text-left"
             >
               <div className="w-12 h-12 rounded-2xl bg-surface-container-high flex items-center justify-center group-hover:bg-surface-container-highest transition-colors">
@@ -216,6 +219,7 @@ export default function StudioDashboardPage() {
             <button
               type="button"
               onClick={() => importInputRef.current?.click()}
+              data-tour="dashboard-entry-import"
               className="group flex flex-col gap-4 rounded-3xl bg-surface-container-lowest border border-outline-variant/20 p-6 hover:border-primary/30 hover:bg-surface-container-low transition-all ambient-lift text-left"
             >
               <div className="w-12 h-12 rounded-2xl bg-surface-container-high flex items-center justify-center group-hover:bg-surface-container-highest transition-colors">
@@ -236,7 +240,7 @@ export default function StudioDashboardPage() {
         </section>
 
         {/* Recent Projects */}
-        <section className="mb-16">
+        <section className="mb-16" data-tour="dashboard-recent-projects">
           <div className="flex items-center justify-between mb-8">
             <div>
               <h3 className="text-2xl font-bold text-on-surface">Recent Projects</h3>
@@ -321,7 +325,7 @@ export default function StudioDashboardPage() {
         </section>
 
         {/* Recent Characters */}
-        <section>
+        <section data-tour="dashboard-recent-characters">
           <div className="flex items-center justify-between mb-8">
             <div>
               <h3 className="text-2xl font-bold text-on-surface">Recent Characters</h3>

@@ -438,6 +438,7 @@ export default function Step1() {
                 Open existing project
               </button>
               <button type="button" onClick={() => importInputRef.current?.click()}
+                data-tour="step0-import-json"
                 className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold border border-gray-200 bg-white text-gray-700 hover:bg-gray-50">
                 <span className="material-symbols-outlined text-base">upload</span>
                 Import JSON
@@ -470,6 +471,7 @@ export default function Step1() {
             My Projects
           </button>
           <button type="button" onClick={() => importInputRef.current?.click()}
+            data-tour="step0-import-json"
             className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors">
             <span className="material-symbols-outlined text-sm">upload</span>
             Import JSON
@@ -515,6 +517,7 @@ export default function Step1() {
             Edit in Story Setup ↗
           </Link>
           <button type="button" onClick={() => setSwitchModalOpen(true)}
+            data-tour="step0-switch-story"
             className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-white border border-blue-200 rounded-xl px-3 py-1.5">
             <span className="material-symbols-outlined text-sm">swap_horiz</span>
             Switch story
@@ -578,6 +581,7 @@ export default function Step1() {
             <div className="relative">
               <input
                 id="pipeline-project-id"
+                data-tour="step0-project-id"
                 value={projectId}
                 onChange={(e) => setProjectId(e.target.value)}
                 onBlur={() => setProjectIdTouched(true)}
@@ -650,6 +654,7 @@ export default function Step1() {
             <div className="relative">
               <input
                 id="pipeline-art-style"
+                data-tour="step0-art-style"
                 value={artStyle}
                 onChange={(e) => setArtStyle(e.target.value)}
                 onBlur={() => setArtStyleTouched(true)}
@@ -732,6 +737,7 @@ export default function Step1() {
               </div>
               <textarea
                 id="pipeline-special"
+                data-tour="step0-special-requests"
                 value={specialRequests}
                 onChange={(e) => setSpecialRequests(e.target.value)}
                 className="flex-grow w-full rounded-2xl bg-white px-4 py-3 text-sm focus:outline-none border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 resize-none min-h-[72px]"
