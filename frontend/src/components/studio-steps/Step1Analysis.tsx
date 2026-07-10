@@ -976,6 +976,7 @@ export default function Step1Analysis() {
             <button
               type="button"
               onClick={() => handleRevokeApproval(1)}
+              data-tour="step1-revoke-approval"
               className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-surface-container-high text-on-surface-variant hover:text-on-surface transition-colors"
             >
               <span className="material-symbols-outlined text-base">undo</span>
@@ -986,6 +987,7 @@ export default function Step1Analysis() {
             <button
               type="button"
               onClick={() => handleRetry(1)}
+              data-tour="step1-retry"
               className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-red-500/10 text-red-600 hover:bg-red-500/20 transition-colors"
             >
               <span className="material-symbols-outlined text-base">replay</span>
@@ -1166,6 +1168,7 @@ export default function Step1Analysis() {
                   type="button"
                   onClick={handleRegenClick}
                   disabled={!canGenerate}
+                  data-tour="step1-regenerate"
                   className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40"
                 >
                   <span className="material-symbols-outlined text-base">refresh</span>
@@ -1175,6 +1178,7 @@ export default function Step1Analysis() {
                 <button
                   type="button"
                   onClick={handleApproveAndContinue}
+                  data-tour="step1-approve-continue"
                   className="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 bg-primary text-on-primary hover:opacity-90 t-next-border"
                 >
                   <span

@@ -5,6 +5,7 @@ import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
 import { ComicGenerationProvider, StepKey, WizardStepKey, useComicGeneration } from '@/context/ComicGenerationContext';
 import { useOnboardingContext } from '@/context/OnboardingContext';
+import { publishWizardStep } from '@/utils/wizardStepBus';
 import Step0Setup from '@/components/studio-steps/Step0Setup';
 import Step1Analysis from '@/components/studio-steps/Step1Analysis';
 import Step2Characters from '@/components/studio-steps/Step2Characters';
@@ -28,6 +29,10 @@ function WizardContent() {
   useEffect(() => {
     if (activeStep === 4) markChecklistItem('runPipeline');
   }, [activeStep, markChecklistItem]);
+
+  useEffect(() => {
+    publishWizardStep(activeStep);
+  }, [activeStep]);
 
   const current = wizardSteps.find((step) => step.key === activeStep) ?? wizardSteps[0];
   const CurrentComponent = current.Component;

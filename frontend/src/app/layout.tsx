@@ -4,6 +4,7 @@ import { AuthProvider } from '@/context/AuthContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { OnboardingProvider } from '@/context/OnboardingContext';
 import OnboardingOrchestrator from '@/components/onboarding/OnboardingOrchestrator';
+import GuideBotWidget from '@/components/GuideBotWidget';
 
 export const metadata: Metadata = {
   title: {
@@ -31,6 +32,7 @@ export default function RootLayout({
             <OnboardingProvider>
               {children}
               <OnboardingOrchestrator />
+              <GuideBotWidget />
             </OnboardingProvider>
           </NotificationProvider>
         </AuthProvider>

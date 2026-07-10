@@ -234,7 +234,7 @@ export default function Step5Export() {
           {/* Download section */}
           <div className="space-y-4">
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Download</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3" data-tour="step5-export-options-group">
               <button type="button"
                 onClick={() => exportPdf(includeMetadata, panelBubbles)}
                 disabled={!hasImages || exportStatus === 'exporting'}
@@ -326,6 +326,7 @@ export default function Step5Export() {
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant pt-2">Save &amp; Share</p>
             <div className="flex flex-wrap gap-3">
               <button type="button" onClick={saveToCloud}
+                data-tour="step5-save-cloud"
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold border transition-colors ${
                   cloudSaveStatus === 'saved' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-gray-200 hover:bg-gray-50'
                 }`}>
@@ -336,6 +337,7 @@ export default function Step5Export() {
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant pt-2">Developer</p>
             <div className="flex flex-wrap gap-3">
               <button type="button" onClick={downloadProjectJson}
+                data-tour="step5-download-json"
                 className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold border border-gray-200 hover:bg-gray-50 transition-colors">
                 {'{ }'} Download JSON
               </button>
@@ -362,6 +364,7 @@ export default function Step5Export() {
           <button type="button"
             onClick={() => { handleApprove(5); router.push('/studio/publish'); }}
             disabled={!hasImages}
+            data-tour="step5-finish-publish"
             className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 border-4 border-transparent ${
               !hasImages ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-primary text-on-primary hover:opacity-90 t-next-border'
             }`}>

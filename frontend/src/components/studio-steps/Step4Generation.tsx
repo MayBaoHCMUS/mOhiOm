@@ -797,7 +797,7 @@ function LayoutStudioSidebar({
       <div style={{ flex: 1, overflowY: 'auto' }}>
 
         {/* ── LAYOUT TEMPLATE ── (mirrors "DRAG TO ADD BUBBLE" section) */}
-        <div style={{ padding: '16px 12px 12px' }}>
+        <div data-tour="step4-layout-picker" style={{ padding: '16px 12px 12px' }}>
           <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#374151', textTransform: 'uppercase', margin: '0 0 10px' }}>
             Layout Template
           </p>
@@ -856,6 +856,7 @@ function LayoutStudioSidebar({
                 </p>
               )}
               <button type="button" onClick={onGenerateAll}
+                data-tour="step4-generate-btn"
                 style={{ width: '100%', height: 44, borderRadius: 10, border: '1.5px solid #4F46E5', background: 'transparent', color: '#4F46E5', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 16 }}>bolt</span>
                 {panelStats.done === 0 ? 'Generate All Panels' : 'Regen Remaining'}
@@ -1766,6 +1767,7 @@ export default function Step4Generation() {
               else { handleApprove(4); setActiveStep(5); }
             }}
             disabled={activeStep4Tab === 'layout' && isTabLocked('dialogue')}
+            data-tour="step4-next-btn"
             className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 border-4 border-transparent ${
               isTabLocked('dialogue') && activeStep4Tab === 'layout'
                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'

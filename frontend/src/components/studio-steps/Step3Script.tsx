@@ -1025,6 +1025,7 @@ function ScriptBottomBar({
             <button
               type="button"
               onClick={onRetry}
+              data-tour="step3-retry"
               className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold border border-gray-300 text-red-600 hover:bg-red-50 transition-colors"
             >
               <span className="material-symbols-outlined text-base">replay</span>
@@ -1072,6 +1073,7 @@ function ScriptBottomBar({
               type="button"
               onClick={allDone && !isGenerating ? onContinue : undefined}
               disabled={!allDone || isGenerating}
+              data-tour="step3-approve-continue"
               className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all duration-300 border-4 border-transparent ${
                 isGenerating
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
@@ -1646,7 +1648,7 @@ export default function Step3Script() {
 
             <div className="flex-1 min-w-0">
               {/* Sticky toolbar */}
-              <div className="sticky top-16 z-20 bg-white/95 backdrop-blur-sm border-b border-outline-variant/10 -mx-1 px-1 mb-4">
+              <div data-tour="step3-view-toolbar" className="sticky top-16 z-20 bg-white/95 backdrop-blur-sm border-b border-outline-variant/10 -mx-1 px-1 mb-4">
                 <Toolbar viewMode={viewMode} onViewModeChange={setViewMode}
                   onCollapseAll={collapseAll} onExpandAll={expandAll} />
               </div>

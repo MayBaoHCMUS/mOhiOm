@@ -2487,6 +2487,7 @@ export default function Step2Characters() {
           <button
             type="button"
             onClick={() => setActiveTab('references')}
+            data-tour="step2-view-references-tab"
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px ${
               activeTab === 'references'
                 ? 'border-gray-900 text-on-surface'
@@ -2992,6 +2993,7 @@ export default function Step2Characters() {
                 <button
                   type="button"
                   onClick={activeTab === 'designs' ? handleDesignApproveClick : handleApproveAndContinue}
+                  data-tour="step2-approve-btn"
                   className="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold transition-all flex-shrink-0 bg-primary text-on-primary hover:opacity-90 t-next-border"
                 >
                   <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -3207,6 +3209,7 @@ function CharacterRegenModal({
             <div className="relative">
               <textarea
                 ref={textareaRef}
+                data-tour="step2-regenerate-feedback"
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value.slice(0, 200))}
                 placeholder="e.g. make the armor more ornate, add glowing eyes, darker skin tone"
