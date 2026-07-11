@@ -3,11 +3,11 @@
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { AnimatePresence, motion, useMotionValue } from 'framer-motion';
+import { AnimatePresence, motion, useMotionValue, useReducedMotion } from 'framer-motion';
 import { X, ChevronLeft } from 'lucide-react';
 import { useOnboardingContext } from '@/context/OnboardingContext';
 import { subscribeWizardStep, type WizardStep } from '@/utils/wizardStepBus';
-import { GUIDE_MENUS, ROOT_MENU_ID, resolveMenuId, type QuickReply } from '@/content/guideBotScript';
+import { GUIDE_MENUS, ROOT_MENU_ID, resolveMenuId, pickRandom, IDLE_QUIPS, type QuickReply } from '@/content/guideBotScript';
 import SpotlightTour, { type TourStep } from '@/components/onboarding/SpotlightTour';
 import ContextualTip from '@/components/onboarding/ContextualTip';
 import { PAGE_TOUR_STEPS } from '@/content/pageTourSteps';
@@ -15,6 +15,63 @@ import { PAGE_TOUR_STEPS } from '@/content/pageTourSteps';
 const SEEN_STORAGE_KEY = 'mohiom-guidebot-seen';
 const POSITION_STORAGE_KEY = 'mohiom-guidebot-position';
 const DRAG_CLICK_THRESHOLD = 5;
+
+// Rotates through mascot poses for visual variety; index 0 matches the long-standing default.
+const MASCOT_AVATARS = [
+  '/images/landing/mascot-bot.png',
+  '/images/mascot/mascot-wave.png',
+  '/images/mascot/mascot-thinking.png',
+  '/images/mascot/mascot-cheer.png',
+  '/images/mascot/mascot-search.png',
+  '/images/mascot/mascot-reading.png',
+  '/images/mascot/mascot-typing.png',
+];
+const AVATAR_ROTATE_INTERVAL_MS = 25_000;
+const IDLE_QUIP_MIN_DELAY_MS = 40_000;
+const IDLE_QUIP_MAX_DELAY_MS = 80_000;
+const IDLE_QUIP_VISIBLE_MS = 6_000;
+
+const SPARK_PATH =
+  'M392.05 0c-20.9,210.08 -184.06,378.41 -392.05,407.78 207.96,29.37 371.12,197.68 392.05,407.74 20.93,-210.06 184.09,-378.37 392.05,-407.74 -207.98,-29.38 -371.16,-197.69 -392.06,-407.78z';
+const SPARK_POSITIONS = [1, 2, 3, 4, 5, 6];
+
+function LauncherSparkles() {
+  return (
+    <>
+      {SPARK_POSITIONS.map((n) => (
+        <svg key={n} className={`spark spark-${n}`} viewBox="0 0 784.11 815.53" aria-hidden="true">
+          <path d={SPARK_PATH} fill="#fde047" />
+        </svg>
+      ))}
+    </>
+  );
+}
+
+function AnimatedMascotAvatar({ src, size, alt = '' }: { src: string; size: number; alt?: string }) {
+  const shouldReduceMotion = useReducedMotion();
+
+  return (
+    <motion.div
+      style={{ width: size, height: size }}
+      className="relative"
+      animate={shouldReduceMotion ? undefined : { y: [0, -4, 0], rotate: [0, -3, 3, 0] }}
+      transition={shouldReduceMotion ? undefined : { duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+    >
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={src}
+          className="absolute inset-0"
+          initial={{ opacity: 0, scale: 0.85 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.85 }}
+          transition={{ duration: 0.35, ease: 'easeInOut' }}
+        >
+          <Image src={src} alt={alt} fill sizes={`${size}px`} className="object-contain" />
+        </motion.div>
+      </AnimatePresence>
+    </motion.div>
+  );
+}
 
 interface ChatMessage {
   id: string;
@@ -28,10 +85,13 @@ export default function GuideBotWidget() {
   const { setWelcomeSeen } = useOnboardingContext();
 
   const [open, setOpen] = useState(false);
+  const [avatarIndex, setAvatarIndex] = useState(0);
   const [wizardStep, setWizardStep] = useState<WizardStep | null>(null);
   const [menuHistory, setMenuHistory] = useState<string[]>([ROOT_MENU_ID]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [hasNudged, setHasNudged] = useState(true);
+  const [quip, setQuip] = useState<string | null>(null);
+  const lastQuipRef = useRef<string | null>(null);
   const [activeTour, setActiveTour] = useState<{ steps: TourStep[]; index: number } | null>(null);
   const [activeTip, setActiveTip] = useState<{
     id: string;
@@ -52,6 +112,63 @@ export default function GuideBotWidget() {
   const y = useMotionValue(0);
 
   useEffect(() => subscribeWizardStep(setWizardStep), []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setAvatarIndex((i) => (i + 1) % MASCOT_AVATARS.length);
+    }, AVATAR_ROTATE_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // Keep the latest open/tour/tip state reachable from the idle-quip loop below without
+  // making them effect deps — the loop must keep ticking in the background regardless of
+  // whether the chat happens to be open, and only decide whether to *display* at fire time.
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
+  const activeTourRef = useRef(activeTour);
+  useEffect(() => {
+    activeTourRef.current = activeTour;
+  }, [activeTour]);
+  const activeTipRef = useRef(activeTip);
+  useEffect(() => {
+    activeTipRef.current = activeTip;
+  }, [activeTip]);
+
+  // Occasionally surfaces a small unprompted tip near the closed launcher, so the bot
+  // sometimes speaks up on its own instead of only responding when clicked. Runs continuously
+  // in the background every 40-80s — opening/closing the chat doesn't reset the countdown.
+  useEffect(() => {
+    if (!hasNudged) return;
+    let cancelled = false;
+    let timer: number;
+
+    const scheduleNext = () => {
+      const delay = IDLE_QUIP_MIN_DELAY_MS + Math.random() * (IDLE_QUIP_MAX_DELAY_MS - IDLE_QUIP_MIN_DELAY_MS);
+      timer = window.setTimeout(() => {
+        if (cancelled) return;
+        if (!openRef.current && !activeTourRef.current && !activeTipRef.current) {
+          const next = pickRandom(IDLE_QUIPS, lastQuipRef.current ?? undefined);
+          lastQuipRef.current = next;
+          setQuip(next);
+        }
+        scheduleNext();
+      }, delay);
+    };
+
+    scheduleNext();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [hasNudged]);
+
+  useEffect(() => {
+    if (!quip) return;
+    const hideTimer = window.setTimeout(() => setQuip(null), IDLE_QUIP_VISIBLE_MS);
+    return () => window.clearTimeout(hideTimer);
+  }, [quip]);
 
   useEffect(() => {
     try {
@@ -102,7 +219,8 @@ export default function GuideBotWidget() {
     const menuId = resolveMenuId(pathname ?? '/', wizardStep);
     const menu = GUIDE_MENUS[menuId] ?? GUIDE_MENUS[ROOT_MENU_ID];
     setMenuHistory([menu.id]);
-    setMessages([{ id: `greeting-${menu.id}`, from: 'bot', text: menu.greeting }]);
+    setMessages([{ id: `greeting-${menu.id}`, from: 'bot', text: pickRandom(menu.greeting) }]);
+    setQuip(null);
   };
 
   useEffect(() => {
@@ -162,7 +280,7 @@ export default function GuideBotWidget() {
       const target = GUIDE_MENUS[reply.action.menuId];
       if (target) {
         setMenuHistory((prev) => [...prev, target.id]);
-        setMessages((prev) => [...prev, { id: `${target.id}-greeting-${prev.length}`, from: 'bot', text: target.greeting }]);
+        setMessages((prev) => [...prev, { id: `${target.id}-greeting-${prev.length}`, from: 'bot', text: pickRandom(target.greeting) }]);
       }
     } else if (reply.action.type === 'page-tour') {
       const steps = PAGE_TOUR_STEPS[currentMenuId];
@@ -188,7 +306,7 @@ export default function GuideBotWidget() {
     const nextHistory = menuHistory.slice(0, -1);
     const menu = GUIDE_MENUS[nextHistory[nextHistory.length - 1]] ?? GUIDE_MENUS[ROOT_MENU_ID];
     setMenuHistory(nextHistory);
-    setMessages((prev) => [...prev, { id: `${menu.id}-back-${prev.length}`, from: 'bot', text: menu.greeting }]);
+    setMessages((prev) => [...prev, { id: `${menu.id}-back-${prev.length}`, from: 'bot', text: pickRandom(menu.greeting) }]);
   };
 
   const handleMainMenu = () => {
@@ -197,6 +315,7 @@ export default function GuideBotWidget() {
 
   const handleLauncherClick = () => {
     if (dragDistanceRef.current > DRAG_CLICK_THRESHOLD) return;
+    setQuip(null);
     setOpen((v) => !v);
   };
 
@@ -241,8 +360,8 @@ export default function GuideBotWidget() {
                     <ChevronLeft size={18} />
                   </button>
                 )}
-                <div className="relative w-11 h-11 flex-shrink-0">
-                  <Image src="/images/landing/mascot-bot.png" alt="" fill sizes="44px" className="object-contain" />
+                <div className="flex-shrink-0">
+                  <AnimatedMascotAvatar src={MASCOT_AVATARS[avatarIndex]} size={44} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-on-surface leading-tight">Mo — mOhiOm Guide</p>
@@ -310,17 +429,37 @@ export default function GuideBotWidget() {
           )}
         </AnimatePresence>
 
+        <AnimatePresence>
+          {quip && !open && (
+            <motion.button
+              type="button"
+              initial={{ opacity: 0, y: 8, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => {
+                setQuip(null);
+                setOpen(true);
+              }}
+              role="status"
+              aria-label={`mOhiOm guide tip: ${quip}`}
+              className="absolute bottom-full right-0 mb-3 w-56 rounded-2xl rounded-br-sm bg-surface-container-lowest border border-outline-variant shadow-xl px-3.5 py-2.5 text-left text-[13px] leading-snug text-on-surface hover:border-outline transition-colors"
+            >
+              {quip}
+            </motion.button>
+          )}
+        </AnimatePresence>
+
         <button
           ref={launcherRef}
           type="button"
           onClick={handleLauncherClick}
           aria-label={open ? 'Close mOhiOm guide chat' : 'Open mOhiOm guide chat'}
           aria-expanded={open}
-          className="relative w-20 h-20 rounded-full shadow-xl bg-surface-container-lowest border border-outline-variant flex items-center justify-center hover:scale-105 transition-transform cursor-grab active:cursor-grabbing"
+          className="guidebot-launcher relative w-20 h-20 rounded-full shadow-xl bg-surface-container-lowest border border-outline-variant flex items-center justify-center hover:scale-105 transition-transform cursor-grab active:cursor-grabbing"
         >
-          <div className="relative w-16 h-16">
-            <Image src="/images/landing/mascot-bot.png" alt="mOhiOm guide" fill sizes="64px" className="object-contain" />
-          </div>
+          <LauncherSparkles />
+          <AnimatedMascotAvatar src={MASCOT_AVATARS[avatarIndex]} size={64} alt="mOhiOm guide" />
         </button>
       </motion.div>
 

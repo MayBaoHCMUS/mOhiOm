@@ -1186,7 +1186,97 @@ Nhìn nhận thẳng thắn, hệ thống còn các hạn chế sau:
 
 ## Phụ lục A: Đặc tả Use Case chi tiết
 
-*(Đặc tả đầy đủ 12 use case theo cùng biểu mẫu của mục 3.5.2: UC01 Đăng ký/Đăng nhập/OAuth, UC02 Tạo dự án & nhập truyện, UC03 Phân tích truyện, UC04 Thiết kế nhân vật, UC05 Sinh kịch bản panel, UC06 Chọn bố cục & sinh trang, UC07 Soạn bong bóng thoại, UC08 Xuất PDF/EPUB/ZIP, UC09 Xuất bản web reader, UC10 Quản lý dự án & thư viện nhân vật, UC11 Cấu hình nguồn LLM, UC12 Đọc truyện. Ba use case trọng tâm đã trình bày trong thân bài; phần này bổ sung 9 use case còn lại — sẽ hoàn thiện ở vòng biên tập sau.)*
+Ba use case trọng tâm của pipeline (UC03, UC04, UC06) đã được đặc tả đầy đủ tại mục 3.5.2. Phần này đặc tả 9 use case còn lại theo cùng biểu mẫu (Tác nhân / Điều kiện tiên quyết / Luồng chính / Luồng thay thế / Hậu điều kiện), theo đúng thứ tự xuất hiện trong sơ đồ Use Case tổng quan (mục 3.5.1).
+
+**UC01 — Đăng ký / Đăng nhập / OAuth**
+
+| Mục | Nội dung |
+|---|---|
+| Tác nhân | Người sáng tác (chưa có hoặc đã có tài khoản) |
+| Điều kiện tiên quyết | Không — đây là điểm vào đầu tiên của hệ thống đối với người dùng chưa có phiên |
+| Luồng chính | 1. Người dùng chọn đăng ký bằng email/mật khẩu, hoặc đăng nhập bằng Google/GitHub (OAuth 2.0). 2. (Đăng ký email) Hệ thống băm mật khẩu bằng thuật toán chuyên dụng, tạo tài khoản, phát JWT qua cookie `httpOnly`. 2'. (OAuth) Hệ thống chuyển hướng người dùng tới trang uỷ quyền của provider; provider gọi lại endpoint callback kèm mã xác thực; hệ thống trao đổi mã lấy email, tạo tài khoản mới hoặc **hợp nhất** với tài khoản email đã tồn tại, rồi phát JWT. 3. Người dùng được chuyển vào Studio; phiên duy trì qua cookie đến khi hết hạn hoặc đăng xuất (`POST /api/auth/logout`). |
+| Luồng thay thế | 1a. **Quên mật khẩu:** người dùng yêu cầu đặt lại (`/forgot-password`) → hệ thống gửi email chứa liên kết kèm token dùng một lần qua SMTP → người dùng đặt mật khẩu mới (`/reset-password`) → token bị vô hiệu ngay sau khi dùng, không dùng lại được (kiểm thử ở TC-01c). 2a. Người dùng không đăng nhập vẫn dùng được pipeline với cấu hình mặc định (FR1.3); chỉ các tính năng cá nhân hoá (BYOK, thư viện, dự án đám mây) yêu cầu đăng nhập. |
+| Hậu điều kiện | Người dùng có phiên hợp lệ (JWT trong cookie `httpOnly`); nếu qua OAuth, tài khoản trùng email được hợp nhất thay vì tạo bản sao. |
+
+**UC02 — Tạo dự án & nhập truyện**
+
+| Mục | Nội dung |
+|---|---|
+| Tác nhân | Người sáng tác |
+| Điều kiện tiên quyết | Không bắt buộc đăng nhập (FR1.3); nếu đã đăng nhập, dự án gắn với tài khoản để lưu lên đám mây (UC10) |
+| Luồng chính | 1. Người dùng chọn "Start with my story" trên Dashboard. 2. Người dùng dán/nhập văn bản truyện, chọn thể loại, phong cách vẽ, khổ trang và số trang mục tiêu (FR2.1). 3. Hệ thống khởi tạo dự án mới, lưu cấu hình, đánh dấu Bước 1 hoàn tất. 4. Người dùng chuyển sang bước Phân tích truyện (UC03). |
+| Luồng thay thế | 1a. Người dùng chọn "Import JSON" để khôi phục một dự án đã xuất trước đó từ file, thay vì nhập truyện mới — hệ thống nạp lại toàn bộ trạng thái pipeline đã lưu trong file. 2a. Thiếu trường bắt buộc (văn bản truyện, phong cách): nút "Generate analysis" bị vô hiệu cho đến khi nhập đủ. |
+| Hậu điều kiện | Dự án tồn tại với văn bản truyện và cấu hình thể loại/phong cách/khổ trang, sẵn sàng cho UC03. |
+
+**UC05 — Sinh kịch bản panel**
+
+| Mục | Nội dung |
+|---|---|
+| Tác nhân | Người sáng tác; Dịch vụ LLM (phụ) |
+| Điều kiện tiên quyết | UC04 hoàn tất — dự án có bộ nhân vật đã chốt (ảnh đại diện + mô tả cấu trúc) |
+| Luồng chính | 1. Hệ thống gửi kết quả phân tích (UC03) cùng bộ nhân vật (UC04) tới LLM để sinh kịch bản chi tiết từng panel: góc máy, hành động, thoại, hiệu ứng âm thanh (FR4.1). 2. Kết quả trả về dạng streaming (SSE), hiển thị dần theo từng trang. 3. Hệ thống chia kịch bản theo trang dựa trên khổ trang/số trang mục tiêu đã cấu hình ở UC02. 4. Người dùng xem lại kịch bản; có thể yêu cầu sinh lại toàn bộ. 5. Kịch bản được lưu vào dự án, đánh dấu bước hoàn tất. |
+| Luồng thay thế | 1a. LLM vượt giới hạn tốc độ (429): hệ thống xếp vào hàng đợi hoặc yêu cầu người dùng thử lại (cùng cơ chế với UC03, luồng 2a). 3a. Nội dung truyện quá ngắn/dài so với số trang mục tiêu: hệ thống tự điều chỉnh số trang thực tế và thông báo cho người dùng thay vì ép đúng số đã chọn. |
+| Hậu điều kiện | Dự án có kịch bản panel chia theo trang, sẵn sàng cho UC06 (điều kiện tiên quyết của UC06 tại mục 3.5.2 khớp với hậu điều kiện này). |
+
+**UC07 — Soạn bong bóng thoại**
+
+| Mục | Nội dung |
+|---|---|
+| Tác nhân | Người sáng tác |
+| Điều kiện tiên quyết | UC06 hoàn tất — trang truyện đã có ảnh panel |
+| Luồng chính | 1. Người dùng mở tab soạn thoại của một trang. 2. Người dùng bấm "Auto-import from script": hệ thống tạo bong bóng cho từng panel, tự điền nội dung thoại lấy từ kịch bản đã sinh (UC05) (kiểm thử ở TC-07). 3. Người dùng kéo-thả để chỉnh vị trí, đổi kiểu bong bóng (thoại/suy nghĩ/hét), sửa nội dung chữ. 4. Thay đổi được lưu tự động theo từng trang. |
+| Luồng thay thế | 2a. Người dùng thêm bong bóng thủ công tại vị trí bất kỳ trên panel, không qua auto-import. 3a. Người dùng xoá bong bóng không cần dùng. |
+| Hậu điều kiện | Trang truyện có lớp bong bóng thoại (HTML/SVG) đặt phía trên ảnh panel — quyết định thiết kế nhằm tránh hạn chế của mô hình sinh ảnh khi render chữ có dấu tiếng Việt (mục 7.2) — lưu bền trong dự án. |
+
+**UC08 — Xuất PDF/EPUB/ZIP**
+
+| Mục | Nội dung |
+|---|---|
+| Tác nhân | Người sáng tác |
+| Điều kiện tiên quyết | Truyện có ít nhất một trang đã sinh đủ ảnh panel (không bắt buộc mọi trang phải hoàn tất) |
+| Luồng chính | 1. Người dùng vào bước Xuất bản, chọn định dạng: PDF, EPUB hoặc ZIP ảnh PNG (FR5.1). 2. Hệ thống ghép các trang (ảnh panel + lớp bong bóng thoại) theo đúng thứ tự, xử lý phía trình duyệt (client-side export). 3. Trình duyệt tải file kết quả về máy người dùng. |
+| Luồng thay thế | 1a. PDF: giữ nguyên kích thước ảnh gốc từng trang (kiểm thử TC-08a). 1b. EPUB: đóng gói kèm mục lục, mở được trên e-reader (kiểm thử TC-08b). 2a. Một trang chưa đủ ảnh panel: trang đó bị loại khỏi file xuất, hệ thống cảnh báo trước khi xuất. |
+| Hậu điều kiện | File PDF/EPUB/ZIP tải về máy người dùng, mở được bằng phần mềm đọc tương ứng. |
+
+**UC09 — Xuất bản lên web reader**
+
+| Mục | Nội dung |
+|---|---|
+| Tác nhân | Người sáng tác; Người đọc (gián tiếp, qua đường dẫn được chia sẻ) |
+| Điều kiện tiên quyết | Truyện đã có ít nhất một trang hoàn chỉnh |
+| Luồng chính | 1. Người dùng bấm "Publish" tại bước Xuất bản. 2. Hệ thống đánh dấu dự án công khai (`PATCH /api/projects/{id}/publish`), sinh đường dẫn chia sẻ dùng lại project ID (FR5.2). 3. Hệ thống ghi nhận sự kiện xuất bản vào Publish History của người dùng, kèm bộ đếm lượt đọc khởi tạo về 0. 4. Người dùng sao chép đường dẫn để chia sẻ (kiểm thử TC-09). |
+| Luồng thay thế | 2a. Xuất bản lại sau khi chỉnh sửa nội dung: đường dẫn giữ nguyên, chỉ nội dung cập nhật. 4a. Người dùng huỷ xuất bản: đường dẫn ngừng truy cập công khai, lịch sử xuất bản vẫn được giữ lại. |
+| Hậu điều kiện | Truyện xem được công khai qua đường dẫn web reader; mỗi lượt mở link được tính vào số đọc hiển thị trong Publish History và Bảng điều khiển thống kê (FR6.1, UC12). |
+
+**UC10 — Quản lý dự án & thư viện nhân vật**
+
+| Mục | Nội dung |
+|---|---|
+| Tác nhân | Người sáng tác (đã đăng nhập) |
+| Điều kiện tiên quyết | Người dùng đã đăng nhập — lưu trữ đám mây gắn với tài khoản qua JWT |
+| Luồng chính | 1. Người dùng vào Dashboard, xem danh sách dự án kèm huy hiệu tiến độ S1–S5 tương ứng bước pipeline đã hoàn tất. 2. Người dùng chọn một dự án để mở lại; hệ thống khôi phục đúng trạng thái wizard đang dừng kể cả sau khi đóng trình duyệt giữa chừng — URL dạng `?project=<id>` phản ánh dự án đang mở, dùng để chia sẻ phiên làm việc (kiểm thử TC-10). 3. Người dùng vào Character Manager, xem các nhân vật đã lưu vào thư viện cá nhân (đánh dấu ở UC04) và tái sử dụng cho dự án khác thay vì thiết kế lại (FR3.4). 4. Người dùng xoá dự án hoặc nhân vật không còn cần dùng. |
+| Luồng thay thế | 2a. Truy cập `?project=<id>` không thuộc quyền sở hữu của người dùng hiện tại: hệ thống từ chối, danh tính được suy ra duy nhất từ JWT ký số nên không lộ dữ liệu dự án người khác (mục 5.5.5 — rà soát lỗ hổng IDOR). |
+| Hậu điều kiện | Người dùng quản lý được toàn bộ dự án và nhân vật cá nhân; dữ liệu bền vững giữa các phiên làm việc khác nhau. |
+
+**UC11 — Cấu hình nguồn LLM (BYOK)**
+
+| Mục | Nội dung |
+|---|---|
+| Tác nhân | Người sáng tác (đã đăng nhập) |
+| Điều kiện tiên quyết | Người dùng đã đăng nhập |
+| Luồng chính | 1. Người dùng vào trang Settings, mục cấu hình nguồn text-gen. 2. Người dùng chọn: dùng mặc định của hệ thống, mang khoá API riêng — BYOK (Gemini/OpenAI/DeepSeek), hoặc trỏ tới máy chủ mô hình cục bộ (FR1.4). 3. (BYOK) Người dùng nhập khoá API; hệ thống mã hoá đối xứng (Fernet) trước khi lưu vào CSDL. 4. Từ lần gọi sau, mọi yêu cầu phân tích/sinh kịch bản của người dùng này đi qua nhà cung cấp đã chọn thay cho mặc định hệ thống (kiểm thử TC-11). |
+| Luồng thay thế | 3a. Khoá API không hợp lệ: nhà cung cấp trả lỗi xác thực ở lần gọi kế tiếp; hệ thống báo lỗi cho người dùng, giữ nguyên cấu hình trước đó. 4a. Người dùng xoá cấu hình riêng (`DELETE /api/settings/text-gen-config`): hệ thống quay về dùng nhà cung cấp mặc định. |
+| Hậu điều kiện | Cấu hình nguồn LLM của người dùng được lưu (khoá mã hoá nếu dùng BYOK) và áp dụng cho mọi yêu cầu sinh nội dung tiếp theo của người dùng đó. |
+
+**UC12 — Đọc truyện đã xuất bản**
+
+| Mục | Nội dung |
+|---|---|
+| Tác nhân | Người đọc |
+| Điều kiện tiên quyết | Truyện đã được xuất bản công khai (UC09) |
+| Luồng chính | 1. Người đọc mở đường dẫn chia sẻ, hoặc chọn truyện từ trang Gallery. 2. Hệ thống tải danh sách trang theo đúng thứ tự đã xuất bản. 3. Người đọc lật trang trong trình đọc web; ảnh panel và lớp bong bóng thoại hiển thị đúng vị trí đã soạn (UC07). 4. Hệ thống ghi nhận thêm một lượt đọc cho truyện. |
+| Luồng thay thế | 1a. Truyện đã bị huỷ xuất bản hoặc không tồn tại: hệ thống hiển thị trang lỗi/không tìm thấy, không crash. 3a. Người đọc đánh giá (rating) truyện hoặc bộ nhân vật ngay trong Gallery (FR6.2). |
+| Hậu điều kiện | Người đọc xem được toàn bộ truyện; lượt đọc/đánh giá được cập nhật để tác giả xem lại trong Bảng điều khiển thống kê (FR6.1). |
 
 ## Phụ lục B: Danh sách API endpoint đầy đủ
 

@@ -30,16 +30,32 @@ export interface QuickReply {
 
 export interface GuideMenu {
   id: string;
-  greeting: string;
+  greeting: string[];
   quickReplies: QuickReply[];
 }
 
 export const ROOT_MENU_ID = 'root';
 
+export function pickRandom<T>(items: T[], exclude?: T): T {
+  const pool = items.length > 1 ? items.filter((item) => item !== exclude) : items;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+export const IDLE_QUIPS: string[] = [
+  'Need a hand? Click me any time 👋',
+  "Psst — I can give you a guided tour if you're stuck.",
+  'Curious what mOhiOm can do? Just ask.',
+  "Stuck on a step? I've probably got a quick answer.",
+  'Want to see example comics? I can take you to the Gallery.',
+];
+
 export const GUIDE_MENUS: Record<string, GuideMenu> = {
   [ROOT_MENU_ID]: {
     id: ROOT_MENU_ID,
-    greeting: "Hi, I'm Mo — your mOhiOm guide. What do you need help with?",
+    greeting: [
+      "Hi, I'm Mo — your mOhiOm guide. What do you need help with?",
+      "Hey there! I'm Mo. Need a hand finding something?",
+    ],
     quickReplies: [
       {
         id: 'what-is-mohiom',
@@ -66,7 +82,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   landing: {
     id: 'landing',
-    greeting: 'Welcome to mOhiOm! Curious what this app can do for you?',
+    greeting: [
+      'Welcome to mOhiOm! Curious what this app can do for you?',
+      "Hi! I'm Mo — want the quick rundown of mOhiOm?",
+    ],
     quickReplies: [
       {
         id: 'landing-what-is',
@@ -93,7 +112,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   gallery: {
     id: 'gallery',
-    greeting: 'This is the Gallery — browse comics the community has published.',
+    greeting: [
+      'This is the Gallery — browse comics the community has published.',
+      'Welcome to the Gallery! Plenty of comics here for inspiration.',
+    ],
     quickReplies: [
       {
         id: 'gallery-how-publish',
@@ -112,7 +134,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   settings: {
     id: 'settings',
-    greeting: 'Settings — manage your account and generation preferences here.',
+    greeting: [
+      'Settings — manage your account and generation preferences here.',
+      "You're in Settings. Anything I can explain here?",
+    ],
     quickReplies: [
       {
         id: 'settings-text-provider',
@@ -130,7 +155,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   'studio-dashboard': {
     id: 'studio-dashboard',
-    greeting: 'This is your Studio dashboard — your home base for every project.',
+    greeting: [
+      'This is your Studio dashboard — your home base for every project.',
+      'Welcome back to the dashboard! Ready to start or resume a comic?',
+    ],
     quickReplies: [
       {
         id: 'dash-start-new',
@@ -162,7 +190,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   'studio-story-setup': {
     id: 'studio-story-setup',
-    greeting: 'Story Setup — this is where you shape the raw story before it enters the pipeline.',
+    greeting: [
+      'Story Setup — this is where you shape the raw story before it enters the pipeline.',
+      "Let's set up your story — paste your text and pick a style here.",
+    ],
     quickReplies: [
       {
         id: 'story-setup-fields',
@@ -174,7 +205,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   'studio-character-manager': {
     id: 'studio-character-manager',
-    greeting: 'Character Manager — review and reuse character designs across projects.',
+    greeting: [
+      'Character Manager — review and reuse character designs across projects.',
+      "Here's your character library — reuse designs whenever you like.",
+    ],
     quickReplies: [
       {
         id: 'char-manager-reuse',
@@ -186,7 +220,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   'studio-editor': {
     id: 'studio-editor',
-    greeting: 'Comic Editor — fine-tune panels, dialogue, and layout after generation.',
+    greeting: [
+      'Comic Editor — fine-tune panels, dialogue, and layout after generation.',
+      'In the Comic Editor now — want tips on adjusting a panel?',
+    ],
     quickReplies: [
       {
         id: 'editor-dialogue',
@@ -197,7 +234,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   'studio-publish': {
     id: 'studio-publish',
-    greeting: 'Publish — share your finished comic with a public link.',
+    greeting: [
+      'Publish — share your finished comic with a public link.',
+      'Ready to publish? I can walk you through what happens next.',
+    ],
     quickReplies: [
       {
         id: 'publish-how',
@@ -209,7 +249,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   'studio-my-stories': {
     id: 'studio-my-stories',
-    greeting: 'Story Drafts — every story you\'ve started, saved here automatically.',
+    greeting: [
+      'Story Drafts — every story you\'ve started, saved here automatically.',
+      "Here are your saved drafts — pick one up right where you left off.",
+    ],
     quickReplies: [
       {
         id: 'drafts-resume',
@@ -220,7 +263,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   'studio-analytics': {
     id: 'studio-analytics',
-    greeting: 'Analytics — see how your published comics are performing.',
+    greeting: [
+      'Analytics — see how your published comics are performing.',
+      "Checking your comic's performance? Here's what these numbers mean.",
+    ],
     quickReplies: [
       {
         id: 'analytics-metrics',
@@ -231,7 +277,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   'studio-step-0': {
     id: 'studio-step-0',
-    greeting: 'Step 1 of 6 — Setup. Paste your story and set a project name/art style before analysis.',
+    greeting: [
+      'Step 1 of 6 — Setup. Paste your story and set a project name/art style before analysis.',
+      "Step 1 of 6 — let's get your story and art style set up.",
+    ],
     quickReplies: [
       {
         id: 'step0-required',
@@ -258,7 +307,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   'studio-step-1': {
     id: 'studio-step-1',
-    greeting: 'Step 2 of 6 — Analysis. Review how your story was broken into structure and character arcs.',
+    greeting: [
+      'Step 2 of 6 — Analysis. Review how your story was broken into structure and character arcs.',
+      'Step 2 of 6 — here\'s how the AI broke down your story.',
+    ],
     quickReplies: [
       {
         id: 'step1-what-to-do',
@@ -282,7 +334,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   'studio-step-2': {
     id: 'studio-step-2',
-    greeting: 'Step 3 of 6 — Characters. Confirm designs and reference images for your cast.',
+    greeting: [
+      'Step 3 of 6 — Characters. Confirm designs and reference images for your cast.',
+      "Step 3 of 6 — let's lock in how your characters look.",
+    ],
     quickReplies: [
       {
         id: 'step2-feedback',
@@ -308,7 +363,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   'studio-step-3': {
     id: 'studio-step-3',
-    greeting: 'Step 4 of 6 — Script. Review the panel-by-panel breakdown of chapters and pages.',
+    greeting: [
+      'Step 4 of 6 — Script. Review the panel-by-panel breakdown of chapters and pages.',
+      'Step 4 of 6 — time to review the panel-by-panel script.',
+    ],
     quickReplies: [
       {
         id: 'step3-what-is',
@@ -332,7 +390,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   'studio-step-4': {
     id: 'studio-step-4',
-    greeting: 'Step 5 of 6 — Generate. This renders your panels as images — it can take a few minutes.',
+    greeting: [
+      'Step 5 of 6 — Generate. This renders your panels as images — it can take a few minutes.',
+      'Step 5 of 6 — generating art now. Grab a coffee, this can take a bit.',
+    ],
     quickReplies: [
       {
         id: 'step4-layout',
@@ -358,7 +419,10 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
   },
   'studio-step-5': {
     id: 'studio-step-5',
-    greeting: 'Step 6 of 6 — Export. Download your comic or publish it to the Gallery.',
+    greeting: [
+      'Step 6 of 6 — Export. Download your comic or publish it to the Gallery.',
+      'Step 6 of 6 — last step! Export or publish your finished comic.',
+    ],
     quickReplies: [
       {
         id: 'step5-export-options',
