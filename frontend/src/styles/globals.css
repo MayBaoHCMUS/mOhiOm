@@ -487,3 +487,86 @@ html {
     animation: none;
   }
 }
+
+/* Sparkle burst on hover for the guide bot launcher button */
+.guidebot-launcher {
+  position: relative;
+  overflow: visible;
+}
+.guidebot-launcher .spark {
+  position: absolute;
+  width: 14px;
+  height: auto;
+  pointer-events: none;
+  z-index: -5;
+  filter: drop-shadow(0 0 0 #fde047);
+  transition: all 0.8s cubic-bezier(0.05, 0.83, 0.43, 0.96);
+}
+.guidebot-launcher .spark-1 {
+  top: 18%;
+  left: 18%;
+  width: 16px;
+}
+.guidebot-launcher .spark-2 {
+  top: 55%;
+  left: 22%;
+  width: 10px;
+  transition-duration: 0.7s;
+}
+.guidebot-launcher .spark-3 {
+  top: 68%;
+  left: 58%;
+  width: 8px;
+  transition-duration: 0.6s;
+}
+.guidebot-launcher .spark-4 {
+  top: 20%;
+  left: 68%;
+  width: 12px;
+  transition-duration: 0.75s;
+}
+.guidebot-launcher .spark-5 {
+  top: 45%;
+  left: 78%;
+  width: 9px;
+  transition-duration: 0.65s;
+}
+.guidebot-launcher .spark-6 {
+  top: 6%;
+  left: 45%;
+  width: 7px;
+  transition-duration: 0.85s;
+}
+.guidebot-launcher:hover .spark {
+  z-index: 5;
+  filter: drop-shadow(0 0 6px #fde047);
+}
+.guidebot-launcher:hover .spark-1 {
+  top: -40%;
+  left: -30%;
+}
+.guidebot-launcher:hover .spark-2 {
+  top: 75%;
+  left: -35%;
+}
+.guidebot-launcher:hover .spark-3 {
+  top: 100%;
+  left: 55%;
+}
+.guidebot-launcher:hover .spark-4 {
+  top: -25%;
+  left: 110%;
+}
+.guidebot-launcher:hover .spark-5 {
+  top: 50%;
+  left: 120%;
+}
+.guidebot-launcher:hover .spark-6 {
+  top: -35%;
+  left: 60%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .guidebot-launcher .spark {
+    transition: none;
+  }
+}
