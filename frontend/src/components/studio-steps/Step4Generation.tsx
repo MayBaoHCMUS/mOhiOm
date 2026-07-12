@@ -1279,6 +1279,7 @@ export default function Step4Generation() {
               <button
                 key={tab.id}
                 type="button"
+                data-tour={tab.id === 'dialogue' ? 'step4-dialogue-tab' : undefined}
                 onClick={() => handleTabChange(tab.id)}
                 disabled={locked}
                 title={locked ? 'Generate at least one image to unlock' : undefined}

@@ -105,6 +105,9 @@ export default function StudioDashboardPage() {
   const [importError, setImportError] = useState<string | null>(null);
   const [previewProjectId, setPreviewProjectId] = useState<string | null>(null);
   const [previewChar, setPreviewChar] = useState<CharacterSummary | null>(null);
+  const [deleteConfirmProject, setDeleteConfirmProject] = useState<CloudProjectListItem | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -121,6 +124,22 @@ export default function StudioDashboardPage() {
 
   const handleLoadProject = (projectId: string) => {
     router.push(`/studio?project=${encodeURIComponent(projectId)}`);
+  };
+
+  const handleDeleteProject = async () => {
+    if (!deleteConfirmProject || deletingId) return;
+    const id = deleteConfirmProject.project_id;
+    setDeleteError(null);
+    setDeletingId(id);
+    try {
+      await projectsApi.delete(id);
+      setProjects((prev) => prev.filter((p) => p.project_id !== id));
+      setDeleteConfirmProject(null);
+    } catch {
+      setDeleteError('Could not delete this project. Try again.');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -289,6 +308,15 @@ export default function StudioDashboardPage() {
                     </div>
                     <p className="text-white/40 text-xs font-mono truncate">{project.project_id}</p>
 
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setDeleteConfirmProject(project); }}
+                      title="Delete project"
+                      className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/40 backdrop-blur-md text-white/70 hover:text-white hover:bg-red-600/80 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center"
+                    >
+                      <span className="material-symbols-outlined text-base leading-none">delete</span>
+                    </button>
+
                     {project.is_publishable && (
                       <button
                         type="button"
@@ -389,6 +417,61 @@ export default function StudioDashboardPage() {
           char={previewChar}
           onClose={() => setPreviewChar(null)}
         />
+      )}
+
+      {deleteConfirmProject && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 backdrop-blur-[2px]"
+          onClick={() => { if (!deletingId) setDeleteConfirmProject(null); }}
+        >
+          <div
+            className="relative bg-surface-container-lowest rounded-2xl shadow-2xl p-7 w-[400px] max-w-[calc(100vw-32px)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setDeleteConfirmProject(null)}
+              disabled={!!deletingId}
+              aria-label="Close"
+              className="absolute top-3.5 right-3.5 w-7 h-7 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-lg">close</span>
+            </button>
+            <div className="flex items-start gap-3.5 mb-5 pr-6">
+              <span className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-red-600 text-xl">warning</span>
+              </span>
+              <div>
+                <p className="text-[17px] font-bold text-on-surface">Delete this project?</p>
+                <p className="text-[14px] text-on-surface-variant mt-1.5 leading-relaxed">
+                  <strong className="text-on-surface">{deleteConfirmProject.project_id.replace(/_/g, ' ')}</strong> and all its panels, characters, and images will be permanently deleted. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            {deleteError && (
+              <p className="text-xs text-red-600 mb-3">{deleteError}</p>
+            )}
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmProject(null)}
+                disabled={!!deletingId}
+                className="flex-1 h-[42px] rounded-[9px] text-[14px] font-medium bg-white border-[1.5px] border-outline-variant text-on-surface-variant hover:bg-surface-container-low hover:border-outline transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteProject}
+                disabled={!!deletingId}
+                className="flex-1 h-[42px] rounded-[9px] text-[14px] font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-70 flex items-center justify-center gap-2"
+              >
+                {deletingId && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />}
+                {deletingId ? 'Deleting…' : 'Yes, delete'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

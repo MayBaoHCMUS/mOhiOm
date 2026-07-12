@@ -59,7 +59,7 @@ export function PublishHistory() {
     <div className="space-y-4">
 
       {/* Summary bar */}
-      <div className="flex items-center justify-between bg-surface-container-low border border-outline-variant/20 rounded-2xl px-4 py-3">
+      <div data-tour="publish-history-summary" className="flex items-center justify-between bg-surface-container-low border border-outline-variant/20 rounded-2xl px-4 py-3">
         <div>
           <p className="text-[13px] font-semibold text-on-surface">
             {history.length} published {history.length === 1 ? 'comic' : 'comics'}
@@ -73,6 +73,7 @@ export function PublishHistory() {
         </div>
         <button
           type="button"
+          data-tour="publish-history-refresh"
           onClick={() => refreshStats(apiUrl, history)}
           disabled={loading}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant/40 text-[11px] font-medium text-on-surface-variant hover:bg-surface-container transition-colors disabled:opacity-40 disabled:cursor-not-allowed"

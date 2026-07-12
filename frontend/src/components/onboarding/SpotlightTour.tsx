@@ -143,6 +143,22 @@ export default function SpotlightTour({ steps, currentStep, onNext, onPrev, onSk
     setMounted(true);
   }, []);
 
+  // A step's target may not be mounted at all (e.g. it lives behind a tab
+  // the user hasn't switched to) — without this, the tour would otherwise
+  // sit there as a plain dark overlay with no spotlight or tooltip and no
+  // way to tell what happened. Give measurement a beat past the 320ms
+  // sidebar-settle delay in useTargetRect, then skip past a step whose
+  // target still hasn't resolved instead of showing nothing.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (!rect) {
+        if (currentStep < steps.length - 1) onNext();
+        else onComplete();
+      }
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [currentStep, rect, steps.length, onNext, onComplete]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onSkip();

@@ -9,15 +9,18 @@ import {
   characterDesignsStructuredStream,
   panelScriptStructuredStream,
   projectsApi,
+  settingsApi,
+  imageGenApi,
   toApiError,
 } from '@/services/api';
-import type { FullProjectSave, CloudProjectListItem, CharacterSummary, ProjectImageEntry } from '@/services/api';
+import type { FullProjectSave, CloudProjectListItem, CharacterSummary, ProjectImageEntry, ImageGenMode as ImageGenBackendMode } from '@/services/api';
 import { exportAsZip, exportAsPdf, exportAsEpub } from '@/lib/export';
 import { recomposePages, DEFAULT_BORDER_CONFIG } from '@/lib/borderComposer';
 import type { BorderConfig } from '@/lib/borderComposer';
 import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
 import { trackEvent } from '@/lib/analytics';
 import { getImageApiUrl, setImageApiUrl } from '@/lib/imageApiUrl';
+import { DEFAULT_IMAGE_STYLE, IMAGE_STYLE_PREF_KEY } from '@/lib/imageStyles';
 import type { ExportPage } from '@/lib/export';
 import type { SingleBubble } from '@/components/studio-steps/DialogueEditor';
 import { useNotifications } from '@/context/NotificationContext';
@@ -248,8 +251,23 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts: number, retryDela
 const fetchImageFromAI = async (
   imagePrompt: string,
   localImageApiUrl?: string,
-  settings?: ImageGenSettings
+  settings?: ImageGenSettings,
+  backendMode: ImageGenBackendMode = 'builtin'
 ): Promise<string> => {
+  if (backendMode === 'byok') {
+    try {
+      const resp = await imageGenApi.generate({
+        prompt: imagePrompt,
+        negative_prompt: PANEL_NEGATIVE_PROMPT,
+        width: settings?.width,
+        height: settings?.height,
+      });
+      return resp.data.image_url;
+    } catch (err) {
+      throw new Error(toApiError(err).message);
+    }
+  }
+
   if (localImageApiUrl) {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 120000);
@@ -643,6 +661,7 @@ export interface ComicGenerationContextValue {
   setBorderConfig: React.Dispatch<React.SetStateAction<BorderConfig>>;
   cloudSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
   cloudSaveError: string | null;
+  lastSavedAt: string | null;
   saveToCloud: () => Promise<void>;
   loadFromCloud: (projectId: string) => Promise<{ success: boolean; error?: string }>;
   clearProjectFromUrl: () => void;
@@ -683,10 +702,15 @@ export function ComicGenerationProvider({
   const [maxPanelsPerPage, setMaxPanelsPerPage] = useState('6');
   const [specialRequests, setSpecialRequests] = useState('None');
   const [localImageApiUrl, setLocalImageApiUrl] = useState('');
+  const [imageGenBackendMode, setImageGenBackendMode] = useState<ImageGenBackendMode>('builtin');
   const [panelAutoRetryInfo, setPanelAutoRetryInfo] = useState<{ round: number; totalRounds: number; remaining: number } | null>(null);
   const panelAutoRetryCancelRef = useRef(false);
   const [imageGenMode, setImageGenMode] = useState<ImageGenMode>(1);
-  const [imageGenStyle, setImageGenStyle] = useState<string>('manga');
+  const [imageGenStyle, setImageGenStyle] = useState<string>(() =>
+    typeof window !== 'undefined'
+      ? localStorage.getItem(IMAGE_STYLE_PREF_KEY) || DEFAULT_IMAGE_STYLE
+      : DEFAULT_IMAGE_STYLE
+  );
   const [referenceImageBase64, setReferenceImageBase64] = useState('');
   const [controlImageBase64, setControlImageBase64] = useState('');
   const [ipAdapterScale, setIpAdapterScale] = useState(0.7);
@@ -706,6 +730,7 @@ export function ComicGenerationProvider({
   const [borderConfig, setBorderConfig] = useState<BorderConfig>(DEFAULT_BORDER_CONFIG);
   const [cloudSaveStatus, setCloudSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [cloudSaveError, setCloudSaveError] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [fromStorySetup, setFromStorySetup] = useState(false);
   const [fieldsAutoFilledFromAnalysis, setFieldsAutoFilledFromAnalysis] = useState(false);
   const [storySetupAnalysisResult, setStorySetupAnalysisResult] = useState<{
@@ -828,6 +853,12 @@ export function ComicGenerationProvider({
   useEffect(() => {
     setImageApiUrl(localImageApiUrl);
   }, [localImageApiUrl]);
+
+  useEffect(() => {
+    settingsApi.getImageGenConfig()
+      .then((r) => setImageGenBackendMode(r.data.mode))
+      .catch(() => setImageGenBackendMode('builtin'));
+  }, []);
 
   const stepMap: Record<StepKey, StepState<unknown>> = useMemo(
     () => ({ 1: step1, 2: step2, 3: step3, 4: step4, 5: step5 }),
@@ -1874,7 +1905,7 @@ export function ComicGenerationProvider({
       try {
         const charSettings = settingsMap?.[character.characterId] ?? { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale, storyId: projectId, style: imageGenStyle };
         const imageUrl = await withRetry(
-          () => fetchImageFromAI(character.prompt, localImageApiUrl || undefined, charSettings),
+          () => fetchImageFromAI(character.prompt, localImageApiUrl || undefined, charSettings, imageGenBackendMode),
           3,
           3000
         );
@@ -1973,7 +2004,7 @@ export function ComicGenerationProvider({
     try {
       const effectiveSettings = settings ?? { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale, storyId: projectId, style: imageGenStyle };
       const prompt = feedback?.trim() ? `${target.prompt}\nUser revision request: ${feedback.trim()}` : target.prompt;
-      const imageUrl = await fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings);
+      const imageUrl = await fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings, imageGenBackendMode);
       const candidateId = `${target.characterId}-${Date.now()}`;
 
       setStep2ImageReview((prev) => {
@@ -2196,7 +2227,7 @@ export function ComicGenerationProvider({
               height: panelDimensions?.height,
             };
             const imageUrl = await withRetry(
-              () => fetchImageFromAI(cleanPrompt, localImageApiUrl || undefined, effectiveSettings),
+              () => fetchImageFromAI(cleanPrompt, localImageApiUrl || undefined, effectiveSettings, imageGenBackendMode),
               3,
               3000
             );
@@ -2320,7 +2351,7 @@ export function ComicGenerationProvider({
               style: imageGenStyle,
             };
             const imageUrl = await withRetry(
-              () => fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings),
+              () => fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings, imageGenBackendMode),
               3,
               3000
             );
@@ -2573,7 +2604,7 @@ export function ComicGenerationProvider({
         storyId: projectId,
         style: imageGenStyle,
       };
-      const newImageUrl = await fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings);
+      const newImageUrl = await fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings, imageGenBackendMode);
       setStep4((prev) => {
         if (!prev.data) return prev;
         const prevState = prev.data.pageStates[pageId];
@@ -2730,8 +2761,10 @@ export function ComicGenerationProvider({
       setJsonDownloaded(true);
       setLastDownloadedJsonFile(fileName);
       window.setTimeout(() => setJsonDownloaded(false), 1500);
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to download JSON file.';
       setGlobalError('Failed to download JSON file.');
+      addNotification({ title: 'Download failed', message, variant: 'error', projectId });
     }
   };
 
@@ -2851,10 +2884,16 @@ export function ComicGenerationProvider({
         page_count:    pages.length,
       });
       setExportStatus('idle');
-    } catch {
+    } catch (error) {
       setExportStatus('error');
+      addNotification({
+        title: 'Image Pack export failed',
+        message: error instanceof Error ? error.message : 'Something went wrong while exporting.',
+        variant: 'error',
+        projectId,
+      });
     }
-  }, [step4.data, projectId, imageGenStyle]);
+  }, [step4.data, projectId, imageGenStyle, addNotification]);
 
   const exportPdf = useCallback(async (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => {
     if (!step4.data) return;
@@ -2872,10 +2911,16 @@ export function ComicGenerationProvider({
         page_count:    pages.length,
       });
       setExportStatus('idle');
-    } catch {
+    } catch (error) {
       setExportStatus('error');
+      addNotification({
+        title: 'PDF export failed',
+        message: error instanceof Error ? error.message : 'Something went wrong while exporting.',
+        variant: 'error',
+        projectId,
+      });
     }
-  }, [step4.data, projectId, imageGenStyle]);
+  }, [step4.data, projectId, imageGenStyle, addNotification]);
 
   const exportPrintPdf = useCallback(async (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => {
     if (!step4.data) return;
@@ -2893,10 +2938,16 @@ export function ComicGenerationProvider({
         page_count:    pages.length,
       });
       setExportStatus('idle');
-    } catch {
+    } catch (error) {
       setExportStatus('error');
+      addNotification({
+        title: 'Print-ready PDF export failed',
+        message: error instanceof Error ? error.message : 'Something went wrong while exporting.',
+        variant: 'error',
+        projectId,
+      });
     }
-  }, [step4.data, projectId, imageGenStyle]);
+  }, [step4.data, projectId, imageGenStyle, addNotification]);
 
   const exportEpub = useCallback(async (includeMetadata: boolean, panelBubbles?: Record<string, SingleBubble[]>) => {
     if (!step4.data) return;
@@ -2914,10 +2965,16 @@ export function ComicGenerationProvider({
         page_count:    pages.length,
       });
       setExportStatus('idle');
-    } catch {
+    } catch (error) {
       setExportStatus('error');
+      addNotification({
+        title: 'EPUB export failed',
+        message: error instanceof Error ? error.message : 'Something went wrong while exporting.',
+        variant: 'error',
+        projectId,
+      });
     }
-  }, [step4.data, projectId, imageGenStyle]);
+  }, [step4.data, projectId, imageGenStyle, addNotification]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -3442,6 +3499,7 @@ export function ComicGenerationProvider({
         await projectsApi.saveImages(projectId, images);
       }
       setCloudSaveStatus('saved');
+      setLastSavedAt(fullSave.saved_at);
       window.setTimeout(() => setCloudSaveStatus('idle'), 2000);
     } catch (err) {
       setCloudSaveStatus('error');
@@ -3458,6 +3516,7 @@ export function ComicGenerationProvider({
       const result = restoreFromFullSave(projectRes.data as unknown as Record<string, unknown>);
       if (result.success) {
         applyLoadedImages(imagesRes.data.images);
+        setLastSavedAt(projectRes.data.saved_at ?? null);
         if (lastSyncedProjectIdRef.current !== cloudProjectId) {
           lastSyncedProjectIdRef.current = cloudProjectId;
           router.replace(`${pathnameRef.current}?project=${encodeURIComponent(cloudProjectId)}`, { scroll: false });
@@ -3646,6 +3705,7 @@ export function ComicGenerationProvider({
     setBorderConfig,
     cloudSaveStatus,
     cloudSaveError,
+    lastSavedAt,
     saveToCloud,
     loadFromCloud,
     clearProjectFromUrl,

@@ -15,6 +15,11 @@ import {
   Download,
   Images,
   SlidersHorizontal,
+  MessageSquare,
+  Zap,
+  FlaskConical,
+  ImagePlus,
+  BarChart3,
 } from 'lucide-react';
 import type { TourStep } from '@/components/onboarding/SpotlightTour';
 
@@ -142,18 +147,40 @@ export const PAGE_TOUR_STEPS: Record<string, TourStep[]> = {
     },
   ],
 
-  // Deliberately limited to elements mounted regardless of generation
-  // state — the Generate All Panels button unmounts entirely once
-  // generation is complete, in progress, or paused (replaced by a status
-  // message or Pause/Resume button), so it's excluded here. Also limited
-  // to tab-independent / default "layout" tab elements — dialogue-tab-only
-  // targets (e.g. auto-import) aren't mounted until the user switches tabs.
+  // Covers both the Layout and Dialogue tabs of this step. Several targets
+  // below only exist while their tab is active — SpotlightTour auto-skips
+  // any step whose selector never mounts, so whichever tab the user is on
+  // when the tour starts, only the steps relevant to that tab actually
+  // display; the other tab's steps just skip past quickly. The tab-switcher
+  // button and the bottom "next" button are outside both tabs' content, so
+  // they're always mounted and always show regardless of which tab is active.
+  // The Generate All Panels button is deliberately excluded — it unmounts
+  // entirely once generation is complete, in progress, or paused (replaced
+  // by a status message or Pause/Resume button).
   'studio-step-4': [
     {
       selector: '[data-tour="step4-layout-picker"]',
       title: 'Layout Template',
       body: 'Choose how panels are arranged on the page, or let AI suggest a layout for you.',
       icon: LayoutGrid,
+    },
+    {
+      selector: '[data-tour="step4-dialogue-tab"]',
+      title: 'Dialogue tab',
+      body: 'Switch here once panels have images — add speech and thought bubbles directly on the art.',
+      icon: MessageSquare,
+    },
+    {
+      selector: '[data-tour="dialogue-palette"]',
+      title: 'Drag to add a bubble',
+      body: 'Drag any bubble type onto a panel to place it, then edit the text and styling on the right.',
+      icon: MessageSquare,
+    },
+    {
+      selector: '[data-tour="auto-import-btn"]',
+      title: 'Auto-import from script',
+      body: 'Pulls dialogue straight from your panel script into speech bubbles, so you don\'t have to retype it.',
+      icon: Zap,
     },
     {
       selector: '[data-tour="step4-next-btn"]',
@@ -181,6 +208,69 @@ export const PAGE_TOUR_STEPS: Record<string, TourStep[]> = {
       title: 'Finish & Go to Publish',
       body: 'Wraps up this step and takes you to Publish, where you can share your comic with a public link.',
       icon: CheckCircle2,
+    },
+  ],
+
+  // A separate research tool, not part of the wizard — all 4 targets are
+  // unconditionally mounted regardless of which tab or data state the page
+  // is in (default tab is Ablation; the results card shows a placeholder
+  // rather than unmounting when there are no runs yet), so no auto-skip
+  // caveats apply here.
+  'studio-evaluation': [
+    {
+      selector: '[data-tour="eval-header"]',
+      title: 'Research evaluation tool',
+      body: 'A separate tool for testing generation settings with measurable data — not part of the normal comic-creation pipeline.',
+      icon: FlaskConical,
+    },
+    {
+      selector: '[data-tour="eval-tab-switcher"]',
+      title: 'Ablation vs. CLIP Score',
+      body: 'Switch between testing character-consistency strength (Ablation) and prompt-match accuracy (CLIP Score).',
+      icon: SlidersHorizontal,
+    },
+    {
+      selector: '[data-tour="eval-run-form"]',
+      title: 'Run a test',
+      body: 'Upload a reference image and a scene prompt, then run it — it generates the same panel at multiple settings automatically.',
+      icon: ImagePlus,
+    },
+    {
+      selector: '[data-tour="eval-results-table"]',
+      title: 'Compare results',
+      body: 'Every run is logged here with similarity scores, so you can see which setting performs best across multiple tests.',
+      icon: BarChart3,
+    },
+  ],
+
+  // Two targets (title, back button) are always mounted; the summary bar and
+  // refresh button only exist once the user has published at least one comic
+  // (history.length > 0) — for a brand-new account with no publish history,
+  // SpotlightTour's auto-skip fallback silently passes over those two steps.
+  'studio-publish-history': [
+    {
+      selector: '[data-tour="publish-history-title"]',
+      title: 'Your publish log',
+      body: 'Every comic you\'ve published to the web reader, kept here even after you close the tab.',
+      icon: FileText,
+    },
+    {
+      selector: '[data-tour="publish-history-summary"]',
+      title: 'Totals at a glance',
+      body: 'Total comics published and total reads across all of them, updated live from the server.',
+      icon: BarChart3,
+    },
+    {
+      selector: '[data-tour="publish-history-refresh"]',
+      title: 'Refresh read counts',
+      body: 'Read counts update automatically, but click here anytime to pull the latest numbers on demand.',
+      icon: RefreshCcw,
+    },
+    {
+      selector: '[data-tour="publish-history-back"]',
+      title: 'Back to Analytics',
+      body: 'Jumps back to the Analytics page, which also links here.',
+      icon: ArrowRightCircle,
     },
   ],
 };

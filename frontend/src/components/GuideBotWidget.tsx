@@ -25,11 +25,19 @@ const MASCOT_AVATARS = [
   '/images/mascot/mascot-search.png',
   '/images/mascot/mascot-reading.png',
   '/images/mascot/mascot-typing.png',
+  '/images/mascot/mascot-notebook.png',
+  '/images/mascot/mascot-pondering.png',
+  '/images/mascot/mascot-study.png',
+  '/images/mascot/mascot-painting.png',
+  '/images/mascot/mascot-drawing.png',
+  '/images/mascot/mascot-fixing.png',
+  '/images/mascot/mascot-confused.png',
+  '/images/mascot/mascot-sleeping.png',
 ];
 const AVATAR_ROTATE_INTERVAL_MS = 25_000;
-const IDLE_QUIP_MIN_DELAY_MS = 40_000;
-const IDLE_QUIP_MAX_DELAY_MS = 80_000;
-const IDLE_QUIP_VISIBLE_MS = 6_000;
+const IDLE_QUIP_MIN_DELAY_MS = 30_000;
+const IDLE_QUIP_MAX_DELAY_MS = 70_000;
+const IDLE_QUIP_VISIBLE_MS = 8_000;
 
 const SPARK_PATH =
   'M392.05 0c-20.9,210.08 -184.06,378.41 -392.05,407.78 207.96,29.37 371.12,197.68 392.05,407.74 20.93,-210.06 184.09,-378.37 392.05,-407.74 -207.98,-29.38 -371.16,-197.69 -392.06,-407.78z';

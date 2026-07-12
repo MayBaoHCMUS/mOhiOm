@@ -10,6 +10,28 @@ import { exportWithDialogueAsZip } from '@/lib/bubbles/exportComposite';
 import type { CompositePanel } from '@/lib/bubbles/exportComposite';
 import type { PanelBubbles } from '@/components/studio-steps/DialogueEditor';
 
+function formatLastSaved(iso: string): string {
+  try {
+    const date = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+    });
+  } catch {
+    return iso;
+  }
+}
+
 export default function Step5Export() {
   const router = useRouter();
   const {
@@ -27,6 +49,8 @@ export default function Step5Export() {
     exportStatus,
     saveToCloud,
     cloudSaveStatus,
+    cloudSaveError,
+    lastSavedAt,
     copyProjectJson,
     downloadProjectJson,
     jsonCopied,
@@ -46,6 +70,8 @@ export default function Step5Export() {
   const [includeMetadata, setIncludeMetadata] = useState(false);
   const [exportingDialogue, setExportingDialogue] = useState(false);
   const [dialogueExportProgress, setDialogueExportProgress] = useState<{ done: number; total: number } | null>(null);
+  const [pendingExportFormat, setPendingExportFormat] = useState<'pdf' | 'print-pdf' | 'zip' | 'epub' | null>(null);
+  const [submittingRating, setSubmittingRating] = useState(false);
   const sessionStartRef = useRef(Date.now());
   const [panelReactions, setPanelReactions] = useState<Record<string, string>>({});
 
@@ -112,6 +138,24 @@ export default function Step5Export() {
       });
     } catch { /* fire-and-forget */ }
   }, [panelReactions, step4.data, projectId, artStyle, mangaGenre]);
+
+  const runExport = useCallback(async (format: 'pdf' | 'print-pdf' | 'zip' | 'epub', fn: () => Promise<void>) => {
+    setPendingExportFormat(format);
+    try {
+      await fn();
+    } finally {
+      setPendingExportFormat(null);
+    }
+  }, []);
+
+  const handleSubmitRating = useCallback(async () => {
+    setSubmittingRating(true);
+    try {
+      await handleRatingSubmit(exportStars, exportPositive, exportNegative);
+    } finally {
+      setSubmittingRating(false);
+    }
+  }, [handleRatingSubmit, exportStars, exportPositive, exportNegative]);
 
   const handleExportWithDialogue = useCallback(async () => {
     const panels: CompositePanel[] = [];
@@ -222,12 +266,15 @@ export default function Step5Export() {
               </div>
             </div>
             <button type="button"
-              onClick={() => handleRatingSubmit(exportStars, exportPositive, exportNegative)}
-              disabled={exportStars === 0}
+              onClick={handleSubmitRating}
+              disabled={exportStars === 0 || submittingRating}
               className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                exportStars > 0 ? 'bg-primary text-on-primary hover:opacity-90' : 'bg-surface-container text-outline cursor-not-allowed opacity-50'
+                exportStars > 0 && !submittingRating ? 'bg-primary text-on-primary hover:opacity-90' : 'bg-surface-container text-outline cursor-not-allowed opacity-50'
               }`}>
-              {comicRating ? '✓ Update Rating' : 'Submit Rating'}
+              {submittingRating && (
+                <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin flex-none" />
+              )}
+              {submittingRating ? 'Submitting…' : comicRating ? '✓ Update Rating' : 'Submit Rating'}
             </button>
           </div>
 
@@ -236,52 +283,72 @@ export default function Step5Export() {
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Download</p>
             <div className="grid grid-cols-3 gap-3" data-tour="step5-export-options-group">
               <button type="button"
-                onClick={() => exportPdf(includeMetadata, panelBubbles)}
+                onClick={() => runExport('pdf', () => exportPdf(includeMetadata, panelBubbles))}
                 disabled={!hasImages || exportStatus === 'exporting'}
                 className={`text-left p-4 rounded-2xl border-2 transition-all ${
                   !hasImages || exportStatus === 'exporting'
                     ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
                     : 'border-gray-200 hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
                 }`}>
-                <span className="text-2xl">📄</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">📄</span>
+                  {pendingExportFormat === 'pdf' && (
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin flex-none" />
+                  )}
+                </div>
                 <p className="text-sm font-bold text-gray-900 mt-2">PDF Comic</p>
-                <p className="text-xs text-gray-400 mt-0.5">Standard screen PDF</p>
+                <p className="text-xs text-gray-400 mt-0.5">{pendingExportFormat === 'pdf' ? 'Exporting…' : 'Standard screen PDF'}</p>
               </button>
               <button type="button"
-                onClick={() => exportPrintPdf(includeMetadata, panelBubbles)}
+                onClick={() => runExport('print-pdf', () => exportPrintPdf(includeMetadata, panelBubbles))}
                 disabled={!hasImages || exportStatus === 'exporting'}
                 className={`text-left p-4 rounded-2xl border-2 transition-all ${
                   !hasImages || exportStatus === 'exporting'
                     ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
                     : 'border-gray-200 hover:border-indigo-400/40 hover:bg-indigo-50/50 cursor-pointer'
                 }`}>
-                <span className="text-2xl">🖨</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">🖨</span>
+                  {pendingExportFormat === 'print-pdf' && (
+                    <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin flex-none" />
+                  )}
+                </div>
                 <p className="text-sm font-bold text-gray-900 mt-2">Print-ready PDF</p>
-                <p className="text-xs text-gray-400 mt-0.5">300 DPI · bleed · crop marks</p>
+                <p className="text-xs text-gray-400 mt-0.5">{pendingExportFormat === 'print-pdf' ? 'Exporting…' : '300 DPI · bleed · crop marks'}</p>
               </button>
               <button type="button"
-                onClick={() => exportZip(includeMetadata, panelBubbles)}
+                onClick={() => runExport('zip', () => exportZip(includeMetadata, panelBubbles))}
                 disabled={!hasImages || exportStatus === 'exporting'}
                 className={`text-left p-4 rounded-2xl border-2 transition-all ${
                   !hasImages || exportStatus === 'exporting'
                     ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
                     : 'border-gray-200 hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
                 }`}>
-                <span className="text-2xl">🖼</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">🖼</span>
+                  {pendingExportFormat === 'zip' && (
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin flex-none" />
+                  )}
+                </div>
                 <p className="text-sm font-bold text-gray-900 mt-2">Image Pack</p>
-                <p className="text-xs text-gray-400 mt-0.5">All pages as PNG ZIP</p>
+                <p className="text-xs text-gray-400 mt-0.5">{pendingExportFormat === 'zip' ? 'Exporting…' : 'All pages as PNG ZIP'}</p>
               </button>
               <button type="button"
-                onClick={() => exportEpub(includeMetadata, panelBubbles)}
+                onClick={() => runExport('epub', () => exportEpub(includeMetadata, panelBubbles))}
                 disabled={!hasImages || exportStatus === 'exporting'}
                 className={`text-left p-4 rounded-2xl border-2 transition-all ${
                   !hasImages || exportStatus === 'exporting'
                     ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
                     : 'border-gray-200 hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
                 }`}>
-                <span className="text-2xl">📚</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">📚</span>
+                  {pendingExportFormat === 'epub' && (
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin flex-none" />
+                  )}
+                </div>
                 <p className="text-sm font-bold text-gray-900 mt-2">EPUB</p>
-                <p className="text-xs text-gray-400 mt-0.5">E-reader, mobile</p>
+                <p className="text-xs text-gray-400 mt-0.5">{pendingExportFormat === 'epub' ? 'Exporting…' : 'E-reader, mobile'}</p>
               </button>
               <label className="col-span-3 flex items-center gap-2.5 cursor-pointer select-none">
                 <input type="checkbox" checked={includeMetadata} onChange={(e) => setIncludeMetadata(e.target.checked)} className="w-4 h-4 rounded accent-indigo-600" />
@@ -325,13 +392,39 @@ export default function Step5Export() {
 
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant pt-2">Save &amp; Share</p>
             <div className="flex flex-wrap gap-3">
-              <button type="button" onClick={saveToCloud}
-                data-tour="step5-save-cloud"
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold border transition-colors ${
-                  cloudSaveStatus === 'saved' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-gray-200 hover:bg-gray-50'
-                }`}>
-                {cloudSaveStatus === 'saved' ? '✓ Saved to Cloud' : '☁ Save to Cloud'}
-              </button>
+              <div>
+                <button type="button" onClick={saveToCloud}
+                  data-tour="step5-save-cloud"
+                  disabled={cloudSaveStatus === 'saving'}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold border transition-colors ${
+                    cloudSaveStatus === 'saved'
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                      : cloudSaveStatus === 'saving'
+                        ? 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
+                        : cloudSaveStatus === 'error'
+                          ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
+                          : 'border-gray-200 hover:bg-gray-50'
+                  }`}>
+                  {cloudSaveStatus === 'saving' && (
+                    <div className="w-3.5 h-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin flex-none" />
+                  )}
+                  {cloudSaveStatus === 'saving'
+                    ? 'Saving…'
+                    : cloudSaveStatus === 'saved'
+                      ? '✓ Saved to Cloud'
+                      : cloudSaveStatus === 'error'
+                        ? 'Save failed — Retry'
+                        : '☁ Save to Cloud'}
+                </button>
+                {cloudSaveStatus === 'error' && cloudSaveError && (
+                  <p className="mt-1.5 text-xs text-red-600">{cloudSaveError}</p>
+                )}
+                {cloudSaveStatus !== 'saving' && cloudSaveStatus !== 'error' && lastSavedAt && (
+                  <p className="mt-1.5 text-xs text-gray-400" title={new Date(lastSavedAt).toLocaleString()}>
+                    Last saved {formatLastSaved(lastSavedAt)}
+                  </p>
+                )}
+              </div>
             </div>
 
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant pt-2">Developer</p>

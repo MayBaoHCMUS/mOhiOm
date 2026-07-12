@@ -43,7 +43,7 @@ export function EvaluationDashboard() {
     <div style={{ minHeight: '100vh' }}>
 
       {/* Page header — #F8FAFF band */}
-      <div style={{
+      <div data-tour="eval-header" style={{
         background: '#F8FAFF', borderBottom: '1px solid #E5E7EB',
         padding: '28px 32px 24px 32px',
         display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
@@ -81,7 +81,7 @@ export function EvaluationDashboard() {
 
       {/* Tab switcher — pill style */}
       <div style={{ padding: '24px 32px 0 32px' }}>
-        <div style={{
+        <div data-tour="eval-tab-switcher" style={{
           display: 'inline-flex', background: '#F3F4F6', borderRadius: 8,
           padding: 4, minWidth: 480,
         }}>
@@ -291,7 +291,7 @@ function AblationTab({ apiUrl }: { apiUrl: string }) {
         </div>
 
         {/* Run button */}
-        <button type="button" onClick={handleRun} disabled={!canRun} style={{
+        <button type="button" data-tour="eval-run-form" onClick={handleRun} disabled={!canRun} style={{
           width: '100%', height: 44, background: canRun ? '#2563EB' : '#E5E7EB',
           borderRadius: 8, border: 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -336,7 +336,7 @@ function AblationTab({ apiUrl }: { apiUrl: string }) {
       )}
 
       {/* Aggregate results */}
-      <EvalCard>
+      <EvalCard dataTour="eval-results-table">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <SectionLabel>
             {runs.length === 1 ? 'Results — 1 Story Run' : `Results — ${runs.length} Stories Run`}
@@ -735,9 +735,9 @@ function ClipBarChart({ data }: { data: { style: string; mean: number }[] }) {
 
 // ── Shared primitives ──────────────────────────────────────────────
 
-function EvalCard({ children }: { children: React.ReactNode }) {
+function EvalCard({ children, dataTour }: { children: React.ReactNode; dataTour?: string }) {
   return (
-    <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 12, padding: '16px 20px' }}>
+    <div data-tour={dataTour} style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 12, padding: '16px 20px' }}>
       {children}
     </div>
   )

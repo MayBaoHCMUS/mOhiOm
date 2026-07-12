@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Sparkles, Star, BookOpen, MessageCircle, Github } from 'lucide-react';
+import { Sparkles, Star, BookOpen, MessageCircle } from 'lucide-react';
 import { ScrollZoomHero } from '@/components/landing/ScrollZoomHero';
 import { HeroDemoSection } from '@/components/landing/HeroDemoSection';
 import { Marquee } from '@/components/landing/Marquee';
@@ -60,15 +60,12 @@ function MiniTopBar({ onOpenGallery }: { onOpenGallery: () => void }) {
         <button type="button" onClick={onOpenGallery} className="transition-colors hover:text-on-surface">
           Gallery
         </button>
-        <Link href="/pricing" className="transition-colors hover:text-on-surface">
-          Pricing
-        </Link>
-        <a href="#" className="transition-colors hover:text-on-surface">
+        <Link href="/docs" className="transition-colors hover:text-on-surface">
           Docs
-        </a>
-        <a href="#" className="transition-colors hover:text-on-surface">
+        </Link>
+        <Link href="/changelog" className="transition-colors hover:text-on-surface">
           Blog
-        </a>
+        </Link>
       </div>
       <div className="flex items-center gap-4">
         <Link
@@ -128,12 +125,14 @@ const FOOTER_COLUMNS: { heading: string; links: { label: string; href: string; e
     links: [
       { label: 'Features', href: '#features' },
       { label: 'Gallery', href: '/gallery' },
-      { label: 'Pricing', href: '/pricing' },
     ],
   },
   {
     heading: 'Resources',
-    links: [{ label: 'GitHub', href: 'https://github.com/MayBaoHCMUS/mOhiOm', external: true }],
+    links: [
+      { label: 'Docs', href: '/docs' },
+      { label: 'Blog', href: '/changelog' },
+    ],
   },
   {
     heading: 'Company',
@@ -160,17 +159,6 @@ function LandingFooter({ onOpenGallery }: { onOpenGallery: () => void }) {
           <p className="mt-3 max-w-[220px] text-sm text-white/60">
             AI-Powered Comic Generation from Text to Visual Stories.
           </p>
-          <div className="mt-5 flex gap-4">
-            <a
-              href="https://github.com/MayBaoHCMUS/mOhiOm"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="GitHub"
-              className="text-white/50 transition-colors hover:text-white"
-            >
-              <Github size={18} />
-            </a>
-          </div>
         </div>
 
         {FOOTER_COLUMNS.map(({ heading, links }) => (

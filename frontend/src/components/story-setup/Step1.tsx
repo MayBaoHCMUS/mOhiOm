@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import ProjectsDrawer from '@/components/ProjectsDrawer';
 import { useStoryLibrary } from '@/hooks/useStoryLibrary';
 import type { SavedStory } from '@/hooks/useStoryLibrary';
+import { IMAGE_STYLES } from '@/lib/imageStyles';
 
 // ── Validators ────────────────────────────────────────────────────────────────
 
@@ -23,45 +25,6 @@ function wordCount(text: string) {
 }
 
 // ── Image Style Picker ────────────────────────────────────────────────────────
-
-const IMAGE_STYLES = [
-  {
-    value: 'manga',
-    label: 'Manga',
-    sub: 'B&W lineart · screentone shading',
-    emoji: '🖤',
-    accent: 'bg-gray-900',
-    ring: 'ring-gray-900',
-    badge: 'bg-gray-100 text-gray-700',
-  },
-  {
-    value: 'webtoon',
-    label: 'Webtoon',
-    sub: 'Korean manhwa · flat vivid colors',
-    emoji: '🎨',
-    accent: 'bg-violet-500',
-    ring: 'ring-violet-500',
-    badge: 'bg-violet-100 text-violet-700',
-  },
-  {
-    value: 'chibi',
-    label: 'Chibi',
-    sub: 'Super-deformed · pastel kawaii',
-    emoji: '🌸',
-    accent: 'bg-pink-400',
-    ring: 'ring-pink-400',
-    badge: 'bg-pink-100 text-pink-700',
-  },
-  {
-    value: 'watercolor',
-    label: 'Watercolor',
-    sub: 'Soft brushstrokes · painterly',
-    emoji: '💧',
-    accent: 'bg-sky-400',
-    ring: 'ring-sky-400',
-    badge: 'bg-sky-100 text-sky-700',
-  },
-] as const;
 
 function ImageStylePicker({
   value,
@@ -103,8 +66,8 @@ function ImageStylePicker({
           ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
         `}
       >
-        <span className={`w-7 h-7 rounded-xl ${selected.accent} flex items-center justify-center text-base flex-shrink-0 shadow-sm`}>
-          {selected.emoji}
+        <span className="w-7 h-7 rounded-xl overflow-hidden flex-shrink-0 shadow-sm relative bg-gray-100">
+          <Image src={selected.icon} alt="" fill sizes="28px" className="object-cover" />
         </span>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-800 text-sm leading-tight">{selected.label}</p>
@@ -133,8 +96,8 @@ function ImageStylePicker({
                   ${isActive ? 'bg-blue-50' : 'hover:bg-gray-50'}
                 `}
               >
-                <span className={`w-8 h-8 rounded-xl ${style.accent} flex items-center justify-center text-base flex-shrink-0 shadow-sm`}>
-                  {style.emoji}
+                <span className="w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-sm relative bg-gray-100">
+                  <Image src={style.icon} alt="" fill sizes="32px" className="object-cover" />
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className={`font-semibold text-sm leading-tight ${isActive ? 'text-blue-700' : 'text-gray-800'}`}>

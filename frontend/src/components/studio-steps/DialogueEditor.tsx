@@ -1284,7 +1284,7 @@ function BubbleSidebar({
 
   // Bubble palette — always shown at top (drag tiles onto panels to create)
   const palette = (
-    <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--color-outline)', flexShrink: 0 }}>
+    <div data-tour="dialogue-palette" style={{ padding: '10px 12px', borderBottom: '1px solid var(--color-outline)', flexShrink: 0 }}>
       <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: mutedColor, marginBottom: 6 }}>
         Drag to add bubble
       </p>
