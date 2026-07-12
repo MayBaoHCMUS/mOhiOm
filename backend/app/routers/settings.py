@@ -10,11 +10,12 @@ from app.crud import UserRepository
 from app.crypto_utils import encrypt_secret
 from app.database import mongo_db
 from app.deps import get_current_user_required
-from app.providers import TEXT_GEN_PROVIDERS
+from app.providers import TEXT_GEN_PROVIDERS, IMAGE_GEN_PROVIDERS
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 TextGenMode = Literal["byok", "nine_router", "local_server"]
+ImageGenMode = Literal["builtin", "byok"]
 
 
 class TextGenConfigIn(BaseModel):
@@ -44,6 +45,29 @@ class TextGenProviderOut(BaseModel):
 
 class TextGenProvidersOut(BaseModel):
     providers: List[TextGenProviderOut]
+
+
+class ImageGenConfigIn(BaseModel):
+    mode: ImageGenMode
+    provider: str = ""  # required for "byok" — must be a key in IMAGE_GEN_PROVIDERS
+    model: str = ""     # optional override of the provider's default_model
+    api_key: str = ""   # plaintext in transit over HTTPS; encrypted before storage; blank = keep existing key
+
+
+class ImageGenConfigOut(BaseModel):
+    mode: ImageGenMode = "builtin"
+    provider: str = ""
+    model: str = ""
+    has_api_key: bool = False
+
+
+class ImageGenProviderOut(BaseModel):
+    id: str
+    label: str
+
+
+class ImageGenProvidersOut(BaseModel):
+    providers: List[ImageGenProviderOut]
 
 
 def _repo() -> UserRepository:
@@ -134,3 +158,63 @@ async def put_text_gen_config(
 async def delete_text_gen_config(user: Dict[str, Any] = Depends(get_current_user_required)):
     await _repo().clear_text_gen_config(str(user["_id"]))
     return TextGenConfigOut()
+
+
+@router.get("/image-gen-providers", response_model=ImageGenProvidersOut)
+async def get_image_gen_providers():
+    return ImageGenProvidersOut(
+        providers=[
+            ImageGenProviderOut(id=provider_id, label=info["label"])
+            for provider_id, info in IMAGE_GEN_PROVIDERS.items()
+        ]
+    )
+
+
+@router.get("/image-gen-config", response_model=ImageGenConfigOut)
+async def get_image_gen_config(user: Dict[str, Any] = Depends(get_current_user_required)):
+    cfg = await _repo().get_image_gen_config(str(user["_id"])) or {}
+    return ImageGenConfigOut(
+        mode=cfg.get("mode", "builtin"),
+        provider=cfg.get("provider", ""),
+        model=cfg.get("model", ""),
+        has_api_key=bool(cfg.get("api_key_encrypted")),
+    )
+
+
+@router.put("/image-gen-config", response_model=ImageGenConfigOut)
+async def put_image_gen_config(
+    payload: ImageGenConfigIn, user: Dict[str, Any] = Depends(get_current_user_required)
+):
+    repo = _repo()
+    existing = await repo.get_image_gen_config(str(user["_id"])) or {}
+    api_key_encrypted = existing.get("api_key_encrypted", "")
+
+    if payload.mode == "byok":
+        if payload.provider.strip() not in IMAGE_GEN_PROVIDERS:
+            raise HTTPException(status_code=400, detail="Unknown provider.")
+        if payload.api_key.strip():
+            api_key_encrypted = encrypt_secret(payload.api_key.strip())
+        if not api_key_encrypted:
+            raise HTTPException(status_code=400, detail="API key is required for 'byok' mode.")
+    else:  # builtin
+        api_key_encrypted = ""
+
+    config = {
+        "mode": payload.mode,
+        "provider": payload.provider.strip() if payload.mode == "byok" else "",
+        "model": payload.model.strip() if payload.mode == "byok" else "",
+        "api_key_encrypted": api_key_encrypted,
+    }
+    await repo.set_image_gen_config(str(user["_id"]), config)
+    return ImageGenConfigOut(
+        mode=config["mode"],
+        provider=config["provider"],
+        model=config["model"],
+        has_api_key=bool(api_key_encrypted),
+    )
+
+
+@router.delete("/image-gen-config", response_model=ImageGenConfigOut)
+async def delete_image_gen_config(user: Dict[str, Any] = Depends(get_current_user_required)):
+    await _repo().clear_image_gen_config(str(user["_id"]))
+    return ImageGenConfigOut()

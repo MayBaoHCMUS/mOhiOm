@@ -247,6 +247,32 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
       },
     ],
   },
+  'studio-publish-history': {
+    id: 'studio-publish-history',
+    greeting: [
+      "Publish History — every comic you've shared to the public reader, with live read counts.",
+      "This is your publish log — see how many reads each published comic has gotten.",
+    ],
+    quickReplies: [
+      {
+        id: 'publish-history-reads',
+        label: 'What does "reads" mean?',
+        response: 'How many times someone has opened that comic in the public web reader, refreshed live from the server.',
+      },
+      {
+        id: 'publish-history-remove',
+        label: 'What does "Remove" do?',
+        response: "It only clears the entry from this local log on your device — it doesn't unpublish the comic. Unpublish from the Publish page instead.",
+      },
+      {
+        id: 'publish-history-tour',
+        label: 'Show me around this page',
+        icon: Map,
+        response: "Let's walk through it together.",
+        action: { type: 'page-tour' },
+      },
+    ],
+  },
   'studio-my-stories': {
     id: 'studio-my-stories',
     greeting: [
@@ -272,6 +298,34 @@ export const GUIDE_MENUS: Record<string, GuideMenu> = {
         id: 'analytics-metrics',
         label: 'What do these numbers mean?',
         response: 'Views, reads, and engagement on each comic you\'ve published to the Gallery.',
+      },
+    ],
+  },
+  'studio-evaluation': {
+    id: 'studio-evaluation',
+    greeting: [
+      "Evaluation — this is a separate research tool for testing generation settings, not part of the normal comic pipeline.",
+      "You're on the Evaluation page — it's used to measure how well different settings keep a character consistent.",
+    ],
+    quickReplies: [
+      {
+        id: 'eval-what-is',
+        label: 'What is this page for?',
+        response: 'It runs controlled tests: Ablation compares character-consistency strength settings, CLIP Score measures how well an image matches its prompt.',
+      },
+      {
+        id: 'eval-ablation',
+        label: 'How does the Ablation test work?',
+        icon: ImagePlus,
+        response: 'Upload a reference image and describe a scene — it generates that same panel at 4 different consistency-strength settings so you can compare which works best.',
+        action: { type: 'highlight', target: '[data-tour="eval-run-form"]', title: 'Run Ablation Test' },
+      },
+      {
+        id: 'eval-tour',
+        label: 'Show me around this page',
+        icon: Map,
+        response: "Let's walk through it together.",
+        action: { type: 'page-tour' },
       },
     ],
   },
@@ -453,9 +507,13 @@ const ROUTE_MENU_TABLE: { prefix: string; menuId: string }[] = [
   { prefix: '/studio/story-setup', menuId: 'studio-story-setup' },
   { prefix: '/studio/character-manager', menuId: 'studio-character-manager' },
   { prefix: '/studio/editor', menuId: 'studio-editor' },
+  // Must come before '/studio/publish' below — '/studio/publish-history'.startsWith('/studio/publish')
+  // is true, so a more specific prefix has to be checked first or it never gets reached.
+  { prefix: '/studio/publish-history', menuId: 'studio-publish-history' },
   { prefix: '/studio/publish', menuId: 'studio-publish' },
   { prefix: '/studio/my-stories', menuId: 'studio-my-stories' },
   { prefix: '/studio/analytics', menuId: 'studio-analytics' },
+  { prefix: '/studio/evaluation', menuId: 'studio-evaluation' },
   { prefix: '/gallery', menuId: 'gallery' },
   { prefix: '/settings', menuId: 'settings' },
 ];

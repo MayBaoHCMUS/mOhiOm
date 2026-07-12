@@ -6,8 +6,9 @@ import StudioSidebar from '@/components/StudioSidebar';
 import StudioTopBar from '@/components/StudioTopBar';
 import { useAuth } from '@/context/AuthContext';
 import { authApi, projectsApi, settingsApi, toApiError } from '@/services/api';
-import type { TextGenMode, SaveTextGenConfigPayload, TextGenProvider } from '@/services/api';
+import type { TextGenMode, SaveTextGenConfigPayload, TextGenProvider, ImageGenMode, SaveImageGenConfigPayload, ImageGenProvider } from '@/services/api';
 import { getImageApiUrl } from '@/lib/imageApiUrl';
+import { IMAGE_STYLES, DEFAULT_IMAGE_STYLE, IMAGE_STYLE_PREF_KEY } from '@/lib/imageStyles';
 import PasswordStrengthMeter from '@/components/PasswordStrengthMeter';
 import { useOnboardingContext } from '@/context/OnboardingContext';
 import { useAutoScrollStreamingPref } from '@/hooks/useAutoScrollStreamingPref';
@@ -66,23 +67,38 @@ function ProviderBadge({ provider }: { provider: string }) {
 
 // ─── Inline field ─────────────────────────────────────────────────────────────
 
-function Field({ label, type = 'text', value, onChange, placeholder }: {
+function Field({ label, type = 'text', value, onChange, placeholder, revealable = false }: {
   label: string;
   type?: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  revealable?: boolean;
 }) {
+  const [revealed, setRevealed] = useState(false);
+  const effectiveType = revealable && revealed ? 'text' : type;
   return (
     <div>
       <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="field w-full"
-      />
+      <div className="relative">
+        <input
+          type={effectiveType}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={`field w-full ${revealable ? 'pr-10' : ''}`}
+        />
+        {revealable && (
+          <button
+            type="button"
+            onClick={() => setRevealed((r) => !r)}
+            aria-label={revealed ? 'Hide value' : 'Show value'}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition-colors"
+          >
+            <span className="material-symbols-outlined text-lg">{revealed ? 'visibility_off' : 'visibility'}</span>
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -97,9 +113,11 @@ export default function SettingsPage() {
   const { autoScroll, setAutoScroll } = useAutoScrollStreamingPref();
 
   // Preferences state — initialised from localStorage
-  const [comicStyle, setComicStyle] = useState(() =>
-    typeof window !== 'undefined' ? (localStorage.getItem('mohiom-pref-comic-style') ?? 'Manga') : 'Manga'
-  );
+  const [comicStyle, setComicStyle] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_IMAGE_STYLE;
+    const stored = localStorage.getItem(IMAGE_STYLE_PREF_KEY)?.toLowerCase() ?? '';
+    return IMAGE_STYLES.some((s) => s.value === stored) ? stored : DEFAULT_IMAGE_STYLE;
+  });
   const [exportFormat, setExportFormat] = useState(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('mohiom-pref-export-format') ?? 'High-Res PNG') : 'High-Res PNG'
   );
@@ -141,6 +159,17 @@ export default function SettingsPage() {
   // Image generation server URL — locked to the permanent GPU tunnel
   const [imageApiUrlValue, setImageApiUrlValue] = useState('');
 
+  // Image generation (BYOK / built-in GPU mode)
+  const [imageGenMode, setImageGenMode] = useState<ImageGenMode>('builtin');
+  const [byokImageProvider, setByokImageProvider] = useState('');
+  const [byokImageProviders, setByokImageProviders] = useState<ImageGenProvider[]>([]);
+  const [byokImageApiKey, setByokImageApiKey] = useState('');
+  const [hasImageApiKey, setHasImageApiKey] = useState(false);
+  const [imageGenLoading, setImageGenLoading] = useState(true);
+  const [imageGenSaving, setImageGenSaving] = useState(false);
+  const [imageGenMsg, setImageGenMsg] = useState('');
+  const [imageGenError, setImageGenError] = useState('');
+
   useEffect(() => {
     let cancelled = false;
     settingsApi.getNineRouterModels()
@@ -167,6 +196,18 @@ export default function SettingsPage() {
 
   useEffect(() => {
     setImageApiUrlValue(getImageApiUrl());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    settingsApi.getImageGenProviders()
+      .then((r) => {
+        if (cancelled) return;
+        setByokImageProviders(r.data.providers);
+        setByokImageProvider((prev) => prev || r.data.providers[0]?.id || '');
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -211,6 +252,21 @@ export default function SettingsPage() {
       .finally(() => setTextGenLoading(false));
   }, [user]);
 
+  useEffect(() => {
+    if (!user) { setImageGenLoading(false); return; }
+    settingsApi.getImageGenConfig()
+      .then((r) => {
+        const cfg = r.data;
+        setImageGenMode(cfg.mode);
+        setHasImageApiKey(cfg.has_api_key);
+        if (cfg.mode === 'byok') {
+          setByokImageProvider((prev) => cfg.provider || prev);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setImageGenLoading(false));
+  }, [user]);
+
   const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'Creator';
   const providers = user?.providers ?? [];
   const hasPassword = providers.includes('manual');
@@ -242,7 +298,7 @@ export default function SettingsPage() {
   };
 
   const savePrefs = (style: string, format: string) => {
-    localStorage.setItem('mohiom-pref-comic-style', style);
+    localStorage.setItem(IMAGE_STYLE_PREF_KEY, style);
     localStorage.setItem('mohiom-pref-export-format', format);
     setPrefSaved(true);
     setTimeout(() => setPrefSaved(false), 2000);
@@ -298,6 +354,44 @@ export default function SettingsPage() {
       setTextGenError(toApiError(err).message);
     } finally {
       setTextGenSaving(false);
+    }
+  };
+
+  const handleSaveImageGenConfig = async () => {
+    setImageGenError('');
+    setImageGenMsg('');
+    setImageGenSaving(true);
+    try {
+      const payload: SaveImageGenConfigPayload =
+        imageGenMode === 'byok'
+          ? { mode: 'byok', provider: byokImageProvider, api_key: byokImageApiKey }
+          : { mode: 'builtin' };
+      const res = await settingsApi.saveImageGenConfig(payload);
+      setHasImageApiKey(res.data.has_api_key);
+      setByokImageApiKey('');
+      setImageGenMsg('Saved!');
+      setTimeout(() => setImageGenMsg(''), 2000);
+    } catch (err) {
+      setImageGenError(toApiError(err).message);
+    } finally {
+      setImageGenSaving(false);
+    }
+  };
+
+  const handleClearImageGenConfig = async () => {
+    setImageGenError('');
+    setImageGenSaving(true);
+    try {
+      await settingsApi.clearImageGenConfig();
+      setImageGenMode('builtin');
+      setByokImageProvider(byokImageProviders[0]?.id || ''); setByokImageApiKey('');
+      setHasImageApiKey(false);
+      setImageGenMsg('Reset to default.');
+      setTimeout(() => setImageGenMsg(''), 2000);
+    } catch (err) {
+      setImageGenError(toApiError(err).message);
+    } finally {
+      setImageGenSaving(false);
     }
   };
 
@@ -413,9 +507,9 @@ export default function SettingsPage() {
                   onChange={(e) => { setComicStyle(e.target.value); savePrefs(e.target.value, exportFormat); }}
                   className="field"
                 >
-                  {['Manga', 'Western', 'Webtoon', 'Graphic Novel', 'Chibi'].map((o) => <option key={o}>{o}</option>)}
+                  {IMAGE_STYLES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
-                <p className="mt-2 text-[11px] text-outline">Pre-selected for all new AI-generated canvases.</p>
+                <p className="mt-2 text-[11px] text-outline">Pre-selected as the Image Style for new projects — override it per-project in Story Setup.</p>
               </div>
               <div>
                 <label className="block text-xs font-bold text-on-surface-variant mb-2 uppercase tracking-wider">Default Export Format</label>
@@ -646,6 +740,7 @@ export default function SettingsPage() {
                       value={byokApiKey}
                       onChange={setByokApiKey}
                       placeholder={hasApiKey ? '••••••••' : 'sk-…'}
+                      revealable
                     />
                     <p className="text-[11px] text-outline">Paste the API key from your provider&apos;s dashboard — no URL or model needed.</p>
                   </div>
@@ -694,17 +789,103 @@ export default function SettingsPage() {
           {/* ── Image Generation ── */}
           <Panel className="p-7">
             <SectionLabel icon="image">Image Generation</SectionLabel>
-            <div>
-              <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Image API URL</label>
-              <input
-                type="url"
-                value={imageApiUrlValue}
-                disabled
-                readOnly
-                className="field w-full font-mono text-sm opacity-60 cursor-not-allowed"
-              />
-              <p className="mt-2 text-[11px] text-outline">Fixed to the permanent GPU tunnel — no longer user-configurable.</p>
-            </div>
+            {!user ? (
+              <p className="text-sm text-on-surface-variant">Sign in to configure your own image-generation provider.</p>
+            ) : imageGenLoading ? (
+              <div className="h-24 bg-surface-container-high rounded-xl animate-pulse" />
+            ) : (
+              <div className="space-y-5">
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { key: 'builtin', label: "App's built-in GPU render farm" },
+                    { key: 'byok', label: 'Bring your own API key' },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setImageGenMode(opt.key)}
+                      className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-colors ${
+                        imageGenMode === opt.key
+                          ? 'bg-primary text-white border-primary'
+                          : 'bg-surface-container text-on-surface-variant border-outline-variant/40 hover:bg-surface-container-high'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                {imageGenMode === 'builtin' && (
+                  <div>
+                    <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Image API URL</label>
+                    <input
+                      type="url"
+                      value={imageApiUrlValue}
+                      disabled
+                      readOnly
+                      className="field w-full font-mono text-sm opacity-60 cursor-not-allowed"
+                    />
+                    <p className="mt-2 text-[11px] text-outline">Fixed to the permanent GPU tunnel. Supports reference-image and character-consistency features.</p>
+                  </div>
+                )}
+
+                {imageGenMode === 'byok' && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Provider</label>
+                      <select
+                        value={byokImageProvider || byokImageProviders[0]?.id || ''}
+                        onChange={(e) => setByokImageProvider(e.target.value)}
+                        className="field w-full"
+                      >
+                        {byokImageProviders.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                      </select>
+                    </div>
+                    <Field
+                      label={hasImageApiKey ? 'API key (saved — leave blank to keep)' : 'API key'}
+                      type="password"
+                      value={byokImageApiKey}
+                      onChange={setByokImageApiKey}
+                      placeholder={hasImageApiKey ? '••••••••' : 'sk-…'}
+                      revealable
+                    />
+                    <p className="text-[11px] text-outline">
+                      Text-prompt only for now — reference images and character consistency aren&apos;t forwarded to BYOK providers yet; use the built-in GPU mode for those.
+                    </p>
+                  </div>
+                )}
+
+                {imageGenError && (
+                  <p className="text-xs text-red-600 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">error</span>
+                    {imageGenError}
+                  </p>
+                )}
+                {imageGenMsg && (
+                  <p className="text-xs text-green-600 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">check_circle</span>
+                    {imageGenMsg}
+                  </p>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveImageGenConfig}
+                    disabled={imageGenSaving}
+                    className="px-4 py-2 rounded-lg text-sm font-bold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  >
+                    {imageGenSaving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    onClick={handleClearImageGenConfig}
+                    disabled={imageGenSaving}
+                    className="px-4 py-2 rounded-lg text-sm font-bold text-on-surface-variant hover:bg-surface-container-high transition-colors"
+                  >
+                    Reset to default
+                  </button>
+                </div>
+              </div>
+            )}
           </Panel>
 
           {/* ── Danger zone ── */}

@@ -1231,6 +1231,52 @@ export const settingsApi = {
   getNineRouterModels: () => apiClient.get<{ models: string[] }>("/settings/nine-router-models"),
 
   getTextGenProviders: () => apiClient.get<{ providers: TextGenProvider[] }>("/settings/text-gen-providers"),
+
+  getImageGenConfig: () => apiClient.get<ImageGenConfig>("/settings/image-gen-config"),
+
+  saveImageGenConfig: (payload: SaveImageGenConfigPayload) =>
+    apiClient.put<ImageGenConfig>("/settings/image-gen-config", payload),
+
+  clearImageGenConfig: () => apiClient.delete<ImageGenConfig>("/settings/image-gen-config"),
+
+  getImageGenProviders: () => apiClient.get<{ providers: ImageGenProvider[] }>("/settings/image-gen-providers"),
+};
+
+export type ImageGenMode = "builtin" | "byok";
+
+export interface ImageGenConfig {
+  mode: ImageGenMode;
+  provider: string;
+  model: string;
+  has_api_key: boolean;
+}
+
+export interface SaveImageGenConfigPayload {
+  mode: ImageGenMode;
+  provider?: string;
+  model?: string;
+  api_key?: string;
+}
+
+export interface ImageGenProvider {
+  id: string;
+  label: string;
+}
+
+export interface GenerateByokImagePayload {
+  prompt: string;
+  negative_prompt?: string;
+  width?: number;
+  height?: number;
+}
+
+export interface GenerateByokImageResponse {
+  image_url: string;
+}
+
+export const imageGenApi = {
+  generate: (payload: GenerateByokImagePayload) =>
+    apiClient.post<GenerateByokImageResponse>("/image-gen/generate", payload),
 };
 
 export interface OnboardingStateDto {

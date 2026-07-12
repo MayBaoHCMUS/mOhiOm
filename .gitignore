@@ -39,3 +39,6 @@ next-env.d.ts
 *.md
 !README.md
 /gpu-server/
+
+# local screenshot captures
+/screenshots/

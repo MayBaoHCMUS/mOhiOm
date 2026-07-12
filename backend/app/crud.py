@@ -192,6 +192,23 @@ class UserRepository:
             {"$unset": {"text_gen_config": ""}},
         )
 
+    async def get_image_gen_config(self, user_id: str) -> Optional[Dict[str, Any]]:
+        doc = self.collection.find_one({"_id": ObjectId(user_id)}, {"image_gen_config": 1})
+        return (doc or {}).get("image_gen_config")
+
+    async def set_image_gen_config(self, user_id: str, config: Dict[str, Any]) -> None:
+        config = {**config, "updated_at": datetime.now(timezone.utc)}
+        self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"image_gen_config": config}},
+        )
+
+    async def clear_image_gen_config(self, user_id: str) -> None:
+        self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$unset": {"image_gen_config": ""}},
+        )
+
     async def get_onboarding_state(self, user_id: str) -> Optional[Dict[str, Any]]:
         doc = self.collection.find_one({"_id": ObjectId(user_id)}, {"onboarding_state": 1})
         return (doc or {}).get("onboarding_state")

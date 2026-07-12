@@ -20,13 +20,14 @@ export default function PublishHistoryPage() {
         <div style={{ background: '#F8FAFF', borderBottom: '1px solid #E5E7EB', padding: '28px 32px 24px 32px', flexShrink: 0 }}>
           <button
             type="button"
+            data-tour="publish-history-back"
             onClick={() => router.push('/studio/analytics')}
             className="inline-flex items-center gap-1.5 text-[12px] text-on-surface-variant hover:text-primary transition-colors mb-3"
           >
             <ArrowLeft size={14} />
             Back to Analytics
           </button>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: '#111827', margin: 0, marginBottom: 4, lineHeight: 1.2 }}>
+          <h1 data-tour="publish-history-title" style={{ fontSize: 28, fontWeight: 700, color: '#111827', margin: 0, marginBottom: 4, lineHeight: 1.2 }}>
             Publish History
           </h1>
           <p style={{ fontSize: 13, color: '#6B7280', margin: 0 }}>

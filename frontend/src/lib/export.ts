@@ -52,6 +52,9 @@ async function stripDataPrefix(src: string): Promise<{ base64: string; mimeType:
   if (match) return { mimeType: match[1], base64: match[2] };
   if (src.startsWith('http') || src.startsWith('blob:')) {
     const res = await fetch(src);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch an image for export (${res.status}). It may have expired — try reloading the project.`);
+    }
     const mimeType = res.headers.get('content-type') || 'image/png';
     return { mimeType, base64: arrayBufferToBase64(await res.arrayBuffer()) };
   }

@@ -32,3 +32,24 @@ TEXT_GEN_PROVIDERS: Dict[str, ProviderInfo] = {
         "model": "deepseek-chat",
     },
 }
+
+
+class ImageProviderInfo(TypedDict):
+    label: str
+    default_model: str
+
+
+# Unlike TEXT_GEN_PROVIDERS, image-generation providers do not share a common
+# wire format (Gemini uses the google-genai SDK's generateContent with an image
+# response modality; OpenAI uses a REST images/generations endpoint), so each
+# entry only carries display info — the call shape lives in image_gen_service.py.
+IMAGE_GEN_PROVIDERS: Dict[str, ImageProviderInfo] = {
+    "gemini": {
+        "label": "Gemini",
+        "default_model": "gemini-2.0-flash-preview-image-generation",
+    },
+    "openai": {
+        "label": "OpenAI",
+        "default_model": "gpt-image-1",
+    },
+}

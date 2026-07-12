@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ExternalLink, FolderOpen, Plus } from 'lucide-react';
+import { ExternalLink, FolderOpen, Plus, Trash2, AlertTriangle, X } from 'lucide-react';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import { projectsApi } from '@/services/api';
 import type { CloudProjectListItem } from '@/services/api';
@@ -100,6 +100,9 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('recent');
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [publishErrors, setPublishErrors] = useState<Record<string, string>>({});
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteErrors, setDeleteErrors] = useState<Record<string, string>>({});
+  const [deleteConfirmProject, setDeleteConfirmProject] = useState<CloudProjectListItem | null>(null);
 
   const sorted = useMemo(() => sortProjects(projects, sortKey), [projects, sortKey]);
 
@@ -118,9 +121,16 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
   useEffect(() => {
     if (isOpen) {
       setPublishErrors({});
+      setDeleteErrors({});
+      setDeleteConfirmProject(null);
       fetchProjects();
     }
-  }, [isOpen, fetchProjects]);
+    // fetchProjects is intentionally omitted: it's derived from a context value
+    // (listCloudProjects) that gets a new identity on every 1s context tick
+    // (see ComicGenerationContext's nowMs interval), which would otherwise
+    // refetch and reset scroll position every second while the drawer is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const handleSave = async () => {
     await saveToCloud();
@@ -151,6 +161,27 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
       }));
     } finally {
       setPublishingId(null);
+    }
+  };
+
+  const handleDelete = async (projectId: string) => {
+    if (deletingId) return;
+
+    setDeleteErrors((prev) => {
+      if (!(projectId in prev)) return prev;
+      const { [projectId]: _removed, ...rest } = prev;
+      return rest;
+    });
+    setDeletingId(projectId);
+
+    try {
+      await projectsApi.delete(projectId);
+      setProjects((prev) => prev.filter((p) => p.project_id !== projectId));
+      setDeleteConfirmProject(null);
+    } catch {
+      setDeleteErrors((prev) => ({ ...prev, [projectId]: 'Could not delete this project. Try again.' }));
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -425,6 +456,11 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
                         {publishErrors[p.project_id]}
                       </p>
                     )}
+                    {deleteErrors[p.project_id] && (
+                      <p style={{ fontSize: 10, color: '#DC2626', margin: 0, marginTop: -8, marginBottom: 10 }}>
+                        {deleteErrors[p.project_id]}
+                      </p>
+                    )}
 
                     {/* Actions */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -474,6 +510,41 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
                           Publish →
                         </Link>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirmProject(p)}
+                        disabled={deletingId === p.project_id}
+                        aria-label="Delete project"
+                        title="Delete project"
+                        style={{
+                          marginLeft: 'auto',
+                          width: 34,
+                          height: 34,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: 8,
+                          border: 'none',
+                          background: 'transparent',
+                          color: '#9CA3AF',
+                          cursor: deletingId === p.project_id ? 'not-allowed' : 'pointer',
+                          flexShrink: 0,
+                        }}
+                        onMouseEnter={(e) => {
+                          if (deletingId === p.project_id) return;
+                          const b = e.currentTarget as HTMLButtonElement;
+                          b.style.color = '#DC2626';
+                          b.style.background = '#FEF2F2';
+                        }}
+                        onMouseLeave={(e) => {
+                          const b = e.currentTarget as HTMLButtonElement;
+                          b.style.color = '#9CA3AF';
+                          b.style.background = 'transparent';
+                        }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     </div>
                   </div>
                 );
@@ -516,6 +587,84 @@ export default function ProjectsDrawer({ isOpen, onClose }: Props) {
           )}
         </div>
       </div>
+
+      {deleteConfirmProject && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45"
+          onClick={() => { if (!deletingId) setDeleteConfirmProject(null); }}
+        >
+          <div
+            style={{ background: '#FFFFFF', borderRadius: 16, boxShadow: '0 20px 50px rgba(0,0,0,0.25)', padding: 28, width: 400, maxWidth: 'calc(100vw - 32px)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 20 }}>
+              <span style={{
+                width: 40, height: 40, borderRadius: 12, background: '#FEE2E2',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <AlertTriangle size={20} color="#DC2626" />
+              </span>
+              <div>
+                <p style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>Delete this project?</p>
+                <p style={{ fontSize: 14, color: '#6B7280', marginTop: 6, lineHeight: 1.5 }}>
+                  <strong style={{ color: '#111827' }}>{formatProjectTitle(deleteConfirmProject.project_id)}</strong> and all its panels, characters, and images will be permanently deleted. This cannot be undone.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmProject(null)}
+                disabled={deletingId === deleteConfirmProject.project_id}
+                aria-label="Close"
+                style={{
+                  marginLeft: 'auto', width: 26, height: 26, flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: 6, border: 'none', background: 'transparent', color: '#9CA3AF', cursor: 'pointer',
+                }}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {deleteErrors[deleteConfirmProject.project_id] && (
+              <p style={{ fontSize: 12, color: '#DC2626', marginTop: -8, marginBottom: 14 }}>
+                {deleteErrors[deleteConfirmProject.project_id]}
+              </p>
+            )}
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmProject(null)}
+                disabled={deletingId === deleteConfirmProject.project_id}
+                style={{
+                  flex: 1, height: 42, borderRadius: 9, fontSize: 14, fontWeight: 500,
+                  background: '#FFFFFF', border: '1.5px solid #E5E7EB', color: '#6B7280',
+                  cursor: deletingId === deleteConfirmProject.project_id ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDelete(deleteConfirmProject.project_id)}
+                disabled={deletingId === deleteConfirmProject.project_id}
+                style={{
+                  flex: 1, height: 42, borderRadius: 9, fontSize: 14, fontWeight: 600,
+                  background: '#DC2626', color: '#FFFFFF', border: 'none',
+                  cursor: deletingId === deleteConfirmProject.project_id ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  opacity: deletingId === deleteConfirmProject.project_id ? 0.75 : 1,
+                }}
+              >
+                {deletingId === deleteConfirmProject.project_id && (
+                  <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full" />
+                )}
+                {deletingId === deleteConfirmProject.project_id ? 'Deleting…' : 'Yes, delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
