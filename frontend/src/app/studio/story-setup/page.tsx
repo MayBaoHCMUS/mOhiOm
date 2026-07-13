@@ -141,8 +141,11 @@ export default function StorySetupPage() {
   const [beatsExpanded, setBeatsExpanded] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Advanced Setup (production targets)
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Creative direction — collapsible, collapsed by default
+  const [creativeOpen, setCreativeOpen] = useState(false);
+
+  // Advanced Setup (production targets) — expanded by default
+  const [advancedOpen, setAdvancedOpen] = useState(true);
   const [advancedMainChars,  setAdvancedMainChars]  = useState('3');
   const [advancedNumChapters, setAdvancedNumChapters] = useState('4');
   const [advancedTargetPages, setAdvancedTargetPages] = useState('20');
@@ -157,8 +160,8 @@ export default function StorySetupPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysisResult]);
 
-  // Mode: Quick Start (minimal) | Full Setup (all fields) | Load Story
-  const [mode, setMode] = useState<'quick' | 'full'>('quick');
+  // Mode: Quick Start (minimal) | Full Setup (all fields) | Load Story — Full Setup by default
+  const [mode, setMode] = useState<'quick' | 'full'>('full');
   const autoAnalysisTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Active section for contextual pro tip
@@ -798,16 +801,31 @@ export default function StorySetupPage() {
               </div>
             </div>
 
-            {/* 3. Creative direction — hidden in Quick Start */}
+            {/* 3. Creative direction — collapsible, hidden in Quick Start */}
             {mode === 'full' && <div
-              className="bg-surface-container-lowest rounded-3xl p-8 shadow-[0_20px_50px_rgba(0,88,190,0.05)] border border-outline-variant/10"
+              className="bg-surface-container-lowest rounded-3xl shadow-[0_20px_50px_rgba(0,88,190,0.05)] border border-outline-variant/10 overflow-hidden"
               onFocus={() => setActiveSection('creative')}
             >
-              <div className="flex items-center gap-3 mb-2">
-                <span className="material-symbols-outlined text-primary text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>draw</span>
-                <h2 className="text-xl font-bold tracking-tight">Creative direction</h2>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high rounded-full px-2 py-1">Optional</span>
-              </div>
+              <button
+                type="button"
+                onClick={() => setCreativeOpen((v) => !v)}
+                className="w-full flex items-center justify-between px-8 py-5 hover:bg-surface-container-low transition-colors text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="material-symbols-outlined text-primary text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>draw</span>
+                  <h2 className="text-xl font-bold tracking-tight">Creative direction</h2>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high rounded-full px-2 py-1">Optional</span>
+                </div>
+                <span
+                  className="material-symbols-outlined text-on-surface-variant text-xl transition-transform duration-200"
+                  style={{ transform: creativeOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                >
+                  expand_more
+                </span>
+              </button>
+
+              {creativeOpen && (
+              <div className="px-8 pb-8 pt-2 border-t border-outline-variant/10">
               <p className="text-sm text-on-surface-variant mb-5">
                 Describe how you want the AI to adapt your story — add a character, shift the genre, introduce a twist.
                 The AI acts as a Comic Scriptwriter and rewrites the narrative with visual-rich prose ready for panels.
@@ -901,6 +919,8 @@ export default function StorySetupPage() {
                   {adaptState === 'thinking' ? 'Adapting…' : adaptState === 'done' ? 'Re-adapt story' : 'Adapt story'}
                 </button>
               </div>
+              </div>
+              )}
             </div>}
 
             {/* 4. Advanced Setup — collapsible production targets, hidden in Quick Start */}

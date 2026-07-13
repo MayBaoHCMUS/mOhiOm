@@ -107,7 +107,7 @@ export default function RegisterPage() {
 
   return (
     <AuthShell
-      title="Join AI Comic Studio"
+      title="Join mOhiOm"
       subtitle="Experience the next generation of visual storytelling."
       aside={
         <>
@@ -119,29 +119,27 @@ export default function RegisterPage() {
             />
             <div className="absolute inset-0 bg-gradient-to-t from-on-surface/60 via-transparent to-transparent" />
           </div>
-          <div className="relative w-full max-w-lg rounded-xl border border-outline-variant bg-surface-container-lowest p-8 shadow-2xl">
-            <div className="flex gap-1 mb-4 text-secondary-fixed">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <span key={index} className="text-lg">★</span>
-              ))}
+          <div className="relative self-start ml-auto w-full max-w-lg rounded-xl border border-outline-variant bg-surface-container-lowest p-8 shadow-2xl">
+            <div className="flex items-center gap-2 mb-4 text-primary">
+              <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+              <span className="text-xs font-bold uppercase tracking-widest">Why mOhiOm</span>
             </div>
-            <p className="text-on-surface text-xl font-medium leading-relaxed mb-6 italic">
-              “AI Comic Studio transformed my workflow. I can now visualize complex storyboards in minutes instead of
-              weeks. It&apos;s an essential tool for the modern creator.”
+            <p className="text-on-surface text-xl font-medium leading-relaxed mb-6">
+              Turn any story into a fully illustrated comic — mOhiOm analyzes your plot, designs consistent
+              characters, and generates panel-by-panel artwork.
             </p>
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-outline-variant">
-                <img
-                  className="w-full h-full object-cover"
-                  alt="Professional comic artist portrait"
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuD4G9WUGy6OF6xQRo96oDdJE-DYzbKeXoXiAE-CtoroGcypxPOhKDl6D5GT5_h1DaVqRbugKDub3iiqIMrkWc0FyEle-8p4AL-4fq7JlqvN9ZRcKrsUCHFo6GWM8aXpwCRnwlMsSXUPMbP_UyFnyXp66y8RODbh0G3Gk5TD-rWHxp2o0ut6sC9E8FA5mOxPTD_d8JbPVTe2Hy0mFnck9ZWb8CY8P0p8PtFUe2Yic8OTEPv2wnhCmZhmbGqronte-bFKnfGb1j7G-vw"
-                />
-              </div>
-              <div>
-                <h4 className="font-bold text-on-surface">Marcus Thorne</h4>
-                <p className="text-on-surface-variant text-sm">Lead Artist, Ethereal Studios</p>
-              </div>
-            </div>
+            <ul className="space-y-3">
+              {[
+                'Characters stay consistent across every panel',
+                'Guided pipeline from raw text to finished pages',
+                'Free to get started — no credit card required',
+              ].map((item) => (
+                <li key={item} className="flex items-center gap-2.5 text-sm text-on-surface-variant">
+                  <span className="material-symbols-outlined text-primary text-lg flex-shrink-0">check_circle</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
           </div>
         </>
       }
@@ -154,10 +152,10 @@ export default function RegisterPage() {
             </Link>
           </p>
           <div className="flex justify-center gap-6 pt-4">
-            <Link className="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-primary" href="#">
+            <Link className="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-primary" href="/privacy">
               Privacy Policy
             </Link>
-            <Link className="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-primary" href="#">
+            <Link className="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-primary" href="/terms">
               Terms of Service
             </Link>
           </div>

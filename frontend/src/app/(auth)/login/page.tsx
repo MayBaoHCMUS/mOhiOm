@@ -74,7 +74,7 @@ export default function LoginPage() {
 
   return (
     <AuthShell
-      title="Welcome back to AI Comic Studio"
+      title="Welcome back to mOhiOm"
       subtitle="Sign in to continue your creative journey."
       aside={
         <>
@@ -87,23 +87,28 @@ export default function LoginPage() {
             <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
           </div>
           <div className="relative w-full max-w-lg rounded-xl border border-outline-variant bg-surface-container-lowest p-8 shadow-2xl">
-            <div className="space-y-4">
-              <p className="text-on-surface text-xl font-medium leading-relaxed italic">
-                AI Comic Studio has completely transformed my workflow. I can now visualize complex storyboards in
-                minutes instead of days. The style consistency is unmatched.
-              </p>
-              <div className="flex items-center gap-4 pt-2">
-                <img
-                  className="w-12 h-12 rounded-full object-cover border-2 border-outline-variant"
-                  alt="Creative director portrait"
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuCUlG0oW_ZmFawgVrZ2wQyyzmOgythczFhn4i7zRIc1pWTxW9hRl-ONWxjaimyEEexM6TVkLOkrVT1lganT6fw8ZnxSYeaFrwkL5AEQdLuUb3I2zozDsCTt1cWU4fzIg32-ffw-PFLUwi4ZS4M8sy66HDlrb309404E3axM0qRMhcMMPxdPyoYlRFBEuZ-YGg-6OK7p7q7W0wIO28-gmq9n4PrjYL-aB_FTI3lIPA9R6FQPSxaNAkutGr_EX6-SMc0yuwFZJMUUzL4"
-                />
-                <div>
-                  <h4 className="font-bold text-on-surface">Kaito Tanaka</h4>
-                  <p className="text-on-surface-variant text-sm">Lead Artist, Neo-Tokyo Collective</p>
-                </div>
-              </div>
-            </div>
+            <div className="text-xs font-bold uppercase tracking-widest text-primary mb-4">The pipeline</div>
+            <p className="text-on-surface text-xl font-medium leading-relaxed mb-6">
+              Your story becomes a comic in five guided steps.
+            </p>
+            <ol className="space-y-3">
+              {[
+                ['Setup', 'Paste in your story and pick an art style'],
+                ['Analyze', 'AI breaks down plot, characters, and scenes'],
+                ['Characters', 'Approve consistent character designs'],
+                ['Generate', 'Panel-by-panel artwork with layout & dialogue'],
+                ['Publish', 'Export to PDF/EPUB or share a reader link'],
+              ].map(([step, desc], i) => (
+                <li key={step} className="flex items-start gap-3 text-sm">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-[11px] font-bold flex items-center justify-center mt-0.5">
+                    {i + 1}
+                  </span>
+                  <span className="text-on-surface-variant">
+                    <span className="font-semibold text-on-surface">{step}</span> — {desc}
+                  </span>
+                </li>
+              ))}
+            </ol>
           </div>
         </>
       }
@@ -116,10 +121,10 @@ export default function LoginPage() {
             </Link>
           </p>
           <div className="flex items-center justify-center gap-6">
-            <Link className="text-xs font-bold text-on-surface-variant/70 uppercase tracking-widest hover:text-primary" href="#">
+            <Link className="text-xs font-bold text-on-surface-variant/70 uppercase tracking-widest hover:text-primary" href="/privacy">
               Privacy Policy
             </Link>
-            <Link className="text-xs font-bold text-on-surface-variant/70 uppercase tracking-widest hover:text-primary" href="#">
+            <Link className="text-xs font-bold text-on-surface-variant/70 uppercase tracking-widest hover:text-primary" href="/terms">
               Terms of Service
             </Link>
           </div>

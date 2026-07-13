@@ -7,7 +7,16 @@ import { AnimatePresence, motion, useMotionValue, useReducedMotion } from 'frame
 import { X, ChevronLeft } from 'lucide-react';
 import { useOnboardingContext } from '@/context/OnboardingContext';
 import { subscribeWizardStep, type WizardStep } from '@/utils/wizardStepBus';
-import { GUIDE_MENUS, ROOT_MENU_ID, resolveMenuId, pickRandom, IDLE_QUIPS, type QuickReply } from '@/content/guideBotScript';
+import {
+  GUIDE_MENUS,
+  ROOT_MENU_ID,
+  resolveMenuId,
+  pickRandom,
+  IDLE_QUIPS,
+  PROTIPS,
+  LANDING_IDLE_QUIPS,
+  type QuickReply,
+} from '@/content/guideBotScript';
 import SpotlightTour, { type TourStep } from '@/components/onboarding/SpotlightTour';
 import ContextualTip from '@/components/onboarding/ContextualTip';
 import { PAGE_TOUR_STEPS } from '@/content/pageTourSteps';
@@ -38,6 +47,11 @@ const AVATAR_ROTATE_INTERVAL_MS = 25_000;
 const IDLE_QUIP_MIN_DELAY_MS = 30_000;
 const IDLE_QUIP_MAX_DELAY_MS = 70_000;
 const IDLE_QUIP_VISIBLE_MS = 8_000;
+
+// Casual nudges and feature protips share one rotation on app pages — both are ambient,
+// unprompted bubbles near the closed launcher, just different content flavors. The landing
+// page gets its own welcome-flavored pool instead (studio protips aren't relevant pre-signup).
+const APP_IDLE_POOL = [...IDLE_QUIPS, ...PROTIPS];
 
 const SPARK_PATH =
   'M392.05 0c-20.9,210.08 -184.06,378.41 -392.05,407.78 207.96,29.37 371.12,197.68 392.05,407.74 20.93,-210.06 184.09,-378.37 392.05,-407.74 -207.98,-29.38 -371.16,-197.69 -392.06,-407.78z';
@@ -87,6 +101,38 @@ interface ChatMessage {
   text: string;
 }
 
+const TYPEWRITER_CHARS_PER_TICK = 2;
+const TYPEWRITER_TICK_MS = 18;
+
+// Reveals `text` a few characters at a time instead of popping in fully formed —
+// only the most-recently-added bot message uses this (see `streamingMessageId`);
+// everything else renders as plain static text.
+function TypewriterText({ text, onTick, onDone }: { text: string; onTick?: () => void; onDone?: () => void }) {
+  const [shown, setShown] = useState('');
+
+  useEffect(() => {
+    setShown('');
+    if (!text) {
+      onDone?.();
+      return;
+    }
+    let i = 0;
+    const timer = window.setInterval(() => {
+      i = Math.min(text.length, i + TYPEWRITER_CHARS_PER_TICK);
+      setShown(text.slice(0, i));
+      onTick?.();
+      if (i >= text.length) {
+        window.clearInterval(timer);
+        onDone?.();
+      }
+    }, TYPEWRITER_TICK_MS);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+
+  return <>{shown}</>;
+}
+
 export default function GuideBotWidget() {
   const pathname = usePathname();
   const router = useRouter();
@@ -97,6 +143,7 @@ export default function GuideBotWidget() {
   const [wizardStep, setWizardStep] = useState<WizardStep | null>(null);
   const [menuHistory, setMenuHistory] = useState<string[]>([ROOT_MENU_ID]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [hasNudged, setHasNudged] = useState(true);
   const [quip, setQuip] = useState<string | null>(null);
   const lastQuipRef = useRef<string | null>(null);
@@ -143,6 +190,10 @@ export default function GuideBotWidget() {
   useEffect(() => {
     activeTipRef.current = activeTip;
   }, [activeTip]);
+  const pathnameRef = useRef(pathname);
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
 
   // Occasionally surfaces a small unprompted tip near the closed launcher, so the bot
   // sometimes speaks up on its own instead of only responding when clicked. Runs continuously
@@ -157,7 +208,8 @@ export default function GuideBotWidget() {
       timer = window.setTimeout(() => {
         if (cancelled) return;
         if (!openRef.current && !activeTourRef.current && !activeTipRef.current) {
-          const next = pickRandom(IDLE_QUIPS, lastQuipRef.current ?? undefined);
+          const pool = pathnameRef.current === '/' ? LANDING_IDLE_QUIPS : APP_IDLE_POOL;
+          const next = pickRandom(pool, lastQuipRef.current ?? undefined);
           lastQuipRef.current = next;
           setQuip(next);
         }
@@ -226,8 +278,10 @@ export default function GuideBotWidget() {
   const resetForContext = () => {
     const menuId = resolveMenuId(pathname ?? '/', wizardStep);
     const menu = GUIDE_MENUS[menuId] ?? GUIDE_MENUS[ROOT_MENU_ID];
+    const greetingId = `greeting-${menu.id}`;
     setMenuHistory([menu.id]);
-    setMessages([{ id: `greeting-${menu.id}`, from: 'bot', text: pickRandom(menu.greeting) }]);
+    setMessages([{ id: greetingId, from: 'bot', text: pickRandom(menu.greeting) }]);
+    setStreamingMessageId(greetingId);
     setQuip(null);
   };
 
@@ -271,11 +325,13 @@ export default function GuideBotWidget() {
   const currentMenu = GUIDE_MENUS[currentMenuId] ?? GUIDE_MENUS[ROOT_MENU_ID];
 
   const handleQuickReply = (reply: QuickReply) => {
+    const botMsgId = `${reply.id}-bot-${messages.length}`;
     setMessages((prev) => [
       ...prev,
       { id: `${reply.id}-user-${prev.length}`, from: 'user', text: reply.label },
-      { id: `${reply.id}-bot-${prev.length}`, from: 'bot', text: reply.response },
+      { id: botMsgId, from: 'bot', text: reply.response },
     ]);
+    setStreamingMessageId(botMsgId);
 
     if (!reply.action) return;
 
@@ -287,8 +343,10 @@ export default function GuideBotWidget() {
     } else if (reply.action.type === 'submenu') {
       const target = GUIDE_MENUS[reply.action.menuId];
       if (target) {
+        const submenuMsgId = `${target.id}-greeting-${messages.length + 1}`;
         setMenuHistory((prev) => [...prev, target.id]);
-        setMessages((prev) => [...prev, { id: `${target.id}-greeting-${prev.length}`, from: 'bot', text: pickRandom(target.greeting) }]);
+        setMessages((prev) => [...prev, { id: submenuMsgId, from: 'bot', text: pickRandom(target.greeting) }]);
+        setStreamingMessageId(submenuMsgId);
       }
     } else if (reply.action.type === 'page-tour') {
       const steps = PAGE_TOUR_STEPS[currentMenuId];
@@ -313,8 +371,10 @@ export default function GuideBotWidget() {
     if (menuHistory.length <= 1) return;
     const nextHistory = menuHistory.slice(0, -1);
     const menu = GUIDE_MENUS[nextHistory[nextHistory.length - 1]] ?? GUIDE_MENUS[ROOT_MENU_ID];
+    const backMsgId = `${menu.id}-back-${messages.length}`;
     setMenuHistory(nextHistory);
-    setMessages((prev) => [...prev, { id: `${menu.id}-back-${prev.length}`, from: 'bot', text: pickRandom(menu.greeting) }]);
+    setMessages((prev) => [...prev, { id: backMsgId, from: 'bot', text: pickRandom(menu.greeting) }]);
+    setStreamingMessageId(backMsgId);
   };
 
   const handleMainMenu = () => {
@@ -399,7 +459,17 @@ export default function GuideBotWidget() {
                           : 'bg-surface-container text-on-surface'
                       }`}
                     >
-                      {message.text}
+                      {message.from === 'bot' && message.id === streamingMessageId ? (
+                        <TypewriterText
+                          text={message.text}
+                          onTick={() => {
+                            if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
+                          }}
+                          onDone={() => setStreamingMessageId((id) => (id === message.id ? null : id))}
+                        />
+                      ) : (
+                        message.text
+                      )}
                     </div>
                   </div>
                 ))}
@@ -486,10 +556,12 @@ export default function GuideBotWidget() {
           onComplete={() => {
             setActiveTour(null);
             setOpen(true);
+            const tourCompleteMsgId = `tour-complete-${messages.length}`;
             setMessages((prev) => [
               ...prev,
-              { id: `tour-complete-${prev.length}`, from: 'bot', text: "That's everything on this page! Anything else you'd like explained?" },
+              { id: tourCompleteMsgId, from: 'bot', text: "That's everything on this page! Anything else you'd like explained?" },
             ]);
+            setStreamingMessageId(tourCompleteMsgId);
           }}
         />
       )}
