@@ -206,11 +206,7 @@ function LandingFooter({ onOpenGallery }: { onOpenGallery: () => void }) {
       >
         <span className="text-xs text-white/40">© 2026 mOhiOm. All rights reserved.</span>
         <span className="text-xs text-white/40">
-          Built by Thuong Nguyen ·{' '}
-          <a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer" className="text-white/50 hover:text-white/70">
-            Gemini
-          </a>
-          {' + '}
+          Built by Thuong Nguyen · Powered by{' '}
           <a href="https://nextjs.org" target="_blank" rel="noopener noreferrer" className="text-white/50 hover:text-white/70">
             Next.js
           </a>
