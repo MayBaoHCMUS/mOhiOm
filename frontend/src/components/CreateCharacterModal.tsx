@@ -1,24 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { projectsApi } from '@/services/api';
 import type { CharacterSummary, CloudProjectListItem } from '@/services/api';
 import { getImageApiUrl } from '@/lib/imageApiUrl';
 import ContextualTip from '@/components/onboarding/ContextualTip';
-
-// ─── Static data ──────────────────────────────────────────────────────────────
-
-const STYLES = [
-  'Photorealistic', 'Digital Art', 'Anime', '3D Render', 'Pixar',
-  'Fantasy Art', 'RPG', 'Comic Book', 'Clay', 'Vector Art',
-  'Minimalist', 'Watercolor', 'Oil Painting', 'GTA Style',
-];
-
-const VIBES    = ['Cool & Calm', 'Mysterious', 'Cheerful', 'Tough', 'Elegant', 'Playful', 'Dark', 'Heroic', 'Kawaii', 'Fierce'];
-const GENDERS  = ['Male', 'Female', 'Non-binary', 'Androgynous'];
-const ETHNS    = ['East Asian', 'South Asian', 'SE Asian', 'Black', 'Latino', 'Middle Eastern', 'Caucasian', 'Mixed'];
-const AGES     = ['Child', 'Teen', 'Young Adult', 'Adult', 'Middle-aged', 'Elder'];
-const BUILDS   = ['Slim', 'Athletic', 'Average', 'Stocky', 'Muscular', 'Petite'];
+import { ATTRIBUTE_CATEGORIES, STYLES, createEmptyAttributeState, type AttributeKey, type AttributeState } from '@/components/character/characterOptions';
+import AttributePillPicker from '@/components/character/AttributePillPicker';
+import { buildAttributePrompt } from '@/lib/characterPrompt';
 
 type Method = 'image' | 'describe' | 'build';
 
@@ -171,33 +161,26 @@ function DescribePanel({ style, onStyleChange, description, onDescriptionChange 
 // ─── Method: build ────────────────────────────────────────────────────────────
 
 interface BuildPanelProps {
-  vibe: string; onVibe: (v: string) => void;
-  gender: string; onGender: (v: string) => void;
-  ethnicity: string; onEthnicity: (v: string) => void;
-  age: string; onAge: (v: string) => void;
-  build: string; onBuild: (v: string) => void;
-  style: string; onStyle: (v: string) => void;
+  attributes: AttributeState;
+  onAttributeChange: (key: AttributeKey, value: string | string[]) => void;
   extra: string; onExtra: (v: string) => void;
 }
 
-function BuildPanel({ vibe, onVibe, gender, onGender, ethnicity, onEthnicity, age, onAge, build, onBuild, style, onStyle, extra, onExtra }: BuildPanelProps) {
+function BuildPanel({ attributes, onAttributeChange, extra, onExtra }: BuildPanelProps) {
   return (
     <div className="space-y-4">
-      {[
-        { label: 'Look Vibe', opts: VIBES,   val: vibe,      set: onVibe },
-        { label: 'Gender',    opts: GENDERS, val: gender,    set: onGender },
-        { label: 'Ethnicity', opts: ETHNS,   val: ethnicity, set: onEthnicity },
-        { label: 'Age Range', opts: AGES,    val: age,       set: onAge },
-        { label: 'Build',     opts: BUILDS,  val: build,     set: onBuild },
-      ].map(({ label, opts, val, set }) => (
-        <div key={label}>
-          <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">{label}</label>
-          <div className="mt-1.5"><Chips options={opts} value={val} onChange={set} /></div>
-        </div>
-      ))}
       <div>
-        <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">LoRA Style</label>
-        <div className="mt-1.5"><Chips options={STYLES} value={style} onChange={onStyle} /></div>
+        <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">Attributes</label>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {ATTRIBUTE_CATEGORIES.map((category) => (
+            <AttributePillPicker
+              key={category.key}
+              category={category}
+              value={attributes[category.key]}
+              onChange={(value) => onAttributeChange(category.key, value)}
+            />
+          ))}
+        </div>
       </div>
       <div>
         <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">Additional Description <span className="text-outline normal-case font-normal">(optional)</span></label>
@@ -238,12 +221,12 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
   const [style, setStyle] = useState('');
 
   // Build state
-  const [vibe, setVibe]           = useState('');
-  const [gender, setGender]       = useState('');
-  const [ethnicity, setEthnicity] = useState('');
-  const [age, setAge]             = useState('');
-  const [buildType, setBuildType] = useState('');
-  const [extra, setExtra]         = useState('');
+  const [attributes, setAttributes] = useState<AttributeState>(createEmptyAttributeState());
+  const [extra, setExtra]           = useState('');
+
+  const handleAttributeChange = (key: AttributeKey, value: string | string[]) => {
+    setAttributes((prev) => ({ ...prev, [key]: value }));
+  };
 
   // Sync projectId when prop changes
   useEffect(() => {
@@ -262,7 +245,7 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
     setMethod('describe'); setName(''); setPreviewUrl(null);
     setGenerating(false); setSaving(false); setError(null);
     setDescription(''); setStyle('');
-    setVibe(''); setGender(''); setEthnicity(''); setAge(''); setBuildType(''); setExtra('');
+    setAttributes(createEmptyAttributeState()); setExtra('');
   }, []);
 
   const handleClose = () => { reset(); onClose(); };
@@ -275,18 +258,9 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
     return () => window.removeEventListener('keydown', handler);
   }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Build assembled prompt for Build mode
+  // Build assembled prompt for Build mode — attribute pills + optional free text
   const assemblePrompt = (): string => {
-    const parts = [
-      vibe && `${vibe.toLowerCase()} personality`,
-      gender && gender.toLowerCase(),
-      ethnicity && `${ethnicity} descent`,
-      age && `${age.toLowerCase()}`,
-      buildType && `${buildType.toLowerCase()} build`,
-      style && `${style} style`,
-      extra,
-    ].filter(Boolean);
-    return parts.join(', ');
+    return [...buildAttributePrompt(attributes), extra].filter(Boolean).join(', ');
   };
 
   const effectivePrompt = method === 'describe'
@@ -295,12 +269,18 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
       ? assemblePrompt()
       : '';
 
+  // Build mode picks its style from the attribute pills, not the top-level `style`
+  // state (that one belongs to Describe mode's separate style chips).
+  const effectiveStyle = method === 'build'
+    ? (typeof attributes.style === 'string' ? attributes.style : '')
+    : style;
+
   const canGenerate = method !== 'image' && !!effectivePrompt.trim() && !!apiUrl.trim();
 
   const handleGenerate = async () => {
     if (!canGenerate) { setError('Fill in a description and Image API URL first.'); return; }
     setError(null); setGenerating(true);
-    try { setPreviewUrl(await callImageProxy(apiUrl.trim(), effectivePrompt, style || undefined)); }
+    try { setPreviewUrl(await callImageProxy(apiUrl.trim(), effectivePrompt, effectiveStyle || undefined)); }
     catch (e) { setError(e instanceof Error ? e.message : 'Generation failed.'); }
     finally { setGenerating(false); }
   };
@@ -391,21 +371,26 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
             )}
             {method === 'build' && (
               <BuildPanel
-                vibe={vibe} onVibe={setVibe}
-                gender={gender} onGender={setGender}
-                ethnicity={ethnicity} onEthnicity={setEthnicity}
-                age={age} onAge={setAge}
-                build={buildType} onBuild={setBuildType}
-                style={style} onStyle={setStyle}
+                attributes={attributes} onAttributeChange={handleAttributeChange}
                 extra={extra} onExtra={setExtra}
               />
             )}
 
-            {/* API URL (generation methods only) */}
+            {/* API URL (generation methods only) — fixed, matches the read-only field in Settings */}
             {method !== 'image' && (
               <div>
-                <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">Image API URL</label>
-                <input value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} className="field mt-1.5" placeholder="https://your-image-api.example.com/generate" />
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">Image API URL</label>
+                  <Link href="/settings" className="text-[11px] font-semibold text-primary hover:underline">
+                    Manage in Settings →
+                  </Link>
+                </div>
+                <input
+                  value={apiUrl}
+                  disabled
+                  readOnly
+                  className="field mt-1.5 font-mono text-sm opacity-60 cursor-not-allowed"
+                />
                 {effectivePrompt && (
                   <p className="mt-2 text-[11px] text-outline leading-relaxed line-clamp-2">
                     <span className="font-semibold">Prompt: </span>{effectivePrompt}

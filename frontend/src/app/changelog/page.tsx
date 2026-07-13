@@ -15,6 +15,16 @@ interface Entry {
 // a running log of what shipped, not marketing copy. Update it as features land.
 const ENTRIES: Entry[] = [
   {
+    date: 'July 13, 2026',
+    title: 'Character builder redesign & guide bot streaming',
+    notes: [
+      'Character creation now uses quick-pick pills (gender, style, age, body, hair, eyes, face, skin) instead of long dropdown lists.',
+      'The guide bot streams its replies in as it "types", and shares occasional pro-tips plus a dedicated welcome message on the homepage.',
+      'Story Setup now opens in Full Setup by default, with a clearer collapsible Creative Direction and Advanced Setup.',
+      'Refreshed the sign-in/sign-up pages, fixed broken Privacy Policy/Terms links, and updated both to reflect BYOK and reference-image support.',
+    ],
+  },
+  {
     date: 'July 11, 2026',
     title: 'Guide bot gets more personality',
     notes: [

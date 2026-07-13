@@ -64,7 +64,7 @@ function MiniTopBar({ onOpenGallery }: { onOpenGallery: () => void }) {
           Docs
         </Link>
         <Link href="/changelog" className="transition-colors hover:text-on-surface">
-          Blog
+          Change log
         </Link>
       </div>
       <div className="flex items-center gap-4">
@@ -131,7 +131,7 @@ const FOOTER_COLUMNS: { heading: string; links: { label: string; href: string; e
     heading: 'Resources',
     links: [
       { label: 'Docs', href: '/docs' },
-      { label: 'Blog', href: '/changelog' },
+      { label: 'Change log', href: '/changelog' },
     ],
   },
   {

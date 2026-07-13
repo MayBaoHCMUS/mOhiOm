@@ -590,10 +590,10 @@ export default function CharacterManagerPage() {
         </div>
       </main>
 
-      {/* FAB */}
+      {/* FAB — sits left of the guide-bot launcher, not stacked above it */}
       <button
         onClick={() => setIsModalOpen(true)}
-        className="fixed bottom-28 right-10 w-16 h-16 bg-gradient-to-br from-primary to-primary-container text-white rounded-full shadow-2xl flex items-center justify-center group active:scale-95 duration-150"
+        className="fixed bottom-8 right-32 w-16 h-16 bg-gradient-to-br from-primary to-primary-container text-white rounded-full shadow-2xl flex items-center justify-center group active:scale-95 duration-150"
         title="New character"
       >
         <span className="material-symbols-outlined text-3xl group-hover:rotate-90 transition-transform">add</span>

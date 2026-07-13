@@ -28,7 +28,6 @@ export default function AuthShell({ title, subtitle, children, footer, aside }: 
         <section className="flex-1 flex flex-col items-center justify-center p-8 md:p-20">
           <div className="w-full max-w-[460px] space-y-8">
             <header className="space-y-3">
-              <p className="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant/70">mOhiOm</p>
               <h1 className="text-4xl font-extrabold tracking-tight">{title}</h1>
               <p className="text-on-surface-variant text-base leading-relaxed">{subtitle}</p>
             </header>

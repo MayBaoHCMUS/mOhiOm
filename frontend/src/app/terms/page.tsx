@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
+import BackButton from '@/components/BackButton';
 
 export const metadata = {
   title: 'Terms of Service',
@@ -12,9 +13,7 @@ export default function TermsPage() {
         <Link href="/">
           <Image src="/images/landing/logo-nav.png" alt="mOhiOm" width={160} height={30} className="h-7 w-auto md:h-8" />
         </Link>
-        <Link href="/" className="text-sm font-semibold text-on-surface-variant transition-colors hover:text-on-surface">
-          ← Back to home
-        </Link>
+        <BackButton />
       </nav>
 
       <article className="mx-auto max-w-3xl px-6 py-16 md:px-12">
@@ -34,7 +33,9 @@ export default function TermsPage() {
             <h2 className="text-lg font-bold text-on-surface">2. Your content</h2>
             <p className="mt-3">
               You own the story text you write and the comics generated from it. We only store and process it to
-              run the service on your behalf — we don&apos;t claim ownership over your creations.
+              run the service on your behalf — we don&apos;t claim ownership over your creations. If you publish a
+              comic or character to the public Gallery, it becomes visible to other users and visitors until you
+              unpublish it.
             </p>
           </section>
 
@@ -46,9 +47,12 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg font-bold text-on-surface">4. AI-generated content</h2>
             <p className="mt-3">
-              Comic scripts and images are generated using third-party AI models (Google Gemini). Generated output
-              can occasionally be inaccurate or inconsistent, and remains subject to the underlying model
-              provider&apos;s own usage policies.
+              Comic scripts and images are generated using third-party AI models (Google Gemini by default for
+              text, plus an image-generation service). Generated output can occasionally be inaccurate or
+              inconsistent, and remains subject to the underlying model provider&apos;s own usage policies. If you
+              configure your own AI provider and API key (BYOK) in Settings, you&apos;re responsible for that
+              provider&apos;s terms, usage limits, and any costs you incur — we&apos;re not a party to that
+              relationship.
             </p>
           </section>
 

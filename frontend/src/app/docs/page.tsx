@@ -163,11 +163,7 @@ export default function DocsPage() {
 
             <Section id="settings" icon={Settings} title="Settings — bring your own API key">
               <p>
-                By default, text and image generation run on mOhiOm&apos;s built-in models. In{' '}
-                <Link href="/settings" className="font-semibold text-primary underline">
-                  Settings
-                </Link>
-                , you can switch either one to your own API key (Gemini or OpenAI) if you&apos;d rather use your own
+                By default, text and image generation run on mOhiOm&apos;s built-in models. In <strong className="text-on-surface">Settings</strong>, you can switch either one to your own API key (Gemini or OpenAI) if you&apos;d rather use your own
                 provider account and quota.
               </p>
             </Section>

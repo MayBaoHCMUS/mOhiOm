@@ -49,6 +49,29 @@ export const IDLE_QUIPS: string[] = [
   'Want to see example comics? I can take you to the Gallery.',
 ];
 
+// Shown only on the landing page ('/') — visitors here haven't started a project yet,
+// so studio-feature protips (below) aren't relevant; these are welcome/orientation nudges instead.
+export const LANDING_IDLE_QUIPS: string[] = [
+  '👋 Welcome to mOhiOm! Turn your story into a comic — want the quick rundown?',
+  "Hi, I'm Mo! New here? I can show you around in a minute.",
+  '👋 First time on mOhiOm? Ask me what this place does.',
+  'Got a story in mind? I can point you to where to start.',
+  'Curious how this works before signing up? Happy to explain.',
+];
+
+export const PROTIPS: string[] = [
+  '💡 Pro tip: pick a reference image for each character early — it keeps their face consistent across every panel.',
+  "💡 Pro tip: click \"AI Suggest\" next to layout templates and I'll pick a panel arrangement that fits the page's content.",
+  '💡 Pro tip: use "Auto-import from script" to drop dialogue into every panel at once instead of adding bubbles by hand.',
+  '💡 Pro tip: dragged a speech bubble somewhere new? Hit the tail compass\'s auto-point button to re-aim it without fiddling.',
+  "💡 Pro tip: generating a big batch of panels? You can pause and resume anytime — nothing already generated gets lost.",
+  "💡 Pro tip: only one panel looks off? Regenerate just that panel instead of redoing the whole page.",
+  '💡 Pro tip: approved characters get saved to your library — reuse them in a new project instead of redesigning from scratch.',
+  '💡 Pro tip: add "special requests" on Step 1 (like "no gore, soft lighting") to steer every panel in the project at once.',
+  '💡 Pro tip: have your own API key? Settings lets you bring your own provider instead of using the default.',
+  "💡 Pro tip: working on something big? \"Save to Cloud\" keeps the whole project, not just the exported file.",
+];
+
 export const GUIDE_MENUS: Record<string, GuideMenu> = {
   [ROOT_MENU_ID]: {
     id: ROOT_MENU_ID,
