@@ -313,7 +313,10 @@ const fetchImageFromAI = async (
       if (!response.ok) {
         const errData = await response.json().catch(() => null);
         const serverDetail = errData?.details?.detail ?? errData?.details ?? errData?.error ?? null;
-        const detailMsg = typeof serverDetail === 'string' ? serverDetail : JSON.stringify(serverDetail);
+        let detailMsg = typeof serverDetail === 'string' ? serverDetail : JSON.stringify(serverDetail);
+        if (detailMsg.length > 200) {
+          detailMsg = `${detailMsg.slice(0, 200)}…`;
+        }
         console.error('Error body  :', errData);
         console.groupEnd();
         throw new Error(serverDetail ? `Image API error: ${detailMsg}` : `Image API error (${response.status})`);

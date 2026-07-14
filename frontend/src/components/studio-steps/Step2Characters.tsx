@@ -1378,9 +1378,9 @@ function ImageGenPanel({
       )}
 
       {isFailed && (
-        <p className="text-xs text-red-500 flex items-center gap-1.5">
+        <p className="text-xs text-red-500 flex items-start gap-1.5">
           <span className="material-symbols-outlined text-sm">error</span>
-          {character.error ?? 'Generation failed'}
+          <span className="line-clamp-2 min-w-0">{character.error ?? 'Generation failed'}</span>
         </p>
       )}
 

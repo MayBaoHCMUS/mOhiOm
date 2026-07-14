@@ -116,8 +116,25 @@ export function clearAblationRuns(): void {
 export interface AblationScaleSummary {
   scale: number
   mean: number
+  median: number
+  stdev: number
+  detectionRate: number
   passCount: number
   total: number
+}
+
+function median(scores: number[]): number {
+  if (!scores.length) return 0
+  const sorted = [...scores].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
+}
+
+function stdev(scores: number[]): number {
+  if (scores.length < 2) return 0
+  const mean = scores.reduce((a, b) => a + b, 0) / scores.length
+  const variance = scores.reduce((sum, s) => sum + (s - mean) ** 2, 0) / (scores.length - 1)
+  return Math.sqrt(variance)
 }
 
 export function computeAblationSummary(
@@ -125,20 +142,31 @@ export function computeAblationSummary(
   passThreshold = 0.75,
 ): AblationScaleSummary[] {
   const byScale = new Map<number, number[]>()
+  const detectedByScale = new Map<number, number>()
+  const totalByScale = new Map<number, number>()
   for (const run of runs) {
     for (const r of run.results) {
       if (!byScale.has(r.ip_scale)) byScale.set(r.ip_scale, [])
       byScale.get(r.ip_scale)!.push(r.similarity_score)
+      totalByScale.set(r.ip_scale, (totalByScale.get(r.ip_scale) ?? 0) + 1)
+      if (r.face_detected) detectedByScale.set(r.ip_scale, (detectedByScale.get(r.ip_scale) ?? 0) + 1)
     }
   }
   return Array.from(byScale.entries())
     .sort(([a], [b]) => a - b)
-    .map(([scale, scores]) => ({
-      scale,
-      mean: scores.length ? round4(scores.reduce((a, b) => a + b, 0) / scores.length) : 0,
-      passCount: scores.filter(s => s >= passThreshold).length,
-      total: scores.length,
-    }))
+    .map(([scale, scores]) => {
+      const total = totalByScale.get(scale) ?? 0
+      const detected = detectedByScale.get(scale) ?? 0
+      return {
+        scale,
+        mean: scores.length ? round4(scores.reduce((a, b) => a + b, 0) / scores.length) : 0,
+        median: round4(median(scores)),
+        stdev: round4(stdev(scores)),
+        detectionRate: total ? round4((detected / total) * 100) : 0,
+        passCount: scores.filter(s => s >= passThreshold).length,
+        total: scores.length,
+      }
+    })
 }
 
 export interface ClipStyleSummary {
