@@ -376,6 +376,9 @@ function AblationTab({ apiUrl }: { apiUrl: string }) {
                   <tr style={{ background: '#F9FAFB', height: 36, borderBottom: '1px solid #E5E7EB' }}>
                     <th style={{ textAlign: 'left',   padding: '0 16px', ...TH_STYLE }}>Scale</th>
                     <th style={{ textAlign: 'right',  padding: '0 16px', ...TH_STYLE }}>Mean Similarity</th>
+                    <th style={{ textAlign: 'right',  padding: '0 16px', ...TH_STYLE }}>Median</th>
+                    <th style={{ textAlign: 'right',  padding: '0 16px', ...TH_STYLE }}>Std Dev</th>
+                    <th style={{ textAlign: 'right',  padding: '0 16px', ...TH_STYLE }}>Detection Rate</th>
                     <th style={{ textAlign: 'center', padding: '0 16px', ...TH_STYLE }}>Pass (≥0.75)</th>
                   </tr>
                 </thead>
@@ -396,6 +399,15 @@ function AblationTab({ apiUrl }: { apiUrl: string }) {
                         </td>
                         <td style={{ textAlign: 'right', padding: '0 16px', fontSize: 13, fontWeight: 500, color: mean >= 0.90 ? '#16A34A' : mean >= 0.75 ? '#D97706' : '#DC2626' }}>
                           {mean.toFixed(4)}
+                        </td>
+                        <td style={{ textAlign: 'right', padding: '0 16px', fontSize: 13, color: '#374151' }}>
+                          {s.median.toFixed(4)}
+                        </td>
+                        <td style={{ textAlign: 'right', padding: '0 16px', fontSize: 13, color: '#374151' }}>
+                          {s.stdev.toFixed(4)}
+                        </td>
+                        <td style={{ textAlign: 'right', padding: '0 16px', fontSize: 13, color: '#374151' }}>
+                          {s.detectionRate.toFixed(0)}%
                         </td>
                         <td style={{ textAlign: 'center', padding: '0 16px' }}>
                           <span style={{

@@ -109,12 +109,17 @@ export async function POST(request: Request) {
     console.log("[image-proxy]   Content-Type :", contentType);
 
     if (!response.ok) {
-      const errorBody = contentType.includes("application/json")
-        ? await response.json()
-        : await response.text();
-      console.error("[image-proxy] ✖ Upstream error body:", errorBody);
+      let details: unknown;
+      if (contentType.includes("application/json")) {
+        details = await response.json();
+        console.error("[image-proxy] ✖ Upstream error body:", details);
+      } else {
+        const rawText = await response.text();
+        console.error("[image-proxy] ✖ Upstream non-JSON error body:", rawText);
+        details = `Upstream returned a non-JSON error (status ${response.status}).`;
+      }
       return NextResponse.json(
-        { error: "Upstream image API error.", status: response.status, details: errorBody },
+        { error: "Upstream image API error.", status: response.status, details },
         { status: response.status }
       );
     }
