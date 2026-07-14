@@ -10,7 +10,6 @@
 | **Student** | Nguyễn Hoài Thương — MSSV 22120364 |
 | **Advisors** | TS. Lê Trung Nghĩa, ThS. Trần Duy Quang |
 | **Term** | 01/2026 – 07/2026 |
-| **Full thesis document** | [`ThesisInformation/KhoaLuan_Draft.md`](./ThesisInformation/KhoaLuan_Draft.md) |
 
 ---
 
@@ -75,7 +74,7 @@ mOhiOm/
 │   └── requirements.txt
 │
 ├── database/                  # Local MongoDB Docker config + init script
-├── ThesisInformation/          # Thesis draft, prep notes, defense checklist
+├── ThesisInformation/          # Thesis-related materials (mostly untracked/private)
 ├── docker-compose.yml          # Full-stack local orchestration
 └── DEPLOYMENT.md               # Production deployment guide (Vercel + Render + Atlas)
 ```
@@ -196,7 +195,6 @@ Static checks: `npx tsc --noEmit` and `npm run lint` (frontend, ESLint only — 
 
 ## Documentation
 
-- [`ThesisInformation/KhoaLuan_Draft.md`](./ThesisInformation/KhoaLuan_Draft.md) — full thesis draft (problem statement, related work, architecture/UML diagrams, implementation notes, testing & evaluation, conclusion)
 - [`DEPLOYMENT.md`](./DEPLOYMENT.md) — production deployment guide
 - [`CLAUDE.md`](./CLAUDE.md) — engineering conventions and architecture gotchas for contributors
 - [`database/README.md`](./database/README.md) — local MongoDB setup details
