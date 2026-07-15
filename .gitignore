@@ -38,6 +38,7 @@ next-env.d.ts
 # Ignore all .md files except README.md
 *.md
 !README.md
+!.github/agents/My.agent.md
 /gpu-server/
 
 # local screenshot captures
@@ -49,5 +50,4 @@ next-env.d.ts
 /.continue/
 /.idea/
 /.understand-anything/
-/.github/agents/
 /Reference/
