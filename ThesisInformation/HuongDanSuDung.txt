@@ -1,0 +1,162 @@
+HƯỚNG DẪN SỬ DỤNG — HỆ THỐNG mOhiOm
+(Cách biên dịch và chạy chương trình)
+======================================================================
+
+Trước khi làm theo các bước dưới đây, đảm bảo đã hoàn tất cài đặt công
+cụ và thư viện theo file HuongDanCaiDat.txt.
+
+1. CẤU HÌNH BIẾN MÔI TRƯỜNG
+----------------------------------------------------------------------
+
+1.1. Backend
+    cd backend
+    cp .env.example .env
+
+Mở file backend/.env và điền tối thiểu:
+    GEMINI_API_KEY=<khoá API Gemini của bạn>
+    JWT_SECRET_KEY=<chuỗi ngẫu nhiên — tạo bằng lệnh bên dưới>
+    ADMIN_SECRET_KEY=<chuỗi ngẫu nhiên khác>
+
+Tạo chuỗi ngẫu nhiên bằng:
+    python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+
+Nếu muốn lưu ảnh sinh ra lên Cloudflare R2 (khuyến nghị khi có nhiều
+ảnh, tránh vượt giới hạn 16MB/document của MongoDB), điền thêm:
+    R2_ACCOUNT_ID=...
+    R2_ACCESS_KEY_ID=...
+    R2_SECRET_ACCESS_KEY=...
+    R2_BUCKET_NAME=...
+    R2_PUBLIC_URL_BASE=...
+
+Các biến tuỳ chọn khác (có thể bỏ qua khi chạy thử local):
+    OAUTH_GOOGLE_CLIENT_ID / OAUTH_GOOGLE_CLIENT_SECRET   — đăng nhập Google
+    OAUTH_GITHUB_CLIENT_ID / OAUTH_GITHUB_CLIENT_SECRET   — đăng nhập GitHub
+    RESEND_API_KEY / RESEND_FROM                          — gửi email đặt lại mật khẩu
+    NINE_ROUTER_URL / NINE_ROUTER_API_KEY / NINE_ROUTER_MODEL
+        — nếu muốn thay Gemini bằng một LLM provider khác (tương thích OpenAI)
+
+1.2. Frontend
+    cd frontend
+    cp .env.local.example .env.local
+
+Mở file frontend/.env.local và kiểm tra:
+    NEXT_PUBLIC_API_URL=http://localhost:8000/api   (mặc định, không
+                                                       cần đổi khi chạy local)
+    NEXT_PUBLIC_GPU_API_URL=<URL máy chủ GPU sinh ảnh, để trống nếu
+                              chưa có>
+
+2. KHỞI ĐỘNG MONGODB (bắt buộc, chạy trước backend)
+----------------------------------------------------------------------
+Cách A — cài local: mở terminal riêng, chạy:
+    mongod
+(hoặc để MongoDB chạy như một service hệ thống — xem chi tiết trong
+database/README.md)
+
+Cách B — dùng Docker:
+    docker-compose up -d mongodb
+
+Kiểm tra đã chạy: mongosh (kết nối thành công tới mongodb://localhost:27017)
+
+3. BIÊN DỊCH VÀ CHẠY BACKEND (FastAPI)
+----------------------------------------------------------------------
+    cd backend
+    python3 -m venv venv              (chỉ làm 1 lần)
+    source venv/bin/activate          (Windows: venv\Scripts\activate)
+    pip install -r requirements.txt   (chỉ làm 1 lần, hoặc khi
+                                        requirements.txt thay đổi)
+    uvicorn app.main:app --reload
+
+Sau khi chạy thành công:
+    API:                       http://localhost:8000
+    Tài liệu API (Swagger UI): http://localhost:8000/docs
+
+4. BIÊN DỊCH VÀ CHẠY FRONTEND (Next.js)
+----------------------------------------------------------------------
+Chế độ phát triển (dev, hot reload):
+    cd frontend
+    npm install        (chỉ làm 1 lần, hoặc khi package.json thay đổi)
+    npm run dev
+
+Ứng dụng chạy tại: http://localhost:3000
+
+Chế độ production (biên dịch tối ưu, dùng khi đo hiệu năng thực tế
+hoặc triển khai):
+    npm run build
+    npm run start       (mặc định vẫn chạy ở cổng 3000)
+
+5. CÁCH CHẠY NHANH BẰNG DOCKER COMPOSE (thay thế bước 2–4)
+----------------------------------------------------------------------
+Vẫn phải điền các biến bắt buộc trong backend/.env (GEMINI_API_KEY,
+JWT_SECRET_KEY, ADMIN_SECRET_KEY) trước khi chạy lệnh dưới đây. Tại
+thư mục gốc dự án:
+    docker-compose up -d
+
+Lệnh này tự động khởi động cả MongoDB + Backend + Frontend cùng lúc.
+    Frontend: http://localhost:3000
+    Backend:  http://localhost:8000
+
+Dừng toàn bộ:
+    docker-compose down
+
+6. TRUY CẬP VÀ SỬ DỤNG ỨNG DỤNG
+----------------------------------------------------------------------
+1. Mở trình duyệt tại http://localhost:3000
+2. Đăng ký tài khoản mới (email/mật khẩu) hoặc đăng nhập qua
+   Google/GitHub (nếu đã cấu hình OAuth ở bước 1.1)
+3. Vào mục "/studio" để bắt đầu quy trình 5 bước chuyển văn bản thành
+   truyện tranh:
+       Bước 1 — Story Analysis        (phân tích truyện bằng LLM)
+       Bước 2 — Character Design      (thiết kế & chọn ảnh đại diện
+                                        nhân vật)
+       Bước 3 — Panel Script          (kịch bản từng khung tranh)
+       Bước 4 — Image Generation      (sinh ảnh AI theo layout)
+       Bước 5 — Dialogue & Export     (đặt lời thoại, xuất PDF/EPUB/ZIP)
+
+7. MÁY CHỦ SINH ẢNH GPU (không bắt buộc để xem giao diện, chỉ cần cho
+   tính năng sinh ảnh AI ở Bước 4)
+----------------------------------------------------------------------
+Tính năng sinh ảnh AI cần một máy chủ GPU chạy riêng (không nằm trong
+repo chính do dung lượng model quá lớn). Hướng dẫn triển khai chi tiết
+(trên vast.ai, dùng SDXL + IP-Adapter + ControlNet) nằm trong file
+gpu-server/README.md. Sau khi máy chủ GPU đã chạy, dán URL của máy chủ
+đó vào NEXT_PUBLIC_GPU_API_URL (frontend/.env.local) hoặc ở mục cấu
+hình URL trong trang Story Setup / Publish của ứng dụng.
+
+8. CHẠY KIỂM THỬ (tuỳ chọn)
+----------------------------------------------------------------------
+Kiểm tra kiểu tĩnh (TypeScript):
+    cd frontend && npx tsc --noEmit
+
+Kiểm tra lint:
+    cd frontend && npm run lint
+
+Kịch bản kiểm thử tích hợp backend (cần MongoDB + backend đang chạy):
+    python backend/scripts/auth_smoke.py
+    python backend/test_gemini_integration.py
+    python backend/test_text_to_comic_pipeline.py
+
+9. DỪNG CHƯƠNG TRÌNH
+----------------------------------------------------------------------
+- Nhấn Ctrl+C trong từng terminal đang chạy uvicorn / npm run dev
+- Nếu dùng Docker Compose: docker-compose down
+
+10. XỬ LÝ SỰ CỐ THƯỜNG GẶP
+----------------------------------------------------------------------
+- Lỗi "connection refused" tới MongoDB
+    → Kiểm tra MongoDB đã chạy chưa (thử lệnh mongosh)
+
+- Backend báo thiếu GEMINI_API_KEY hoặc lỗi cấu hình
+    → Kiểm tra file backend/.env đã điền đúng key, và đã chạy
+      "source venv/bin/activate" trước khi chạy uvicorn
+
+- Frontend gọi API bị lỗi CORS
+    → Kiểm tra biến CORS_ORIGINS trong backend/.env có chứa đúng địa
+      chỉ frontend (mặc định http://localhost:3000)
+
+- Không sinh được ảnh AI (Bước 4 báo lỗi hoặc chạy vô hạn)
+    → Kiểm tra NEXT_PUBLIC_GPU_API_URL / URL máy chủ GPU đã nhập đúng
+      và máy chủ GPU đang chạy (xem gpu-server/README.md)
+
+- Port 3000 hoặc 8000 đang bị chiếm
+    → Đóng tiến trình đang dùng port đó, hoặc đổi port khác rồi cập
+      nhật lại NEXT_PUBLIC_API_URL / CORS_ORIGINS tương ứng

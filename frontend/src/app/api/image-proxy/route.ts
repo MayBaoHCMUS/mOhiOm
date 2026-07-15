@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     negative_prompt: body.negative_prompt ?? "lowres, bad anatomy, worst quality, blurry",
     story_id: body.story_id ?? "default",
     style: body.style ?? "manga",
-    ip_adapter_scale: body.ip_adapter_scale ?? 0.7,
+    ip_adapter_scale: body.ip_adapter_scale ?? 0.5,
   };
   if (body.character_name) requestBody.character_name = body.character_name;
   if (body.reference_image_b64) requestBody.reference_image_b64 = body.reference_image_b64;
