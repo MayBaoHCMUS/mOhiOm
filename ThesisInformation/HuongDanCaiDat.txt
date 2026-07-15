@@ -1,0 +1,123 @@
+HƯỚNG DẪN CÀI ĐẶT — HỆ THỐNG mOhiOm
+(Công cụ, môi trường phát triển, thư viện sử dụng)
+======================================================================
+
+1. YÊU CẦU HỆ THỐNG
+----------------------------------------------------------------------
+- Hệ điều hành: Windows 10/11, macOS, hoặc Linux (phát triển và kiểm
+  thử chính trên macOS).
+- RAM tối thiểu 8GB.
+- Kết nối Internet (gọi API Gemini, tải model, kết nối MongoDB Atlas
+  nếu dùng bản cloud).
+
+2. CÔNG CỤ BẮT BUỘC
+----------------------------------------------------------------------
+- Node.js >= 18.x (kèm npm)               https://nodejs.org
+- Python >= 3.10 (khuyến nghị 3.10–3.12)  https://www.python.org
+- MongoDB Community Edition 7.0 (cài local) hoặc Docker Desktop để
+  chạy MongoDB qua container
+                                          https://www.mongodb.com/try/download/community
+- Git (quản lý mã nguồn)
+
+Tuỳ chọn:
+- Docker Desktop — nếu muốn chạy toàn bộ hệ thống (frontend + backend
+  + MongoDB) bằng một lệnh docker-compose thay vì cài đặt thủ công
+  từng phần.
+- MongoDB Compass — công cụ GUI để xem/quản lý dữ liệu MongoDB
+                                          https://www.mongodb.com/products/compass
+
+3. MÔI TRƯỜNG PHÁT TRIỂN ĐỀ XUẤT
+----------------------------------------------------------------------
+- Visual Studio Code (hoặc IDE bất kỳ hỗ trợ TypeScript và Python)
+- Trình duyệt Chrome/Edge/Firefox bản mới (dùng DevTools để kiểm tra
+  Network/Console khi cần debug)
+
+4. THƯ VIỆN / PHỤ THUỘC CHÍNH
+----------------------------------------------------------------------
+
+4.1. Frontend (Next.js 14, TypeScript, thư mục frontend/)
+Cài đặt bằng:
+    cd frontend
+    npm install
+
+Các thư viện chính (đầy đủ trong frontend/package.json):
+    next               ^14.0.0   — framework React (App Router)
+    react, react-dom   ^18.2.0
+    typescript         ^5.0.0    — chế độ strict
+    tailwindcss        ^3.3.0    — styling
+    framer-motion      ^11.0.0   — animation
+    axios              ^1.6.0    — gọi API
+    lucide-react       ^0.445.0  — bộ icon
+    chart.js           ^4.5.1    — biểu đồ thống kê
+    jspdf, pdf-lib, jszip        — xuất file PDF / ZIP
+    qrcode                       — sinh mã QR chia sẻ truyện
+    react-markdown, remark-gfm, rehype-raw — hiển thị nội dung markdown
+    eslint ^8.0.0 + eslint-config-next     — kiểm tra code (không dùng
+                                              Prettier, chỉ dùng ESLint)
+    playwright ^1.61.1 (devDependency)     — kiểm thử giao diện tự động
+
+4.2. Backend (FastAPI, Python 3.10+, thư mục backend/)
+Cài đặt bằng:
+    cd backend
+    python3 -m venv venv
+    source venv/bin/activate      (Windows: venv\Scripts\activate)
+    pip install -r requirements.txt
+
+Các thư viện chính (đầy đủ trong backend/requirements.txt):
+    fastapi==0.109.0                — web framework
+    uvicorn[standard]==0.27.0       — máy chủ ASGI
+    pydantic==2.5.0
+    pydantic-settings==2.1.0        — validate dữ liệu & cấu hình
+    pymongo==4.6.0                  — driver MongoDB (đồng bộ)
+    python-dotenv==1.0.0            — đọc file .env
+    python-multipart==0.0.6         — xử lý form-data/upload
+    httpx==0.25.0                   — gọi HTTP bất đồng bộ (proxy tới
+                                       máy chủ GPU, NineRouter)
+    google-genai>=1.0.0             — SDK Google Gemini (LLM mặc định)
+    python-jose[cryptography]==3.3.0, cryptography>=41.0.0  — JWT
+    passlib[bcrypt]==1.7.4          — băm mật khẩu
+    google-api-core==2.17.1         — phụ thuộc của google-genai
+    Pillow>=10.0.0                  — xử lý ảnh
+    boto3>=1.34.0,<1.36.0           — SDK tương thích S3, dùng cho
+                                       Cloudflare R2 (lưu ảnh sinh ra)
+
+4.3. Cơ sở dữ liệu
+    MongoDB 7.0 — chạy local (mongodb://localhost:27017) hoặc qua
+    container Docker (xem docker-compose.yml ở thư mục gốc).
+
+4.4. Máy chủ sinh ảnh GPU (tuỳ chọn — phục vụ tính năng sinh ảnh AI)
+Thư mục gpu-server/ (không nằm trong repo Git chính do dung lượng
+model lớn, deploy riêng trên máy thuê GPU — xem gpu-server/README.md),
+cài đặt qua requirements.txt riêng:
+    diffusers, transformers, accelerate, omegaconf  — pipeline
+                                                        Stable Diffusion / SDXL
+    fastapi, uvicorn[standard], python-multipart    — API riêng cho
+                                                        sinh ảnh
+    opencv-python-headless, controlnet_aux          — ControlNet
+    git+https://github.com/tencent-ailab/IP-Adapter.git
+                                                     — giữ nhất quán
+                                                        nhân vật
+    open_clip_torch                                 — đo tương đồng
+                                                        ảnh (CLIP), dùng
+                                                        cho đánh giá
+
+5. TÀI KHOẢN / KHOÁ API DỊCH VỤ NGOÀI CẦN CHUẨN BỊ TRƯỚC
+----------------------------------------------------------------------
+- Google Gemini API key (bắt buộc, trừ khi cấu hình NineRouter thay
+  thế)                                    https://aistudio.google.com/
+- Tài khoản Cloudflare + bucket R2 (bắt buộc để lưu ảnh sinh ra dạng
+  URL thay vì base64 trong MongoDB)
+- Resend API key (tuỳ chọn — chỉ cần nếu bật tính năng gửi email đặt
+  lại mật khẩu)                           https://resend.com
+- Google OAuth Client ID/Secret, GitHub OAuth Client ID/Secret (tuỳ
+  chọn — chỉ cần nếu bật đăng nhập qua Google/GitHub)
+
+6. KIỂM TRA CÀI ĐẶT THÀNH CÔNG
+----------------------------------------------------------------------
+    node -v           (>= 18)
+    npm -v
+    python3 --version (>= 3.10)
+    mongosh            (kết nối được MongoDB)
+
+Sau khi cài đặt xong, xem file HuongDanSuDung.txt để biết cách biên
+dịch và chạy chương trình.

@@ -45,6 +45,7 @@ export interface ImageGenSettings {
   style?: string;
   width?: number;
   height?: number;
+  seed?: number;
 }
 
 export interface StepState<T> {
@@ -119,6 +120,7 @@ export interface Step4Panel {
   shotType?: string;
   aspectRatio?: string;
   negativePrompt?: string;
+  characterNames?: string[];
 }
 
 export interface Step4PanelState {
@@ -279,7 +281,7 @@ const fetchImageFromAI = async (
       negative_prompt: PANEL_NEGATIVE_PROMPT,
       story_id: settings?.storyId ?? 'default',
       style: settings?.style ?? 'manga',
-      ip_adapter_scale: settings?.ipAdapterScale ?? 0.7,
+      ip_adapter_scale: settings?.ipAdapterScale ?? 0.5,
     };
     if (settings?.characterName) {
       requestBody.character_name = settings.characterName;
@@ -293,6 +295,7 @@ const fetchImageFromAI = async (
     }
     if (settings?.width !== undefined)  requestBody.width  = settings.width;
     if (settings?.height !== undefined) requestBody.height = settings.height;
+    if (settings?.seed !== undefined)   requestBody.seed   = settings.seed;
 
     console.group('[fetchImageFromAI] Image generation request');
     console.log('Proxy URL   :', '/api/image-proxy');
@@ -424,6 +427,8 @@ const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {
     /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?aspect_ratio(?:\*{0,2})?\s*:\s*([^\n]+)/i;
   const negativePromptRegex =
     /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?negative_prompt(?:\*{0,2})?\s*:\s*([^\n]+)/i;
+  const charactersRegex =
+    /(?:^|\n)\s*(?:[-*]\s*)?(?:\*{0,2})?characters(?:\*{0,2})?\s*:\s*([^\n]+)/i;
 
   const parsed = workingPanels
     .map((panel) => {
@@ -437,6 +442,10 @@ const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {
       const shotType = (body.match(shotTypeRegex)?.[1] || '').trim() || undefined;
       const aspectRatio = (body.match(aspectRatioRegex)?.[1] || '').trim() || undefined;
       const negativePrompt = (body.match(negativePromptRegex)?.[1] || '').trim() || undefined;
+      const characterNames = (body.match(charactersRegex)?.[1] || '')
+        .split(',')
+        .map((name) => name.trim())
+        .filter((name) => name && !/^none$/i.test(name));
 
       const id = `p${panel.pageNumber}-n${panel.panelNumber}`;
       const p: Step4Panel = {
@@ -450,6 +459,7 @@ const parseStep3PanelsFromMarkdown = (markdown: string): Step4Panel[] => {
       if (shotType) p.shotType = shotType;
       if (aspectRatio) p.aspectRatio = aspectRatio;
       if (negativePrompt) p.negativePrompt = negativePrompt;
+      if (characterNames.length) p.characterNames = characterNames;
       return p;
     })
     .filter((item): item is Step4Panel => item !== null);
@@ -529,6 +539,11 @@ const PANEL_NEGATIVE_PROMPT =
   'reference sheet, text in image, watermark, signature, ' +
   'lowres, bad anatomy, worst quality, blurry, deformed';
 
+// A fresh seed per call so panels sharing the same reference image, style, and
+// (after prompt cleaning) near-identical text don't collapse into duplicate
+// output from the underlying diffusion backend.
+const randomImageSeed = (): number => Math.floor(Math.random() * 2_147_483_647);
+
 const buildComicPagePrompt = (
   panels: Step4Panel[],
   artStyle: string,
@@ -553,6 +568,30 @@ const buildComicPagePrompt = (
   });
   parts.push('Professional comic book artwork, panel borders, clear sequential storytelling.');
   return parts.join('\n');
+};
+
+export interface CharacterReference {
+  character_id: string;
+  name: string;
+  image_url: string;
+  prompt: string;
+}
+
+// Picks the reference image for the character actually named in this panel
+// (Step 3's per-panel `characters:` field), instead of always defaulting to
+// the first character the user selected — otherwise every panel/page ends up
+// generated with the same character's likeness regardless of who's in it.
+const pickCharacterReference = (
+  characterRefs: CharacterReference[],
+  characterNames?: string[]
+): CharacterReference | undefined => {
+  if (characterNames?.length) {
+    for (const wanted of characterNames) {
+      const match = characterRefs.find((c) => c.name.trim().toLowerCase() === wanted.trim().toLowerCase());
+      if (match) return match;
+    }
+  }
+  return characterRefs[0];
 };
 
 export interface ComicGenerationContextValue {
@@ -639,7 +678,7 @@ export interface ComicGenerationContextValue {
   handleRegenerateSinglePanel: (panel: Step4Panel) => Promise<void>;
   handleRegeneratePage: (pageNumber: number) => Promise<void>;
   handleRegenerateWithFeedback: (pageNumber: number, feedback: string) => Promise<void>;
-  acceptPanelRegen: (pageNumber: number) => void;
+  acceptPanelRegen: (pageNumber: number) => Promise<void>;
   rejectPanelRegen: (pageNumber: number) => void;
   copyProjectJson: () => Promise<void>;
   downloadProjectJson: () => void;
@@ -716,7 +755,7 @@ export function ComicGenerationProvider({
   );
   const [referenceImageBase64, setReferenceImageBase64] = useState('');
   const [controlImageBase64, setControlImageBase64] = useState('');
-  const [ipAdapterScale, setIpAdapterScale] = useState(0.7);
+  const [ipAdapterScale, setIpAdapterScale] = useState(0.5);
   const [controlnetScale, setControlnetScale] = useState(0.8);
   const [useStreaming, setUseStreaming] = useState(true);
   const [sfxMode, setSfxMode] = useState<'auto' | 'manual'>('auto');
@@ -750,6 +789,13 @@ export function ComicGenerationProvider({
   );
   const [step3, setStep3] = useState<StepState<Step3Result>>(emptyStepState(true));
   const [step4, setStep4] = useState<StepState<Step4Result>>(emptyStepState(true));
+  // Long-running generation handlers span many renders (batches + inter-batch sleeps),
+  // so their closures see a stale `step4` unless they read the freshest value through
+  // this ref instead — see collectImagesToSave().
+  const step4Ref = useRef(step4);
+  useEffect(() => {
+    step4Ref.current = step4;
+  }, [step4]);
   const [step5, setStep5] = useState<StepState<Step5Result>>(emptyStepState(true));
   const [activeStep, setActiveStep] = useState<WizardStepKey>(0);
   const [globalError, setGlobalError] = useState<string | null>(null);
@@ -2168,7 +2214,6 @@ export function ComicGenerationProvider({
     const batchSize = Math.max(1, options?.batchSize ?? 2);
     const delayMs = Math.max(0, options?.delayMs ?? 10000);
     const characterRefs = getSelectedCharacterReferences();
-    const firstCharName = characterRefs[0]?.name?.toLowerCase() || '';
     const allResults: Record<string, { status: PanelImageStatus; imageUrl: string | null; error: string | null }> = {};
 
     for (let i = 0; i < panelsArray.length; i += batchSize) {
@@ -2217,17 +2262,19 @@ export function ComicGenerationProvider({
               }
             }
             const panelDimensions = pagePanelDimensions[panel.pageNumber]?.[panel.id];
+            const matchedChar = pickCharacterReference(characterRefs, panel.characterNames);
             const effectiveSettings: ImageGenSettings = {
               mode: imageGenMode,
-              referenceImageBase64: characterRefs[0]?.image_url ?? referenceImageBase64,
+              referenceImageBase64: matchedChar?.image_url ?? referenceImageBase64,
               controlImageBase64,
               ipAdapterScale,
               controlnetScale,
-              characterName: firstCharName || undefined,
+              characterName: matchedChar?.name?.toLowerCase() || undefined,
               storyId: projectId,
               style: imageGenStyle,
               width: panelDimensions?.width,
               height: panelDimensions?.height,
+              seed: randomImageSeed(),
             };
             const imageUrl = await withRetry(
               () => fetchImageFromAI(cleanPrompt, localImageApiUrl || undefined, effectiveSettings, imageGenBackendMode),
@@ -2239,7 +2286,7 @@ export function ComicGenerationProvider({
               story_id:      projectId || 'unknown',
               style:         imageGenStyle || 'manga',
               duration_ms:   0,
-              has_character: !!firstCharName,
+              has_character: !!matchedChar,
               ip_scale:      ipAdapterScale,
             });
             return {
@@ -2302,7 +2349,6 @@ export function ComicGenerationProvider({
     const batchSize = Math.max(1, options?.batchSize ?? 1);
     const delayMs = Math.max(0, options?.delayMs ?? 10000);
     const characterRefs = getSelectedCharacterReferences();
-    const firstCharName = characterRefs[0]?.name?.toLowerCase() || '';
     const allResults: Record<string, { status: 'success' | 'error'; imageUrl: string | null; error: string | null }> = {};
 
     for (let i = 0; i < pageEntries.length; i += batchSize) {
@@ -2343,15 +2389,26 @@ export function ComicGenerationProvider({
               characterRefs.map((c) => ({ name: c.name, prompt: c.prompt })),
               sfxMode === 'auto'
             );
+            // A page combines several panels into one image with a single reference
+            // slot — use the first panel on the page that actually names a character.
+            let matchedChar: CharacterReference | undefined;
+            for (const panel of panels) {
+              if (panel.characterNames?.length) {
+                matchedChar = pickCharacterReference(characterRefs, panel.characterNames);
+                if (matchedChar) break;
+              }
+            }
+            matchedChar ??= characterRefs[0];
             const effectiveSettings: ImageGenSettings = {
               mode: imageGenMode,
-              referenceImageBase64: characterRefs[0]?.image_url ?? referenceImageBase64,
+              referenceImageBase64: matchedChar?.image_url ?? referenceImageBase64,
               controlImageBase64,
               ipAdapterScale,
               controlnetScale,
-              characterName: firstCharName || undefined,
+              characterName: matchedChar?.name?.toLowerCase() || undefined,
               storyId: projectId,
               style: imageGenStyle,
+              seed: randomImageSeed(),
             };
             const imageUrl = await withRetry(
               () => fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings, imageGenBackendMode),
@@ -2424,6 +2481,9 @@ export function ComicGenerationProvider({
         variant: pageSucceeded === pageTotal ? 'success' : pageSucceeded > 0 ? 'partial' : 'error',
         projectId,
       });
+      if (pageSucceeded > 0) {
+        await saveToCloud();
+      }
     } finally {
       setStep4((prev) => {
         if (!prev.data) return prev;
@@ -2477,9 +2537,9 @@ export function ComicGenerationProvider({
         pending = pending.filter((p) => results[p.id]?.status === 'error');
         round += 1;
       }
+      const panelFailed = pending.length;
+      const panelSucceeded = panelTotal - panelFailed;
       if (!panelAutoRetryCancelRef.current) {
-        const panelFailed = pending.length;
-        const panelSucceeded = panelTotal - panelFailed;
         addNotification({
           title: 'Panel generation complete',
           message:
@@ -2489,6 +2549,11 @@ export function ComicGenerationProvider({
           variant: panelFailed === 0 ? 'success' : panelSucceeded > 0 ? 'partial' : 'error',
           projectId,
         });
+      }
+      // Save whatever succeeded even if the run was cancelled partway through,
+      // so a stopped batch doesn't leave newly generated panels un-persisted.
+      if (panelSucceeded > 0) {
+        await saveToCloud();
       }
     } finally {
       setPanelAutoRetryInfo(null);
@@ -2509,6 +2574,9 @@ export function ComicGenerationProvider({
       variant: outcome?.status === 'success' ? 'success' : 'error',
       projectId,
     });
+    if (outcome?.status === 'success') {
+      await saveToCloud();
+    }
   };
 
   const handleRegeneratePage = async (pageNumber: number) => {
@@ -2532,6 +2600,9 @@ export function ComicGenerationProvider({
         variant: outcome?.status === 'success' ? 'success' : 'error',
         projectId,
       });
+      if (outcome?.status === 'success') {
+        await saveToCloud();
+      }
     } finally {
       setStep4((prev) => {
         if (!prev.data) return prev;
@@ -2588,7 +2659,6 @@ export function ComicGenerationProvider({
 
     try {
       const characterRefs = getSelectedCharacterReferences();
-      const firstCharName = characterRefs[0]?.name?.toLowerCase() || '';
       let prompt = buildComicPagePrompt(
         panels, artStyle, mangaGenre,
         characterRefs.map((c) => ({ name: c.name, prompt: c.prompt })),
@@ -2597,15 +2667,26 @@ export function ComicGenerationProvider({
       if (feedback.trim()) {
         prompt += `\nUser revision request: ${feedback.trim()}`;
       }
+      // Same policy as generatePageImages: use the first panel on the page that
+      // actually names a character, rather than always the first selected character.
+      let matchedChar: CharacterReference | undefined;
+      for (const panel of panels) {
+        if (panel.characterNames?.length) {
+          matchedChar = pickCharacterReference(characterRefs, panel.characterNames);
+          if (matchedChar) break;
+        }
+      }
+      matchedChar ??= characterRefs[0];
       const effectiveSettings: ImageGenSettings = {
         mode: imageGenMode,
-        referenceImageBase64: characterRefs[0]?.image_url ?? referenceImageBase64,
+        referenceImageBase64: matchedChar?.image_url ?? referenceImageBase64,
         controlImageBase64,
         ipAdapterScale,
         controlnetScale,
-        characterName: firstCharName || undefined,
+        characterName: matchedChar?.name?.toLowerCase() || undefined,
         storyId: projectId,
         style: imageGenStyle,
+        seed: randomImageSeed(),
       };
       const newImageUrl = await fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings, imageGenBackendMode);
       setStep4((prev) => {
@@ -2659,12 +2740,14 @@ export function ComicGenerationProvider({
     }
   };
 
-  const acceptPanelRegen = (pageNumber: number) => {
+  const acceptPanelRegen = async (pageNumber: number) => {
     const pageId = `page-${pageNumber}`;
+    let acceptedUrl: string | null = null;
     setStep4((prev) => {
       if (!prev.data) return prev;
       const prevState = prev.data.pageStates[pageId];
       if (!prevState?.pendingUrl) return prev;
+      acceptedUrl = prevState.pendingUrl;
       return {
         ...prev,
         data: {
@@ -2676,6 +2759,12 @@ export function ComicGenerationProvider({
         },
       };
     });
+    // step4Ref (and therefore collectImagesToSave) won't see this page as 'success'
+    // until the next render's effect runs, so pass the just-accepted URL straight
+    // through as an override rather than waiting for it to catch up.
+    if (acceptedUrl) {
+      await saveToCloud([{ image_key: `page:${pageId}`, image_url: acceptedUrl }]);
+    }
   };
 
   const rejectPanelRegen = (pageNumber: number) => {
@@ -3418,24 +3507,38 @@ export function ComicGenerationProvider({
   };
 
   const collectImagesToSave = (): ProjectImageEntry[] => {
-    if (!step4.data) return [];
+    // Read through the ref, not the `step4` closure: callers that run after a long
+    // generation batch (many renders + inter-batch sleeps) would otherwise see the
+    // stale step4 snapshot from when their handler started, not the freshly
+    // generated images.
+    const step4Data = step4Ref.current.data;
+    if (!step4Data) return [];
     const entries: ProjectImageEntry[] = [];
     // Save only the images that match the active generation mode so the Dialogue tab,
     // the cloud save, and the editor all reflect exactly the same images.
     if (comicPageMode === 'page') {
-      for (const [key, state] of Object.entries(step4.data.pageStates)) {
+      for (const [key, state] of Object.entries(step4Data.pageStates)) {
         if (state.status === 'success' && state.imageUrl) {
           entries.push({ image_key: `page:${key}`, image_url: state.imageUrl });
         }
       }
     } else {
-      for (const [key, state] of Object.entries(step4.data.panelStates)) {
+      for (const [key, state] of Object.entries(step4Data.panelStates)) {
         if (state.status === 'success' && state.imageUrl) {
           entries.push({ image_key: `panel:${key}`, image_url: state.imageUrl });
         }
       }
     }
     return entries;
+  };
+
+  // Merges by image_key so a caller that just accepted/regenerated a single
+  // page or panel synchronously can pass its fresh URL in without waiting for
+  // step4Ref to catch up (it only updates on the next render's effect).
+  const mergeImageEntries = (base: ProjectImageEntry[], overrides: ProjectImageEntry[]): ProjectImageEntry[] => {
+    const byKey = new Map(base.map((entry) => [entry.image_key, entry]));
+    overrides.forEach((entry) => byKey.set(entry.image_key, entry));
+    return Array.from(byKey.values());
   };
 
   const buildFullSave = (): FullProjectSave => {
@@ -3491,12 +3594,13 @@ export function ComicGenerationProvider({
     };
   };
 
-  const saveToCloud = async () => {
+  const saveToCloud = async (imageOverrides?: ProjectImageEntry[]) => {
     setCloudSaveStatus('saving');
     setCloudSaveError(null);
     try {
       const fullSave = buildFullSave();
-      const images = collectImagesToSave();
+      const baseImages = collectImagesToSave();
+      const images = imageOverrides?.length ? mergeImageEntries(baseImages, imageOverrides) : baseImages;
       await projectsApi.save(fullSave);
       if (images.length > 0) {
         await projectsApi.saveImages(projectId, images);

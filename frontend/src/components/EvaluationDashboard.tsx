@@ -175,8 +175,9 @@ function AblationTab({ apiUrl }: { apiUrl: string }) {
         reference_image_b64: refB64, style, scales: SCALES,
       })
       setLastResults(results); setLastStoryId(storyId)
-      recordAblationRun({ story_id: storyId, scene_prompt: scenePrompt, style, results })
+      const saved = recordAblationRun({ story_id: storyId, scene_prompt: scenePrompt, style, results })
       setRuns(getAblationRuns())
+      if (!saved) showToast('Run succeeded but could not be saved to history (storage full/unavailable).')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Run failed — check console and server status.')
     } finally { setRunning(false) }

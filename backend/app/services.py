@@ -2204,6 +2204,7 @@ RULES (follow strictly, do not output them):
 - RULE 5: Each panel has a separate shot_type field (close-up | medium shot | wide shot | establishing shot | overhead | low angle | dutch angle | over-the-shoulder | two-shot).
 - RULE 6: Each panel has aspect_ratio: wide/establishing→"16:9", standard→"4:3", portrait→"9:16", face close-up→"1:1", spread→"2:1".
 - RULE 7: Each panel has negative_prompt (default: "blurry, deformed hands, extra limbs, text overlay, watermark, western cartoon, 3D render, photorealistic").
+- RULE 8: Each panel has a characters field listing the exact character NAME(s) (verbatim spelling from the CHARACTER VISUAL TAGS block, comma-separated) that visually appear in that panel. Use NONE for background/establishing panels with no named character on screen.
 
 OUTPUT ORDER:
 ## SECTION 1: Global Scripting Rules
@@ -2216,6 +2217,7 @@ OUTPUT ORDER:
   - **dialogue_sfx:** [content or NONE]
   - **ai_image_prompt:** [max 200 chars, follows RULE 1-4]
   - **negative_prompt:** [per RULE 7]
+  - **characters:** [Name1, Name2 or NONE, per RULE 8]
 ## SECTION 3: Special Pages Inventory
 ## SECTION 4: Final Script Summary
 """

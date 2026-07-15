@@ -80,16 +80,48 @@ export async function runBatchClipScore(
 
 const ABLATION_KEY = 'ablation_runs'
 
-export function recordAblationRun(run: Omit<AblationRunRecord, 'id' | 'ts'>): void {
+function stripPanelImages(records: AblationRunRecord[]): AblationRunRecord[] {
+  return records.map(r => ({ ...r, results: r.results.map(res => ({ ...res, panel_b64: '' })) }))
+}
+
+// Each result carries a full base64 PNG per scale — a handful of runs is enough
+// to blow past localStorage's ~5-10MB per-origin quota. Try the full record
+// first (so recently-viewed runs still show thumbnails), then degrade: drop
+// this run's images, then — if quota is already exhausted by older runs —
+// strip images from everything already stored, so the numeric history (what
+// the summary table and stdev/detection-rate actually need) never silently
+// stops accumulating.
+export function recordAblationRun(run: Omit<AblationRunRecord, 'id' | 'ts'>): boolean {
+  const record: AblationRunRecord = {
+    ...run,
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    ts: Date.now(),
+  }
+  const existing = getAblationRuns()
+
   try {
-    const existing: AblationRunRecord[] = JSON.parse(localStorage.getItem(ABLATION_KEY) ?? '[]')
-    existing.push({
-      ...run,
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      ts: Date.now(),
-    })
-    localStorage.setItem(ABLATION_KEY, JSON.stringify(existing))
-  } catch { /* noop — private browsing */ }
+    localStorage.setItem(ABLATION_KEY, JSON.stringify([...existing, record]))
+    return true
+  } catch (err) {
+    console.warn('[recordAblationRun] Full record too large for localStorage, retrying without panel images:', err)
+  }
+
+  try {
+    const slimRecord = { ...record, results: record.results.map(res => ({ ...res, panel_b64: '' })) }
+    localStorage.setItem(ABLATION_KEY, JSON.stringify([...existing, slimRecord]))
+    return true
+  } catch (err) {
+    console.warn('[recordAblationRun] Still too large — stripping images from all stored runs and retrying:', err)
+  }
+
+  try {
+    const slimRecord = { ...record, results: record.results.map(res => ({ ...res, panel_b64: '' })) }
+    localStorage.setItem(ABLATION_KEY, JSON.stringify([...stripPanelImages(existing), slimRecord]))
+    return true
+  } catch (err) {
+    console.error('[recordAblationRun] Failed to save run — localStorage unavailable or full:', err)
+    return false
+  }
 }
 
 export function getAblationRuns(): AblationRunRecord[] {
