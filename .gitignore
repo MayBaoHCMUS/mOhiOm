@@ -43,8 +43,7 @@ next-env.d.ts
 
 # local screenshot captures
 /screenshots/
-/ThesisInformation/Thesis_CQ22_Thương (8).pdf
-
+/ThesisInformation/
 # AI/IDE tool config and generated artifacts — not part of the buildable source
 /.claude/
 /.continue/
