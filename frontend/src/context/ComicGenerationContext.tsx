@@ -24,6 +24,8 @@ import { DEFAULT_IMAGE_STYLE, IMAGE_STYLE_PREF_KEY } from '@/lib/imageStyles';
 import type { ExportPage } from '@/lib/export';
 import type { SingleBubble } from '@/components/studio-steps/DialogueEditor';
 import { useNotifications } from '@/context/NotificationContext';
+import type { CharacterReference } from '@/lib/characterReference';
+import { findCharacterReference, pickCharacterReference } from '@/lib/characterReference';
 
 export type StepKey = 1 | 2 | 3 | 4 | 5;
 export type WizardStepKey = 0 | StepKey;
@@ -281,7 +283,7 @@ const fetchImageFromAI = async (
       negative_prompt: PANEL_NEGATIVE_PROMPT,
       story_id: settings?.storyId ?? 'default',
       style: settings?.style ?? 'manga',
-      ip_adapter_scale: settings?.ipAdapterScale ?? 0.5,
+      ip_adapter_scale: settings?.ipAdapterScale ?? 0.6,
     };
     if (settings?.characterName) {
       requestBody.character_name = settings.characterName;
@@ -301,7 +303,14 @@ const fetchImageFromAI = async (
     console.log('Proxy URL   :', '/api/image-proxy');
     console.log('Target URL  :', localImageApiUrl);
     console.log('Mode        :', mode);
-    console.log('Request body:', requestBody);
+    const loggedRequestBody = { ...requestBody };
+    if (typeof loggedRequestBody.reference_image_b64 === 'string') {
+      loggedRequestBody.reference_image_b64 = `<base64, length: ${loggedRequestBody.reference_image_b64.length}>`;
+    }
+    if (typeof loggedRequestBody.control_image_b64 === 'string') {
+      loggedRequestBody.control_image_b64 = `<base64, length: ${loggedRequestBody.control_image_b64.length}>`;
+    }
+    console.log('Request body:', loggedRequestBody);
 
     try {
       const response = await fetch('/api/image-proxy', {
@@ -501,8 +510,10 @@ const SHOT_TYPE_MARKERS = [
 /**
  * Strip character visual tags from an ai_image_prompt.
  * Format is: "{art_style}, {character_tags}, {shot_type}, {action}, {mood}"
- * We keep: art_style + everything from the first shot_type onward.
- * Character appearance comes from IP-Adapter reference image instead.
+ * We keep: art_style + everything from the first shot_type onward. The
+ * dropped {character_tags} segment is why callers re-attach the character's
+ * ai_image_prompt_ready via withCharacterAppearance() below — otherwise
+ * appearance consistency depends entirely on the IP-Adapter reference image.
  */
 const buildCleanPanelPrompt = (aiImagePrompt: string, artStyle: string): string => {
   let cleaned = aiImagePrompt;
@@ -551,7 +562,8 @@ const buildComicPagePrompt = (
   _characterRefs: Array<{ name: string; prompt: string }>,
   includeSfx = false
 ): string => {
-  // Character appearance is handled by IP-Adapter reference image — not embedded in text prompt
+  // Per-panel character appearance tags are stripped here (see buildCleanPanelPrompt);
+  // callers re-attach one page-level appearance anchor via withCharacterAppearance().
   const parts: string[] = [
     `Comic book page, ${panels.length} panels, ${artStyle}, ${mangaGenre}.`,
   ];
@@ -570,29 +582,16 @@ const buildComicPagePrompt = (
   return parts.join('\n');
 };
 
-export interface CharacterReference {
-  character_id: string;
-  name: string;
-  image_url: string;
-  prompt: string;
-}
+// Re-attaches the matched character's full ai_image_prompt_ready (physical
+// appearance) to a scene prompt that had its character tags stripped out.
+// This is a second, text-based anchor for appearance consistency alongside
+// the IP-Adapter reference image — needed because a missing/stale reference
+// (e.g. server restarted, RAM store empty) otherwise leaves nothing anchoring
+// the character's look at all.
+const withCharacterAppearance = (scenePrompt: string, characterPrompt?: string): string =>
+  characterPrompt ? `${characterPrompt}. ${scenePrompt}` : scenePrompt;
 
-// Picks the reference image for the character actually named in this panel
-// (Step 3's per-panel `characters:` field), instead of always defaulting to
-// the first character the user selected — otherwise every panel/page ends up
-// generated with the same character's likeness regardless of who's in it.
-const pickCharacterReference = (
-  characterRefs: CharacterReference[],
-  characterNames?: string[]
-): CharacterReference | undefined => {
-  if (characterNames?.length) {
-    for (const wanted of characterNames) {
-      const match = characterRefs.find((c) => c.name.trim().toLowerCase() === wanted.trim().toLowerCase());
-      if (match) return match;
-    }
-  }
-  return characterRefs[0];
-};
+export type { CharacterReference };
 
 export interface ComicGenerationContextValue {
   projectId: string;
@@ -747,6 +746,10 @@ export function ComicGenerationProvider({
   const [imageGenBackendMode, setImageGenBackendMode] = useState<ImageGenBackendMode>('builtin');
   const [panelAutoRetryInfo, setPanelAutoRetryInfo] = useState<{ round: number; totalRounds: number; remaining: number } | null>(null);
   const panelAutoRetryCancelRef = useRef(false);
+  // Caches image_url -> raw base64 conversions for the duration of the provider's
+  // lifetime, so a batch of panels sharing the same character reference only
+  // fetches + converts that reference image once instead of once per panel.
+  const referenceImageB64CacheRef = useRef<Map<string, string>>(new Map());
   const [imageGenMode, setImageGenMode] = useState<ImageGenMode>(1);
   const [imageGenStyle, setImageGenStyle] = useState<string>(() =>
     typeof window !== 'undefined'
@@ -755,7 +758,7 @@ export function ComicGenerationProvider({
   );
   const [referenceImageBase64, setReferenceImageBase64] = useState('');
   const [controlImageBase64, setControlImageBase64] = useState('');
-  const [ipAdapterScale, setIpAdapterScale] = useState(0.5);
+  const [ipAdapterScale, setIpAdapterScale] = useState(0.6);
   const [controlnetScale, setControlnetScale] = useState(0.8);
   const [useStreaming, setUseStreaming] = useState(true);
   const [sfxMode, setSfxMode] = useState<'auto' | 'manual'>('auto');
@@ -1019,9 +1022,21 @@ export function ComicGenerationProvider({
     if (!localImageApiUrl) return;
     // imageUrl is a real R2 URL after generation (not a data: URI), so fetch
     // and convert it to base64 before sending to the Kaggle IP-adapter server.
-    const dataUri = imageUrl.startsWith('data:') ? imageUrl : await fetchImageAsBase64(imageUrl).catch(() => '');
+    // Retried for the same reason as resolveReferenceImageBase64 — a transient
+    // network/CORS/CDN-propagation blip shouldn't permanently drop the character's
+    // reference image from the server's RAM store.
+    const dataUri = imageUrl.startsWith('data:')
+      ? imageUrl
+      : await withRetry(() => fetchImageAsBase64(imageUrl), 3, 2000).catch(() => '');
     const b64 = dataUri.startsWith('data:') ? dataUri.split(',')[1] ?? '' : dataUri;
-    if (!b64) return;
+    if (!b64) {
+      console.error(
+        '[saveCharacterToServer] Failed to fetch/convert character reference image after retries — ' +
+        'server RAM store will NOT be updated for this character',
+        { characterName, imageUrl }
+      );
+      return;
+    }
     trackEvent({
       type:          'character_save',
       story_id:      projectId || 'unknown',
@@ -1029,7 +1044,12 @@ export function ComicGenerationProvider({
       duration_ms:   0,
       has_character: true,
     });
-    fetch('/api/image-proxy/characters', {
+    // Awaited (not fire-and-forget) so callers that need the server's RAM
+    // store to actually be populated before proceeding — e.g.
+    // resyncCharacterReferencesToServer — can rely on this resolving only
+    // after the save request completes. Callers that don't care (e.g. Step 2
+    // approval) simply don't await it, preserving the old non-blocking feel.
+    await fetch('/api/image-proxy/characters', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1040,6 +1060,55 @@ export function ComicGenerationProvider({
       }),
     }).catch(() => {});
   }, [localImageApiUrl, projectId, imageGenStyle]);
+
+  // Resolves a character reference (image_url or already-base64 data URI) to raw
+  // base64 for the `/generate-page` payload, caching per URL so a batch of panels
+  // sharing one character only fetches + converts that reference image once.
+  // A conversion failure here silently strips reference_image_b64 from the
+  // outgoing request (no IP-Adapter conditioning at all), so it's retried and
+  // logged loudly rather than swallowed — only an empty/undefined refUrl
+  // (nothing to convert in the first place) is the quiet, expected path.
+  const resolveReferenceImageBase64 = useCallback(async (refUrl: string | undefined): Promise<string> => {
+    if (!refUrl) return '';
+    if (refUrl.startsWith('data:')) {
+      return refUrl.split(',')[1] ?? '';
+    }
+    const cache = referenceImageB64CacheRef.current;
+    const cached = cache.get(refUrl);
+    if (cached !== undefined) return cached;
+
+    try {
+      const dataUri = await withRetry(() => fetchImageAsBase64(refUrl), 3, 2000);
+      const b64 = dataUri.split(',')[1] ?? '';
+      if (!b64) {
+        console.warn(
+          '[resolveReferenceImageBase64] fetchImageAsBase64 resolved but produced empty base64 payload',
+          { refUrl }
+        );
+        return '';
+      }
+      cache.set(refUrl, b64);
+      return b64;
+    } catch (error) {
+      console.error(
+        '[resolveReferenceImageBase64] Failed to fetch/convert reference image after retries — ' +
+        'panel will be generated WITHOUT a reference image (no IP-Adapter conditioning)',
+        { refUrl, error }
+      );
+      return '';
+    }
+  }, []);
+
+  // Re-pushes every selected character's reference image to the server's RAM
+  // store right before a generation batch starts, so panel/page generation
+  // has a fresh reference even if the server restarted since Step 2 was approved.
+  const resyncCharacterReferencesToServer = useCallback(async (): Promise<void> => {
+    if (!localImageApiUrl) return;
+    const refs = getSelectedCharacterReferences();
+    await Promise.all(
+      refs.map((ref) => saveCharacterToServer(ref.name, ref.image_url))
+    );
+  }, [localImageApiUrl, getSelectedCharacterReferences, saveCharacterToServer]);
 
   const setStepState = (step: StepKey, updater: (prev: StepState<unknown>) => StepState<unknown>) => {
     if (step === 1) setStep1((prev) => updater(prev as StepState<unknown>) as StepState<Step1Result>);
@@ -2262,10 +2331,21 @@ export function ComicGenerationProvider({
               }
             }
             const panelDimensions = pagePanelDimensions[panel.pageNumber]?.[panel.id];
-            const matchedChar = pickCharacterReference(characterRefs, panel.characterNames);
+            const matchedChar = pickCharacterReference(characterRefs, panel.characterNames, panel.aiImagePrompt);
+            const intendedRefSource = matchedChar?.image_url ?? referenceImageBase64;
+            const refB64 = await resolveReferenceImageBase64(intendedRefSource);
+            if (!refB64 && intendedRefSource) {
+              addNotification({
+                title: 'Reference image failed to load',
+                message: `Panel ${panel.pageNumber}-${panel.panelNumber}${matchedChar ? ` (${matchedChar.name})` : ''} will generate without a character reference image.`,
+                variant: 'partial',
+                projectId,
+              });
+            }
+            const finalPrompt = withCharacterAppearance(cleanPrompt, matchedChar?.prompt);
             const effectiveSettings: ImageGenSettings = {
               mode: imageGenMode,
-              referenceImageBase64: matchedChar?.image_url ?? referenceImageBase64,
+              referenceImageBase64: refB64,
               controlImageBase64,
               ipAdapterScale,
               controlnetScale,
@@ -2277,7 +2357,7 @@ export function ComicGenerationProvider({
               seed: randomImageSeed(),
             };
             const imageUrl = await withRetry(
-              () => fetchImageFromAI(cleanPrompt, localImageApiUrl || undefined, effectiveSettings, imageGenBackendMode),
+              () => fetchImageFromAI(finalPrompt, localImageApiUrl || undefined, effectiveSettings, imageGenBackendMode),
               3,
               3000
             );
@@ -2382,7 +2462,7 @@ export function ComicGenerationProvider({
         batch.map(async ([pageNumber, panels]) => {
           const pageId = `page-${pageNumber}`;
           try {
-            const prompt = buildComicPagePrompt(
+            const rawPrompt = buildComicPagePrompt(
               panels,
               artStyle,
               mangaGenre,
@@ -2390,18 +2470,30 @@ export function ComicGenerationProvider({
               sfxMode === 'auto'
             );
             // A page combines several panels into one image with a single reference
-            // slot — use the first panel on the page that actually names a character.
+            // slot — use the first panel on the page that actually names a character
+            // (via the `characters:` field or, failing that, a name found directly
+            // in that panel's raw prompt), rather than stopping at the first panel
+            // checked regardless of whether it named anyone.
             let matchedChar: CharacterReference | undefined;
             for (const panel of panels) {
-              if (panel.characterNames?.length) {
-                matchedChar = pickCharacterReference(characterRefs, panel.characterNames);
-                if (matchedChar) break;
-              }
+              matchedChar = findCharacterReference(characterRefs, panel.characterNames, panel.aiImagePrompt);
+              if (matchedChar) break;
             }
             matchedChar ??= characterRefs[0];
+            const prompt = withCharacterAppearance(rawPrompt, matchedChar?.prompt);
+            const intendedRefSource = matchedChar?.image_url ?? referenceImageBase64;
+            const refB64 = await resolveReferenceImageBase64(intendedRefSource);
+            if (!refB64 && intendedRefSource) {
+              addNotification({
+                title: 'Reference image failed to load',
+                message: `Page ${pageNumber}${matchedChar ? ` (${matchedChar.name})` : ''} will generate without a character reference image.`,
+                variant: 'partial',
+                projectId,
+              });
+            }
             const effectiveSettings: ImageGenSettings = {
               mode: imageGenMode,
-              referenceImageBase64: matchedChar?.image_url ?? referenceImageBase64,
+              referenceImageBase64: refB64,
               controlImageBase64,
               ipAdapterScale,
               controlnetScale,
@@ -2469,6 +2561,7 @@ export function ComicGenerationProvider({
     });
 
     try {
+      await resyncCharacterReferencesToServer();
       const results = await generatePageImages(targets, { batchSize: 1, delayMs: 10000 });
       const pageTotal = Object.keys(results).length;
       const pageSucceeded = Object.values(results).filter((r) => r.status === 'success').length;
@@ -2525,6 +2618,7 @@ export function ComicGenerationProvider({
       return { ...prev, data: { ...prev.data, isGenerating: true }, error: null };
     });
     try {
+      await resyncCharacterReferencesToServer();
       let round = 0;
       while (pending.length && round < PANEL_AUTO_RETRY_ROUNDS.length && !panelAutoRetryCancelRef.current) {
         const settings = PANEL_AUTO_RETRY_ROUNDS[round];
@@ -2668,18 +2762,28 @@ export function ComicGenerationProvider({
         prompt += `\nUser revision request: ${feedback.trim()}`;
       }
       // Same policy as generatePageImages: use the first panel on the page that
-      // actually names a character, rather than always the first selected character.
+      // actually names a character (via `characters:` or a name found directly
+      // in that panel's raw prompt), rather than always the first selected character.
       let matchedChar: CharacterReference | undefined;
       for (const panel of panels) {
-        if (panel.characterNames?.length) {
-          matchedChar = pickCharacterReference(characterRefs, panel.characterNames);
-          if (matchedChar) break;
-        }
+        matchedChar = findCharacterReference(characterRefs, panel.characterNames, panel.aiImagePrompt);
+        if (matchedChar) break;
       }
       matchedChar ??= characterRefs[0];
+      prompt = withCharacterAppearance(prompt, matchedChar?.prompt);
+      const intendedRefSource = matchedChar?.image_url ?? referenceImageBase64;
+      const refB64 = await resolveReferenceImageBase64(intendedRefSource);
+      if (!refB64 && intendedRefSource) {
+        addNotification({
+          title: 'Reference image failed to load',
+          message: `Page ${pageNumber}${matchedChar ? ` (${matchedChar.name})` : ''} will generate without a character reference image.`,
+          variant: 'partial',
+          projectId,
+        });
+      }
       const effectiveSettings: ImageGenSettings = {
         mode: imageGenMode,
-        referenceImageBase64: matchedChar?.image_url ?? referenceImageBase64,
+        referenceImageBase64: refB64,
         controlImageBase64,
         ipAdapterScale,
         controlnetScale,

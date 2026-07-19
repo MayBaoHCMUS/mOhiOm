@@ -1091,6 +1091,15 @@ RULE 10 — FALLBACK:
   If CHARACTER VISUAL TAGS block is empty for a character: use physical_description from step1_json.
   If step1_json scene data missing: note as [DATA MISSING — estimated from context].
 
+RULE 11 — CHARACTERS FIELD (MANDATORY PER PANEL):
+  Every panel MUST include a separate `characters:` field listing the exact
+  name(s) of every character visually present in that panel, copied VERBATIM
+  from the Step 2 character designs / CHARACTER VISUAL TAGS block
+  (case-insensitive match required — never abbreviate or add/drop titles).
+  If no named character appears (pure establishing/scenery shot), write
+  `characters: NONE`. Never omit this field, even when only one character
+  is present or the character is also named in the ai_image_prompt text.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OUTPUT — Write exactly in this order:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1125,6 +1134,7 @@ Then for EACH panel:
 - **dialogue_sfx:** [spoken lines | SFX | thoughts | NONE]
 - **ai_image_prompt:** [structured prompt per RULE 1+2, max 200 chars]
 - **negative_prompt:** [per RULE 7]
+- **characters:** [Name1, Name2 or NONE, per RULE 11]
 
 [Repeat for all panels, pages, chapters]
 
