@@ -1099,9 +1099,13 @@ export default function Step4Generation() {
     if (state === 2) { wasBuildingRef.current = true; return; }
     if (state === 3 && wasBuildingRef.current) {
       wasBuildingRef.current = false;
-      handleStartFullGeneration();
+      if (comicPageMode === 'panel') {
+        handleStartPanelGeneration();
+      } else {
+        handleStartFullGeneration();
+      }
     }
-  }, [state, handleStartFullGeneration]);
+  }, [state, comicPageMode, handleStartFullGeneration, handleStartPanelGeneration]);
 
   // All panels flat for grid/list views
   const allPanels = step4PanelsByPage.flatMap(([, panels]) => panels);
