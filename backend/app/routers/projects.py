@@ -398,10 +398,15 @@ def save_project_images(
         raise HTTPException(status_code=404, detail="Project not found")
     now = datetime.now(timezone.utc).isoformat()
     # Replace the full image set atomically so stale keys (e.g. old Full-Page images
-    # after the user switches to Panel mode) are never left behind.
+    # after the user switches to Panel mode) are never left behind. Only delete R2
+    # objects that are actually being dropped — a URL reused by the new payload
+    # (unchanged panel/page across saves) must survive, otherwise every re-save
+    # deletes the previous save's still-referenced images out from under it.
+    new_urls = {entry.image_url for entry in payload.images}
     for old in _img_col().find({"user_id": user_id, "project_id": project_id}, {"image_url": 1}):
-        if old.get("image_url"):
-            r2_storage.delete_by_url(old["image_url"])
+        old_url = old.get("image_url")
+        if old_url and old_url not in new_urls:
+            r2_storage.delete_by_url(old_url)
     _img_col().delete_many({"user_id": user_id, "project_id": project_id})
     if payload.images:
         _img_col().insert_many([

@@ -480,6 +480,7 @@ function PageStrip({
                 <img
                   src={pageImageUrl}
                   alt=""
+                  crossOrigin="anonymous"
                   style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                 />
               ) : (
@@ -503,6 +504,7 @@ function PageStrip({
                         <img
                           src={state.imageUrl}
                           alt=""
+                          crossOrigin="anonymous"
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         />
                       )}
@@ -739,6 +741,7 @@ function EditorCanvas({
           <img
             src={pageImageUrl}
             alt="Page"
+            crossOrigin="anonymous"
             style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             draggable={false}
           />
@@ -766,6 +769,7 @@ function EditorCanvas({
                   <img
                     src={state.imageUrl}
                     alt={panel.contextLabel}
+                    crossOrigin="anonymous"
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                     draggable={false}
                   />

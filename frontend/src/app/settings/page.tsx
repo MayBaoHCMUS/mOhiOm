@@ -7,7 +7,11 @@ import StudioTopBar from '@/components/StudioTopBar';
 import { useAuth } from '@/context/AuthContext';
 import { authApi, projectsApi, settingsApi, toApiError } from '@/services/api';
 import type { TextGenMode, SaveTextGenConfigPayload, TextGenProvider, ImageGenMode, SaveImageGenConfigPayload, ImageGenProvider } from '@/services/api';
-import { getImageApiUrl } from '@/lib/imageApiUrl';
+import {
+  getImageApiUrl,
+  getMultiCharacterApiUrl, setMultiCharacterApiUrl, DEFAULT_MULTI_CHARACTER_API_URL,
+  getEnableMultiCharacterMode, setEnableMultiCharacterMode,
+} from '@/lib/imageApiUrl';
 import { IMAGE_STYLES, DEFAULT_IMAGE_STYLE, IMAGE_STYLE_PREF_KEY } from '@/lib/imageStyles';
 import PasswordStrengthMeter from '@/components/PasswordStrengthMeter';
 import { useOnboardingContext } from '@/context/OnboardingContext';
@@ -158,9 +162,12 @@ export default function SettingsPage() {
 
   // Image generation server URL — locked to the permanent GPU tunnel
   const [imageApiUrlValue, setImageApiUrlValue] = useState('');
+  // Omni (OmniGen2, multi-character) server URL — user-editable, persisted in localStorage
+  const [multiCharacterApiUrlValue, setMultiCharacterApiUrlValue] = useState('');
 
   // Image generation (BYOK / built-in GPU mode)
   const [imageGenMode, setImageGenMode] = useState<ImageGenMode>('builtin');
+  const [builtinImageModel, setBuiltinImageModel] = useState<'default' | 'omni'>('default');
   const [byokImageProvider, setByokImageProvider] = useState('');
   const [byokImageProviders, setByokImageProviders] = useState<ImageGenProvider[]>([]);
   const [byokImageApiKey, setByokImageApiKey] = useState('');
@@ -196,6 +203,14 @@ export default function SettingsPage() {
 
   useEffect(() => {
     setImageApiUrlValue(getImageApiUrl());
+  }, []);
+
+  useEffect(() => {
+    setMultiCharacterApiUrlValue(getMultiCharacterApiUrl());
+  }, []);
+
+  useEffect(() => {
+    setBuiltinImageModel(getEnableMultiCharacterMode() ? 'omni' : 'default');
   }, []);
 
   useEffect(() => {
@@ -369,6 +384,10 @@ export default function SettingsPage() {
       const res = await settingsApi.saveImageGenConfig(payload);
       setHasImageApiKey(res.data.has_api_key);
       setByokImageApiKey('');
+      if (imageGenMode === 'builtin') {
+        setMultiCharacterApiUrl(multiCharacterApiUrlValue);
+        setEnableMultiCharacterMode(builtinImageModel === 'omni');
+      }
       setImageGenMsg('Saved!');
       setTimeout(() => setImageGenMsg(''), 2000);
     } catch (err) {
@@ -386,6 +405,10 @@ export default function SettingsPage() {
       setImageGenMode('builtin');
       setByokImageProvider(byokImageProviders[0]?.id || ''); setByokImageApiKey('');
       setHasImageApiKey(false);
+      setMultiCharacterApiUrlValue(DEFAULT_MULTI_CHARACTER_API_URL);
+      setMultiCharacterApiUrl(DEFAULT_MULTI_CHARACTER_API_URL);
+      setBuiltinImageModel('default');
+      setEnableMultiCharacterMode(false);
       setImageGenMsg('Reset to default.');
       setTimeout(() => setImageGenMsg(''), 2000);
     } catch (err) {
@@ -816,16 +839,46 @@ export default function SettingsPage() {
                 </div>
 
                 {imageGenMode === 'builtin' && (
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Image API URL</label>
-                    <input
-                      type="url"
-                      value={imageApiUrlValue}
-                      disabled
-                      readOnly
-                      className="field w-full font-mono text-sm opacity-60 cursor-not-allowed"
-                    />
-                    <p className="mt-2 text-[11px] text-outline">Fixed to the permanent GPU tunnel. Supports reference-image and character-consistency features.</p>
+                  <div className="space-y-5">
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Model</label>
+                      <select
+                        value={builtinImageModel}
+                        onChange={(e) => setBuiltinImageModel(e.target.value as 'default' | 'omni')}
+                        className="field w-full"
+                      >
+                        <option value="default">SD1.5 / SDXL (default)</option>
+                        <option value="omni">Omni (all generation)</option>
+                      </select>
+                    </div>
+
+                    {builtinImageModel === 'default' && (
+                      <div>
+                        <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Image API URL</label>
+                        <input
+                          type="url"
+                          value={imageApiUrlValue}
+                          disabled
+                          readOnly
+                          className="field w-full font-mono text-sm opacity-60 cursor-not-allowed"
+                        />
+                        <p className="mt-2 text-[11px] text-outline">Fixed to the permanent GPU tunnel. Supports reference-image and character-consistency features.</p>
+                      </div>
+                    )}
+
+                    {builtinImageModel === 'omni' && (
+                      <div>
+                        <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Image API URL</label>
+                        <input
+                          type="url"
+                          value={multiCharacterApiUrlValue}
+                          disabled
+                          readOnly
+                          className="field w-full font-mono text-sm opacity-60 cursor-not-allowed"
+                        />
+                        <p className="mt-2 text-[11px] text-outline">Used for all image generation in this project when selected above — characters, panels, and pages.</p>
+                      </div>
+                    )}
                   </div>
                 )}
 

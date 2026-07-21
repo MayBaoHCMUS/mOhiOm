@@ -65,3 +65,42 @@ export const pickCharacterReference = (
   rawPromptText?: string
 ): CharacterReference | undefined =>
   findCharacterReference(characterRefs, characterNames, rawPromptText) ?? characterRefs[0];
+
+// Identifies every character present in a panel/page, for the Omni backend —
+// unlike findCharacterReference/pickCharacterReference, which stop at the
+// first match for the single-reference flow. Same two passes (Step 3's
+// `characters:` field, then name-in-prompt substring match), but collects all
+// matches instead of returning on the first hit. Returns whatever it finds —
+// 0, 1, or N characters — since Omni now accepts any count (0 = pure
+// text-to-image, 1 = single-reference, 2+ = multi-character).
+export const findAllCharacterMatches = (
+  characterRefs: CharacterReference[],
+  characterNames?: string[],
+  rawPromptText?: string
+): CharacterReference[] => {
+  let matched: CharacterReference[] = [];
+
+  if (characterNames?.length) {
+    matched = characterNames
+      .map((wanted) =>
+        characterRefs.find((c) => c.name.trim().toLowerCase() === wanted.trim().toLowerCase())
+      )
+      .filter((c): c is CharacterReference => c !== undefined);
+  }
+
+  if (rawPromptText) {
+    const lower = rawPromptText.toLowerCase();
+    const sorted = [...characterRefs].sort(
+      (a, b) => stripLeadingArticle(b.name).length - stripLeadingArticle(a.name).length
+    );
+    for (const c of sorted) {
+      if (matched.some((m) => m.character_id === c.character_id)) continue;
+      const core = stripLeadingArticle(c.name);
+      if (core.length >= MIN_CORE_NAME_LENGTH && lower.includes(core)) {
+        matched.push(c);
+      }
+    }
+  }
+
+  return Array.from(new Map(matched.map((c) => [c.character_id, c])).values());
+};

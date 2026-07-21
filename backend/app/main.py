@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import mongo_db
-from app.routers import items, text_gen, text_to_comic, auth, projects, gallery, ratings, admin_analytics, analytics, bubbles, comic_generation, onboarding, images, image_gen
+from app.routers import items, text_gen, text_to_comic, auth, projects, gallery, ratings, admin_analytics, analytics, bubbles, comic_generation, onboarding, images, image_gen, vision
 from app.routers import settings as settings_router
 from app import r2_storage
 
@@ -50,6 +50,7 @@ app.include_router(settings_router.router, prefix=settings.API_PREFIX)
 app.include_router(onboarding.router, prefix=settings.API_PREFIX)
 app.include_router(images.router, prefix=settings.API_PREFIX)
 app.include_router(image_gen.router, prefix=settings.API_PREFIX)
+app.include_router(vision.router, prefix=settings.API_PREFIX)
 
 
 

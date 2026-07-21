@@ -4,6 +4,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import type { Step4Panel, Step4PanelState } from '@/context/ComicGenerationContext';
 import { useOnboardingContext } from '@/context/OnboardingContext';
 import ContextualTip from '@/components/onboarding/ContextualTip';
+import { visionApi, type FaceBox } from '@/services/api';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -202,6 +203,34 @@ function getPanelGridPlacement(rows: number[][], panelIndex: number): React.CSSP
     };
   }
   return {};
+}
+
+// Width:height ratio of a panel's box as it actually renders in this editor's
+// page grid (mirrors buildGridStyle/getPanelGridPlacement's CSS grid math, or
+// ABSOLUTE_LAYOUT_BBOXES for non-grid layouts) — used by the export pipeline
+// so panel images get cropped the same way object-fit:cover crops them here,
+// keeping bubble positions (recorded against this cropped view) accurate.
+const GRID_GAP = 6;
+const GRID_PADDING = 8;
+
+export function getPanelBoxAspectRatio(layoutName: string, panelIndex: number): number {
+  const absBboxes = ABSOLUTE_LAYOUT_BBOXES[layoutName];
+  if (absBboxes?.[panelIndex]) {
+    const bb = absBboxes[panelIndex];
+    return (bb.w * BASE_PAGE_W) / (bb.h * BASE_PAGE_H);
+  }
+  const rows = LAYOUT_ROW_STRUCTURES[layoutName] ?? [[0]];
+  const maxCols = Math.max(...rows.map(r => r.length));
+  const colW = (BASE_PAGE_W - GRID_PADDING * 2 - (maxCols - 1) * GRID_GAP) / maxCols;
+  const rowH = (BASE_PAGE_H - GRID_PADDING * 2 - (rows.length - 1) * GRID_GAP) / rows.length;
+  for (const row of rows) {
+    const col = row.indexOf(panelIndex);
+    if (col === -1) continue;
+    const colSpan = maxCols / row.length;
+    const cellW = colSpan * colW + (colSpan - 1) * GRID_GAP;
+    return cellW / rowH;
+  }
+  return 1;
 }
 
 function computeFitZoom(viewportW: number, viewportH: number, pad = 48): number {
@@ -842,6 +871,7 @@ function PanelCell({
         <img
           src={imageUrl} alt=""
           draggable={false}
+          crossOrigin="anonymous"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
         />
       ) : !hasPageImage ? (
@@ -1198,10 +1228,11 @@ function PageBubbleLayer({
   );
 }
 
-// Computes tail direction pointing from bubble toward panel center (character approximation)
-function autoDetectTailDir(bubblePos: BubblePosition): TailDir {
-  const dx = 0.5 - bubblePos.x;
-  const dy = 0.5 - bubblePos.y;
+// Computes tail direction pointing from bubble toward a target point (defaults to
+// panel center — a character-position approximation used when no face was detected)
+function autoDetectTailDir(bubblePos: BubblePosition, target: BubblePosition = { x: 0.5, y: 0.5 }): TailDir {
+  const dx = target.x - bubblePos.x;
+  const dy = target.y - bubblePos.y;
   if (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05) return 'down';
   const angle = Math.atan2(dy, dx) * (180 / Math.PI);
   if (angle >= -22.5  && angle <  22.5)  return 'right';
@@ -1219,6 +1250,7 @@ function autoDetectTailDir(bubblePos: BubblePosition): TailDir {
 interface BubbleSidebarProps {
   selectedBubble: SingleBubble | null;
   selectedPanelId: string | null;
+  selectedPanelImageUrl: string | null;
   currentPanels: Step4Panel[];
   panelBubbles: Record<string, PanelBubbles>;
   saveStatus: 'idle' | 'unsaved' | 'saving' | 'saved' | 'error';
@@ -1260,11 +1292,13 @@ const TAIL_ICONS: Record<string, string> = {
 };
 
 function BubbleSidebar({
-  selectedBubble, selectedPanelId, currentPanels, panelBubbles,
+  selectedBubble, selectedPanelId, selectedPanelImageUrl, currentPanels, panelBubbles,
   saveStatus, onBubbleChange, onBubbleDelete, onPanelSelect, onAutoImport, onRetrySave,
 }: BubbleSidebarProps) {
   const [localText, setLocalText] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [faceCache, setFaceCache] = useState<Record<string, FaceBox[] | null>>({});
+  const [detectingFaces, setDetectingFaces] = useState(false);
 
   // Sync local text when selected bubble changes
   useEffect(() => {
@@ -1533,19 +1567,61 @@ function BubbleSidebar({
                 Tail Direction
               </label>
               <button type="button"
-                title="Auto-point tail toward panel center (approximates character position)"
-                onClick={() => {
-                  const dir = autoDetectTailDir(selectedBubble.bubblePosition);
-                  onBubbleChange({ tailDir: dir });
+                title="Auto-point tail toward the detected character face (falls back to panel center)"
+                disabled={detectingFaces}
+                onClick={async () => {
+                  const bubblePos = selectedBubble.bubblePosition;
+                  const isPageBubble = selectedBubble.crossPanel === true;
+
+                  // Cross-panel (page-mode) bubbles and panels without a real R2 image
+                  // aren't supported by server-side face detection — unchanged behavior.
+                  if (isPageBubble || !selectedPanelId || !selectedPanelImageUrl?.startsWith('http')) {
+                    onBubbleChange({ tailDir: autoDetectTailDir(bubblePos) });
+                    return;
+                  }
+
+                  let faces = faceCache[selectedPanelId];
+                  if (faces === undefined) {
+                    setDetectingFaces(true);
+                    try {
+                      const res = await visionApi.detectFaces(selectedPanelImageUrl);
+                      faces = res.data.faces;
+                    } catch {
+                      faces = null; // network/server error — treat as "no faces", never surface an error
+                    }
+                    setFaceCache((prev) => ({ ...prev, [selectedPanelId]: faces ?? null }));
+                    setDetectingFaces(false);
+                  }
+
+                  if (!faces || faces.length === 0) {
+                    onBubbleChange({ tailDir: autoDetectTailDir(bubblePos) });
+                    return;
+                  }
+
+                  // Point at whichever detected face is nearest the bubble — a better
+                  // proxy for "who's speaking" than always picking the largest face.
+                  let nearest = faces[0];
+                  let bestDist = Infinity;
+                  for (const f of faces) {
+                    const cx = f.x + f.w / 2;
+                    const cy = f.y + f.h / 2;
+                    const dist = (cx - bubblePos.x) ** 2 + (cy - bubblePos.y) ** 2;
+                    if (dist < bestDist) { bestDist = dist; nearest = f; }
+                  }
+                  const target = { x: nearest.x + nearest.w / 2, y: nearest.y + nearest.h / 2 };
+                  onBubbleChange({ tailDir: autoDetectTailDir(bubblePos, target) });
                 }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 4,
                   padding: '3px 8px', borderRadius: 12,
                   border: `1px solid ${primaryColor}`,
                   background: 'rgba(0,88,190,0.05)', color: primaryColor,
-                  fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  fontSize: 11, fontWeight: 600, cursor: detectingFaces ? 'default' : 'pointer',
+                  opacity: detectingFaces ? 0.6 : 1,
                 }}>
-                <span style={{ fontSize: 13 }}>🎯</span>
+                {detectingFaces
+                  ? <span style={{ width: 12, height: 12, border: '2px solid rgba(0,88,190,0.3)', borderTopColor: primaryColor, borderRadius: '50%', display: 'inline-block', animation: 'spin 0.9s linear infinite', flexShrink: 0 }} />
+                  : <span style={{ fontSize: 13 }}>🎯</span>}
                 Auto-point
               </button>
             </div>
@@ -2034,6 +2110,7 @@ export default function DialogueEditor({
                           src={currentPageImageUrl}
                           alt=""
                           draggable={false}
+                          crossOrigin="anonymous"
                           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none' }}
                         />
                       )}
@@ -2055,6 +2132,7 @@ export default function DialogueEditor({
                         src={currentPageImageUrl}
                         alt=""
                         draggable={false}
+                        crossOrigin="anonymous"
                         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none' }}
                       />
                     )}
@@ -2086,6 +2164,7 @@ export default function DialogueEditor({
         <BubbleSidebar
           selectedBubble={selectedBubbleObj}
           selectedPanelId={selectedBubble?.panelId ?? null}
+          selectedPanelImageUrl={selectedBubble ? (panelStates[selectedBubble.panelId]?.imageUrl ?? null) : null}
           currentPanels={currentPanels}
           panelBubbles={panelBubbles}
           saveStatus={saveStatus}

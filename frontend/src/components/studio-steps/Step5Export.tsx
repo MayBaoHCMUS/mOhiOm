@@ -9,6 +9,7 @@ import { apiClient, bubblesApi } from '@/services/api';
 import { exportWithDialogueAsZip } from '@/lib/bubbles/exportComposite';
 import type { CompositePanel } from '@/lib/bubbles/exportComposite';
 import type { PanelBubbles } from '@/components/studio-steps/DialogueEditor';
+import { getPanelBoxAspectRatio } from '@/components/studio-steps/DialogueEditor';
 
 function formatLastSaved(iso: string): string {
   try {
@@ -38,6 +39,7 @@ export default function Step5Export() {
     step4,
     step4PanelsByPage,
     comicPageMode,
+    pageLayoutNames,
     projectId,
     artStyle,
     mangaGenre,
@@ -158,17 +160,26 @@ export default function Step5Export() {
   }, [handleRatingSubmit, exportStars, exportPositive, exportNegative]);
 
   const handleExportWithDialogue = useCallback(async () => {
+    // Mirrors ComicGenerationContext's buildExportPages fallback-by-count table,
+    // so both export paths assume the same layout when none was explicitly chosen.
+    const LAYOUT_FALLBACKS: Record<number, string> = {
+      1: 'single', 2: 'horizontal_duo', 3: 'three_panels_row',
+      4: 'grid_2x2', 5: 'splash_top', 6: 'grid_2x3',
+    };
     const panels: CompositePanel[] = [];
     for (const [pageNum, pagePanels] of step4PanelsByPage) {
-      for (const panel of pagePanels) {
-        const state = (step4.data?.panelStates ?? {} as Record<string, Step4PanelState>)[panel.id] as Step4PanelState | undefined;
-        if (!state?.imageUrl) continue;
+      const panelStates = step4.data?.panelStates ?? {} as Record<string, Step4PanelState>;
+      const validPanels = pagePanels.filter((panel) => !!panelStates[panel.id]?.imageUrl);
+      const layoutName = pageLayoutNames[pageNum] ?? LAYOUT_FALLBACKS[validPanels.length] ?? 'single';
+      validPanels.forEach((panel, idx) => {
+        const state = panelStates[panel.id];
         panels.push({
           label: `page-${pageNum}-panel-${panel.panelNumber}`,
-          imageUrl: state.imageUrl,
+          imageUrl: state.imageUrl!,
           bubbles: panelBubbles[panel.id] ?? [],
+          aspectRatio: getPanelBoxAspectRatio(layoutName, idx),
         });
-      }
+      });
     }
     if (panels.length === 0) return;
     setExportingDialogue(true);
@@ -181,7 +192,7 @@ export default function Step5Export() {
       setExportingDialogue(false);
       setDialogueExportProgress(null);
     }
-  }, [step4PanelsByPage, step4.data, panelBubbles, projectId]);
+  }, [step4PanelsByPage, step4.data, panelBubbles, projectId, pageLayoutNames]);
 
   const hasImages =
     Object.values(step4.data?.pageStates ?? {}).some(
