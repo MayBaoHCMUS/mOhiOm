@@ -1383,4 +1383,15 @@ export const comicLayoutApi = {
     apiClient.get<{ layouts: Record<string, { panel_count: number; has_diagonal: boolean; has_splash: boolean }> }>('/comic-layout/layouts'),
 };
 
+// ─── Vision (face detection) ────────────────────────────────────────────────
+
+export interface FaceBox { x: number; y: number; w: number; h: number }
+
+export interface DetectFacesResponse { faces: FaceBox[] }
+
+export const visionApi = {
+  detectFaces: (imageUrl: string) =>
+    apiClient.post<DetectFacesResponse>('/vision/detect-faces', { image_url: imageUrl }),
+};
+
 export default apiClient;

@@ -2280,7 +2280,7 @@ export function ComicGenerationProvider({
     options?: { batchSize?: number; delayMs?: number },
     shouldCancel?: () => boolean
   ): Promise<Record<string, { status: PanelImageStatus; imageUrl: string | null; error: string | null }>> => {
-    const batchSize = Math.max(1, options?.batchSize ?? 2);
+    const batchSize = Math.max(1, options?.batchSize ?? 1);
     const delayMs = Math.max(0, options?.delayMs ?? 10000);
     const characterRefs = getSelectedCharacterReferences();
     const allResults: Record<string, { status: PanelImageStatus; imageUrl: string | null; error: string | null }> = {};
@@ -2356,6 +2356,7 @@ export function ComicGenerationProvider({
               height: panelDimensions?.height,
               seed: randomImageSeed(),
             };
+            const genStart = performance.now();
             const imageUrl = await withRetry(
               () => fetchImageFromAI(finalPrompt, localImageApiUrl || undefined, effectiveSettings, imageGenBackendMode),
               3,
@@ -2365,7 +2366,7 @@ export function ComicGenerationProvider({
               type:          'panel',
               story_id:      projectId || 'unknown',
               style:         imageGenStyle || 'manga',
-              duration_ms:   0,
+              duration_ms:   Math.round(performance.now() - genStart),
               has_character: !!matchedChar,
               ip_scale:      ipAdapterScale,
             });
@@ -2589,9 +2590,9 @@ export function ComicGenerationProvider({
   // chokes under concurrent load, not because a given panel is unfixable —
   // so auto-retry rounds progressively back off (smaller batches, longer
   // waits) rather than repeating the same load pattern that likely caused
-  // the failures. Round 1 matches today's defaults exactly.
+  // the failures. All rounds generate one panel per request.
   const PANEL_AUTO_RETRY_ROUNDS: { batchSize: number; delayMs: number }[] = [
-    { batchSize: 2, delayMs: 10000 },
+    { batchSize: 1, delayMs: 10000 },
     { batchSize: 1, delayMs: 15000 },
     { batchSize: 1, delayMs: 20000 },
     { batchSize: 1, delayMs: 30000 },

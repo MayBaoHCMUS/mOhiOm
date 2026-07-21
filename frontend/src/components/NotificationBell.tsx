@@ -23,7 +23,7 @@ const VARIANT_CONFIG: Record<Notification['variant'], { icon: typeof CheckCircle
 };
 
 export default function NotificationBell() {
-  const { notifications, unreadCount, markAllRead, markRead } = useNotifications();
+  const { notifications, unreadCount, markAllRead, markRead, clearAll } = useNotifications();
   const [open, setOpen] = useState(false);
   const [justMarkedAllRead, setJustMarkedAllRead] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -90,17 +90,27 @@ export default function NotificationBell() {
                   </span>
                 )}
               </div>
-              {showMarkAllRead && (
-                <button
-                  className={`text-xs font-medium transition-colors ${
-                    justMarkedAllRead ? 'text-outline cursor-default' : 'text-primary hover:opacity-80'
-                  }`}
-                  onClick={handleMarkAllRead}
-                  disabled={justMarkedAllRead}
-                >
-                  {justMarkedAllRead ? 'All read ✓' : 'Mark all read'}
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                {showMarkAllRead && (
+                  <button
+                    className={`text-xs font-medium transition-colors ${
+                      justMarkedAllRead ? 'text-outline cursor-default' : 'text-primary hover:opacity-80'
+                    }`}
+                    onClick={handleMarkAllRead}
+                    disabled={justMarkedAllRead}
+                  >
+                    {justMarkedAllRead ? 'All read ✓' : 'Mark all read'}
+                  </button>
+                )}
+                {notifications.length > 0 && (
+                  <button
+                    className="text-xs font-medium text-on-surface-variant hover:text-on-surface transition-colors"
+                    onClick={() => { clearAll(); setOpen(false); }}
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
             </div>
 
             {notifications.length === 0 ? (

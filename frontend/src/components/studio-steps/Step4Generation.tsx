@@ -676,7 +676,7 @@ function LayoutPageCanvas({
                 <div key={panel.id} style={{ position: 'absolute', left, top, width, height, border: '2px solid #ddd', overflow: 'hidden', boxSizing: 'border-box' }}>
                   {imageUrl ? (
                     <div className="relative w-full h-full group">
-                      <img src={imageUrl} alt={`Panel ${panel.panelNumber}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      <img src={imageUrl} alt={`Panel ${panel.panelNumber}`} crossOrigin="anonymous" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center pointer-events-none group-hover:pointer-events-auto">
                         <button type="button" onClick={() => onGeneratePanel(panel)}
                           className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-2 py-1 rounded-full bg-black/60 text-white text-[10px] font-bold backdrop-blur-sm">
