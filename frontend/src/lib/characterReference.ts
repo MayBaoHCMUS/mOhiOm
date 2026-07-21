@@ -65,3 +65,43 @@ export const pickCharacterReference = (
   rawPromptText?: string
 ): CharacterReference | undefined =>
   findCharacterReference(characterRefs, characterNames, rawPromptText) ?? characterRefs[0];
+
+// Identifies every character present in a multi-character panel (2+), for the
+// OmniGen2 backend — unlike findCharacterReference/pickCharacterReference,
+// which stop at the first match for the single-reference flow. Same two
+// passes (Step 3's `characters:` field, then name-in-prompt substring match),
+// but collects all matches instead of returning on the first hit. Returns
+// undefined when fewer than 2 characters are identified, so callers can fall
+// back to the single-reference flow.
+export const findMultiCharacterMatch = (
+  characterRefs: CharacterReference[],
+  characterNames?: string[],
+  rawPromptText?: string
+): CharacterReference[] | undefined => {
+  let matched: CharacterReference[] = [];
+
+  if (characterNames?.length) {
+    matched = characterNames
+      .map((wanted) =>
+        characterRefs.find((c) => c.name.trim().toLowerCase() === wanted.trim().toLowerCase())
+      )
+      .filter((c): c is CharacterReference => c !== undefined);
+  }
+
+  if (matched.length < 2 && rawPromptText) {
+    const lower = rawPromptText.toLowerCase();
+    const sorted = [...characterRefs].sort(
+      (a, b) => stripLeadingArticle(b.name).length - stripLeadingArticle(a.name).length
+    );
+    for (const c of sorted) {
+      if (matched.some((m) => m.character_id === c.character_id)) continue;
+      const core = stripLeadingArticle(c.name);
+      if (core.length >= MIN_CORE_NAME_LENGTH && lower.includes(core)) {
+        matched.push(c);
+      }
+    }
+  }
+
+  const unique = Array.from(new Map(matched.map((c) => [c.character_id, c])).values());
+  return unique.length >= 2 ? unique : undefined;
+};

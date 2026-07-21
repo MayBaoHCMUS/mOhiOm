@@ -121,6 +121,120 @@ function ImageStylePicker({
   );
 }
 
+// ── Image generation model picker ─────────────────────────────────────────────
+
+const IMAGE_MODEL_OPTIONS = [
+  { value: 'default' as const, icon: 'bolt', label: 'SD1.5 / SDXL', sub: 'Default — single-character panels' },
+  { value: 'omni' as const, icon: 'auto_awesome', label: 'Omni (multi-character)', sub: 'Adds OmniGen2 for 2+ character panels' },
+];
+
+function ImageModelPicker({
+  value,
+  onChange,
+  disabled,
+  omniConfigured,
+}: {
+  value: 'default' | 'omni';
+  onChange: (v: 'default' | 'omni') => void;
+  disabled?: boolean;
+  omniConfigured: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const options = IMAGE_MODEL_OPTIONS.map((o) =>
+    o.value === 'omni' && !omniConfigured
+      ? { ...o, sub: 'Set the Omni URL in Settings first' }
+      : o
+  );
+  const selected = options.find((o) => o.value === value) ?? options[0];
+
+  const close = useCallback(() => setOpen(false), []);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open, close]);
+
+  return (
+    <div className="space-y-1.5 relative" ref={ref}>
+      <div className="flex items-center justify-between">
+        <label className="block text-xs font-bold uppercase tracking-widest text-gray-500">Image Generation Model</label>
+        <Link href="/settings" className="text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:underline">
+          Edit in Settings
+        </Link>
+      </div>
+
+      {/* Trigger */}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        className={`
+          w-full flex items-center gap-3 rounded-2xl bg-white px-4 py-3 text-sm
+          border transition-all duration-150 text-left
+          ${open ? 'border-blue-500 ring-2 ring-blue-100' : 'border-gray-300 hover:border-gray-400'}
+          ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+        `}
+      >
+        <span className="w-7 h-7 rounded-xl overflow-hidden flex-shrink-0 shadow-sm bg-gray-100 flex items-center justify-center">
+          <span className="material-symbols-outlined text-gray-500" style={{ fontSize: 16 }}>{selected.icon}</span>
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-800 text-sm leading-tight">{selected.label}</p>
+          <p className="text-[11px] text-gray-400 leading-tight mt-0.5 truncate">{selected.sub}</p>
+        </div>
+        <svg
+          className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* Dropdown panel */}
+      {open && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-2xl border border-gray-200 bg-white shadow-xl overflow-hidden">
+          {options.map((option) => {
+            const isActive = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => { onChange(option.value); setOpen(false); }}
+                className={`
+                  w-full flex items-center gap-3 px-4 py-3 text-left transition-colors
+                  ${isActive ? 'bg-blue-50' : 'hover:bg-gray-50'}
+                `}
+              >
+                <span className="w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 shadow-sm bg-gray-100 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-gray-500" style={{ fontSize: 18 }}>{option.icon}</span>
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className={`font-semibold text-sm leading-tight ${isActive ? 'text-blue-700' : 'text-gray-800'}`}>
+                    {option.label}
+                  </p>
+                  <p className="text-[11px] text-gray-400 leading-tight mt-0.5">{option.sub}</p>
+                </div>
+                {isActive && (
+                  <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="text-xs text-gray-600">This project follows whatever model is configured in Settings — no per-project override. Changes there apply immediately.</p>
+    </div>
+  );
+}
+
 // ── Story Library modal ───────────────────────────────────────────────────────
 
 function StoryPickerModal({ onSelect, onClose }: {
@@ -184,6 +298,10 @@ export default function Step1() {
     artStyle,
     specialRequests,
     localImageApiUrl,
+    imageGenBackendMode,
+    enableMultiCharacterMode,
+    setEnableMultiCharacterMode,
+    multiCharacterApiUrl,
     step1,
     globalError,
     setProjectId,
@@ -417,6 +535,11 @@ export default function Step1() {
       </section>
     );
   }
+
+  const imageModelReadOnlyInfo =
+    imageGenBackendMode === 'byok'
+      ? { icon: 'vpn_key', title: 'Bring your own API key', sub: 'Text-prompt only — no reference/consistency features' }
+      : { icon: 'error_outline', title: 'Not configured', sub: 'Set an Image API URL in Settings' };
 
   // ── Story imported state ─────────────────────────────────────────────────────
   return (
@@ -670,19 +793,33 @@ export default function Step1() {
             <p className="text-xs text-gray-600">Include medium, style, and color preference.</p>
           </div>
 
-          {/* Image API URL — configured on the Settings page */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-bold uppercase tracking-widest text-gray-500">Image API URL</label>
-              <Link href="/settings" className="text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:underline">
-                Edit in Settings
-              </Link>
+          {/* Image Generation Model */}
+          {imageGenBackendMode === 'byok' || !localImageApiUrl ? (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold uppercase tracking-widest text-gray-500">Image Generation Model</label>
+                <Link href="/settings" className="text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:underline">
+                  Edit in Settings
+                </Link>
+              </div>
+              <div className="w-full flex items-center gap-3 rounded-2xl bg-white px-4 py-3 border border-gray-300">
+                <span className="w-7 h-7 rounded-xl overflow-hidden flex-shrink-0 shadow-sm bg-gray-100 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-gray-500" style={{ fontSize: 16 }}>{imageModelReadOnlyInfo.icon}</span>
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-800 text-sm leading-tight">{imageModelReadOnlyInfo.title}</p>
+                  <p className="text-[11px] text-gray-400 leading-tight mt-0.5 truncate">{imageModelReadOnlyInfo.sub}</p>
+                </div>
+              </div>
+              <p className="text-xs text-gray-600">This project follows whatever model is configured in Settings — no per-project override.</p>
             </div>
-            <p className="text-sm text-gray-700 truncate">
-              {localImageApiUrl || <span className="text-gray-400">Not configured</span>}
-            </p>
-            <p className="text-xs text-gray-600">Local image generation endpoint. Required for image generation.</p>
-          </div>
+          ) : (
+            <ImageModelPicker
+              value={enableMultiCharacterMode ? 'omni' : 'default'}
+              onChange={(v) => setEnableMultiCharacterMode(v === 'omni')}
+              omniConfigured={!!multiCharacterApiUrl}
+            />
+          )}
 
           {/* Image Style */}
           <ImageStylePicker value={imageGenStyle} onChange={setImageGenStyle} disabled={isGenerating} />

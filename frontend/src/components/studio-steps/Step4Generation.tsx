@@ -1371,8 +1371,8 @@ export default function Step4Generation() {
                     comicPageMode={comicPageMode}
                     onSetPageMode={setComicPageMode}
                     onGenerateAll={handleStartPanelGeneration}
-                    onPause={() => setIsPaused(true)}
-                    onResume={() => setIsPaused(false)}
+                    onPause={() => { setIsPaused(true); cancelPanelAutoRetry(); }}
+                    onResume={() => { setIsPaused(false); handleStartPanelGeneration(); }}
                     sfxMode={sfxMode}
                     onSetSfxMode={setSfxMode}
                     layoutName={currentLayoutName}
@@ -1459,7 +1459,7 @@ export default function Step4Generation() {
                   </div>
                   <GenerationProgressBar total={activeStats.total} done={activeStats.success} generating={activeStats.loading} errors={activeStats.error} pending={waiting} unit={comicPageMode === 'panel' ? 'panel' : 'page'} />
                   <div className="flex gap-3 pt-1">
-                    <button type="button" onClick={() => setIsPaused(true)}
+                    <button type="button" onClick={() => { setIsPaused(true); cancelPanelAutoRetry(); }}
                       className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors">
                       <span className="material-symbols-outlined text-sm">pause</span>Pause
                     </button>
@@ -1482,7 +1482,10 @@ export default function Step4Generation() {
                   </p>
                   <GenerationProgressBar total={activeStats.total} done={activeStats.success} generating={0} errors={activeStats.error} pending={waiting} unit={comicPageMode === 'panel' ? 'panel' : 'page'} />
                   <div className="flex gap-3 pt-1">
-                    <button type="button" onClick={() => setIsPaused(false)}
+                    <button type="button" onClick={() => {
+                        setIsPaused(false);
+                        if (comicPageMode === 'page') handleStartFullGeneration(); else handleStartPanelGeneration();
+                      }}
                       className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold bg-gray-900 text-white hover:opacity-90 transition-opacity">
                       <span className="material-symbols-outlined text-sm">play_arrow</span>Resume Generation
                     </button>

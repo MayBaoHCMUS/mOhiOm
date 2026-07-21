@@ -19,13 +19,17 @@ import { recomposePages, DEFAULT_BORDER_CONFIG } from '@/lib/borderComposer';
 import type { BorderConfig } from '@/lib/borderComposer';
 import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
 import { trackEvent } from '@/lib/analytics';
-import { getImageApiUrl, setImageApiUrl } from '@/lib/imageApiUrl';
+import {
+  getImageApiUrl, setImageApiUrl,
+  getMultiCharacterApiUrl, setMultiCharacterApiUrl,
+  getEnableMultiCharacterMode, setEnableMultiCharacterMode as persistEnableMultiCharacterMode,
+} from '@/lib/imageApiUrl';
 import { DEFAULT_IMAGE_STYLE, IMAGE_STYLE_PREF_KEY } from '@/lib/imageStyles';
 import type { ExportPage } from '@/lib/export';
 import type { SingleBubble } from '@/components/studio-steps/DialogueEditor';
 import { useNotifications } from '@/context/NotificationContext';
 import type { CharacterReference } from '@/lib/characterReference';
-import { findCharacterReference, pickCharacterReference } from '@/lib/characterReference';
+import { findCharacterReference, pickCharacterReference, findMultiCharacterMatch } from '@/lib/characterReference';
 
 export type StepKey = 1 | 2 | 3 | 4 | 5;
 export type WizardStepKey = 0 | StepKey;
@@ -358,6 +362,75 @@ const fetchImageFromAI = async (
   throw new Error('Image API URL is not set. Please provide one in Step 1 before generating images.');
 };
 
+// Separate from fetchImageFromAI on purpose — OmniGen2 (multi-character
+// backend) has its own endpoint contract, its own proxy route, and is
+// notably slower (larger model, possibly cpu_offload), so it needs a much
+// longer timeout than the single-character path above.
+const fetchMultiCharacterImageFromAI = async (
+  scenePrompt: string,
+  multiCharApiUrl: string,
+  settings: {
+    storyId: string;
+    characterNames: string[];
+    style: string;
+    width?: number;
+    height?: number;
+    imageGuidanceScale?: number;
+    textGuidanceScale?: number;
+    numInferenceSteps?: number;
+    seed?: number;
+  }
+): Promise<string> => {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 180000);
+
+  const requestBody = {
+    url: multiCharApiUrl,
+    story_id: settings.storyId,
+    scene_prompt: scenePrompt,
+    negative_prompt: 'blurry, low quality, deformed, extra limbs, bad anatomy, watermark, text',
+    character_names: settings.characterNames.map((n) => n.toLowerCase()),
+    style: settings.style,
+    width: settings.width,
+    height: settings.height,
+    image_guidance_scale: settings.imageGuidanceScale ?? 2.8,
+    text_guidance_scale: settings.textGuidanceScale ?? 5.0,
+    num_inference_steps: settings.numInferenceSteps ?? 30,
+    seed: settings.seed,
+  };
+
+  console.group('[fetchMultiCharacterImageFromAI] OmniGen2 generation request');
+  console.log('Request body:', requestBody);
+
+  try {
+    const response = await fetch('/api/image-proxy/multi-character', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    });
+    console.log('HTTP status:', response.status);
+    console.groupEnd();
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => null);
+      const detail = errData?.details?.detail ?? errData?.error ?? `HTTP ${response.status}`;
+      throw new Error(`Multi-character image API error: ${typeof detail === 'string' ? detail : JSON.stringify(detail)}`);
+    }
+
+    const result = (await response.json()) as { status?: string; image_url?: string; message?: string };
+    if (result.status !== 'success' || !result.image_url) {
+      throw new Error(result.message || 'Multi-character image API did not return an image.');
+    }
+    return result.image_url;
+  } catch (err) {
+    console.groupEnd();
+    throw err;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+};
+
 /**
  * Fetch an image URL (typically an R2 URL) and convert it to a base64 data
  * URL. Used at boundaries that still need raw image bytes (e.g. sending a
@@ -605,7 +678,12 @@ export interface ComicGenerationContextValue {
   maxPanelsPerPage: string;
   specialRequests: string;
   localImageApiUrl: string;
+  multiCharacterApiUrl: string;
+  setMultiCharacterApiUrl: (url: string) => void;
+  enableMultiCharacterMode: boolean;
+  setEnableMultiCharacterMode: (v: boolean) => void;
   imageGenMode: ImageGenMode;
+  imageGenBackendMode: ImageGenBackendMode;
   imageGenStyle: string;
   referenceImageBase64: string;
   controlImageBase64: string;
@@ -743,6 +821,8 @@ export function ComicGenerationProvider({
   const [maxPanelsPerPage, setMaxPanelsPerPage] = useState('6');
   const [specialRequests, setSpecialRequests] = useState('None');
   const [localImageApiUrl, setLocalImageApiUrl] = useState('');
+  const [multiCharacterApiUrl, setMultiCharacterApiUrlState] = useState('');
+  const [enableMultiCharacterMode, setEnableMultiCharacterMode] = useState(false);
   const [imageGenBackendMode, setImageGenBackendMode] = useState<ImageGenBackendMode>('builtin');
   const [panelAutoRetryInfo, setPanelAutoRetryInfo] = useState<{ round: number; totalRounds: number; remaining: number } | null>(null);
   const panelAutoRetryCancelRef = useRef(false);
@@ -905,6 +985,23 @@ export function ComicGenerationProvider({
   useEffect(() => {
     setImageApiUrl(localImageApiUrl);
   }, [localImageApiUrl]);
+
+  useEffect(() => {
+    const stored = getMultiCharacterApiUrl();
+    if (stored) setMultiCharacterApiUrlState(stored);
+  }, []);
+
+  useEffect(() => {
+    setMultiCharacterApiUrl(multiCharacterApiUrl);
+  }, [multiCharacterApiUrl]);
+
+  useEffect(() => {
+    setEnableMultiCharacterMode(getEnableMultiCharacterMode());
+  }, []);
+
+  useEffect(() => {
+    persistEnableMultiCharacterMode(enableMultiCharacterMode);
+  }, [enableMultiCharacterMode]);
 
   useEffect(() => {
     settingsApi.getImageGenConfig()
@@ -1109,6 +1206,39 @@ export function ComicGenerationProvider({
       refs.map((ref) => saveCharacterToServer(ref.name, ref.image_url))
     );
   }, [localImageApiUrl, getSelectedCharacterReferences, saveCharacterToServer]);
+
+  // OmniGen2's RAM character store is separate from SD1.5/SDXL's server, so
+  // the same reference image needs saving to both if a story mixes
+  // single-character and multi-character panels.
+  const saveCharacterToMultiCharacterServer = useCallback(async (
+    characterName: string,
+    imageUrl: string
+  ): Promise<void> => {
+    if (!multiCharacterApiUrl) return;
+    const dataUri = imageUrl.startsWith('data:')
+      ? imageUrl
+      : await withRetry(() => fetchImageAsBase64(imageUrl), 3, 2000).catch(() => '');
+    const b64 = dataUri.startsWith('data:') ? dataUri.split(',')[1] ?? '' : dataUri;
+    if (!b64) return;
+    await fetch('/api/image-proxy/multi-character/characters', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: multiCharacterApiUrl,
+        story_id: projectId,
+        character_name: characterName.toLowerCase(),
+        reference_image_b64: b64,
+      }),
+    }).catch(() => {});
+  }, [multiCharacterApiUrl, projectId]);
+
+  const resyncCharacterReferencesToMultiCharacterServer = useCallback(async (): Promise<void> => {
+    if (!enableMultiCharacterMode || !multiCharacterApiUrl) return;
+    const refs = getSelectedCharacterReferences();
+    await Promise.all(
+      refs.map((ref) => saveCharacterToMultiCharacterServer(ref.name, ref.image_url))
+    );
+  }, [enableMultiCharacterMode, multiCharacterApiUrl, getSelectedCharacterReferences, saveCharacterToMultiCharacterServer]);
 
   const setStepState = (step: StepKey, updater: (prev: StepState<unknown>) => StepState<unknown>) => {
     if (step === 1) setStep1((prev) => updater(prev as StepState<unknown>) as StepState<Step1Result>);
@@ -2323,6 +2453,58 @@ export function ComicGenerationProvider({
       const results = await Promise.all(
         batch.map(async (panel) => {
           try {
+            // ── OmniGen2 multi-character branch (additive, off by default) ──
+            // Only engages when the feature flag + URL are both set AND the
+            // panel resolves to 2+ known characters; any failure here falls
+            // through to the single-character flow below unchanged.
+            console.log('[OmniGen2 routing]', {
+              panelId: panel.id,
+              enableMultiCharacterMode,
+              multiCharacterApiUrl,
+              panelCharacterNames: panel.characterNames,
+              availableCharacterRefs: characterRefs.map((c) => c.name),
+            });
+            if (enableMultiCharacterMode && multiCharacterApiUrl) {
+              const multiMatch = findMultiCharacterMatch(characterRefs, panel.characterNames, panel.aiImagePrompt);
+              console.log('[OmniGen2 routing] multiMatch:', multiMatch?.map((c) => c.name) ?? null);
+              if (multiMatch) {
+                try {
+                  const multiCleanPrompt = buildCleanPanelPrompt(panel.aiImagePrompt, artStyle);
+                  let scenePromptWithSfx = multiCleanPrompt;
+                  if (sfxMode === 'auto') {
+                    const sfx = panel.dialogueSfx?.trim();
+                    if (sfx && !/^(none|no dialogue\/sfx provided\.?)$/i.test(sfx)) {
+                      scenePromptWithSfx += `. Dialogue: ${sfx}`;
+                    }
+                  }
+                  const multiPanelDimensions = pagePanelDimensions[panel.pageNumber]?.[panel.id];
+                  const multiImageUrl = await withRetry(
+                    () => fetchMultiCharacterImageFromAI(scenePromptWithSfx, multiCharacterApiUrl, {
+                      storyId: projectId,
+                      characterNames: multiMatch.map((c) => c.name),
+                      style: imageGenStyle,
+                      width: multiPanelDimensions?.width,
+                      height: multiPanelDimensions?.height,
+                      seed: randomImageSeed(),
+                    }),
+                    2, // fewer retries — each attempt costs much more time than a normal generation
+                    8000
+                  );
+                  trackEvent({
+                    type: 'panel', story_id: projectId || 'unknown', style: imageGenStyle || 'manga',
+                    duration_ms: 0, has_character: true, ip_scale: 0,
+                  });
+                  return { id: panel.id, status: 'success' as const, imageUrl: multiImageUrl, error: null };
+                } catch (multiError) {
+                  console.warn(
+                    '[generatePanelImages] Multi-character generation failed, falling back to single-reference flow',
+                    { panelId: panel.id, error: multiError }
+                  );
+                }
+              }
+            }
+            // ── End OmniGen2 branch — everything below is the existing,
+            // unchanged single-character flow. ──
             let cleanPrompt = buildCleanPanelPrompt(panel.aiImagePrompt, artStyle);
             if (sfxMode === 'auto') {
               const sfx = panel.dialogueSfx?.trim();
@@ -2563,6 +2745,7 @@ export function ComicGenerationProvider({
 
     try {
       await resyncCharacterReferencesToServer();
+      await resyncCharacterReferencesToMultiCharacterServer();
       const results = await generatePageImages(targets, { batchSize: 1, delayMs: 10000 });
       const pageTotal = Object.keys(results).length;
       const pageSucceeded = Object.values(results).filter((r) => r.status === 'success').length;
@@ -2620,6 +2803,7 @@ export function ComicGenerationProvider({
     });
     try {
       await resyncCharacterReferencesToServer();
+      await resyncCharacterReferencesToMultiCharacterServer();
       let round = 0;
       while (pending.length && round < PANEL_AUTO_RETRY_ROUNDS.length && !panelAutoRetryCancelRef.current) {
         const settings = PANEL_AUTO_RETRY_ROUNDS[round];
@@ -3824,7 +4008,12 @@ export function ComicGenerationProvider({
     maxPanelsPerPage,
     specialRequests,
     localImageApiUrl,
+    multiCharacterApiUrl,
+    setMultiCharacterApiUrl: setMultiCharacterApiUrlState,
+    enableMultiCharacterMode,
+    setEnableMultiCharacterMode,
     imageGenMode,
+    imageGenBackendMode,
     imageGenStyle,
     referenceImageBase64,
     controlImageBase64,
