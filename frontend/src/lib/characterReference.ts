@@ -66,18 +66,18 @@ export const pickCharacterReference = (
 ): CharacterReference | undefined =>
   findCharacterReference(characterRefs, characterNames, rawPromptText) ?? characterRefs[0];
 
-// Identifies every character present in a multi-character panel (2+), for the
-// OmniGen2 backend — unlike findCharacterReference/pickCharacterReference,
-// which stop at the first match for the single-reference flow. Same two
-// passes (Step 3's `characters:` field, then name-in-prompt substring match),
-// but collects all matches instead of returning on the first hit. Returns
-// undefined when fewer than 2 characters are identified, so callers can fall
-// back to the single-reference flow.
-export const findMultiCharacterMatch = (
+// Identifies every character present in a panel/page, for the Omni backend —
+// unlike findCharacterReference/pickCharacterReference, which stop at the
+// first match for the single-reference flow. Same two passes (Step 3's
+// `characters:` field, then name-in-prompt substring match), but collects all
+// matches instead of returning on the first hit. Returns whatever it finds —
+// 0, 1, or N characters — since Omni now accepts any count (0 = pure
+// text-to-image, 1 = single-reference, 2+ = multi-character).
+export const findAllCharacterMatches = (
   characterRefs: CharacterReference[],
   characterNames?: string[],
   rawPromptText?: string
-): CharacterReference[] | undefined => {
+): CharacterReference[] => {
   let matched: CharacterReference[] = [];
 
   if (characterNames?.length) {
@@ -88,7 +88,7 @@ export const findMultiCharacterMatch = (
       .filter((c): c is CharacterReference => c !== undefined);
   }
 
-  if (matched.length < 2 && rawPromptText) {
+  if (rawPromptText) {
     const lower = rawPromptText.toLowerCase();
     const sorted = [...characterRefs].sort(
       (a, b) => stripLeadingArticle(b.name).length - stripLeadingArticle(a.name).length
@@ -102,6 +102,5 @@ export const findMultiCharacterMatch = (
     }
   }
 
-  const unique = Array.from(new Map(matched.map((c) => [c.character_id, c])).values());
-  return unique.length >= 2 ? unique : undefined;
+  return Array.from(new Map(matched.map((c) => [c.character_id, c])).values());
 };

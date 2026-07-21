@@ -27,9 +27,10 @@ import {
 import { DEFAULT_IMAGE_STYLE, IMAGE_STYLE_PREF_KEY } from '@/lib/imageStyles';
 import type { ExportPage } from '@/lib/export';
 import type { SingleBubble } from '@/components/studio-steps/DialogueEditor';
+import { getPanelBoxAspectRatio } from '@/components/studio-steps/DialogueEditor';
 import { useNotifications } from '@/context/NotificationContext';
 import type { CharacterReference } from '@/lib/characterReference';
-import { findCharacterReference, pickCharacterReference, findMultiCharacterMatch } from '@/lib/characterReference';
+import { findCharacterReference, pickCharacterReference, findAllCharacterMatches } from '@/lib/characterReference';
 
 export type StepKey = 1 | 2 | 3 | 4 | 5;
 export type WizardStepKey = 0 | StepKey;
@@ -1217,10 +1218,17 @@ export function ComicGenerationProvider({
     if (!multiCharacterApiUrl) return;
     const dataUri = imageUrl.startsWith('data:')
       ? imageUrl
-      : await withRetry(() => fetchImageAsBase64(imageUrl), 3, 2000).catch(() => '');
+      : await withRetry(() => fetchImageAsBase64(imageUrl), 3, 2000).catch((err) => {
+          console.warn(
+            '[saveCharacterToMultiCharacterServer] Failed to fetch/convert reference image — ' +
+            'Omni will 400 on any generation referencing this character until this succeeds',
+            { characterName, imageUrl, error: err }
+          );
+          return '';
+        });
     const b64 = dataUri.startsWith('data:') ? dataUri.split(',')[1] ?? '' : dataUri;
     if (!b64) return;
-    await fetch('/api/image-proxy/multi-character/characters', {
+    const res = await fetch('/api/image-proxy/multi-character/characters', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1229,7 +1237,14 @@ export function ComicGenerationProvider({
         character_name: characterName.toLowerCase(),
         reference_image_b64: b64,
       }),
-    }).catch(() => {});
+    }).catch((err) => {
+      console.warn('[saveCharacterToMultiCharacterServer] Failed to reach Omni /characters/save', { characterName, error: err });
+      return null;
+    });
+    if (res && !res.ok) {
+      const detail = await res.text().catch(() => '');
+      console.warn('[saveCharacterToMultiCharacterServer] Omni rejected character reference save', { characterName, status: res.status, detail });
+    }
   }, [multiCharacterApiUrl, projectId]);
 
   const resyncCharacterReferencesToMultiCharacterServer = useCallback(async (): Promise<void> => {
@@ -2151,6 +2166,62 @@ export function ComicGenerationProvider({
       });
 
       try {
+        // Omni branch — engages for every character when the model is set to
+        // Omni. character_names is [] since this character has no reference
+        // image yet (it's being created for the first time) — pure text-to-image.
+        if (enableMultiCharacterMode && multiCharacterApiUrl) {
+          try {
+            const multiGenStart = performance.now();
+            const multiImageUrl = await withRetry(
+              () => fetchMultiCharacterImageFromAI(character.prompt, multiCharacterApiUrl, {
+                storyId: projectId, characterNames: [], style: imageGenStyle, seed: randomImageSeed(),
+              }),
+              2,
+              8000
+            );
+            trackEvent({
+              type: 'character_save', story_id: projectId || 'unknown', style: imageGenStyle || 'manga',
+              duration_ms: Math.round(performance.now() - multiGenStart), has_character: true,
+            });
+            const multiCandidateId = `${character.characterId}-${Date.now()}`;
+            setStep2ImageReview((prev) => {
+              if (!prev.data) return prev;
+              return {
+                ...prev,
+                data: {
+                  ...prev.data,
+                  characters: prev.data.characters.map((c) =>
+                    c.characterId === character.characterId
+                      ? {
+                          ...c,
+                          status: 'success',
+                          error: null,
+                          candidates: [{ id: multiCandidateId, imageUrl: multiImageUrl, createdAt: new Date().toISOString() }],
+                          selectedCandidateId: multiCandidateId,
+                        }
+                      : c
+                  ),
+                },
+              };
+            });
+            charResults[character.characterId] = 'success';
+            if (i < characters.length - 1) await sleep(10000);
+            continue;
+          } catch (multiError) {
+            addNotification({
+              title: 'Omni generation failed',
+              message: `${character.name} fell back to SD1.5/SDXL.`,
+              variant: 'partial',
+              projectId,
+            });
+            console.warn(
+              '[handleGenerateCharacterReferences] Omni generation failed, falling back to single-reference flow',
+              { characterId: character.characterId, error: multiError }
+            );
+          }
+        }
+        // ── End Omni branch — everything below is the existing, unchanged
+        // single-reference flow. ──
         const charSettings = settingsMap?.[character.characterId] ?? { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale, storyId: projectId, style: imageGenStyle };
         const imageUrl = await withRetry(
           () => fetchImageFromAI(character.prompt, localImageApiUrl || undefined, charSettings, imageGenBackendMode),
@@ -2252,6 +2323,63 @@ export function ComicGenerationProvider({
     try {
       const effectiveSettings = settings ?? { mode: imageGenMode, referenceImageBase64, controlImageBase64, ipAdapterScale, controlnetScale, storyId: projectId, style: imageGenStyle };
       const prompt = feedback?.trim() ? `${target.prompt}\nUser revision request: ${feedback.trim()}` : target.prompt;
+
+      // Omni branch — engages when the model is set to Omni. character_names
+      // is [] (same rationale as handleGenerateCharacterReferences).
+      if (enableMultiCharacterMode && multiCharacterApiUrl) {
+        try {
+          const multiGenStart = performance.now();
+          const multiImageUrl = await withRetry(
+            () => fetchMultiCharacterImageFromAI(prompt, multiCharacterApiUrl, {
+              storyId: projectId, characterNames: [], style: imageGenStyle, seed: randomImageSeed(),
+            }),
+            2,
+            8000
+          );
+          trackEvent({
+            type: 'character_save', story_id: projectId || 'unknown', style: imageGenStyle || 'manga',
+            duration_ms: Math.round(performance.now() - multiGenStart), has_character: true,
+          });
+          const multiCandidateId = `${target.characterId}-${Date.now()}`;
+          setStep2ImageReview((prev) => {
+            if (!prev.data) return prev;
+            return {
+              ...prev,
+              lastUpdated: new Date().toISOString(),
+              data: {
+                ...prev.data,
+                isGenerating: false,
+                characters: prev.data.characters.map((character) =>
+                  character.characterId === characterId
+                    ? {
+                        ...character,
+                        status: 'success',
+                        error: null,
+                        candidates: [...character.candidates, { id: multiCandidateId, imageUrl: multiImageUrl, createdAt: new Date().toISOString() }],
+                        selectedCandidateId: multiCandidateId,
+                      }
+                    : character
+                ),
+              },
+            };
+          });
+          addNotification({ title: 'Character image regenerated', message: target.name, variant: 'success', projectId });
+          return;
+        } catch (multiError) {
+          addNotification({
+            title: 'Omni generation failed',
+            message: `${target.name} fell back to SD1.5/SDXL.`,
+            variant: 'partial',
+            projectId,
+          });
+          console.warn(
+            '[handleRegenerateCharacterImage] Omni generation failed, falling back to single-reference flow',
+            { characterId, error: multiError }
+          );
+        }
+      }
+      // ── End Omni branch — everything below is the existing, unchanged
+      // single-reference flow. ──
       const imageUrl = await fetchImageFromAI(prompt, localImageApiUrl || undefined, effectiveSettings, imageGenBackendMode);
       const candidateId = `${target.characterId}-${Date.now()}`;
 
@@ -2453,57 +2581,54 @@ export function ComicGenerationProvider({
       const results = await Promise.all(
         batch.map(async (panel) => {
           try {
-            // ── OmniGen2 multi-character branch (additive, off by default) ──
-            // Only engages when the feature flag + URL are both set AND the
-            // panel resolves to 2+ known characters; any failure here falls
-            // through to the single-character flow below unchanged.
-            console.log('[OmniGen2 routing]', {
-              panelId: panel.id,
-              enableMultiCharacterMode,
-              multiCharacterApiUrl,
-              panelCharacterNames: panel.characterNames,
-              availableCharacterRefs: characterRefs.map((c) => c.name),
-            });
+            // ── Omni branch — engages for EVERY panel when the model is set to
+            // Omni (enableMultiCharacterMode + multiCharacterApiUrl), regardless
+            // of character count (0, 1, or N — the server now supports all).
+            // Any failure here falls through to the single-character flow below.
             if (enableMultiCharacterMode && multiCharacterApiUrl) {
-              const multiMatch = findMultiCharacterMatch(characterRefs, panel.characterNames, panel.aiImagePrompt);
-              console.log('[OmniGen2 routing] multiMatch:', multiMatch?.map((c) => c.name) ?? null);
-              if (multiMatch) {
-                try {
-                  const multiCleanPrompt = buildCleanPanelPrompt(panel.aiImagePrompt, artStyle);
-                  let scenePromptWithSfx = multiCleanPrompt;
-                  if (sfxMode === 'auto') {
-                    const sfx = panel.dialogueSfx?.trim();
-                    if (sfx && !/^(none|no dialogue\/sfx provided\.?)$/i.test(sfx)) {
-                      scenePromptWithSfx += `. Dialogue: ${sfx}`;
-                    }
+              const matched = findAllCharacterMatches(characterRefs, panel.characterNames, panel.aiImagePrompt);
+              try {
+                const multiCleanPrompt = buildCleanPanelPrompt(panel.aiImagePrompt, artStyle);
+                let scenePromptWithSfx = multiCleanPrompt;
+                if (sfxMode === 'auto') {
+                  const sfx = panel.dialogueSfx?.trim();
+                  if (sfx && !/^(none|no dialogue\/sfx provided\.?)$/i.test(sfx)) {
+                    scenePromptWithSfx += `. Dialogue: ${sfx}`;
                   }
-                  const multiPanelDimensions = pagePanelDimensions[panel.pageNumber]?.[panel.id];
-                  const multiImageUrl = await withRetry(
-                    () => fetchMultiCharacterImageFromAI(scenePromptWithSfx, multiCharacterApiUrl, {
-                      storyId: projectId,
-                      characterNames: multiMatch.map((c) => c.name),
-                      style: imageGenStyle,
-                      width: multiPanelDimensions?.width,
-                      height: multiPanelDimensions?.height,
-                      seed: randomImageSeed(),
-                    }),
-                    2, // fewer retries — each attempt costs much more time than a normal generation
-                    8000
-                  );
-                  trackEvent({
-                    type: 'panel', story_id: projectId || 'unknown', style: imageGenStyle || 'manga',
-                    duration_ms: 0, has_character: true, ip_scale: 0,
-                  });
-                  return { id: panel.id, status: 'success' as const, imageUrl: multiImageUrl, error: null };
-                } catch (multiError) {
-                  console.warn(
-                    '[generatePanelImages] Multi-character generation failed, falling back to single-reference flow',
-                    { panelId: panel.id, error: multiError }
-                  );
                 }
+                const multiPanelDimensions = pagePanelDimensions[panel.pageNumber]?.[panel.id];
+                const multiGenStart = performance.now();
+                const multiImageUrl = await withRetry(
+                  () => fetchMultiCharacterImageFromAI(scenePromptWithSfx, multiCharacterApiUrl, {
+                    storyId: projectId,
+                    characterNames: matched.map((c) => c.name),
+                    style: imageGenStyle,
+                    width: multiPanelDimensions?.width,
+                    height: multiPanelDimensions?.height,
+                    seed: randomImageSeed(),
+                  }),
+                  2, // fewer retries — each attempt costs much more time than a normal generation
+                  8000
+                );
+                trackEvent({
+                  type: 'panel', story_id: projectId || 'unknown', style: imageGenStyle || 'manga',
+                  duration_ms: Math.round(performance.now() - multiGenStart), has_character: matched.length > 0, ip_scale: 0,
+                });
+                return { id: panel.id, status: 'success' as const, imageUrl: multiImageUrl, error: null };
+              } catch (multiError) {
+                addNotification({
+                  title: 'Omni generation failed',
+                  message: `Panel ${panel.pageNumber}-${panel.panelNumber} fell back to SD1.5/SDXL.`,
+                  variant: 'partial',
+                  projectId,
+                });
+                console.warn(
+                  '[generatePanelImages] Omni generation failed, falling back to single-reference flow',
+                  { panelId: panel.id, error: multiError }
+                );
               }
             }
-            // ── End OmniGen2 branch — everything below is the existing,
+            // ── End Omni branch — everything below is the existing,
             // unchanged single-character flow. ──
             let cleanPrompt = buildCleanPanelPrompt(panel.aiImagePrompt, artStyle);
             if (sfxMode === 'auto') {
@@ -2652,6 +2777,50 @@ export function ComicGenerationProvider({
               characterRefs.map((c) => ({ name: c.name, prompt: c.prompt })),
               sfxMode === 'auto'
             );
+
+            // Omni branch — engages for every page when the model is set to
+            // Omni, regardless of how many characters appear across its panels
+            // (0, 1, or N). Falls through to the single-reference flow below on failure.
+            if (enableMultiCharacterMode && multiCharacterApiUrl) {
+              const pageMatched = new Map<string, CharacterReference>();
+              for (const panel of panels) {
+                for (const c of findAllCharacterMatches(characterRefs, panel.characterNames, panel.aiImagePrompt)) {
+                  pageMatched.set(c.character_id, c);
+                }
+              }
+              try {
+                const multiGenStart = performance.now();
+                const multiImageUrl = await withRetry(
+                  () => fetchMultiCharacterImageFromAI(rawPrompt, multiCharacterApiUrl, {
+                    storyId: projectId,
+                    characterNames: Array.from(pageMatched.values()).map((c) => c.name),
+                    style: imageGenStyle,
+                    seed: randomImageSeed(),
+                  }),
+                  2,
+                  8000
+                );
+                trackEvent({
+                  type: 'panel', story_id: projectId || 'unknown', style: imageGenStyle || 'manga',
+                  duration_ms: Math.round(performance.now() - multiGenStart), has_character: pageMatched.size > 0, ip_scale: 0,
+                });
+                return { pageId, status: 'success' as const, imageUrl: multiImageUrl, error: null };
+              } catch (multiError) {
+                addNotification({
+                  title: 'Omni generation failed',
+                  message: `Page ${pageNumber} fell back to SD1.5/SDXL.`,
+                  variant: 'partial',
+                  projectId,
+                });
+                console.warn(
+                  '[generatePageImages] Omni generation failed, falling back to single-reference flow',
+                  { pageNumber, error: multiError }
+                );
+              }
+            }
+            // ── End Omni branch — everything below is the existing,
+            // unchanged single-reference flow. ──
+
             // A page combines several panels into one image with a single reference
             // slot — use the first panel on the page that actually names a character
             // (via the `characters:` field or, failing that, a name found directly
@@ -2845,6 +3014,10 @@ export function ComicGenerationProvider({
 
   const handleRegenerateSinglePanel = async (panel: Step4Panel) => {
     if (!step4.data) return;
+    // Unlike handleStartPanelGeneration, this can be the first Omni call of the
+    // session (e.g. regenerating one panel without ever running a full batch) —
+    // resync first so Omni's RAM store actually has the referenced character(s).
+    await resyncCharacterReferencesToMultiCharacterServer();
     const results = await generatePanelImages([panel], { batchSize: 1, delayMs: 0 });
     const outcome = results[panel.id];
     addNotification({
@@ -2871,6 +3044,9 @@ export function ComicGenerationProvider({
     });
 
     try {
+      // Same reasoning as handleRegenerateSinglePanel — this can be the first
+      // Omni call of the session, so resync first.
+      await resyncCharacterReferencesToMultiCharacterServer();
       const results = await generatePageImages([[pageNumber, panels]], { batchSize: 1, delayMs: 0 });
       const outcome = results[`page-${pageNumber}`];
       addNotification({
@@ -2945,6 +3121,67 @@ export function ComicGenerationProvider({
       );
       if (feedback.trim()) {
         prompt += `\nUser revision request: ${feedback.trim()}`;
+      }
+
+      // Omni branch — same policy as generatePageImages: engages for every
+      // page when the model is set to Omni, regardless of character count.
+      if (enableMultiCharacterMode && multiCharacterApiUrl) {
+        const pageMatched = new Map<string, CharacterReference>();
+        for (const panel of panels) {
+          for (const c of findAllCharacterMatches(characterRefs, panel.characterNames, panel.aiImagePrompt)) {
+            pageMatched.set(c.character_id, c);
+          }
+        }
+        try {
+          const multiGenStart = performance.now();
+          const multiImageUrl = await withRetry(
+            () => fetchMultiCharacterImageFromAI(prompt, multiCharacterApiUrl, {
+              storyId: projectId,
+              characterNames: Array.from(pageMatched.values()).map((c) => c.name),
+              style: imageGenStyle,
+              seed: randomImageSeed(),
+            }),
+            2,
+            8000
+          );
+          trackEvent({
+            type: 'panel', story_id: projectId || 'unknown', style: imageGenStyle || 'manga',
+            duration_ms: Math.round(performance.now() - multiGenStart), has_character: pageMatched.size > 0, ip_scale: 0,
+          });
+          setStep4((prev) => {
+            if (!prev.data) return prev;
+            const prevState = prev.data.pageStates[pageId];
+            return {
+              ...prev,
+              data: {
+                ...prev.data,
+                pageStates: {
+                  ...prev.data.pageStates,
+                  [pageId]: { ...(prevState ?? {}), status: 'comparing', pendingUrl: multiImageUrl, error: null },
+                },
+              },
+              lastUpdated: new Date().toISOString(),
+            };
+          });
+          addNotification({
+            title: 'Page regenerated with feedback',
+            message: `Page ${pageNumber} — review the updated version.`,
+            variant: 'success',
+            projectId,
+          });
+          return;
+        } catch (multiError) {
+          addNotification({
+            title: 'Omni generation failed',
+            message: `Page ${pageNumber} fell back to SD1.5/SDXL.`,
+            variant: 'partial',
+            projectId,
+          });
+          console.warn(
+            '[handleRegenerateWithFeedback] Omni generation failed, falling back to single-reference flow',
+            { pageNumber, error: multiError }
+          );
+        }
       }
       // Same policy as generatePageImages: use the first panel on the page that
       // actually names a character (via `characters:` or a name found directly
@@ -3211,12 +3448,18 @@ export function ComicGenerationProvider({
       }).filter(Boolean) as Array<{ id: string; url: string }>;
       if (!rawImgs.length) continue;
 
-      // Composite bubbles onto each panel image when panelBubbles are provided
-      const imgs: string[] = await Promise.all(rawImgs.map(async ({ id, url }) => {
+      // Use the layout the user chose in the editor; fall back to a sensible default by count
+      const layoutName = pageLayoutNames[pageNumber] ?? LAYOUT_FALLBACKS[rawImgs.length] ?? 'single';
+
+      // Composite bubbles onto each panel image when panelBubbles are provided — crop to
+      // the same aspect ratio the editor's object-fit:cover view uses, so bubble positions
+      // (recorded against that cropped view) land in the same place here.
+      const imgs: string[] = await Promise.all(rawImgs.map(async ({ id, url }, idx) => {
         const bubbles = panelBubbles?.[id];
         if (bubbles?.length) {
           try {
-            const blob = await compositePanelToBlob(url, bubbles);
+            const targetAspectRatio = getPanelBoxAspectRatio(layoutName, idx);
+            const blob = await compositePanelToBlob(url, bubbles, targetAspectRatio);
             return URL.createObjectURL(blob);
           } catch { /* fallback to raw image */ }
         }
@@ -3224,8 +3467,7 @@ export function ComicGenerationProvider({
       }));
 
       allPanelImages.push(imgs);
-      // Use the layout the user chose in the editor; fall back to a sensible default by count
-      allLayouts.push(pageLayoutNames[pageNumber] ?? LAYOUT_FALLBACKS[imgs.length] ?? 'single');
+      allLayouts.push(layoutName);
       pageNumbers.push(pageNumber);
     }
 

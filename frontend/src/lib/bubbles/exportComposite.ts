@@ -392,21 +392,45 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+// Same crop math the browser applies for object-fit:cover — center-crops the
+// source to match targetRatio exactly, so panel images get cropped identically
+// here and in the live editor (which displays panels with object-fit:cover).
+function computeCoverCrop(srcW: number, srcH: number, targetRatio: number): { sx: number; sy: number; sw: number; sh: number } {
+  const srcRatio = srcW / srcH;
+  let sx = 0, sy = 0, sw = srcW, sh = srcH;
+  if (srcRatio > targetRatio) {
+    sw = srcH * targetRatio;
+    sx = (srcW - sw) / 2;
+  } else if (srcRatio < targetRatio) {
+    sh = srcW / targetRatio;
+    sy = (srcH - sh) / 2;
+  }
+  return { sx, sy, sw, sh };
+}
+
 export async function compositePanelToBlob(
   imageUrl: string,
   bubbles: SingleBubble[],
+  targetAspectRatio?: number,
 ): Promise<Blob> {
   const img = await loadImage(imageUrl);
-  const W = img.naturalWidth || 512;
-  const H = img.naturalHeight || 512;
+  const naturalW = img.naturalWidth || 512;
+  const naturalH = img.naturalHeight || 512;
+  const crop = targetAspectRatio
+    ? computeCoverCrop(naturalW, naturalH, targetAspectRatio)
+    : { sx: 0, sy: 0, sw: naturalW, sh: naturalH };
+  const W = crop.sw;
+  const H = crop.sh;
 
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d')!;
 
-  // Draw panel image
-  ctx.drawImage(img, 0, 0, W, H);
+  // Draw the cropped region of the panel image — matches the editor's
+  // object-fit:cover view, so bubble positions (recorded against that
+  // cropped view) land in the same place here.
+  ctx.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, W, H);
 
   // Draw bubble overlay
   const active = bubbles.filter(b => b.bubbleType !== 'none' && !isNoneText(b.dialogue));
@@ -436,6 +460,7 @@ export interface CompositePanel {
   label: string;       // filename without extension
   imageUrl: string;
   bubbles: SingleBubble[];
+  aspectRatio?: number; // panel box width:height ratio, for object-fit:cover-accurate cropping
 }
 
 export async function exportWithDialogueAsZip(
@@ -447,7 +472,7 @@ export async function exportWithDialogueAsZip(
 
   for (let i = 0; i < panels.length; i++) {
     const panel = panels[i];
-    const blob = await compositePanelToBlob(panel.imageUrl, panel.bubbles);
+    const blob = await compositePanelToBlob(panel.imageUrl, panel.bubbles, panel.aspectRatio);
     zip.file(`${panel.label}.png`, blob);
     onProgress?.(i + 1, panels.length);
   }

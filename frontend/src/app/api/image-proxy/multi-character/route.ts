@@ -49,9 +49,6 @@ export async function POST(request: Request) {
   if (!body.url) {
     return NextResponse.json({ error: "Missing 'url' in request body." }, { status: 400 });
   }
-  if (!body.character_names || body.character_names.length < 2) {
-    return NextResponse.json({ error: "'character_names' must have at least 2 entries." }, { status: 400 });
-  }
 
   let targetUrl: URL;
   try {
@@ -70,7 +67,7 @@ export async function POST(request: Request) {
     story_id: body.story_id ?? "default",
     scene_prompt: body.scene_prompt ?? "",
     negative_prompt: body.negative_prompt ?? "lowres, bad anatomy, worst quality, blurry",
-    character_names: body.character_names,
+    character_names: body.character_names ?? [],
     style: body.style ?? "manga",
     image_guidance_scale: body.image_guidance_scale ?? 2.8,
     text_guidance_scale: body.text_guidance_scale ?? 5.0,

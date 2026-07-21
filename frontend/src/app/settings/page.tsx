@@ -848,7 +848,7 @@ export default function SettingsPage() {
                         className="field w-full"
                       >
                         <option value="default">SD1.5 / SDXL (default)</option>
-                        <option value="omni">Omni (multi-character)</option>
+                        <option value="omni">Omni (all generation)</option>
                       </select>
                     </div>
 
@@ -876,7 +876,7 @@ export default function SettingsPage() {
                           readOnly
                           className="field w-full font-mono text-sm opacity-60 cursor-not-allowed"
                         />
-                        <p className="mt-2 text-[11px] text-outline">Used only for panels with 2+ characters.</p>
+                        <p className="mt-2 text-[11px] text-outline">Used for all image generation in this project when selected above — characters, panels, and pages.</p>
                       </div>
                     )}
                   </div>

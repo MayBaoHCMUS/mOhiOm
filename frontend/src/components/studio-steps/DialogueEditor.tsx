@@ -205,6 +205,34 @@ function getPanelGridPlacement(rows: number[][], panelIndex: number): React.CSSP
   return {};
 }
 
+// Width:height ratio of a panel's box as it actually renders in this editor's
+// page grid (mirrors buildGridStyle/getPanelGridPlacement's CSS grid math, or
+// ABSOLUTE_LAYOUT_BBOXES for non-grid layouts) — used by the export pipeline
+// so panel images get cropped the same way object-fit:cover crops them here,
+// keeping bubble positions (recorded against this cropped view) accurate.
+const GRID_GAP = 6;
+const GRID_PADDING = 8;
+
+export function getPanelBoxAspectRatio(layoutName: string, panelIndex: number): number {
+  const absBboxes = ABSOLUTE_LAYOUT_BBOXES[layoutName];
+  if (absBboxes?.[panelIndex]) {
+    const bb = absBboxes[panelIndex];
+    return (bb.w * BASE_PAGE_W) / (bb.h * BASE_PAGE_H);
+  }
+  const rows = LAYOUT_ROW_STRUCTURES[layoutName] ?? [[0]];
+  const maxCols = Math.max(...rows.map(r => r.length));
+  const colW = (BASE_PAGE_W - GRID_PADDING * 2 - (maxCols - 1) * GRID_GAP) / maxCols;
+  const rowH = (BASE_PAGE_H - GRID_PADDING * 2 - (rows.length - 1) * GRID_GAP) / rows.length;
+  for (const row of rows) {
+    const col = row.indexOf(panelIndex);
+    if (col === -1) continue;
+    const colSpan = maxCols / row.length;
+    const cellW = colSpan * colW + (colSpan - 1) * GRID_GAP;
+    return cellW / rowH;
+  }
+  return 1;
+}
+
 function computeFitZoom(viewportW: number, viewportH: number, pad = 48): number {
   const scaleW = (viewportW - pad * 2) / BASE_PAGE_W;
   const scaleH = (viewportH - pad * 2) / BASE_PAGE_H;

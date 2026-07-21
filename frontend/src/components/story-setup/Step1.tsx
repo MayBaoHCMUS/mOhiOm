@@ -124,8 +124,8 @@ function ImageStylePicker({
 // ── Image generation model picker ─────────────────────────────────────────────
 
 const IMAGE_MODEL_OPTIONS = [
-  { value: 'default' as const, icon: 'bolt', label: 'SD1.5 / SDXL', sub: 'Default — single-character panels' },
-  { value: 'omni' as const, icon: 'auto_awesome', label: 'Omni (multi-character)', sub: 'Adds OmniGen2 for 2+ character panels' },
+  { value: 'default' as const, icon: 'bolt', label: 'SD1.5 / SDXL', sub: 'Default image generation model' },
+  { value: 'omni' as const, icon: 'auto_awesome', label: 'Omni (all generation)', sub: 'Used for every image in this project — characters, panels, pages' },
 ];
 
 function ImageModelPicker({
