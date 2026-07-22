@@ -753,7 +753,7 @@ export interface ComicGenerationContextValue {
   handleStartPanelGeneration: () => Promise<void>;
   panelAutoRetryInfo: { round: number; totalRounds: number; remaining: number } | null;
   cancelPanelAutoRetry: () => void;
-  handleRegenerateSinglePanel: (panel: Step4Panel) => Promise<void>;
+  handleRegenerateSinglePanel: (panel: Step4Panel, characterNamesOverride?: string[]) => Promise<void>;
   handleRegeneratePage: (pageNumber: number) => Promise<void>;
   handleRegenerateWithFeedback: (pageNumber: number, feedback: string) => Promise<void>;
   acceptPanelRegen: (pageNumber: number) => Promise<void>;
@@ -2535,11 +2535,16 @@ export function ComicGenerationProvider({
 
   const generatePanelImages = async (
     panelsArray: Step4Panel[],
-    options?: { batchSize?: number; delayMs?: number },
+    options?: { batchSize?: number; delayMs?: number; characterNamesOverride?: string[] },
     shouldCancel?: () => boolean
   ): Promise<Record<string, { status: PanelImageStatus; imageUrl: string | null; error: string | null }>> => {
     const batchSize = Math.max(1, options?.batchSize ?? 1);
     const delayMs = Math.max(0, options?.delayMs ?? 10000);
+    // When the user manually picks the characters for a single-panel regen, use
+    // that list verbatim (and skip prompt-substring matching) instead of the
+    // auto-detected panel.characterNames. Applies to every panel in this call —
+    // only single-panel regen passes it, so scope is correct.
+    const characterNamesOverride = options?.characterNamesOverride;
     const characterRefs = getSelectedCharacterReferences();
     const allResults: Record<string, { status: PanelImageStatus; imageUrl: string | null; error: string | null }> = {};
 
@@ -2586,7 +2591,9 @@ export function ComicGenerationProvider({
             // of character count (0, 1, or N — the server now supports all).
             // Any failure here falls through to the single-character flow below.
             if (enableMultiCharacterMode && multiCharacterApiUrl) {
-              const matched = findAllCharacterMatches(characterRefs, panel.characterNames, panel.aiImagePrompt);
+              const matched = characterNamesOverride
+                ? findAllCharacterMatches(characterRefs, characterNamesOverride, undefined)
+                : findAllCharacterMatches(characterRefs, panel.characterNames, panel.aiImagePrompt);
               try {
                 const multiCleanPrompt = buildCleanPanelPrompt(panel.aiImagePrompt, artStyle);
                 let scenePromptWithSfx = multiCleanPrompt;
@@ -2638,7 +2645,13 @@ export function ComicGenerationProvider({
               }
             }
             const panelDimensions = pagePanelDimensions[panel.pageNumber]?.[panel.id];
-            const matchedChar = pickCharacterReference(characterRefs, panel.characterNames, panel.aiImagePrompt);
+            // With a manual override, use findCharacterReference (no fallback to
+            // characterRefs[0]) so an empty selection means "no reference" and a
+            // ticked name is used verbatim — instead of pickCharacterReference,
+            // which always defaults to the first character.
+            const matchedChar = characterNamesOverride
+              ? findCharacterReference(characterRefs, characterNamesOverride, undefined)
+              : pickCharacterReference(characterRefs, panel.characterNames, panel.aiImagePrompt);
             const intendedRefSource = matchedChar?.image_url ?? referenceImageBase64;
             const refB64 = await resolveReferenceImageBase64(intendedRefSource);
             if (!refB64 && intendedRefSource) {
@@ -3012,13 +3025,13 @@ export function ComicGenerationProvider({
     }
   };
 
-  const handleRegenerateSinglePanel = async (panel: Step4Panel) => {
+  const handleRegenerateSinglePanel = async (panel: Step4Panel, characterNamesOverride?: string[]) => {
     if (!step4.data) return;
     // Unlike handleStartPanelGeneration, this can be the first Omni call of the
     // session (e.g. regenerating one panel without ever running a full batch) —
     // resync first so Omni's RAM store actually has the referenced character(s).
     await resyncCharacterReferencesToMultiCharacterServer();
-    const results = await generatePanelImages([panel], { batchSize: 1, delayMs: 0 });
+    const results = await generatePanelImages([panel], { batchSize: 1, delayMs: 0, characterNamesOverride });
     const outcome = results[panel.id];
     addNotification({
       title: outcome?.status === 'success' ? 'Panel regenerated' : 'Panel regeneration failed',

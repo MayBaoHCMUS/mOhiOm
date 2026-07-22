@@ -15,7 +15,9 @@ import {
 import { IMAGE_STYLES, DEFAULT_IMAGE_STYLE, IMAGE_STYLE_PREF_KEY } from '@/lib/imageStyles';
 import PasswordStrengthMeter from '@/components/PasswordStrengthMeter';
 import { useOnboardingContext } from '@/context/OnboardingContext';
+import { useNotifications, type NotificationVariant } from '@/context/NotificationContext';
 import { useAutoScrollStreamingPref } from '@/hooks/useAutoScrollStreamingPref';
+import { useBackendHealth, type BackendHealth } from '@/hooks/useBackendHealth';
 
 // ─── Panel card ───────────────────────────────────────────────────────────────
 
@@ -24,6 +26,28 @@ function Panel({ children, className = '' }: { children: React.ReactNode; classN
     <div className={`bg-surface-container-lowest rounded-2xl border-2 border-on-surface/8 shadow-[4px_4px_0px_0px_rgba(0,88,190,0.10)] ${className}`}>
       {children}
     </div>
+  );
+}
+
+// Colored status pill + optional recheck for an image backend's health.
+function BackendHealthStatus({ status, onRecheck }: { status: BackendHealth; onRecheck: () => void }) {
+  if (status === 'unconfigured') return null;
+  const map: Record<Exclude<BackendHealth, 'unconfigured'>, { dot: string; label: string; text: string }> = {
+    up:       { dot: 'bg-emerald-500', label: 'Online',    text: 'text-emerald-600' },
+    down:     { dot: 'bg-red-500',     label: 'Offline',   text: 'text-red-600' },
+    checking: { dot: 'bg-gray-300',    label: 'Checking…', text: 'text-outline' },
+  };
+  const m = map[status];
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className={`inline-flex items-center gap-1 text-[11px] font-semibold ${m.text}`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${m.dot} ${status === 'checking' ? 'animate-pulse' : ''}`} />
+        {m.label}
+      </span>
+      <button type="button" onClick={onRecheck} className="text-[11px] font-medium text-primary hover:underline">
+        Recheck
+      </button>
+    </span>
   );
 }
 
@@ -115,6 +139,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const [onboardingReset, setOnboardingReset] = useState(false);
   const { autoScroll, setAutoScroll } = useAutoScrollStreamingPref();
+  const { prefs: notifPrefs, setPref: setNotifPref } = useNotifications();
 
   // Preferences state — initialised from localStorage
   const [comicStyle, setComicStyle] = useState(() => {
@@ -168,6 +193,9 @@ export default function SettingsPage() {
   // Image generation (BYOK / built-in GPU mode)
   const [imageGenMode, setImageGenMode] = useState<ImageGenMode>('builtin');
   const [builtinImageModel, setBuiltinImageModel] = useState<'default' | 'omni'>('default');
+  // Health of each image backend so a dead server's model can't be picked.
+  const sdHealth = useBackendHealth(imageApiUrlValue);
+  const omniHealth = useBackendHealth(multiCharacterApiUrlValue);
   const [byokImageProvider, setByokImageProvider] = useState('');
   const [byokImageProviders, setByokImageProviders] = useState<ImageGenProvider[]>([]);
   const [byokImageApiKey, setByokImageApiKey] = useState('');
@@ -571,6 +599,40 @@ export default function SettingsPage() {
             </div>
           </Panel>
 
+          {/* ── Notifications ── */}
+          <div id="notifications" style={{ scrollMarginTop: 80 }}>
+            <Panel className="p-7">
+              <SectionLabel icon="notifications">Notifications</SectionLabel>
+              <p className="text-xs text-on-surface-variant -mt-3 mb-5">
+                Choose which notifications appear in the bell menu. Muted types are dropped silently.
+              </p>
+              <div className="divide-y divide-on-surface/8">
+                {([
+                  { key: 'success' as NotificationVariant, label: 'Completed actions', desc: 'Panels/pages generated, character images ready, cloud saves, successful exports.' },
+                  { key: 'partial' as NotificationVariant, label: 'Warnings', desc: 'Partial results — e.g. a reference image failed to load, or Omni fell back to SD1.5/SDXL.' },
+                  { key: 'error' as NotificationVariant, label: 'Errors', desc: 'Failed generations and failed exports.' },
+                ]).map((row, i) => (
+                  <label key={row.key} className={`flex items-center justify-between gap-3 cursor-pointer ${i === 0 ? 'pb-4' : 'py-4'} last:pb-0`}>
+                    <div>
+                      <span className="block text-xs font-bold text-on-surface uppercase tracking-wider">{row.label}</span>
+                      <p className="mt-1 text-xs text-on-surface-variant">{row.desc}</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={notifPrefs[row.key]}
+                      aria-label={row.label}
+                      onClick={() => setNotifPref(row.key, !notifPrefs[row.key])}
+                      className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${notifPrefs[row.key] ? 'bg-primary' : 'bg-outline-variant'}`}
+                    >
+                      <span className={`block w-4 h-4 rounded-full bg-white shadow transition-transform mx-0.5 ${notifPrefs[row.key] ? 'translate-x-4' : 'translate-x-0'}`} />
+                    </button>
+                  </label>
+                ))}
+              </div>
+            </Panel>
+          </div>
+
           {/* ── Account ── */}
           <Panel className="p-7">
             <SectionLabel icon="manage_accounts">Account</SectionLabel>
@@ -847,14 +909,21 @@ export default function SettingsPage() {
                         onChange={(e) => setBuiltinImageModel(e.target.value as 'default' | 'omni')}
                         className="field w-full"
                       >
-                        <option value="default">SD1.5 / SDXL (default)</option>
-                        <option value="omni">Omni (all generation)</option>
+                        <option value="default" disabled={sdHealth.status === 'down'}>
+                          SD1.5 / SDXL (default){sdHealth.status === 'down' ? ' — Offline' : ''}
+                        </option>
+                        <option value="omni" disabled={omniHealth.status === 'down'}>
+                          Omni (all generation){omniHealth.status === 'down' ? ' — Offline' : ''}
+                        </option>
                       </select>
                     </div>
 
                     {builtinImageModel === 'default' && (
                       <div>
-                        <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Image API URL</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider">Image API URL</label>
+                          <BackendHealthStatus status={sdHealth.status} onRecheck={sdHealth.recheck} />
+                        </div>
                         <input
                           type="url"
                           value={imageApiUrlValue}
@@ -868,7 +937,10 @@ export default function SettingsPage() {
 
                     {builtinImageModel === 'omni' && (
                       <div>
-                        <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Image API URL</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider">Image API URL</label>
+                          <BackendHealthStatus status={omniHealth.status} onRecheck={omniHealth.recheck} />
+                        </div>
                         <input
                           type="url"
                           value={multiCharacterApiUrlValue}
