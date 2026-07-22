@@ -167,6 +167,14 @@
   to   { transform: translate(0, 0); }
 }
 
+/* One-shot pop replayed when the unread count increases (new notification). */
+@keyframes badge-pop {
+  0%   { transform: scale(0.6); }
+  70%  { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+.t-badge-pop { animation: badge-pop 0.3s ease-out; }
+
 .t-badge {
   position: absolute;
   top: -6px;
@@ -200,7 +208,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .t-badge, .t-badge-dot { animation: none !important; transition: none !important; }
+  .t-badge, .t-badge-dot, .t-badge-pop { animation: none !important; transition: none !important; }
 }
 
 /* Transitions.dev — page side-by-side (two-panel slide) */

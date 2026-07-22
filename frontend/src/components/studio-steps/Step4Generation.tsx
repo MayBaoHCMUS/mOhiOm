@@ -11,6 +11,7 @@ import DialogueEditor, { type PanelBubbles, type SingleBubble, type BubbleType }
 import GenerationModeModal from '@/components/GenerationModeModal';
 import Markdown from '@/components/Markdown';
 import { LayoutTemplatePicker } from '@/components/studio-steps/LayoutTemplatePicker';
+import { findAllCharacterMatches, type CharacterReference } from '@/lib/characterReference';
 import { SegmentedProgressBar } from '@/components/SegmentedProgressBar';
 import { GenerationStatusBar, type GenerationProgress } from '@/components/GenerationStatusBar';
 
@@ -603,19 +604,84 @@ function computeLayoutFitZoom(viewW: number, viewH: number): number {
   return Math.min(scaleW, scaleH, 1.0);
 }
 
+// ── Regen popover: pick which characters are in the panel before regenerating ──
+// The generation pipeline auto-detects characters from the Step 3 `characters:`
+// field + prompt text; when that misses, this lets the user tick them manually.
+function RegenPopover({
+  panel,
+  characterRefs,
+  onRegenerate,
+  onClose,
+}: {
+  panel: Step4Panel;
+  characterRefs: CharacterReference[];
+  onRegenerate: (characterNames: string[]) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // Pre-tick whatever the pipeline would auto-detect (same helper it uses).
+  const [checked, setChecked] = useState<Set<string>>(() => {
+    const auto = findAllCharacterMatches(characterRefs, panel.characterNames, panel.aiImagePrompt);
+    return new Set(auto.map((c) => c.name));
+  });
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [onClose]);
+
+  const toggle = (name: string) => setChecked((prev) => {
+    const next = new Set(prev);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    return next;
+  });
+
+  return (
+    <div
+      ref={ref}
+      onClick={(e) => e.stopPropagation()}
+      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-[200px] rounded-xl bg-white shadow-xl border border-gray-200 p-3 text-left"
+      style={{ pointerEvents: 'auto' }}
+    >
+      <p className="text-[11px] font-bold text-gray-700 mb-2">Characters in this panel</p>
+      <div className="flex flex-col gap-1.5 max-h-[160px] overflow-y-auto">
+        {characterRefs.map((c) => (
+          <label key={c.character_id} className="flex items-center gap-2 text-[12px] text-gray-800 cursor-pointer">
+            <input type="checkbox" checked={checked.has(c.name)} onChange={() => toggle(c.name)} className="accent-primary" />
+            <span className="truncate">{c.name}</span>
+          </label>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => { onRegenerate(Array.from(checked)); onClose(); }}
+        className="mt-3 w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-primary text-white text-[12px] font-bold hover:opacity-90 transition-opacity"
+      >
+        ↺ Regenerate
+      </button>
+    </div>
+  );
+}
+
 // ── Canvas studio: page canvas showing panel slots ────────────────────────────
 function LayoutPageCanvas({
   panels,
   panelStates,
   layoutName,
   onGeneratePanel,
+  characterRefs,
 }: {
   panels: Step4Panel[];
   panelStates: Record<string, { status: string; imageUrl: string | null; error: string | null } | null>;
   layoutName: string;
-  onGeneratePanel: (panel: Step4Panel) => void;
+  onGeneratePanel: (panel: Step4Panel, characterNames?: string[]) => void;
+  characterRefs: CharacterReference[];
 }) {
   const [zoom, setZoom] = useState(1.0);
+  const [openRegenPanelId, setOpenRegenPanelId] = useState<string | null>(null);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const canvasAreaRef = useRef<HTMLDivElement>(null);
   const spaceDownRef = useRef(false);
@@ -678,11 +744,26 @@ function LayoutPageCanvas({
                     <div className="relative w-full h-full group">
                       <img src={imageUrl} alt={`Panel ${panel.panelNumber}`} crossOrigin="anonymous" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center pointer-events-none group-hover:pointer-events-auto">
-                        <button type="button" onClick={() => onGeneratePanel(panel)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-2 py-1 rounded-full bg-black/60 text-white text-[10px] font-bold backdrop-blur-sm">
-                          ↺ Regen
-                        </button>
+                        {openRegenPanelId !== panel.id && (
+                          <button type="button"
+                            onClick={() => {
+                              // No characters in the project → keep the old one-click regen.
+                              if (characterRefs.length === 0) { onGeneratePanel(panel); return; }
+                              setOpenRegenPanelId(panel.id);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-2 py-1 rounded-full bg-black/60 text-white text-[10px] font-bold backdrop-blur-sm">
+                            ↺ Regen
+                          </button>
+                        )}
                       </div>
+                      {openRegenPanelId === panel.id && (
+                        <RegenPopover
+                          panel={panel}
+                          characterRefs={characterRefs}
+                          onRegenerate={(names) => onGeneratePanel(panel, names)}
+                          onClose={() => setOpenRegenPanelId(null)}
+                        />
+                      )}
                     </div>
                   ) : isLoading ? (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-1" style={{ background: '#F3F4F6' }}>
@@ -926,6 +1007,7 @@ export default function Step4Generation() {
     handleRegenerateSinglePanel,
     handleRegeneratePage,
     handleRegenerateWithFeedback,
+    getSelectedCharacterReferences,
     acceptPanelRegen,
     rejectPanelRegen,
     artStyle,
@@ -1358,7 +1440,8 @@ export default function Step4Generation() {
                     panels={currentPagePanels}
                     panelStates={step4.data?.panelStates ?? {}}
                     layoutName={currentLayoutName}
-                    onGeneratePanel={(panel) => handleRegenerateSinglePanel(panel)}
+                    onGeneratePanel={(panel, names) => handleRegenerateSinglePanel(panel, names)}
+                    characterRefs={getSelectedCharacterReferences()}
                   />
                   <LayoutStudioSidebar
                     pageNumber={currentPageNum}
