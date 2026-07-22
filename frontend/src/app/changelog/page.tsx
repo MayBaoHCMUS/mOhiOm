@@ -15,6 +15,17 @@ interface Entry {
 // a running log of what shipped, not marketing copy. Update it as features land.
 const ENTRIES: Entry[] = [
   {
+    date: 'July 14, 2026',
+    title: 'Multi-character "Omni" model, model health checks & notifications',
+    notes: [
+      'New "Omni" image model for panels with two or more characters — it conditions on several reference images at once, so each character keeps their own look. Pick it in Settings or Story Setup; single-character panels still use the default model.',
+      'Model options now show an Online / Offline status, so you can\'t accidentally pick an image server that\'s down and only find out after generating.',
+      'Speech and thought bubble tails can now auto-point at the character\'s face — using a face detector tuned for manga/anime art.',
+      'Regenerating a single panel now lets you tick exactly which characters are in it, for when auto-detection misses one.',
+      'Redesigned the notifications panel: cleaner layout, a "Clear all" that asks for confirmation, and new per-type preferences so you choose which notifications you get (completed actions, warnings, errors).',
+    ],
+  },
+  {
     date: 'July 13, 2026',
     title: 'Character builder redesign & guide bot streaming',
     notes: [
@@ -55,6 +66,9 @@ const ENTRIES: Entry[] = [
       'Migrated generated images to Cloudflare R2 storage.',
       'Added auto-retry for panel generation, with user feedback and the ability to cancel.',
       'Character images now generate sequentially with clearer loading state.',
+      'Panels now generate one at a time for steadier reliability on the image server.',
+      'Pause now truly stops generation (and Resume picks up where it left off), instead of just changing the label.',
+      'Fixed an issue where saving to cloud could remove panels saved in an earlier session.',
     ],
   },
   {
@@ -73,6 +87,8 @@ const ENTRIES: Entry[] = [
       'Added print-ready PDF export with bleed and crop marks.',
       'Added QR code and social-media sharing packs.',
       'Introduced publish history tracking with live read stats.',
+      'Fixed speech-bubble positions drifting between the editor and the exported file.',
+      'Fixed occasional export failures caused by image caching.',
     ],
   },
   {
