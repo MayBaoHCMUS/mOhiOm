@@ -11,6 +11,7 @@ import { publishComic, buildShareUrl, getComicStats, unpublishComic } from '@/li
 import { recomposePages, DEFAULT_BORDER_CONFIG } from '@/lib/borderComposer';
 import type { BorderConfig } from '@/lib/borderComposer';
 import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
+import { getPanelBoxWidth } from '@/components/studio-steps/DialogueEditor';
 import { downloadSocialPack, PLATFORMS } from '@/lib/socialPack';
 import { recordPublish } from '@/lib/publishHistory';
 import { getImageApiUrl } from '@/lib/imageApiUrl';
@@ -981,13 +982,14 @@ export default function PublishPage() {
         const allLayouts: string[] = [];
         for (const pageNum of Array.from(byPage.keys()).sort((a, b) => a - b)) {
           const panelList = byPage.get(pageNum)!.sort((a, b) => a.panelNumber - b.panelNumber);
-          const imgs = await Promise.all(panelList.map(async ({ id }) => {
+          const layoutName = savedLayouts[String(pageNum)] ?? LAYOUT_FALLBACKS[panelList.length] ?? 'single';
+          const imgs = await Promise.all(panelList.map(async ({ id }, idx) => {
             const rawUrl = imageMap[id];
             if (!rawUrl) return '';
             const bubbles = bubbleMap[id];
             if (bubbles?.length) {
               try {
-                const blob = await compositePanelToBlob(rawUrl, bubbles as Parameters<typeof compositePanelToBlob>[1]);
+                const blob = await compositePanelToBlob(rawUrl, bubbles as Parameters<typeof compositePanelToBlob>[1], undefined, getPanelBoxWidth(layoutName, idx));
                 return await new Promise<string>((resolve, reject) => {
                   const reader = new FileReader();
                   reader.onload = () => resolve(reader.result as string);
@@ -1127,13 +1129,14 @@ export default function PublishPage() {
       const allLayouts: string[] = [];
       for (const pageNum of Array.from(byPage.keys()).sort((a, b) => a - b)) {
         const panelList = byPage.get(pageNum)!.sort((a, b) => a.panelNumber - b.panelNumber);
-        const imgs = await Promise.all(panelList.map(async ({ id }) => {
+        const layoutName = savedLayouts[String(pageNum)] ?? LAYOUT_FALLBACKS[panelList.length] ?? 'single';
+        const imgs = await Promise.all(panelList.map(async ({ id }, idx) => {
           const rawUrl = imageMap[id];
           if (!rawUrl) return '';
           const bubbles = bubbleMap[id];
           if (bubbles?.length) {
             try {
-              const blob = await compositePanelToBlob(rawUrl, bubbles as Parameters<typeof compositePanelToBlob>[1]);
+              const blob = await compositePanelToBlob(rawUrl, bubbles as Parameters<typeof compositePanelToBlob>[1], undefined, getPanelBoxWidth(layoutName, idx));
               return await new Promise<string>((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => resolve(reader.result as string);

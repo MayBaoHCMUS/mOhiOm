@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { useComicGeneration } from '@/context/ComicGenerationContext'
 import type { Step4Panel, Step4PanelState } from '@/context/ComicGenerationContext'
-import { BASE_PAGE_W, MangaBubbleSVG } from '@/components/studio-steps/DialogueEditor'
+import { BASE_PAGE_W, MangaBubbleSVG, getPanelBoxWidth } from '@/components/studio-steps/DialogueEditor'
 import type { PanelBubbles } from '@/components/studio-steps/DialogueEditor'
 import {
   LAYOUT_PANEL_RECTS,
@@ -1119,8 +1119,9 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
         return
       }
       const composed = await Promise.all(
-        step4PanelsByPage.map(async ([, panels], pageIdx) => {
+        step4PanelsByPage.map(async ([pageNumber, panels], pageIdx) => {
           const raw = rawPanelImages[pageIdx] ?? []
+          const layoutName = pageLayoutNames[pageNumber] ?? defaultLayout(panels.length)
           return Promise.all(
             panels.map(async (panel, i) => {
               const url = raw[i]
@@ -1128,7 +1129,7 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
               const bubbles = panelBubbles[panel.id]
               if (!bubbles?.length) return url
               try {
-                const blob = await compositePanelToBlob(url, bubbles)
+                const blob = await compositePanelToBlob(url, bubbles, undefined, getPanelBoxWidth(layoutName, i))
                 return await new Promise<string>((resolve, reject) => {
                   const reader = new FileReader()
                   reader.onload = () => resolve(reader.result as string)
@@ -1144,7 +1145,7 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
     }
     void composite()
     return () => { cancelled = true }
-  }, [rawPanelImages, panelBubbles, isPageMode, step4PanelsByPage])
+  }, [rawPanelImages, panelBubbles, isPageMode, step4PanelsByPage, pageLayoutNames])
 
   const allLayouts = useMemo(() => {
     if (isPageMode) {

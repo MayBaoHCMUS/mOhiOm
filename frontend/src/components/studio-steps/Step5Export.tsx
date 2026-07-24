@@ -9,7 +9,7 @@ import { apiClient, bubblesApi } from '@/services/api';
 import { exportWithDialogueAsZip } from '@/lib/bubbles/exportComposite';
 import type { CompositePanel } from '@/lib/bubbles/exportComposite';
 import type { PanelBubbles } from '@/components/studio-steps/DialogueEditor';
-import { getPanelBoxAspectRatio } from '@/components/studio-steps/DialogueEditor';
+import { getPanelBoxAspectRatio, getPanelBoxWidth } from '@/components/studio-steps/DialogueEditor';
 
 function formatLastSaved(iso: string): string {
   try {
@@ -178,6 +178,7 @@ export default function Step5Export() {
           imageUrl: state.imageUrl!,
           bubbles: panelBubbles[panel.id] ?? [],
           aspectRatio: getPanelBoxAspectRatio(layoutName, idx),
+          refCellWidth: getPanelBoxWidth(layoutName, idx),
         });
       });
     }
