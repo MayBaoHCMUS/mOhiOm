@@ -233,6 +233,28 @@ export function getPanelBoxAspectRatio(layoutName: string, panelIndex: number): 
   return 1;
 }
 
+// Panel box WIDTH (px) in the editor's fixed BASE_PAGE_W page space — the same
+// space `bubbleSize`/`fontSize` are authored against (the live editor sizes
+// bubbles relative to cellEl.clientWidth, which is a fraction of BASE_PAGE_W).
+// The export pipeline divides the panel's natural image width by this to scale
+// bubbles so they keep the same relative size they have in the editor.
+export function getPanelBoxWidth(layoutName: string, panelIndex: number): number {
+  const absBboxes = ABSOLUTE_LAYOUT_BBOXES[layoutName];
+  if (absBboxes?.[panelIndex]) {
+    return absBboxes[panelIndex].w * BASE_PAGE_W;
+  }
+  const rows = LAYOUT_ROW_STRUCTURES[layoutName] ?? [[0]];
+  const maxCols = Math.max(...rows.map(r => r.length));
+  const colW = (BASE_PAGE_W - GRID_PADDING * 2 - (maxCols - 1) * GRID_GAP) / maxCols;
+  for (const row of rows) {
+    const col = row.indexOf(panelIndex);
+    if (col === -1) continue;
+    const colSpan = maxCols / row.length;
+    return colSpan * colW + (colSpan - 1) * GRID_GAP;
+  }
+  return BASE_PAGE_W - GRID_PADDING * 2;
+}
+
 function computeFitZoom(viewportW: number, viewportH: number, pad = 48): number {
   const scaleW = (viewportW - pad * 2) / BASE_PAGE_W;
   const scaleH = (viewportH - pad * 2) / BASE_PAGE_H;
@@ -313,6 +335,12 @@ function heartPath(cx: number, cy: number, rx: number, ry: number): string {
     'Z',
   ].join(' ');
 }
+
+// Comic bubble font stacks. Primaries carry a `vietnamese` glyph subset (the
+// old Bangers/Comic Neue did not) so tiếng Việt renders with correct accents.
+// Loaded via globals.css for the editor and embedded in the SVG for export.
+const FONT_DISPLAY = "'Grandstander', Impact, 'Arial Black', sans-serif"; // shout/scream/burst/SFX
+const FONT_BODY    = "'Patrick Hand', 'Comic Sans MS', cursive";          // speech/thought/etc.
 
 // Simple word-wrap: splits text into lines that fit within maxWidth
 function wrapTextToLines(text: string, maxWidth: number, fontSize: number, isBangers: boolean): string[] {
@@ -419,7 +447,7 @@ export function MangaBubbleSVG({ bubble, w, h, dimmed }: BubbleSVGProps) {
           <SvgText
             lines={lines} cx={cx} cy={cy}
             fontSize={sfxSize}
-            fontFamily="Bangers, Impact, sans-serif"
+            fontFamily={FONT_DISPLAY}
             fontWeight="normal"
             fill={userTextColor ?? 'white'}
             stroke="#1a1a1a"
@@ -508,12 +536,10 @@ export function MangaBubbleSVG({ bubble, w, h, dimmed }: BubbleSVGProps) {
   const lines = wrapTextToLines(text, textW, fontSize, isBangers);
 
   const fontFamily = isBangers
-    ? 'Bangers, Impact, sans-serif'
+    ? FONT_DISPLAY
     : type === 'square'
     ? 'monospace'
-    : type === 'whisper' || type === 'wobbly'
-    ? "'Comic Neue', 'Comic Sans MS', cursive"
-    : "'Comic Neue', 'Comic Sans MS', cursive";
+    : FONT_BODY;
   const fontWeight  = type === 'shout' || type === 'scream' ? 700 : 400;
   const fontStyle   = type === 'narration' || type === 'whisper' || type === 'wobbly' ? 'italic' : 'normal';
   const textFill    = userTextColor ?? (type === 'narration' ? '#22224a' : type === 'scream' ? '#660000' : '#111111');
@@ -994,7 +1020,7 @@ function PanelCell({
                   resize: 'none', textAlign: 'center',
                   fontSize: selectedBubble.fontSize / zoom,
                   color: 'transparent', caretColor: selectedBubble.textColor ?? '#111111',
-                  fontFamily: 'Bangers, sans-serif',
+                  fontFamily: FONT_BODY,
                   lineHeight: 1.3, zIndex: 25,
                   cursor: 'text', overflow: 'hidden',
                 }}

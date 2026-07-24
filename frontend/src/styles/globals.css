@@ -1,6 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Bangers&display=block');
+/* Comic bubble fonts — include the vietnamese subset so speech text renders
+   tiếng Việt with correct accents (Bangers/Comic Neue lack those glyphs). */
+@import url('https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Grandstander:wght@700&display=block');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

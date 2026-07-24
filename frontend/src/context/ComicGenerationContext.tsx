@@ -27,7 +27,7 @@ import {
 import { DEFAULT_IMAGE_STYLE, IMAGE_STYLE_PREF_KEY } from '@/lib/imageStyles';
 import type { ExportPage } from '@/lib/export';
 import type { SingleBubble } from '@/components/studio-steps/DialogueEditor';
-import { getPanelBoxAspectRatio } from '@/components/studio-steps/DialogueEditor';
+import { getPanelBoxAspectRatio, getPanelBoxWidth } from '@/components/studio-steps/DialogueEditor';
 import { useNotifications } from '@/context/NotificationContext';
 import type { CharacterReference } from '@/lib/characterReference';
 import { findCharacterReference, pickCharacterReference, findAllCharacterMatches } from '@/lib/characterReference';
@@ -3472,7 +3472,8 @@ export function ComicGenerationProvider({
         if (bubbles?.length) {
           try {
             const targetAspectRatio = getPanelBoxAspectRatio(layoutName, idx);
-            const blob = await compositePanelToBlob(url, bubbles, targetAspectRatio);
+            const refCellWidth = getPanelBoxWidth(layoutName, idx);
+            const blob = await compositePanelToBlob(url, bubbles, targetAspectRatio, refCellWidth);
             return URL.createObjectURL(blob);
           } catch { /* fallback to raw image */ }
         }

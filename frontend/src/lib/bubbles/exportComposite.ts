@@ -6,6 +6,13 @@
 
 import JSZip from 'jszip';
 import type { SingleBubble, BubbleType, TailDir } from '@/components/studio-steps/DialogueEditor';
+import { EMBEDDED_BUBBLE_FONT_CSS } from './embeddedFonts';
+
+// Comic bubble font stacks. Both primaries carry a `vietnamese` glyph subset
+// (Bangers/Comic Neue do not), and are embedded as base64 @font-face in the
+// export SVG so Vietnamese renders in the rasterized output too.
+const FONT_DISPLAY = "'Grandstander', Impact, 'Arial Black', sans-serif"; // shout/scream/burst/SFX
+const FONT_BODY    = "'Patrick Hand', 'Comic Sans MS', cursive";          // speech/thought/etc.
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -191,7 +198,7 @@ function buildBubbleContent(bubble: SingleBubble, w: number, h: number): string 
     const lines = wrapTextToLines(text, w * 0.9, sfxSize, true);
     const rotAttr = rotation ? ` transform="rotate(${rotation}, ${cx}, ${cy})"` : '';
     const textEl = svgTextEl(lines, cx, cy, sfxSize,
-      'Bangers, Impact, Arial Black, sans-serif', 'normal', userTextColor ?? 'white', '#1a1a1a', 3, '0.06em');
+      FONT_DISPLAY, 'normal', userTextColor ?? 'white', '#1a1a1a', 3, '0.06em');
     return `<g${rotAttr}>${textEl}</g>`;
   }
 
@@ -220,10 +227,10 @@ function buildBubbleContent(bubble: SingleBubble, w: number, h: number): string 
   const lines      = wrapTextToLines(text, textW, fontSize, isBangers);
 
   const fontFamily = isBangers
-    ? 'Bangers, Impact, Arial Black, sans-serif'
+    ? FONT_DISPLAY
     : type === 'square'
     ? 'monospace'
-    : "'Comic Neue', 'Comic Sans MS', cursive";
+    : FONT_BODY;
   const fontWeight = type === 'shout' || type === 'scream' ? 700 : 400;
   const _fontStyle = type === 'narration' || type === 'whisper' || type === 'wobbly' ? 'italic' : 'normal';
   const textFill   = userTextColor ?? (type === 'narration' ? '#22224a' : type === 'scream' ? '#660000' : '#111111');
@@ -361,23 +368,35 @@ function buildBubbleContent(bubble: SingleBubble, w: number, h: number): string 
 
 // ── Full overlay SVG for a panel ──────────────────────────────────────────────
 
-function buildOverlaySvg(bubbles: SingleBubble[], W: number, H: number): string {
+function buildOverlaySvg(bubbles: SingleBubble[], W: number, H: number, bubbleScale = 1): string {
   const sorted = [...bubbles].sort((a, b) => a.zIndex - b.zIndex);
   const elements = sorted
     .filter(b => b.bubbleType !== 'none' && !isNoneText(b.dialogue))
     .map(b => {
+      // Draw in the bubble's authored coordinate space (bubbleSize), then let the
+      // wrapper <svg> scale it up to the panel's natural resolution via viewBox.
+      // This scales EVERYTHING uniformly — geometry, font size, stroke width, tail
+      // — so bubbles keep the same relative size (and stay sharp) as in the editor.
       const bw = b.bubbleSize.w;
       const bh = b.bubbleSize.h;
-      const x = b.bubblePosition.x * W - bw / 2;
-      const y = b.bubblePosition.y * H - bh / 2;
+      const dw = bw * bubbleScale;
+      const dh = bh * bubbleScale;
+      const x = b.bubblePosition.x * W - dw / 2;
+      const y = b.bubblePosition.y * H - dh / 2;
       const inner = buildBubbleContent(b, bw, bh);
       if (!inner) return '';
       const opacityAttr = (b.opacity ?? 1) < 1 ? ` opacity="${b.opacity ?? 1}"` : '';
-      return `<svg x="${x}" y="${y}" width="${bw}" height="${bh}" overflow="visible"${opacityAttr}>${inner}</svg>`;
+      return `<svg x="${x}" y="${y}" width="${dw}" height="${dh}" viewBox="0 0 ${bw} ${bh}" overflow="visible"${opacityAttr}>${inner}</svg>`;
     })
     .filter(Boolean);
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" overflow="visible">${elements.join('')}</svg>`;
+  // Embed the comic fonts (base64 woff2, latin + vietnamese) directly in the
+  // SVG. An SVG loaded via <img> for canvas rasterization cannot reach the
+  // document's @font-face rules or fetch external font URLs, so without this
+  // the text — Vietnamese especially — falls back to system fonts.
+  const fontDefs = `<defs><style type="text/css">${EMBEDDED_BUBBLE_FONT_CSS}</style></defs>`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" overflow="visible">${fontDefs}${elements.join('')}</svg>`;
 }
 
 // ── Canvas compositing ────────────────────────────────────────────────────────
@@ -390,6 +409,27 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     img.onerror = () => reject(new Error(`Failed to load image`));
     img.src = src;
   });
+}
+
+// Warm the browser font cache before rasterizing. The fonts are embedded in the
+// export SVG, but pre-loading the same families into document.fonts makes some
+// engines (notably WebKit) reliably apply them when the SVG is drawn via <img>.
+let bubbleFontsWarmed: Promise<void> | null = null;
+function ensureBubbleFonts(): Promise<void> {
+  if (bubbleFontsWarmed) return bubbleFontsWarmed;
+  bubbleFontsWarmed = (async () => {
+    if (typeof document === 'undefined' || !document.fonts) return;
+    try {
+      await Promise.all([
+        document.fonts.load("400 16px 'Patrick Hand'", 'Ạ'),
+        document.fonts.load("700 16px 'Grandstander'", 'Ạ'),
+      ]);
+      await document.fonts.ready;
+    } catch {
+      /* font warming is best-effort; embedded SVG fonts still apply */
+    }
+  })();
+  return bubbleFontsWarmed;
 }
 
 // Same crop math the browser applies for object-fit:cover — center-crops the
@@ -412,6 +452,10 @@ export async function compositePanelToBlob(
   imageUrl: string,
   bubbles: SingleBubble[],
   targetAspectRatio?: number,
+  // Panel box width in the editor's authoring space (getPanelBoxWidth). Bubbles
+  // are sized in that space, so we scale them by naturalPanelWidth / this to keep
+  // their editor-relative size. Omit to draw bubbles unscaled (1:1).
+  refCellWidth?: number,
 ): Promise<Blob> {
   const img = await loadImage(imageUrl);
   const naturalW = img.naturalWidth || 512;
@@ -421,6 +465,7 @@ export async function compositePanelToBlob(
     : { sx: 0, sy: 0, sw: naturalW, sh: naturalH };
   const W = crop.sw;
   const H = crop.sh;
+  const bubbleScale = refCellWidth && refCellWidth > 0 ? W / refCellWidth : 1;
 
   const canvas = document.createElement('canvas');
   canvas.width = W;
@@ -435,7 +480,8 @@ export async function compositePanelToBlob(
   // Draw bubble overlay
   const active = bubbles.filter(b => b.bubbleType !== 'none' && !isNoneText(b.dialogue));
   if (active.length > 0) {
-    const svgStr = buildOverlaySvg(active, W, H);
+    await ensureBubbleFonts();
+    const svgStr = buildOverlaySvg(active, W, H, bubbleScale);
     const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     try {
@@ -460,7 +506,8 @@ export interface CompositePanel {
   label: string;       // filename without extension
   imageUrl: string;
   bubbles: SingleBubble[];
-  aspectRatio?: number; // panel box width:height ratio, for object-fit:cover-accurate cropping
+  aspectRatio?: number;  // panel box width:height ratio, for object-fit:cover-accurate cropping
+  refCellWidth?: number; // editor-space panel width (getPanelBoxWidth), for bubble scaling
 }
 
 export async function exportWithDialogueAsZip(
@@ -472,7 +519,7 @@ export async function exportWithDialogueAsZip(
 
   for (let i = 0; i < panels.length; i++) {
     const panel = panels[i];
-    const blob = await compositePanelToBlob(panel.imageUrl, panel.bubbles, panel.aspectRatio);
+    const blob = await compositePanelToBlob(panel.imageUrl, panel.bubbles, panel.aspectRatio, panel.refCellWidth);
     zip.file(`${panel.label}.png`, blob);
     onProgress?.(i + 1, panels.length);
   }
