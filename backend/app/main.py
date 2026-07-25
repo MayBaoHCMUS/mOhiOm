@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import mongo_db
-from app.routers import items, text_gen, text_to_comic, auth, projects, gallery, ratings, admin_analytics, analytics, bubbles, comic_generation, onboarding, images, image_gen, vision
+from app.routers import items, text_gen, text_to_comic, auth, projects, gallery, ratings, admin_analytics, analytics, bubbles, comic_generation, onboarding, images, image_gen, vision, survey
 from app.routers import settings as settings_router
 from app import r2_storage
 
@@ -18,6 +18,10 @@ async def lifespan(app: FastAPI):
         unique=True,
         background=True,
     )
+    sus_responses = mongo_db.get_database()["sus_responses"]
+    sus_responses.create_index("participant_id", background=True)
+    sus_responses.create_index("created_at", background=True)
+    sus_responses.create_index("task_id", background=True)
     yield
     # Shutdown
     mongo_db.disconnect()
@@ -51,6 +55,7 @@ app.include_router(onboarding.router, prefix=settings.API_PREFIX)
 app.include_router(images.router, prefix=settings.API_PREFIX)
 app.include_router(image_gen.router, prefix=settings.API_PREFIX)
 app.include_router(vision.router, prefix=settings.API_PREFIX)
+app.include_router(survey.router, prefix=settings.API_PREFIX)
 
 
 

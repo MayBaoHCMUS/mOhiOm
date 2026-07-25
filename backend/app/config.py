@@ -78,6 +78,9 @@ class Settings(BaseSettings):
 
     # Admin dashboard
     ADMIN_SECRET_KEY: str = "mohiom-admin-2024"
+    # Comma-separated allowlist. An admin must be signed in with a Google account
+    # whose email appears here — the shared key alone no longer opens /admin.
+    ADMIN_EMAILS: str = "nguyenthuong.bte@gmail.com"
 
     # Cloudflare R2 (S3-compatible object storage for generated images)
     R2_ACCOUNT_ID: str = ""

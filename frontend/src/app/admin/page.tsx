@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
+import { useAuth } from "@/context/AuthContext";
+import { authApi } from "@/services/api";
+import { SUSResults } from "@/components/SUSForm";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
@@ -68,40 +71,67 @@ interface RegenData {
 
 // ─── Auth gate ───────────────────────────────────────────────────────────────
 
-function AdminAuth({ onAuth }: { onAuth: (key: string) => void }) {
-  const [value, setValue] = useState("");
-  const [err, setErr] = useState(false);
+/**
+ * Google-only gate. `signedInAs` is set when someone is logged in but not on the
+ * backend's allowlist — they need to switch accounts, not sign in again, so say so
+ * rather than showing a button that would silently reuse the same Google session.
+ */
+function AdminAuth({ signedInAs, onSignOut }: { signedInAs?: string; onSignOut: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const submit = () => {
-    if (!value.trim()) { setErr(true); return; }
-    onAuth(value.trim());
+  const signIn = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await authApi.oauthStart("google", "login");
+      window.location.assign(res.data.url);
+    } catch {
+      setError("Unable to start Google sign-in.");
+      setBusy(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface">
+    <div className="min-h-screen flex items-center justify-center bg-surface px-4">
       <div className="bg-white border border-outline-variant rounded-2xl p-10 w-full max-w-sm space-y-5 shadow-lg">
         <div className="text-center">
           <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-3">
             <span className="text-2xl">📊</span>
           </div>
           <h1 className="text-on-surface text-xl font-bold">Admin Dashboard</h1>
-          <p className="text-on-surface-variant text-sm mt-1">Enter your admin key to continue</p>
+          <p className="text-on-surface-variant text-sm mt-1">
+            {signedInAs
+              ? "This account doesn't have admin access."
+              : "Sign in with the authorized Google account to continue."}
+          </p>
         </div>
-        <input
-          type="password"
-          value={value}
-          onChange={(e) => { setValue(e.target.value); setErr(false); }}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-          placeholder="Admin key"
-          className={`field ${err ? "border-red-400 focus:border-red-500" : ""}`}
-        />
-        {err && <p className="text-red-500 text-xs">Key required</p>}
-        <button
-          onClick={submit}
-          className="w-full bg-primary hover:opacity-90 text-on-primary py-3 rounded-xl text-sm font-semibold transition"
-        >
-          Enter Dashboard
-        </button>
+
+        {signedInAs && (
+          <div className="bg-surface-container-low border border-outline-variant rounded-xl px-4 py-3 text-center">
+            <p className="text-on-surface-variant text-xs">Signed in as</p>
+            <p className="text-on-surface text-sm font-medium break-all">{signedInAs}</p>
+          </div>
+        )}
+
+        {error && <p className="text-red-500 text-xs text-center">{error}</p>}
+
+        {signedInAs ? (
+          <button
+            onClick={onSignOut}
+            className="w-full bg-primary hover:opacity-90 text-on-primary py-3 rounded-xl text-sm font-semibold transition"
+          >
+            Sign out and switch account
+          </button>
+        ) : (
+          <button
+            onClick={signIn}
+            disabled={busy}
+            className="w-full bg-primary hover:opacity-90 text-on-primary py-3 rounded-xl text-sm font-semibold transition disabled:opacity-50"
+          >
+            {busy ? "Redirecting…" : "Continue with Google"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -373,16 +403,16 @@ function Loading() {
 
 // ─── Tab: Overview ───────────────────────────────────────────────────────────
 
-function OverviewTab({ adminKey, days }: { adminKey: string; days: string }) {
+function OverviewTab({ days }: { days: string }) {
   const [data, setData] = useState<OverviewData | null>(null);
 
   useEffect(() => {
     const params = days !== "0" ? `?days=${days}` : "";
-    fetch(`${API}/admin/overview${params}`, { headers: { "X-Admin-Key": adminKey } })
+    fetch(`${API}/admin/overview${params}`, { credentials: "include" })
       .then((r) => r.json())
       .then(setData)
       .catch(console.error);
-  }, [adminKey, days]);
+  }, [days]);
 
   if (!data) return <Loading />;
 
@@ -428,16 +458,16 @@ function OverviewTab({ adminKey, days }: { adminKey: string; days: string }) {
 
 // ─── Tab: Quality ─────────────────────────────────────────────────────────────
 
-function QualityTab({ adminKey, days }: { adminKey: string; days: string }) {
+function QualityTab({ days }: { days: string }) {
   const [data, setData] = useState<QualityData | null>(null);
 
   useEffect(() => {
     const params = days !== "0" ? `?days=${days}` : "";
-    fetch(`${API}/admin/quality${params}`, { headers: { "X-Admin-Key": adminKey } })
+    fetch(`${API}/admin/quality${params}`, { credentials: "include" })
       .then((r) => r.json())
       .then(setData)
       .catch(console.error);
-  }, [adminKey, days]);
+  }, [days]);
 
   if (!data) return <Loading />;
 
@@ -532,16 +562,16 @@ function QualityTab({ adminKey, days }: { adminKey: string; days: string }) {
 
 // ─── Tab: Regeneration ───────────────────────────────────────────────────────
 
-function RegenerationTab({ adminKey, days }: { adminKey: string; days: string }) {
+function RegenerationTab({ days }: { days: string }) {
   const [data, setData] = useState<RegenData | null>(null);
 
   useEffect(() => {
     const params = days !== "0" ? `?days=${days}` : "";
-    fetch(`${API}/admin/regeneration${params}`, { headers: { "X-Admin-Key": adminKey } })
+    fetch(`${API}/admin/regeneration${params}`, { credentials: "include" })
       .then((r) => r.json())
       .then(setData)
       .catch(console.error);
-  }, [adminKey, days]);
+  }, [days]);
 
   if (!data) return <Loading />;
 
@@ -690,7 +720,7 @@ function RegenerationTab({ adminKey, days }: { adminKey: string; days: string })
 
 // ─── Tab: Export ─────────────────────────────────────────────────────────────
 
-function ExportTab({ adminKey, days }: { adminKey: string; days: string }) {
+function ExportTab({ days }: { days: string }) {
   const [loading, setLoading] = useState<string | null>(null);
   const [report, setReport] = useState<string | null>(null);
 
@@ -698,7 +728,7 @@ function ExportTab({ adminKey, days }: { adminKey: string; days: string }) {
     setLoading(`${tab}-${fmt}`);
     try {
       const params = new URLSearchParams({ tab, fmt, ...(days !== "0" ? { days } : {}) });
-      const res = await fetch(`${API}/admin/export?${params}`, { headers: { "X-Admin-Key": adminKey } });
+      const res = await fetch(`${API}/admin/export?${params}`, { credentials: "include" });
       const json = await res.json();
       let content: string;
       let filename: string;
@@ -717,19 +747,19 @@ function ExportTab({ adminKey, days }: { adminKey: string; days: string }) {
     } finally {
       setLoading(null);
     }
-  }, [adminKey, days]);
+  }, [days]);
 
   const generateReport = useCallback(async () => {
     setLoading("report");
     try {
       const params = days !== "0" ? `?days=${days}` : "";
-      const res = await fetch(`${API}/admin/thesis-report${params}`, { headers: { "X-Admin-Key": adminKey } });
+      const res = await fetch(`${API}/admin/thesis-report${params}`, { credentials: "include" });
       const json = await res.json();
       setReport(json.report);
     } finally {
       setLoading(null);
     }
-  }, [adminKey, days]);
+  }, [days]);
 
   const downloadReport = () => {
     if (!report) return;
@@ -920,16 +950,16 @@ function CharacterFunnel({ funnel }: { funnel: CharactersData["funnel"] }) {
   );
 }
 
-function CharactersTab({ adminKey, days }: { adminKey: string; days: string }) {
+function CharactersTab({ days }: { days: string }) {
   const [data, setData] = useState<CharactersData | null>(null);
 
   useEffect(() => {
     const params = days !== "0" ? `?days=${days}` : "";
-    fetch(`${API}/admin/characters${params}`, { headers: { "X-Admin-Key": adminKey } })
+    fetch(`${API}/admin/characters${params}`, { credentials: "include" })
       .then((r) => r.json())
       .then(setData)
       .catch(console.error);
-  }, [adminKey, days]);
+  }, [days]);
 
   const downloadCSV = useCallback(() => {
     if (!data) return;
@@ -1160,15 +1190,36 @@ function CharactersTab({ adminKey, days }: { adminKey: string; days: string }) {
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
-type Tab = "overview" | "characters" | "quality" | "regeneration" | "export";
+type Tab = "overview" | "characters" | "quality" | "regeneration" | "sus" | "export";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview",      label: "Overview" },
   { id: "characters",    label: "Characters" },
   { id: "quality",       label: "Quality" },
   { id: "regeneration",  label: "Regeneration" },
+  { id: "sus",           label: "Usability (SUS)" },
   { id: "export",        label: "Export" },
 ];
+
+/**
+ * SUS results. Not date-filtered like the other tabs — a study's responses are a
+ * single fixed cohort, so slicing them by "last 7 days" would only ever hide rows.
+ */
+function SUSTab() {
+  return (
+    <div className="space-y-6">
+      <Section title="System Usability Scale — User Study">
+        <p className="text-on-surface-variant text-sm mb-1">
+          Score 0–100 per participant, recomputed server-side. Benchmarks: ≥85 Excellent · ≥71 Good · ≥51 OK · &lt;51 Poor.
+        </p>
+        <p className="text-on-surface-variant text-xs">
+          Participants take the survey at <span className="font-mono">/sus</span> or from the Mo chatbot.
+        </p>
+      </Section>
+      <SUSResults />
+    </div>
+  );
+}
 
 const DATE_RANGES: { value: DateRange; label: string }[] = [
   { value: "1", label: "Today" },
@@ -1178,33 +1229,29 @@ const DATE_RANGES: { value: DateRange; label: string }[] = [
 ];
 
 export default function AdminDashboardPage() {
-  const [adminKey, setAdminKey] = useState<string | null>(null);
+  const { user, isInitialized, logout } = useAuth();
   const [tab, setTab] = useState<Tab>("overview");
   const [days, setDays] = useState<DateRange>("7");
-  const [authError, setAuthError] = useState(false);
+  // null = still probing. The backend is the authority on who counts as an admin;
+  // the client just asks it and renders the gate on 401/403.
+  const [allowed, setAllowed] = useState<boolean | null>(null);
 
-  const handleAuth = async (key: string) => {
-    try {
-      const res = await fetch(`${API}/admin/overview?days=1`, { headers: { "X-Admin-Key": key } });
-      if (res.status === 403) { setAuthError(true); return; }
-      setAdminKey(key);
-      setAuthError(false);
-    } catch {
-      setAuthError(true);
-    }
-  };
+  useEffect(() => {
+    if (!isInitialized) return;
+    if (!user) { setAllowed(false); return; }
+    let cancelled = false;
+    fetch(`${API}/admin/overview?days=1`, { credentials: "include" })
+      .then((r) => { if (!cancelled) setAllowed(r.ok); })
+      .catch(() => { if (!cancelled) setAllowed(false); });
+    return () => { cancelled = true; };
+  }, [isInitialized, user]);
 
-  if (!adminKey) {
-    return (
-      <div>
-        <AdminAuth onAuth={handleAuth} />
-        {authError && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-50 border border-red-200 text-red-700 px-5 py-3 rounded-xl text-sm shadow-lg font-medium">
-            Invalid admin key. Try again.
-          </div>
-        )}
-      </div>
-    );
+  if (!isInitialized || allowed === null) {
+    return <div className="min-h-screen flex items-center justify-center text-on-surface-variant animate-pulse">Checking access…</div>;
+  }
+
+  if (!allowed) {
+    return <AdminAuth signedInAs={user?.email} onSignOut={logout} />;
   }
 
   return (
@@ -1233,12 +1280,17 @@ export default function AdminDashboardPage() {
                 </button>
               ))}
             </div>
-            <button
-              onClick={() => setAdminKey(null)}
-              className="text-on-surface-variant hover:text-on-surface text-xs font-medium transition"
-            >
-              Sign out
-            </button>
+            <div className="flex items-center gap-2">
+              {user?.email && (
+                <span className="text-on-surface-variant text-xs hidden sm:inline">{user.email}</span>
+              )}
+              <button
+                onClick={logout}
+                className="text-on-surface-variant hover:text-on-surface text-xs font-medium transition"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
         </div>
         {/* Tab bar */}
@@ -1259,11 +1311,12 @@ export default function AdminDashboardPage() {
 
       {/* Body */}
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {tab === "overview"     && <OverviewTab    adminKey={adminKey} days={days} />}
-        {tab === "characters"   && <CharactersTab  adminKey={adminKey} days={days} />}
-        {tab === "quality"      && <QualityTab     adminKey={adminKey} days={days} />}
-        {tab === "regeneration" && <RegenerationTab adminKey={adminKey} days={days} />}
-        {tab === "export"       && <ExportTab      adminKey={adminKey} days={days} />}
+        {tab === "overview"     && <OverviewTab    days={days} />}
+        {tab === "characters"   && <CharactersTab  days={days} />}
+        {tab === "quality"      && <QualityTab     days={days} />}
+        {tab === "regeneration" && <RegenerationTab days={days} />}
+        {tab === "sus"          && <SUSTab />}
+        {tab === "export"       && <ExportTab      days={days} />}
       </div>
     </div>
   );
