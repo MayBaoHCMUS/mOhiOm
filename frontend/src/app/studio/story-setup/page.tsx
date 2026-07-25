@@ -450,7 +450,7 @@ export default function StorySetupPage() {
       <StudioSidebar />
       <StudioTopBar />
 
-      <main className="pt-24 pb-32 px-8 max-w-[1400px] mx-auto ml-[var(--studio-sidebar-width)]">
+      <main className="pt-24 pb-32 px-4 sm:px-8 max-w-[1400px] mx-auto ml-[var(--studio-sidebar-width)]">
 
         {/* ── Page header ── */}
         <header className="mb-10">

@@ -401,7 +401,10 @@ export default function GuideBotWidget() {
         onDrag={(_, info) => {
           dragDistanceRef.current += Math.abs(info.delta.x) + Math.abs(info.delta.y);
         }}
-        onDragEnd={persistPosition}
+        onDragEnd={() => {
+          persistPosition();
+          dragDistanceRef.current = 0;
+        }}
         style={{ x, y, bottom: '1.5rem', right: '1.5rem' }}
         className="absolute pointer-events-auto"
       >

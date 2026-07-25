@@ -32,6 +32,7 @@ import { ChapterDividerDesigner } from '@/components/ChapterDividerDesigner'
 import { PageNumberingSettings } from '@/components/PageNumberingSettings'
 import { WatermarkSettings } from '@/components/WatermarkSettings'
 import { BorderStyleSettings } from '@/components/BorderStyleSettings'
+import DesktopOnlyNotice from '@/components/DesktopOnlyNotice'
 import { applyPageNumbering, DEFAULT_PAGE_NUMBER_CONFIG } from '@/lib/pageNumbering'
 import type { PageNumberConfig } from '@/lib/pageNumbering'
 import { applyWatermark, createWatermark, DEFAULT_WATERMARK_TEMPLATE } from '@/lib/watermark'
@@ -1381,6 +1382,8 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
         />
       ) : !autoLoading && !autoLoadErr && (
         <>
+        <DesktopOnlyNotice title="Switch to a larger screen to edit panels" />
+        <div className="hidden md:flex md:flex-col md:flex-1 md:overflow-hidden">
         {/* Editor top bar — back button + project breadcrumb */}
         <div className="flex items-center gap-2 px-3 h-9 border-b border-outline-variant/20 bg-surface shrink-0">
           <button
@@ -1630,6 +1633,7 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
               <><Download size={15} />Export Comic</>
             )}
           </button>
+        </div>
         </div>
         </>
       )}

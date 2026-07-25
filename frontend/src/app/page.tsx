@@ -106,7 +106,7 @@ function CTASection() {
       <h2 className="relative max-w-xl text-4xl font-black leading-tight tracking-tight text-on-primary md:text-6xl">
         Ready to bring your stories to life?
       </h2>
-      <p className="relative max-w-md text-lg text-on-primary/70">
+      <p className="relative max-w-md text-lg text-white/70">
         Join creators building comics with AI — no drawing skill required.
       </p>
       <Link

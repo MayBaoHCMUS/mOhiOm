@@ -17,7 +17,7 @@ export default function PublishHistoryPage() {
       <main className="ml-[var(--studio-sidebar-width)] pt-24 min-h-screen flex flex-col">
 
         {/* Page header band */}
-        <div style={{ background: '#F8FAFF', borderBottom: '1px solid #E5E7EB', padding: '28px 32px 24px 32px', flexShrink: 0 }}>
+        <div className="px-4 sm:px-8 pt-5 sm:pt-7 pb-5 sm:pb-6" style={{ background: '#F8FAFF', borderBottom: '1px solid #E5E7EB', flexShrink: 0 }}>
           <button
             type="button"
             data-tour="publish-history-back"
@@ -36,7 +36,7 @@ export default function PublishHistoryPage() {
         </div>
 
         {/* Content */}
-        <div className="px-8 py-8 pb-16 flex-1">
+        <div className="px-4 sm:px-8 py-8 pb-16 flex-1">
           <div className="max-w-3xl mx-auto">
             <PublishHistory />
           </div>

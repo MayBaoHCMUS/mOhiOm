@@ -485,6 +485,15 @@ export function AnalyticsDashboard() {
   const [liveStats, setLiveStats] = useState<Map<string, number>>(new Map())
   const [statsLoading, setStatsLoading] = useState(false)
   const [publishApiUrl, setPublishApiUrl] = useState('')
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)')
+    setIsMobile(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
 
   async function loadLiveStats(url: string, records: PublishedComicRecord[]) {
     setStatsLoading(true)
@@ -677,7 +686,7 @@ export function AnalyticsDashboard() {
         {/* ── Zone 2: Overview KPI ── */}
         <SectionHeader title="Overview" subtitle={periodLabel} />
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, padding: '0 32px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 16, padding: isMobile ? '0 16px' : '0 32px' }}>
           <KPICard
             icon={<LayoutGrid size={18} />}
             iconBg="#EFF6FF" iconColor="#2563EB"
@@ -735,7 +744,7 @@ export function AnalyticsDashboard() {
         {/* ── Zone 3: Charts ── */}
 
         {/* Style + Mood side by side */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, margin: '32px 32px 0 32px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16, margin: isMobile ? '32px 16px 0 16px' : '32px 32px 0 32px' }}>
           <div>
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 18, fontWeight: 600, color: '#111827' }}>Style Distribution</div>
@@ -775,7 +784,7 @@ export function AnalyticsDashboard() {
             </button>
           }
         />
-        <div style={{ padding: '0 32px 32px 32px' }}>
+        <div style={{ padding: isMobile ? '0 16px 32px 16px' : '0 32px 32px 32px' }}>
           <ChartCard>
             <ActivityLineChart data={metrics.daily_counts} />
           </ChartCard>

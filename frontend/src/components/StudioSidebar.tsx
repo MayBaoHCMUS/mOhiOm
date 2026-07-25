@@ -29,13 +29,27 @@ const LIBRARY: NavItem[] = [
 // permanently-colored featured card), not plain list-style feature tabs.
 const PILL_NAV_ITEMS: NavItem[] = [...PRE_PRODUCTION, ...POST_PRODUCTION, ...LIBRARY];
 
+const MOBILE_BREAKPOINT = '(max-width: 768px)';
+
 export default function StudioSidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'Creator';
   const initials = fullName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2) || '?';
+
+  // Below the breakpoint the sidebar becomes an off-canvas drawer instead of a
+  // persistent rail — it never reserves layout width, it overlays on top.
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_BREAKPOINT);
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   useEffect(() => {
     const stored = window.localStorage.getItem('studio-sidebar-collapsed');
@@ -43,20 +57,33 @@ export default function StudioSidebar() {
   }, []);
 
   useEffect(() => {
-    const width = isCollapsed ? '5rem' : '16rem';
+    const width = isMobile ? '0px' : isCollapsed ? '5rem' : '16rem';
     document.documentElement.style.setProperty('--studio-sidebar-width', width);
-    window.localStorage.setItem('studio-sidebar-collapsed', String(isCollapsed));
-  }, [isCollapsed]);
+    if (!isMobile) {
+      window.localStorage.setItem('studio-sidebar-collapsed', String(isCollapsed));
+    }
+  }, [isCollapsed, isMobile]);
+
+  // Drawer shouldn't stay open behind the page after navigating.
+  useEffect(() => {
+    setIsMobileOpen(false);
+  }, [pathname]);
 
   // Allows the onboarding spotlight tour to force the sidebar open so link
   // labels/rects are meaningful while it's running.
   useEffect(() => {
-    const handler = () => setIsCollapsed(false);
+    const handler = () => {
+      setIsCollapsed(false);
+      setIsMobileOpen(true);
+    };
     window.addEventListener('studio-sidebar-force-expand', handler);
     return () => window.removeEventListener('studio-sidebar-force-expand', handler);
   }, []);
 
-  const toggleLabel = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  // The drawer always renders in its fully-labeled form — "collapsed" (icon
+  // rail) is a desktop-only density preference, meaningless for a temporary overlay.
+  const effectiveCollapsed = !isMobile && isCollapsed;
+  const toggleLabel = isMobile ? 'Close menu' : isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
 
   const isActive = (href: string) => {
     if (href === '/studio/dashboard') return pathname === href;
@@ -132,13 +159,22 @@ export default function StudioSidebar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCollapsed]);
 
+  // The drawer is hidden (translated off-screen) until opened — resync the
+  // pill once it's actually visible so its geometry is measured correctly.
+  useEffect(() => {
+    if (!isMobileOpen) return;
+    const id = window.setTimeout(() => updatePill(true), 50);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobileOpen]);
+
   // `ownBackground` is for items outside the sliding-pill group (e.g. Home) —
   // they still need their own bg-white highlight since no shared pill sits
   // behind them. Pill-group items only change text color; the pill (a single
   // shared element) supplies the background/shadow, animated between them.
   const navItemClass = (active: boolean, ownBackground = false) =>
     `relative z-10 flex items-center gap-3 rounded-lg transition-colors duration-200 ${
-      isCollapsed ? 'justify-center px-2 py-3' : 'px-4 py-3'
+      effectiveCollapsed ? 'justify-center px-2 py-3' : 'px-4 py-3'
     } ${
       active
         ? `text-primary ${ownBackground ? 'bg-white shadow-sm' : ''}`
@@ -146,7 +182,7 @@ export default function StudioSidebar() {
     }`;
 
   const sectionLabel = (text: string) =>
-    !isCollapsed ? (
+    !effectiveCollapsed ? (
       <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-on-surface-variant/50 px-4 mb-1.5">
         {text}
       </p>
@@ -162,130 +198,157 @@ export default function StudioSidebar() {
           ref={registerItemRef(item.href)}
           className={navItemClass(active)}
           aria-current={active ? 'page' : undefined}
-          title={isCollapsed ? item.label : undefined}
+          title={effectiveCollapsed ? item.label : undefined}
           data-tour={item.tour}
         >
           <span className="material-symbols-outlined">{item.icon}</span>
-          <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>{item.label}</span>
+          <span className={effectiveCollapsed ? 'sr-only' : 'text-sm font-semibold'}>{item.label}</span>
         </Link>
       );
     });
 
   return (
-    <aside
-      className={`h-screen w-[var(--studio-sidebar-width)] fixed left-0 top-0 bg-surface-container-low border-r-0 z-[60] flex flex-col transition-[width] duration-300 ${
-        isCollapsed ? 'px-2 py-4' : 'p-4'
-      }`}
-    >
-      {/* Zone A — Brand + collapse toggle */}
-      <div className={`mb-6 ${isCollapsed ? 'px-1 pt-2' : 'px-2 pt-4'}`}>
-        <div className="flex items-start justify-between">
-          <div className={isCollapsed ? 'flex flex-col items-center gap-1' : ''}>
-            {isCollapsed ? (
-              <Image src="/favicon-icon.png" alt="mOhiOm" width={32} height={32} className="h-8 w-8" />
-            ) : (
-              <Image src="/images/landing/logo-nav.png" alt="mOhiOm" width={160} height={30} className="h-7 w-auto" />
-            )}
-            {!isCollapsed && (
-              <p className="text-xs text-on-surface-variant font-medium tracking-wide mt-1">Creative Hub</p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsCollapsed((prev) => !prev)}
-            aria-label={toggleLabel}
-            title={toggleLabel}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-all"
-          >
-            <span className="material-symbols-outlined text-lg">
-              {isCollapsed ? 'chevron_right' : 'chevron_left'}
-            </span>
-          </button>
-        </div>
-      </div>
+    <>
+      {/* Mobile hamburger toggle — lives outside the <aside> so it's still
+          clickable while the drawer is translated off-screen. */}
+      {isMobile && !isMobileOpen && (
+        <button
+          type="button"
+          onClick={() => setIsMobileOpen(true)}
+          aria-label="Open menu"
+          title="Open menu"
+          className="fixed top-3.5 left-4 z-[59] w-9 h-9 rounded-lg flex items-center justify-center bg-surface-container-lowest border border-outline-variant/40 shadow-sm text-on-surface-variant hover:text-primary transition-colors"
+        >
+          <span className="material-symbols-outlined text-xl">menu</span>
+        </button>
+      )}
 
-      {/* Home — standalone, outside the pill group, so it keeps its own highlight */}
-      <Link
-        href="/studio/dashboard"
-        className={navItemClass(isActive('/studio/dashboard'), true)}
-        aria-current={isActive('/studio/dashboard') ? 'page' : undefined}
-        title={isCollapsed ? 'Home' : undefined}
+      {/* Backdrop — dims the page and closes the drawer on tap-outside. */}
+      {isMobile && isMobileOpen && (
+        <div
+          className="fixed inset-0 z-[55] bg-black/40"
+          onClick={() => setIsMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`h-screen fixed left-0 top-0 bg-surface-container-low border-r-0 z-[60] flex flex-col transition-transform duration-300 ${
+          isMobile
+            ? `w-64 ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}`
+            : 'w-[var(--studio-sidebar-width)] translate-x-0 transition-[width]'
+        } ${effectiveCollapsed ? 'px-2 py-4' : 'p-4'}`}
       >
-        <span className="material-symbols-outlined">home</span>
-        <span className={isCollapsed ? 'sr-only' : 'text-sm font-semibold'}>Home</span>
-      </Link>
-
-      {/* Zone B — Navigation */}
-      <nav className="flex-1 overflow-y-auto mt-2 space-y-5 hide-scrollbar">
-
-        {/* Comic Pipeline — blue gradient featured card */}
-        <div>
-          <Link
-            href="/studio"
-            className={`flex items-center gap-3 rounded-xl overflow-hidden bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-blue-500 hover:to-indigo-500 transition-all duration-200 ${
-              isCollapsed ? 'justify-center px-2 py-3' : 'px-4 py-3'
-            }`}
-            aria-current={isActive('/studio') ? 'page' : undefined}
-            title={isCollapsed ? 'Comic Pipeline' : undefined}
-            data-tour="comic-pipeline"
-          >
-            <span className="material-symbols-outlined">movie_creation</span>
-            {isCollapsed ? (
-              <span className="sr-only">Comic Pipeline</span>
-            ) : (
-              <span className="flex flex-col">
-                <span className="text-sm font-semibold">Comic Pipeline</span>
-                <span className="text-[11px] text-white/70">6-step AI comic generation</span>
+        {/* Zone A — Brand + collapse/close toggle */}
+        <div className={`mb-6 ${effectiveCollapsed ? 'px-1 pt-2' : 'px-2 pt-4'}`}>
+          <div className="flex items-start justify-between">
+            <div className={effectiveCollapsed ? 'flex flex-col items-center gap-1' : ''}>
+              {effectiveCollapsed ? (
+                <Image src="/favicon-icon.png" alt="mOhiOm" width={32} height={32} className="h-8 w-8" />
+              ) : (
+                <Image src="/images/landing/logo-nav.png" alt="mOhiOm" width={160} height={30} className="h-7 w-auto" />
+              )}
+              {!effectiveCollapsed && (
+                <p className="text-xs text-on-surface-variant font-medium tracking-wide mt-1">Creative Hub</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => (isMobile ? setIsMobileOpen(false) : setIsCollapsed((prev) => !prev))}
+              aria-label={toggleLabel}
+              title={toggleLabel}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-all"
+            >
+              <span className="material-symbols-outlined text-lg">
+                {isMobile ? 'close' : isCollapsed ? 'chevron_right' : 'chevron_left'}
               </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Home — standalone, outside the pill group, so it keeps its own highlight */}
+        <Link
+          href="/studio/dashboard"
+          className={navItemClass(isActive('/studio/dashboard'), true)}
+          aria-current={isActive('/studio/dashboard') ? 'page' : undefined}
+          title={effectiveCollapsed ? 'Home' : undefined}
+        >
+          <span className="material-symbols-outlined">home</span>
+          <span className={effectiveCollapsed ? 'sr-only' : 'text-sm font-semibold'}>Home</span>
+        </Link>
+
+        {/* Zone B — Navigation */}
+        <nav className="flex-1 overflow-y-auto mt-2 space-y-5 hide-scrollbar">
+
+          {/* Comic Pipeline — blue gradient featured card */}
+          <div>
+            <Link
+              href="/studio"
+              className={`flex items-center gap-3 rounded-xl overflow-hidden bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-blue-500 hover:to-indigo-500 transition-all duration-200 ${
+                effectiveCollapsed ? 'justify-center px-2 py-3' : 'px-4 py-3'
+              }`}
+              aria-current={isActive('/studio') ? 'page' : undefined}
+              title={effectiveCollapsed ? 'Comic Pipeline' : undefined}
+              data-tour="comic-pipeline"
+            >
+              <span className="material-symbols-outlined">movie_creation</span>
+              {effectiveCollapsed ? (
+                <span className="sr-only">Comic Pipeline</span>
+              ) : (
+                <span className="flex flex-col">
+                  <span className="text-sm font-semibold">Comic Pipeline</span>
+                  <span className="text-[11px] text-white/70">6-step AI comic generation</span>
+                </span>
+              )}
+            </Link>
+          </div>
+
+          {/* Feature nav — sliding pill glides behind whichever item is active */}
+          <div ref={pillGroupRef} className="relative space-y-5">
+            <div ref={pillRef} className="t-sidebar-pill absolute left-0 right-0 top-0 h-0 rounded-lg bg-white shadow-sm opacity-0 pointer-events-none z-0" />
+
+            {/* PRE-PRODUCTION */}
+            <div>
+              {sectionLabel('Pre-Production')}
+              <div className="space-y-0.5">{navItems(PRE_PRODUCTION)}</div>
+            </div>
+
+            {/* POST-PRODUCTION */}
+            <div>
+              {sectionLabel('Post-Production')}
+              <div className="space-y-0.5">{navItems(POST_PRODUCTION)}</div>
+            </div>
+
+            {/* LIBRARY */}
+            <div>
+              {sectionLabel('Library')}
+              <div className="space-y-0.5">{navItems(LIBRARY)}</div>
+            </div>
+          </div>
+
+        </nav>
+
+        {/* Zone C — Bottom: user row (links to settings) */}
+        <div className="mt-auto pt-4">
+          <Link
+            href="/settings"
+            className={`flex items-center gap-3 border-t border-outline-variant/30 hover:bg-surface-container-high rounded-xl transition-colors ${
+              effectiveCollapsed ? 'px-0 py-4 justify-center' : 'px-2 py-4'
+            }`}
+            title={effectiveCollapsed ? fullName : undefined}
+          >
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary-container flex items-center justify-center font-black text-white text-sm flex-shrink-0">
+              {initials}
+            </div>
+            {!effectiveCollapsed && (
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-bold truncate">{fullName}</span>
+                <span className="text-xs text-on-surface-variant truncate">{user?.email ?? 'Free Tier'}</span>
+              </div>
             )}
           </Link>
         </div>
-
-        {/* Feature nav — sliding pill glides behind whichever item is active */}
-        <div ref={pillGroupRef} className="relative space-y-5">
-          <div ref={pillRef} className="t-sidebar-pill absolute left-0 right-0 top-0 h-0 rounded-lg bg-white shadow-sm opacity-0 pointer-events-none z-0" />
-
-          {/* PRE-PRODUCTION */}
-          <div>
-            {sectionLabel('Pre-Production')}
-            <div className="space-y-0.5">{navItems(PRE_PRODUCTION)}</div>
-          </div>
-
-          {/* POST-PRODUCTION */}
-          <div>
-            {sectionLabel('Post-Production')}
-            <div className="space-y-0.5">{navItems(POST_PRODUCTION)}</div>
-          </div>
-
-          {/* LIBRARY */}
-          <div>
-            {sectionLabel('Library')}
-            <div className="space-y-0.5">{navItems(LIBRARY)}</div>
-          </div>
-        </div>
-
-      </nav>
-
-      {/* Zone C — Bottom: user row (links to settings) */}
-      <div className="mt-auto pt-4">
-        <Link
-          href="/settings"
-          className={`flex items-center gap-3 border-t border-outline-variant/30 hover:bg-surface-container-high rounded-xl transition-colors ${
-            isCollapsed ? 'px-0 py-4 justify-center' : 'px-2 py-4'
-          }`}
-          title={isCollapsed ? fullName : undefined}
-        >
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary-container flex items-center justify-center font-black text-white text-sm flex-shrink-0">
-            {initials}
-          </div>
-          {!isCollapsed && (
-            <div className="flex flex-col min-w-0">
-              <span className="text-sm font-bold truncate">{fullName}</span>
-              <span className="text-xs text-on-surface-variant truncate">{user?.email ?? 'Free Tier'}</span>
-            </div>
-          )}
-        </Link>
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }

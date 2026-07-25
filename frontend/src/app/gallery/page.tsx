@@ -38,7 +38,7 @@ export default function GalleryPage() {
         </nav>
       )}
 
-      <main className={isAuthed ? 'ml-[var(--studio-sidebar-width)] pt-24 px-8 pb-12 min-h-screen' : 'px-8 py-8 pb-12 min-h-screen'}>
+      <main className={isAuthed ? 'ml-[var(--studio-sidebar-width)] pt-24 px-4 sm:px-8 pb-12 min-h-screen' : 'px-4 sm:px-8 py-8 pb-12 min-h-screen'}>
         <Suspense fallback={null}>
           <GalleryContent />
         </Suspense>

@@ -6,6 +6,7 @@ import type { Step4Panel } from '@/context/ComicGenerationContext';
 import { comicLayoutApi, bubblesApi } from '@/services/api';
 import type { ConfirmLayoutResponse, SuggestLayoutResponse, BubbleDataPayload } from '@/services/api';
 import type { SingleBubble, PanelBubbles, BubbleType } from '@/components/studio-steps/DialogueEditor';
+import DesktopOnlyNotice from '@/components/DesktopOnlyNotice';
 
 // ── Page dimensions (match backend) ─────────────────────────────────────────
 const PAGE_W = 1240;
@@ -865,14 +866,14 @@ function BottomActionBar({
   return (
     <div className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
       style={{ left: 'var(--studio-sidebar-width)' }}>
-      <div className="px-10 py-4 max-w-6xl mx-auto flex items-center justify-between gap-4">
+      <div className="px-4 sm:px-10 py-4 max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
         <button type="button" onClick={onBack}
           className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors">
           <span className="material-symbols-outlined text-base">arrow_back</span>
           Previous Step
         </button>
         <span className={`text-sm font-medium ${allDone ? 'text-emerald-600' : 'text-gray-400'}`}>{subtitle}</span>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {allDone ? (
             <button type="button" onClick={onExport}
               className="flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold bg-emerald-600 text-white hover:scale-105 transition-transform">
@@ -1066,8 +1067,10 @@ export default function Step4CanvasEditor() {
 
   return (
     <>
+      <DesktopOnlyNotice title="Switch to a larger screen to edit panels" body="The panel canvas editor needs more room — layout, drawers, and tools work best on a tablet or desktop." />
+
       {/* Canvas editor card — normal flow inside the page frame */}
-      <div className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white"
+      <div className="hidden md:flex md:flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white"
         style={{ height: 'calc(100vh - 460px)', minHeight: 500 }}>
 
         <PageTabNav

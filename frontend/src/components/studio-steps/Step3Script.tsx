@@ -971,7 +971,7 @@ function ScriptBottomBar({
         </div>
       )}
 
-      <div className="px-10 py-4 max-w-6xl mx-auto flex items-center justify-between gap-4">
+      <div className="px-4 sm:px-10 py-4 max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
         {/* Left: Previous Step */}
         <button
           type="button"
@@ -1020,7 +1020,7 @@ function ScriptBottomBar({
         </div>
 
         {/* Right: action buttons */}
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-3">
           {error && !isGenerating && (
             <button
               type="button"
@@ -1484,10 +1484,10 @@ export default function Step3Script() {
           </div>
 
           {/* Two-column: nav + live content */}
-          <div className="flex gap-4">
+          <div className="flex flex-col md:flex-row gap-4">
             {navOpen && liveChaptersAsParsed.length > 0 && (
-              <div className="flex-shrink-0 w-[280px]">
-                <div className="sticky top-20 rounded-xl border border-outline-variant/10 bg-surface-container-lowest overflow-hidden flex flex-col" style={{ height: 'calc(100vh - 12rem)' }}>
+              <div className="flex-shrink-0 w-full md:w-[280px]">
+                <div className="md:sticky md:top-20 rounded-xl border border-outline-variant/10 bg-surface-container-lowest overflow-hidden flex flex-col h-[50vh] md:h-[calc(100vh-12rem)]">
                   <NavPanel
                     chapters={liveChaptersAsParsed}
                     filterMode="all"
@@ -1637,10 +1637,10 @@ export default function Step3Script() {
           </div>
 
           {/* Two-column: Nav + Content */}
-          <div className="flex gap-4">
+          <div className="flex flex-col md:flex-row gap-4">
             {navOpen && (
-              <div className="flex-shrink-0 w-[280px]">
-                <div className="sticky top-20 rounded-xl border border-outline-variant/10 bg-surface-container-lowest overflow-hidden flex flex-col" style={{ height: 'calc(100vh - 12rem)' }}>
+              <div className="flex-shrink-0 w-full md:w-[280px]">
+                <div className="md:sticky md:top-20 rounded-xl border border-outline-variant/10 bg-surface-container-lowest overflow-hidden flex flex-col h-[50vh] md:h-[calc(100vh-12rem)]">
                   <NavPanel chapters={chapters} filterMode={filterMode} onFilterChange={setFilterMode} isScriptApproved={isApproved} activePageKey={expandedPageKey} onScrollTo={scrollToPanel} />
                 </div>
               </div>
