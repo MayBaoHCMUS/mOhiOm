@@ -15,11 +15,14 @@ import {
   IDLE_QUIPS,
   PROTIPS,
   LANDING_IDLE_QUIPS,
+  menuQuickReplies,
   type QuickReply,
 } from '@/content/guideBotScript';
 import SpotlightTour, { type TourStep } from '@/components/onboarding/SpotlightTour';
 import ContextualTip from '@/components/onboarding/ContextualTip';
 import { PAGE_TOUR_STEPS } from '@/content/pageTourSteps';
+import { SUSChatCard } from '@/components/SUSChatCard';
+import { getOrCreateLocalParticipantId, getSUSGrade } from '@/lib/susScoring';
 
 const SEEN_STORAGE_KEY = 'mohiom-guidebot-seen';
 const POSITION_STORAGE_KEY = 'mohiom-guidebot-position';
@@ -99,6 +102,9 @@ interface ChatMessage {
   id: string;
   from: 'bot' | 'user';
   text: string;
+  // 'sus_survey' messages render the usability survey card instead of a text bubble.
+  type?: 'text' | 'sus_survey';
+  meta?: { participantId?: string; taskId?: string };
 }
 
 const TYPEWRITER_CHARS_PER_TICK = 2;
@@ -323,6 +329,8 @@ export default function GuideBotWidget() {
 
   const currentMenuId = menuHistory[menuHistory.length - 1];
   const currentMenu = GUIDE_MENUS[currentMenuId] ?? GUIDE_MENUS[ROOT_MENU_ID];
+  // Stays true after submitting too — the completed card keeps its place in the thread.
+  const surveyShown = messages.some((m) => m.type === 'sus_survey');
 
   const handleQuickReply = (reply: QuickReply) => {
     const botMsgId = `${reply.id}-bot-${messages.length}`;
@@ -355,6 +363,18 @@ export default function GuideBotWidget() {
         setActiveTour({ steps, index: 0 });
         setOpen(false);
       }
+    } else if (reply.action.type === 'sus-survey') {
+      const surveyMsgId = `sus-survey-${messages.length + 1}`;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: surveyMsgId,
+          from: 'bot',
+          text: '',
+          type: 'sus_survey',
+          meta: { participantId: getOrCreateLocalParticipantId() },
+        },
+      ]);
     } else if (reply.action.type === 'highlight') {
       setActiveTour(null);
       setActiveTip({
@@ -365,6 +385,20 @@ export default function GuideBotWidget() {
         position: reply.action.position,
       });
     }
+  };
+
+  const handleSUSComplete = (score: number) => {
+    const grade = getSUSGrade(score);
+    const doneMsgId = `sus-done-${messages.length + 1}`;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: doneMsgId,
+        from: 'bot',
+        text: `Thank you! Your score: ${score}/100 — ${grade.label}. That really helps.`,
+      },
+    ]);
+    setStreamingMessageId(doneMsgId);
   };
 
   const handleBack = () => {
@@ -453,7 +487,16 @@ export default function GuideBotWidget() {
               </div>
 
               <div ref={threadRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-                {messages.map((message) => (
+                {messages.map((message) => message.type === 'sus_survey' ? (
+                  // Rendered outside the chat bubble — the card brings its own surface and border.
+                  <div key={message.id} className="flex justify-start">
+                    <SUSChatCard
+                      participantId={message.meta?.participantId ?? 'anonymous'}
+                      taskId={message.meta?.taskId}
+                      onComplete={handleSUSComplete}
+                    />
+                  </div>
+                ) : (
                   <div key={message.id} className={`flex ${message.from === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div
                       className={`max-w-[85%] rounded-xl px-3.5 py-2 text-[13px] leading-snug ${
@@ -479,7 +522,7 @@ export default function GuideBotWidget() {
               </div>
 
               <div className="flex flex-wrap gap-2 px-4 pb-3 flex-shrink-0">
-                {currentMenu.quickReplies.map((reply) => {
+                {menuQuickReplies(currentMenu, surveyShown).map((reply) => {
                   const Icon = reply.icon;
                   return (
                     <button

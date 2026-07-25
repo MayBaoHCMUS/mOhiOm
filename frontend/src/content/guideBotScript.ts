@@ -11,6 +11,7 @@ import {
   Settings,
   Compass,
   Images,
+  ClipboardCheck,
 } from 'lucide-react';
 
 export type QuickReplyAction =
@@ -18,7 +19,8 @@ export type QuickReplyAction =
   | { type: 'start-tour' }
   | { type: 'submenu'; menuId: string }
   | { type: 'page-tour' }
-  | { type: 'highlight'; target: string; title: string; position?: 'top' | 'bottom' | 'left' | 'right' };
+  | { type: 'highlight'; target: string; title: string; position?: 'top' | 'bottom' | 'left' | 'right' }
+  | { type: 'sus-survey' };
 
 export interface QuickReply {
   id: string;
@@ -35,6 +37,33 @@ export interface GuideMenu {
 }
 
 export const ROOT_MENU_ID = 'root';
+
+/**
+ * Offered at the bottom of *every* menu rather than being written into each one.
+ *
+ * Study participants spend their time under /studio, where `resetForContext()`
+ * pins the menu to the route's own menu and never reaches the root — so a survey
+ * entry that lived only in the root menu was unreachable for exactly the people
+ * meant to take it. Append it via `menuQuickReplies()` instead.
+ */
+export const SUS_QUICK_REPLY: QuickReply = {
+  id: 'sus-feedback',
+  label: 'Rate your experience',
+  icon: ClipboardCheck,
+  response: 'Thanks for helping out! Ten quick statements — just rate how much you agree with each.',
+  action: { type: 'sus-survey' },
+};
+
+/**
+ * A menu's own replies, plus the survey entry unless a card is already in the thread.
+ *
+ * Hiding it once a card is showing stops a participant tapping it twice and stacking
+ * a second card — the server log is append-only, so each extra submission would land
+ * as its own row to be filtered out at analysis time.
+ */
+export function menuQuickReplies(menu: GuideMenu, surveyShown = false): QuickReply[] {
+  return surveyShown ? menu.quickReplies : [...menu.quickReplies, SUS_QUICK_REPLY];
+}
 
 export function pickRandom<T>(items: T[], exclude?: T): T {
   const pool = items.length > 1 ? items.filter((item) => item !== exclude) : items;

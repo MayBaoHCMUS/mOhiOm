@@ -1,18 +1,12 @@
 """Admin analytics endpoints — aggregated data for thesis evaluation dashboard."""
 
-import secrets
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from app.database import mongo_db
-from app.config import settings
+from app.deps import require_admin_user
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-
-
-def _require_admin(x_admin_key: Optional[str]) -> None:
-    if not x_admin_key or not secrets.compare_digest(x_admin_key, settings.ADMIN_SECRET_KEY):
-        raise HTTPException(status_code=403, detail="Admin access required")
 
 
 def _date_filter(days: Optional[int]) -> dict:
@@ -43,9 +37,8 @@ def _users_col():
 @router.get("/overview")
 def get_overview(
     days: Optional[int] = Query(None),
-    x_admin_key: Optional[str] = Header(None),
+    _admin=Depends(require_admin_user),
 ):
-    _require_admin(x_admin_key)
     df = _date_filter(days)
     proj_df = {k: v for k, v in df.items()} if df else {}
 
@@ -138,9 +131,8 @@ def get_overview(
 @router.get("/quality")
 def get_quality(
     days: Optional[int] = Query(None),
-    x_admin_key: Optional[str] = Header(None),
+    _admin=Depends(require_admin_user),
 ):
-    _require_admin(x_admin_key)
     df = _date_filter(days)
 
     # Rating overview
@@ -243,9 +235,8 @@ def get_quality(
 @router.get("/regeneration")
 def get_regeneration(
     days: Optional[int] = Query(None),
-    x_admin_key: Optional[str] = Header(None),
+    _admin=Depends(require_admin_user),
 ):
-    _require_admin(x_admin_key)
     df = _date_filter(days)
 
     # Overview cards
@@ -349,9 +340,8 @@ def export_data(
     tab: str = Query("overview"),
     fmt: str = Query("json"),
     days: Optional[int] = Query(None),
-    x_admin_key: Optional[str] = Header(None),
+    _admin=Depends(require_admin_user),
 ):
-    _require_admin(x_admin_key)
     df = _date_filter(days)
 
     if tab == "panel_ratings":
@@ -382,9 +372,8 @@ def export_data(
 @router.get("/thesis-report")
 def get_thesis_report(
     days: Optional[int] = Query(None),
-    x_admin_key: Optional[str] = Header(None),
+    _admin=Depends(require_admin_user),
 ):
-    _require_admin(x_admin_key)
     # Reuse overview and quality data
     from fastapi import Request
     df = _date_filter(days)
@@ -493,9 +482,8 @@ All users participated voluntarily; ratings are self-reported.
 @router.get("/characters")
 def get_characters(
     days: Optional[int] = Query(None),
-    x_admin_key: Optional[str] = Header(None),
+    _admin=Depends(require_admin_user),
 ):
-    _require_admin(x_admin_key)
     df = _date_filter(days)
 
     char_col   = mongo_db.get_database()["character_ratings"]
