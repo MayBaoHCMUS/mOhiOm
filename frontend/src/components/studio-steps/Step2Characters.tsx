@@ -2804,7 +2804,7 @@ export default function Step2Characters() {
       >
         {/* Review warning — Design Sheets tab only */}
         {showReviewWarning && unreviewedSections.length > 0 && activeTab === 'designs' && (
-          <div className="px-10 py-3 max-w-6xl mx-auto border-b border-gray-100">
+          <div className="px-4 sm:px-10 py-3 max-w-6xl mx-auto border-b border-gray-100">
             <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
               <span className="material-symbols-outlined text-amber-500 text-sm mt-0.5">warning</span>
               <div className="flex-1 min-w-0">
@@ -2837,7 +2837,7 @@ export default function Step2Characters() {
 
         {/* Review warning — References tab only */}
         {showCharReviewWarning && unreviewedChars.length > 0 && activeTab === 'references' && (
-          <div className="px-10 py-3 max-w-6xl mx-auto border-b border-gray-100">
+          <div className="px-4 sm:px-10 py-3 max-w-6xl mx-auto border-b border-gray-100">
             <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
               <span className="material-symbols-outlined text-amber-500 text-sm mt-0.5">warning</span>
               <div className="flex-1 min-w-0">
@@ -2870,7 +2870,7 @@ export default function Step2Characters() {
 
         {/* Live character-generation progress — persists across tabs while generating */}
         {isImageGenerating && (
-          <div className="px-10 py-3 max-w-6xl mx-auto border-b border-gray-100">
+          <div className="px-4 sm:px-10 py-3 max-w-6xl mx-auto border-b border-gray-100">
             <GenerationStatusBar
               progress={charGenProgress}
               label="Generating character references"
@@ -2903,14 +2903,14 @@ export default function Step2Characters() {
         )}
 
         {/* Button row */}
-        <div className="px-10 py-4 max-w-6xl mx-auto">
+        <div className="px-4 sm:px-10 py-4 max-w-6xl mx-auto">
           {isGenerating ? (
             <div className="flex items-center justify-center gap-2 text-sm text-on-surface-variant">
               <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 animate-pulse" />
               Generating designs… please wait
             </div>
           ) : state === 1 ? (
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setActiveStep(1)}
@@ -2930,7 +2930,7 @@ export default function Step2Characters() {
               </button>
             </div>
           ) : (
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setActiveStep(1)}
@@ -2940,7 +2940,7 @@ export default function Step2Characters() {
                 Previous Step
               </button>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 {/* Character completion dots — Reference Images tab */}
                 {activeTab === 'references' && characters.length > 0 && (
                   <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-container border border-outline-variant/10">

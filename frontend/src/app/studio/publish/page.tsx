@@ -291,7 +291,7 @@ function SocialPackModal({ projectId, title, onClose, getPages }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-surface rounded-2xl shadow-2xl p-6 flex flex-col gap-5 w-[480px] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-surface rounded-2xl shadow-2xl p-6 flex flex-col gap-5 w-[480px] max-w-[calc(100vw-32px)] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -1173,13 +1173,13 @@ export default function PublishPage() {
       <main className="ml-[var(--studio-sidebar-width)] pt-24 min-h-screen flex flex-col">
 
         {/* FIX 10: #F8FAFF page header band */}
-        <div style={{ background: '#F8FAFF', borderBottom: '1px solid #E5E7EB', padding: '28px 32px 24px 32px', flexShrink: 0 }}>
+        <div className="px-4 sm:px-8 pt-5 sm:pt-7 pb-5 sm:pb-6" style={{ background: '#F8FAFF', borderBottom: '1px solid #E5E7EB', flexShrink: 0 }}>
           <h1 style={{ fontSize: 28, fontWeight: 700, color: '#111827', margin: 0, marginBottom: 4, lineHeight: 1.2 }}>Publish</h1>
           <p style={{ fontSize: 13, color: '#6B7280', margin: 0 }}>Share your comics as a public web reader link</p>
         </div>
 
         {/* Content */}
-        <div className="px-8 py-8 pb-16 flex-1">
+        <div className="px-4 sm:px-8 py-8 pb-16 flex-1">
           <div className="max-w-4xl mx-auto">
 
             {/* Server URL — read-only status; configured on the Settings page */}

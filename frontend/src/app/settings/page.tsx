@@ -451,7 +451,7 @@ export default function SettingsPage() {
       <StudioSidebar />
       <StudioTopBar />
 
-      <main className="ml-[var(--studio-sidebar-width)] pt-28 pb-20 px-8">
+      <main className="ml-[var(--studio-sidebar-width)] pt-28 pb-20 px-4 sm:px-8">
         <div className="max-w-3xl mx-auto space-y-8">
 
           {/* ── Page header ── */}
@@ -496,8 +496,8 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="px-8 pb-8">
-              <div className="flex items-end justify-between -mt-10 mb-6">
+            <div className="px-4 sm:px-8 pb-8">
+              <div className="flex flex-wrap items-end justify-between gap-4 -mt-10 mb-6">
                 <div className="w-20 h-20 rounded-full border-4 border-surface-container-lowest overflow-hidden bg-gradient-to-br from-primary to-primary-container flex items-center justify-center">
                   {isLoading ? (
                     <div className="w-full h-full animate-pulse bg-surface-container-high" />
@@ -508,7 +508,7 @@ export default function SettingsPage() {
                   )}
                 </div>
                 {/* Live stats */}
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
                   <StatChip icon="auto_stories" label="Projects"   value={stats?.project_count   ?? null} loading={statsLoading} />
                   <StatChip icon="face_6"        label="Characters" value={stats?.character_count ?? null} loading={statsLoading} />
                   <StatChip icon="photo_library" label="Panels"    value={stats?.panel_count     ?? null} loading={statsLoading} />

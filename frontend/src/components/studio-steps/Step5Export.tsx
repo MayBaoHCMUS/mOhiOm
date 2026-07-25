@@ -293,7 +293,7 @@ export default function Step5Export() {
           {/* Download section */}
           <div className="space-y-4">
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Download</p>
-            <div className="grid grid-cols-3 gap-3" data-tour="step5-export-options-group">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" data-tour="step5-export-options-group">
               <button type="button"
                 onClick={() => runExport('pdf', () => exportPdf(includeMetadata, panelBubbles))}
                 disabled={!hasImages || exportStatus === 'exporting'}
@@ -458,7 +458,7 @@ export default function Step5Export() {
       {/* ── Bottom bar ── */}
       <div className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
         style={{ left: 'var(--studio-sidebar-width)' }}>
-        <div className="px-10 max-w-6xl mx-auto flex items-center justify-between gap-4" style={{ height: 56 }}>
+        <div className="px-4 sm:px-10 max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3" style={{ minHeight: 56 }}>
           <button type="button"
             onClick={() => setActiveStep(4)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors flex-shrink-0">

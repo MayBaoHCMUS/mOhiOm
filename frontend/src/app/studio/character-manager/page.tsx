@@ -467,7 +467,7 @@ export default function CharacterManagerPage() {
     <div className="min-h-screen bg-surface text-on-surface flex overflow-hidden">
       <StudioSidebar />
       <StudioTopBar />
-      <main className="flex-1 ml-[var(--studio-sidebar-width)] h-screen overflow-y-auto px-10 pt-24 pb-12">
+      <main className="flex-1 ml-[var(--studio-sidebar-width)] h-screen overflow-y-auto px-4 sm:px-10 pt-24 pb-48 md:pb-12">
         <div className="max-w-7xl mx-auto space-y-8">
 
           {/* Header */}
@@ -476,7 +476,7 @@ export default function CharacterManagerPage() {
               <h2 className="text-4xl font-extrabold tracking-tighter text-on-surface">Character Manager</h2>
               <p className="text-on-surface-variant mt-1">Maintain identity and consistency across all panels.</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               {/* Search */}
               <div className="flex items-center gap-2 bg-surface-container-low px-4 py-2 rounded-full text-sm">
                 <span className="material-symbols-outlined text-outline text-base">search</span>
@@ -484,7 +484,7 @@ export default function CharacterManagerPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search characters…"
-                  className="bg-transparent outline-none text-on-surface placeholder-outline w-36"
+                  className="bg-transparent outline-none text-on-surface placeholder-outline w-28 sm:w-36"
                 />
               </div>
               {/* Tabs */}

@@ -167,11 +167,11 @@ export default function StudioDashboardPage() {
     <div className="min-h-screen bg-surface text-on-surface">
       <StudioSidebar />
       <StudioTopBar />
-      <main className="ml-[var(--studio-sidebar-width)] pt-24 px-8 pb-12 min-h-screen">
+      <main className="ml-[var(--studio-sidebar-width)] pt-24 px-4 sm:px-8 pb-12 min-h-screen">
 
         {/* Hero banner */}
         <section className="mb-12">
-          <div className="bg-surface-container-low rounded-[2rem] p-10 relative overflow-hidden flex items-center">
+          <div className="bg-surface-container-low rounded-[2rem] p-5 sm:p-10 relative overflow-hidden flex items-center">
             <div className="relative z-10 max-w-2xl">
               <h2 className="text-4xl font-extrabold text-on-surface mb-4 leading-tight">Welcome back, Storyteller.</h2>
               <p className="text-on-surface-variant text-lg leading-relaxed mb-6">

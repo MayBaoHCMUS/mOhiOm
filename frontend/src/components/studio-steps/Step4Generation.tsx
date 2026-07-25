@@ -14,6 +14,7 @@ import { LayoutTemplatePicker } from '@/components/studio-steps/LayoutTemplatePi
 import { findAllCharacterMatches, type CharacterReference } from '@/lib/characterReference';
 import { SegmentedProgressBar } from '@/components/SegmentedProgressBar';
 import { GenerationStatusBar, type GenerationProgress } from '@/components/GenerationStatusBar';
+import DesktopOnlyNotice from '@/components/DesktopOnlyNotice';
 
 type State = 1 | 2 | 3 | 4 | 5;
 
@@ -1401,7 +1402,9 @@ export default function Step4Generation() {
       {activeStep4Tab === 'layout' && (
         comicPageMode === 'panel' && (state === 3 || state === 4 || state === 5) && step4PanelsByPage.length > 0 ? (
           /* ── PANEL CANVAS STUDIO ── */
-          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 560 }}>
+          <>
+            <DesktopOnlyNotice title="Switch to a larger screen to lay out panels" body="The panel canvas studio needs more room — drag-and-drop layout tools work best on a tablet or desktop." />
+            <div className="hidden md:flex md:flex-col" style={{ minHeight: 560 }}>
             {/* Page navigation bar */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', borderBottom: '1px solid #E5E7EB', background: '#F8F9FA', flexShrink: 0 }}>
               <button type="button"
@@ -1468,7 +1471,8 @@ export default function Step4Generation() {
                 </div>
               );
             })()}
-          </div>
+            </div>
+          </>
         ) : (
         <div className="space-y-6">
 
@@ -1814,7 +1818,7 @@ export default function Step4Generation() {
       <div className="fixed bottom-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
         style={{ left: 'var(--studio-sidebar-width)' }}>
         {(isImageGenerating || !!panelAutoRetryInfo) && (
-          <div className="px-10 py-3 max-w-6xl mx-auto border-b border-gray-200">
+          <div className="px-4 sm:px-10 py-3 max-w-6xl mx-auto border-b border-gray-200">
             <GenerationStatusBar
               progress={panelGenProgress}
               label={
@@ -1839,7 +1843,7 @@ export default function Step4Generation() {
             />
           </div>
         )}
-        <div className="px-10 max-w-6xl mx-auto flex items-center justify-between gap-4" style={{ height: 56 }}>
+        <div className="px-4 sm:px-10 max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3" style={{ minHeight: 56 }}>
           <button type="button"
             onClick={() => {
               if (activeStep4Tab === 'layout') setActiveStep(3);

@@ -1089,7 +1089,7 @@ export default function Step1Analysis() {
       >
         {/* Review warning — inline, above button row */}
         {showReviewWarning && unreviewedSections.length > 0 && (
-          <div className="px-10 py-3 max-w-6xl mx-auto border-b border-gray-100">
+          <div className="px-4 sm:px-10 py-3 max-w-6xl mx-auto border-b border-gray-100">
             <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
               <span className="material-symbols-outlined text-amber-500 text-sm mt-0.5">warning</span>
               <div className="flex-1 min-w-0">
@@ -1121,7 +1121,7 @@ export default function Step1Analysis() {
         )}
 
         {/* Button row */}
-        <div className="px-10 py-4 max-w-6xl mx-auto">
+        <div className="px-4 sm:px-10 py-4 max-w-6xl mx-auto">
           {isGenerating ? (
             // Streaming — centered status, no nav actions
             <div className="flex items-center justify-center gap-2 text-sm text-on-surface-variant">
@@ -1130,7 +1130,7 @@ export default function Step1Analysis() {
             </div>
           ) : state === 1 ? (
             // Idle — Previous Step (left) + Generate Analysis (right)
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setActiveStep(0)}
@@ -1153,7 +1153,7 @@ export default function Step1Analysis() {
             </div>
           ) : (
             // Post-stream — Previous Step (left) | Regenerate + Approve grouped (right)
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setActiveStep(0)}
@@ -1163,7 +1163,7 @@ export default function Step1Analysis() {
                 Previous Step
               </button>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={handleRegenClick}

@@ -56,7 +56,7 @@ export async function POST(request: Request) {
         ? await response.json()
         : await response.text();
       return NextResponse.json(
-        { error: "Upstream error.", status: response.status, details: errorBody },
+        { error: "The server is not available. Please try again later.", status: response.status, details: errorBody },
         { status: response.status },
       );
     }
@@ -72,6 +72,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, body: await response.text() });
   } catch (error) {
     console.error("[manga-proxy] fetch failed:", error);
-    return NextResponse.json({ error: "Failed to reach manga API." }, { status: 502 });
+    return NextResponse.json({ error: "The server is not available. Please try again later." }, { status: 502 });
   }
 }

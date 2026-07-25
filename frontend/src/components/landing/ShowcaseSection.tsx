@@ -1,4 +1,4 @@
-import { Sparkles, Star, MessageCircle } from 'lucide-react';
+import { Sparkles, Star, MessageCircle, User } from 'lucide-react';
 
 interface ShowcaseItem {
   quote: string;
@@ -50,7 +50,9 @@ export function ShowcaseSection() {
             </span>
             <p className="mb-6 text-lg font-bold leading-snug text-on-surface">{quote}</p>
             <div className="mt-auto flex items-center gap-3">
-              <div className="h-10 w-10 flex-shrink-0 rounded-full bg-surface-container-high" />
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-surface-container-high">
+                <User size={18} strokeWidth={1.75} className="text-on-surface-variant" />
+              </div>
               <p className="text-sm font-bold text-on-surface-variant">{persona}</p>
             </div>
           </div>

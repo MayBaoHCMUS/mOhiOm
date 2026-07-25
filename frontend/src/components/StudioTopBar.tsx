@@ -58,7 +58,7 @@ export default function StudioTopBar({ leftOffset = true }: StudioTopBarProps) {
     <header
       className={`fixed top-0 right-0 ${
         leftOffset ? 'left-[var(--studio-sidebar-width)]' : 'left-0'
-      } z-50 glass-nav flex items-center justify-between px-8 h-16 text-on-surface shadow-[0_4px_20px_rgba(0,0,0,0.03)]`}
+      } z-50 glass-nav flex items-center justify-between pl-16 sm:pl-8 pr-4 sm:pr-8 h-16 text-on-surface shadow-[0_4px_20px_rgba(0,0,0,0.03)]`}
     >
       <div className="flex items-center">
         {isTaskRunning && <StepLoader label={loaderLabel} words={loaderWords} />}
