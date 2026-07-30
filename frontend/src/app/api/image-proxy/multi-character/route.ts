@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 
 const REQUEST_TIMEOUT_MS = 180000; // OmniGen2 is a larger model, often slower than SD1.5/SDXL
-export const maxDuration = 60;
+// Must stay above REQUEST_TIMEOUT_MS (+ R2 upload time) so the AbortController
+// above is what times the request out — a shorter maxDuration makes Vercel kill
+// the function first, which drops the tunnel connection to the GPU server and
+// returns an opaque FUNCTION_INVOCATION_TIMEOUT instead of our 504. 300s is the
+// platform maximum on every plan with fluid compute.
+export const maxDuration = 300;
 const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 // Uploads base64 image data to the FastAPI backend, which stores it in
