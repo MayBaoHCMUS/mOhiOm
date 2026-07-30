@@ -11,7 +11,7 @@ import { publishComic, buildShareUrl, getComicStats, unpublishComic } from '@/li
 import { recomposePages, DEFAULT_BORDER_CONFIG } from '@/lib/borderComposer';
 import type { BorderConfig } from '@/lib/borderComposer';
 import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
-import { getPanelBoxWidth } from '@/components/studio-steps/DialogueEditor';
+import { getPanelBoxAspectRatio, getPanelBoxWidth } from '@/components/studio-steps/DialogueEditor';
 import { downloadSocialPack, PLATFORMS } from '@/lib/socialPack';
 import { recordPublish } from '@/lib/publishHistory';
 import { getImageApiUrl, getMultiCharacterApiUrl, getEnableMultiCharacterMode } from '@/lib/imageApiUrl';
@@ -994,29 +994,34 @@ export default function PublishPage() {
         const allLayouts: string[] = [];
         for (const pageNum of Array.from(byPage.keys()).sort((a, b) => a - b)) {
           const panelList = byPage.get(pageNum)!.sort((a, b) => a.panelNumber - b.panelNumber);
-          const layoutName = savedLayouts[String(pageNum)] ?? LAYOUT_FALLBACKS[panelList.length] ?? 'single';
-          const imgs = await Promise.all(panelList.map(async ({ id }, idx) => {
+          // Drop panels with no saved image BEFORE picking the layout and compositing.
+          // recomposePages fills layout cells from this array in order, so `idx` has to
+          // be the slot the panel actually lands in, and the layout used for the bubble
+          // geometry has to be the one the page is assembled with. Filtering afterwards
+          // desynced both. buildExportPages already filters first — this mirrors it.
+          const drawable = panelList.filter(({ id }) => !!imageMap[id]);
+          if (!drawable.length) continue;
+          const layoutName = savedLayouts[String(pageNum)] ?? LAYOUT_FALLBACKS[drawable.length] ?? 'single';
+          const imgs = await Promise.all(drawable.map(async ({ id }, idx) => {
             const rawUrl = imageMap[id];
-            if (!rawUrl) return '';
             const bubbles = bubbleMap[id];
             if (bubbles?.length) {
               try {
-                const blob = await compositePanelToBlob(rawUrl, bubbles as Parameters<typeof compositePanelToBlob>[1], undefined, getPanelBoxWidth(layoutName, idx));
+                const blob = await compositePanelToBlob(rawUrl, bubbles as Parameters<typeof compositePanelToBlob>[1], getPanelBoxAspectRatio(layoutName, idx), getPanelBoxWidth(layoutName, idx));
                 return await new Promise<string>((resolve, reject) => {
                   const reader = new FileReader();
                   reader.onload = () => resolve(reader.result as string);
                   reader.onerror = reject;
                   reader.readAsDataURL(blob);
                 });
-              } catch { /* fallback to raw */ }
+              } catch (err) {
+                console.warn(`[publish] Bubble compositing failed for panel ${id} (page ${pageNum}) — publishing it without its ${bubbles.length} bubble(s).`, err);
+              }
             }
             return rawUrl;
           }));
-          const validImgs = imgs.filter(Boolean);
-          if (validImgs.length > 0) {
-            allPanelImages.push(validImgs);
-            allLayouts.push(savedLayouts[String(pageNum)] ?? LAYOUT_FALLBACKS[validImgs.length] ?? 'single');
-          }
+          allPanelImages.push(imgs);
+          allLayouts.push(layoutName);
         }
 
         if (!allPanelImages.length) {
@@ -1141,29 +1146,30 @@ export default function PublishPage() {
       const allLayouts: string[] = [];
       for (const pageNum of Array.from(byPage.keys()).sort((a, b) => a - b)) {
         const panelList = byPage.get(pageNum)!.sort((a, b) => a.panelNumber - b.panelNumber);
-        const layoutName = savedLayouts[String(pageNum)] ?? LAYOUT_FALLBACKS[panelList.length] ?? 'single';
-        const imgs = await Promise.all(panelList.map(async ({ id }, idx) => {
+        // Same filter-first ordering as the publish path above — see the note there.
+        const drawable = panelList.filter(({ id }) => !!imageMap[id]);
+        if (!drawable.length) continue;
+        const layoutName = savedLayouts[String(pageNum)] ?? LAYOUT_FALLBACKS[drawable.length] ?? 'single';
+        const imgs = await Promise.all(drawable.map(async ({ id }, idx) => {
           const rawUrl = imageMap[id];
-          if (!rawUrl) return '';
           const bubbles = bubbleMap[id];
           if (bubbles?.length) {
             try {
-              const blob = await compositePanelToBlob(rawUrl, bubbles as Parameters<typeof compositePanelToBlob>[1], undefined, getPanelBoxWidth(layoutName, idx));
+              const blob = await compositePanelToBlob(rawUrl, bubbles as Parameters<typeof compositePanelToBlob>[1], getPanelBoxAspectRatio(layoutName, idx), getPanelBoxWidth(layoutName, idx));
               return await new Promise<string>((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => resolve(reader.result as string);
                 reader.onerror = reject;
                 reader.readAsDataURL(blob);
               });
-            } catch { /* fallback to raw */ }
+            } catch (err) {
+              console.warn(`[publish] Bubble compositing failed for panel ${id} (page ${pageNum}) — publishing it without its ${bubbles.length} bubble(s).`, err);
+            }
           }
           return rawUrl;
         }));
-        const validImgs = imgs.filter(Boolean);
-        if (validImgs.length > 0) {
-          allPanelImages.push(validImgs);
-          allLayouts.push(savedLayouts[String(pageNum)] ?? LAYOUT_FALLBACKS[validImgs.length] ?? 'single');
-        }
+        allPanelImages.push(imgs);
+        allLayouts.push(layoutName);
       }
       if (!allPanelImages.length) throw new Error('No page images found');
       const b64Pages = await recomposePages(allPanelImages, allLayouts, borderConfig);

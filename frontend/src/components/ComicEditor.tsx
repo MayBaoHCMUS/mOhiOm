@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { useComicGeneration } from '@/context/ComicGenerationContext'
 import type { Step4Panel, Step4PanelState } from '@/context/ComicGenerationContext'
-import { BASE_PAGE_W, MangaBubbleSVG, getPanelBoxWidth } from '@/components/studio-steps/DialogueEditor'
+import { BASE_PAGE_W, MangaBubbleSVG, getPanelBoxAspectRatio, getPanelBoxWidth } from '@/components/studio-steps/DialogueEditor'
 import type { PanelBubbles } from '@/components/studio-steps/DialogueEditor'
 import {
   LAYOUT_PANEL_RECTS,
@@ -1130,7 +1130,7 @@ export function ComicEditor({ initialProjectId, initialTitle }: ComicEditorProps
               const bubbles = panelBubbles[panel.id]
               if (!bubbles?.length) return url
               try {
-                const blob = await compositePanelToBlob(url, bubbles, undefined, getPanelBoxWidth(layoutName, i))
+                const blob = await compositePanelToBlob(url, bubbles, getPanelBoxAspectRatio(layoutName, i), getPanelBoxWidth(layoutName, i))
                 return await new Promise<string>((resolve, reject) => {
                   const reader = new FileReader()
                   reader.onload = () => resolve(reader.result as string)
