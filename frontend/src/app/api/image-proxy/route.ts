@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
 const REQUEST_TIMEOUT_MS = 120000;
-export const maxDuration = 60;
+// Kept above REQUEST_TIMEOUT_MS so the AbortController below is what times the
+// request out, rather than Vercel killing the function mid-generation. See the
+// same note in ./multi-character/route.ts.
+export const maxDuration = 300;
 const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 // Uploads base64 image data to the FastAPI backend, which stores it in
