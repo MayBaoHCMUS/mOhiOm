@@ -17,21 +17,39 @@ export interface PublishStats {
   published_at: number
 }
 
-/** All Kaggle server calls go through /api/manga-proxy to avoid CORS. */
+/**
+ * Calls the comic-reader server directly from the browser rather than through
+ * /api/manga-proxy.
+ *
+ * The proxy existed only to dodge CORS, but the server already sends
+ * `Access-Control-Allow-Origin` for the app's origin (verified: the preflight
+ * for POST /publish returns 200 with allow-methods incl. POST). Routing through
+ * Vercel instead capped the request at Vercel's 4.5 MB body limit, and a
+ * publish payload carries every page as base64 — so any comic over ~3.3 MB of
+ * PNG failed with 413 FUNCTION_PAYLOAD_TOO_LARGE. Going direct removes the cap
+ * entirely; the browser talks to the tunnel with no serverless hop in between.
+ */
 async function proxy<T>(
   apiUrl: string,
   path:   string,
   method: string      = 'POST',
   payload?: unknown,
 ): Promise<T> {
-  const res = await fetch('/api/manga-proxy', {
-    method:  'POST',
+  const res = await fetch(`${apiUrl.replace(/\/$/, '')}${path}`, {
+    method,
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ apiUrl, path, method, payload }),
+    ...(payload !== undefined && method !== 'GET' ? { body: JSON.stringify(payload) } : {}),
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { error?: string }
-    throw new Error(err.error ?? `Proxy error ${res.status}`)
+    // FastAPI errors come back as { detail }, not the { error } the proxy used.
+    const err = await res.json().catch(() => ({})) as { detail?: unknown; error?: string }
+    const detail = typeof err.detail === 'string' ? err.detail : undefined
+    throw new Error(detail ?? err.error ?? `Comic server error ${res.status}`)
+  }
+  // DELETE and any non-JSON success (e.g. 204) have nothing to parse — the old
+  // proxy collapsed those to { ok: true }, so keep callers seeing the same thing.
+  if (res.status === 204 || !(res.headers.get('content-type') ?? '').includes('application/json')) {
+    return { ok: true } as T
   }
   return res.json() as Promise<T>
 }
