@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Image from 'next/image';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
 import { useOnboardingContext } from '@/context/OnboardingContext';
+import { useNotifications } from '@/context/NotificationContext';
 import type { Step4Panel, PanelVersion } from '@/context/ComicGenerationContext';
 import { bubblesApi, comicLayoutApi } from '@/services/api';
 import type { BubbleDataPayload } from '@/services/api';
@@ -1025,6 +1026,7 @@ export default function Step4Generation() {
     resetComicPageMode,
   } = useComicGeneration();
   const { markChecklistItem } = useOnboardingContext();
+  const { addNotification } = useNotifications();
 
   const [isPaused, setIsPaused] = useState(false);
   const [showFinishErrorModal, setShowFinishErrorModal] = useState(false);
@@ -1104,11 +1106,26 @@ export default function Step4Generation() {
     }
     setPanelBubbles((prev) => ({ ...prev, ...bubbles }));
     if (projectId) {
-      for (const [panelId, panelBubbleList] of Object.entries(bubbles)) {
-        bubblesApi.upsert(panelId, projectId, panelBubbleList as BubbleDataPayload[]).catch(() => {});
-      }
+      const entries = Object.entries(bubbles);
+      // Report failures instead of swallowing them: an unsaved auto-import looks
+      // fine in this editor but silently exports without dialogue in Step 5.
+      void Promise.allSettled(
+        entries.map(([panelId, panelBubbleList]) =>
+          bubblesApi.upsert(panelId, projectId, panelBubbleList as BubbleDataPayload[])
+        )
+      ).then((results) => {
+        const failed = results.filter((r) => r.status === 'rejected').length;
+        if (!failed) return;
+        console.warn(`[autoImportDialogue] ${failed}/${entries.length} panel bubble saves failed`, results);
+        addNotification({
+          title: 'Dialogue not fully saved',
+          message: `${failed} of ${entries.length} panels could not be saved to the server. They will be missing from the export — try Auto-import again.`,
+          variant: 'error',
+          projectId,
+        });
+      });
     }
-  }, [step4PanelsByPage, projectId]);
+  }, [step4PanelsByPage, projectId, addNotification]);
 
   const handleSuggestLayout = useCallback(async (pageNumber: number, panels: Step4Panel[]) => {
     setLayoutSuggestLoading((prev) => ({ ...prev, [pageNumber]: true }));
@@ -1732,9 +1749,11 @@ export default function Step4Generation() {
           comicPageMode={comicPageMode}
           onSaveBubbles={(panelId, bubbles) => {
             setPanelBubbles((prev) => ({ ...prev, [panelId]: bubbles }));
-            if (projectId) {
-              bubblesApi.upsert(panelId, projectId, bubbles as BubbleDataPayload[]).catch(() => {});
-            }
+            if (!projectId) return;
+            // Returned (not swallowed) so DialogueEditor's save indicator reflects
+            // the server write — a dropped write here is invisible at export time,
+            // since Step 5 reads bubbles only from MongoDB.
+            return bubblesApi.upsert(panelId, projectId, bubbles as BubbleDataPayload[]).then(() => undefined);
           }}
           onExport={() => { handleApprove(4); setActiveStep(5); }}
           onAutoImport={autoImportDialogue}

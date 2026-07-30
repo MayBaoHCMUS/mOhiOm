@@ -14,10 +14,12 @@ import { compositePanelToBlob } from '@/lib/bubbles/exportComposite';
 import { getPanelBoxWidth } from '@/components/studio-steps/DialogueEditor';
 import { downloadSocialPack, PLATFORMS } from '@/lib/socialPack';
 import { recordPublish } from '@/lib/publishHistory';
-import { getImageApiUrl } from '@/lib/imageApiUrl';
+import { getImageApiUrl, getMultiCharacterApiUrl, getEnableMultiCharacterMode } from '@/lib/imageApiUrl';
+import { useBackendHealth } from '@/hooks/useBackendHealth';
+import ImageModelPicker from '@/components/ImageModelPicker';
 import { useOnboardingContext } from '@/context/OnboardingContext';
 import {
-  AlertTriangle, CheckCircle2, ChevronDown, Eye, EyeOff, ExternalLink,
+  AlertTriangle, ChevronDown, Eye, EyeOff, ExternalLink,
   MoreHorizontal, RefreshCw, X,
 } from 'lucide-react';
 
@@ -855,7 +857,9 @@ function ComicCard({
 // ── Publish Page ──────────────────────────────────────────────────────
 export default function PublishPage() {
   const { markChecklistItem } = useOnboardingContext();
-  const [apiUrl, setApiUrl] = useState('');
+  const [imageModel, setImageModel] = useState<'default' | 'omni'>('default');
+  const [sdUrl, setSdUrl] = useState('');
+  const [omniUrl, setOmniUrl] = useState('');
   const [projects, setProjects] = useState<CloudProjectListItem[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [galleryTogglingId, setGalleryTogglingId] = useState<string | null>(null);
@@ -869,8 +873,16 @@ export default function PublishPage() {
   const pagesCache = useRef<Map<string, string[]>>(new Map());
 
   useEffect(() => {
-    setApiUrl(getImageApiUrl());
+    setSdUrl(getImageApiUrl());
+    setOmniUrl(getMultiCharacterApiUrl());
+    setImageModel(getEnableMultiCharacterMode() ? 'omni' : 'default');
   }, []);
+
+  // The server that hosts the published reader — both backends expose /publish
+  // and /r/{id}, so switching here changes where new comics get published.
+  const apiUrl = imageModel === 'omni' ? omniUrl : sdUrl;
+  const sdHealth = useBackendHealth(sdUrl);
+  const omniHealth = useBackendHealth(omniUrl);
 
   useEffect(() => {
     setLoadingProjects(true);
@@ -1182,27 +1194,32 @@ export default function PublishPage() {
         <div className="px-4 sm:px-8 py-8 pb-16 flex-1">
           <div className="max-w-4xl mx-auto">
 
-            {/* Server URL — read-only status; configured on the Settings page */}
-            {apiUrl ? (
-              <div className="flex items-center gap-2.5 h-10 px-4 bg-emerald-50 border border-emerald-200 rounded-xl mb-8">
-                <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
-                <span className="text-[13px] font-semibold text-emerald-700">Server connected</span>
-                <span className="text-[12px] text-on-surface-variant truncate max-w-[320px]">
-                  · {apiUrl}
-                </span>
-                <Link href="/settings" className="ml-auto text-[12px] text-primary hover:underline whitespace-nowrap shrink-0">
-                  Change →
-                </Link>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2.5 h-10 px-4 bg-amber-50 border border-amber-200 rounded-xl mb-8">
-                <AlertTriangle size={15} className="text-amber-600 shrink-0" />
-                <span className="text-[13px] font-semibold text-amber-700">No web reader server configured</span>
-                <Link href="/settings" className="ml-auto text-[12px] text-primary hover:underline whitespace-nowrap shrink-0">
-                  Configure in Settings →
-                </Link>
-              </div>
-            )}
+            {/* Web reader server — same model picker as Step 1 */}
+            <div className="max-w-md mb-8">
+              <ImageModelPicker
+                value={imageModel}
+                onChange={setImageModel}
+                omniConfigured={!!omniUrl}
+                defaultHealth={sdHealth.status}
+                omniHealth={omniHealth.status}
+                onRecheck={() => { sdHealth.recheck(); omniHealth.recheck(); }}
+                label="Web Reader Server"
+                hint={
+                  apiUrl
+                    ? `Comics you publish from here are hosted on ${apiUrl}. Links already published stay on the server they were published to.`
+                    : 'No server configured — set one in Settings before publishing.'
+                }
+              />
+              {!apiUrl && (
+                <div className="flex items-center gap-2.5 h-10 px-4 mt-2 bg-amber-50 border border-amber-200 rounded-xl">
+                  <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                  <span className="text-[13px] font-semibold text-amber-700">No web reader server configured</span>
+                  <Link href="/settings" className="ml-auto text-[12px] text-primary hover:underline whitespace-nowrap shrink-0">
+                    Configure in Settings →
+                  </Link>
+                </div>
+              )}
+            </div>
 
             {/* Comics */}
             {loadingProjects ? (

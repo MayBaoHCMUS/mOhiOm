@@ -1,10 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { projectsApi } from '@/services/api';
 import type { CharacterSummary, CloudProjectListItem } from '@/services/api';
-import { getImageApiUrl } from '@/lib/imageApiUrl';
+import {
+  getImageApiUrl,
+  getMultiCharacterApiUrl,
+  getEnableMultiCharacterMode,
+  setEnableMultiCharacterMode,
+} from '@/lib/imageApiUrl';
+import { useBackendHealth } from '@/hooks/useBackendHealth';
+import ImageModelPicker from '@/components/ImageModelPicker';
 import ContextualTip from '@/components/onboarding/ContextualTip';
 import { ATTRIBUTE_CATEGORIES, STYLES, createEmptyAttributeState, type AttributeKey, type AttributeState } from '@/components/character/characterOptions';
 import AttributePillPicker from '@/components/character/AttributePillPicker';
@@ -23,11 +29,30 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-async function callImageProxy(apiUrl: string, prompt: string, style?: string): Promise<string> {
-  const res = await fetch('/api/image-proxy', {
+async function callImageProxy(
+  apiUrl: string,
+  prompt: string,
+  style?: string,
+  model: 'default' | 'omni' = 'default',
+): Promise<string> {
+  // Omni has its own endpoint contract and proxy route. No saved character
+  // references exist yet at creation time, so character_names stays empty.
+  const endpoint = model === 'omni' ? '/api/image-proxy/multi-character' : '/api/image-proxy';
+  const body = model === 'omni'
+    ? {
+        url: apiUrl,
+        story_id: 'character-library',
+        scene_prompt: prompt,
+        negative_prompt: 'lowres, bad anatomy, deformed',
+        character_names: [],
+        ...(style && { style: style.toLowerCase() }),
+      }
+    : { url: apiUrl, scene_prompt: prompt, negative_prompt: 'lowres, bad anatomy, deformed', ...(style && { style: style.toLowerCase() }) };
+
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: apiUrl, scene_prompt: prompt, negative_prompt: 'lowres, bad anatomy, deformed', ...(style && { style: style.toLowerCase() }) }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
@@ -210,7 +235,9 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
   const [method, setMethod] = useState<Method>('describe');
   const [name, setName] = useState('');
   const [projectId, setProjectId] = useState(defaultProjectId ?? '');
-  const [apiUrl, setApiUrl] = useState('');
+  const [imageModel, setImageModel] = useState<'default' | 'omni'>('default');
+  const [omniUrl, setOmniUrl] = useState('');
+  const [sdUrl, setSdUrl] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -233,12 +260,24 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
     setProjectId(defaultProjectId ?? '');
   }, [defaultProjectId]);
 
-  // Read API URL from the shared image-api-url setting
+  // Read both backend URLs and the shared model choice (same localStorage flag
+  // the Settings page and Step 1 write, so the selection stays consistent).
   useEffect(() => {
     if (!isOpen) return;
-    const stored = getImageApiUrl();
-    if (stored) setApiUrl(stored);
+    setSdUrl(getImageApiUrl());
+    setOmniUrl(getMultiCharacterApiUrl());
+    setImageModel(getEnableMultiCharacterMode() ? 'omni' : 'default');
   }, [isOpen]);
+
+  const apiUrl = imageModel === 'omni' ? omniUrl : sdUrl;
+  const sdHealth = useBackendHealth(isOpen ? sdUrl : null);
+  const omniHealth = useBackendHealth(isOpen ? omniUrl : null);
+
+  const handleModelChange = useCallback((v: 'default' | 'omni') => {
+    setImageModel(v);
+    setEnableMultiCharacterMode(v === 'omni');
+    setPreviewUrl(null);   // a preview from the other backend is no longer what Save would store
+  }, []);
 
   // Reset on close
   const reset = useCallback(() => {
@@ -280,7 +319,7 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
   const handleGenerate = async () => {
     if (!canGenerate) { setError('Fill in a description and Image API URL first.'); return; }
     setError(null); setGenerating(true);
-    try { setPreviewUrl(await callImageProxy(apiUrl.trim(), effectivePrompt, effectiveStyle || undefined)); }
+    try { setPreviewUrl(await callImageProxy(apiUrl.trim(), effectivePrompt, effectiveStyle || undefined, imageModel)); }
     catch (e) { setError(e instanceof Error ? e.message : 'Generation failed.'); }
     finally { setGenerating(false); }
   };
@@ -337,7 +376,9 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
         <div className="flex flex-1 overflow-hidden">
 
           {/* Left: configuration */}
-          <div className="flex-1 flex flex-col overflow-y-auto px-8 py-6 space-y-6 border-r border-outline-variant/20">
+          {/* pb-10: breathing room under the last control (the model picker) so it
+              never sits flush against the panel edge when scrolled to the bottom */}
+          <div className="flex-1 flex flex-col overflow-y-auto px-8 pt-6 pb-10 space-y-6 border-r border-outline-variant/20">
 
             {/* Method selector */}
             <div className="grid grid-cols-3 gap-3">
@@ -376,20 +417,18 @@ export default function CreateCharacterModal({ isOpen, onClose, onCreated, proje
               />
             )}
 
-            {/* API URL (generation methods only) — fixed, matches the read-only field in Settings */}
+            {/* Model picker (generation methods only) — same control as Step 1 */}
             {method !== 'image' && (
               <div>
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold tracking-wider text-on-surface-variant uppercase">Image API URL</label>
-                  <Link href="/settings" className="text-[11px] font-semibold text-primary hover:underline">
-                    Manage in Settings →
-                  </Link>
-                </div>
-                <input
-                  value={apiUrl}
-                  disabled
-                  readOnly
-                  className="field mt-1.5 font-mono text-sm opacity-60 cursor-not-allowed"
+                <ImageModelPicker
+                  value={imageModel}
+                  onChange={handleModelChange}
+                  disabled={generating}
+                  omniConfigured={!!omniUrl}
+                  defaultHealth={sdHealth.status}
+                  omniHealth={omniHealth.status}
+                  onRecheck={() => { sdHealth.recheck(); omniHealth.recheck(); }}
+                  hint={`Generates this character on ${apiUrl || 'the selected server'}.`}
                 />
                 {effectivePrompt && (
                   <p className="mt-2 text-[11px] text-outline leading-relaxed line-clamp-2">

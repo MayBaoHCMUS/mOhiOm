@@ -63,6 +63,9 @@ export default function Step5Export() {
 
   const [panelBubbles, setPanelBubbles] = useState<Record<string, PanelBubbles>>({});
   const bubblesLoadedRef = useRef(false);
+  // Bubbles are fetched from MongoDB after mount; exporting before that lands
+  // ships every page without dialogue, so gate the export buttons on it.
+  const [bubblesLoading, setBubblesLoading] = useState(true);
 
   const [comicRating, setComicRating] = useState<{ stars: number; positive: string; negative: string } | null>(null);
   const [exportStars, setExportStars] = useState(0);
@@ -102,7 +105,8 @@ export default function Step5Export() {
 
   // Load saved bubbles from MongoDB
   useEffect(() => {
-    if (!projectId || bubblesLoadedRef.current) return;
+    if (!projectId) { setBubblesLoading(false); return; }
+    if (bubblesLoadedRef.current) return;
     bubblesLoadedRef.current = true;
     bubblesApi.getForComic(projectId).then((res) => {
       const map: Record<string, PanelBubbles> = {};
@@ -112,7 +116,13 @@ export default function Step5Export() {
       if (Object.keys(map).length > 0) {
         setPanelBubbles((prev) => ({ ...map, ...prev }));
       }
-    }).catch(() => {});
+    }).catch((err) => {
+      // Let the user export anyway rather than trapping them, but say why the
+      // result may be missing dialogue.
+      console.warn('[Step5Export] Failed to load saved bubbles — export may be missing dialogue', err);
+    }).finally(() => {
+      setBubblesLoading(false);
+    });
   }, [projectId]);
 
   const handleRatingSubmit = useCallback(async (stars: number, positive: string, negative: string) => {
@@ -202,6 +212,10 @@ export default function Step5Export() {
     Object.values(step4.data?.panelStates ?? {}).some(
       (s) => (s as Step4PanelState).status === 'success' && (s as Step4PanelState).imageUrl
     );
+
+  // Also blocks while saved bubbles are still loading — exporting in that window
+  // silently produces a comic with no dialogue on any page.
+  const exportBlocked = !hasImages || exportStatus === 'exporting' || bubblesLoading;
 
   const pageCount = step4PanelsByPage.length
 
@@ -293,12 +307,18 @@ export default function Step5Export() {
           {/* Download section */}
           <div className="space-y-4">
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Download</p>
+            {bubblesLoading && (
+              <p className="flex items-center gap-2 text-xs text-on-surface-variant">
+                <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin flex-none" />
+                Loading saved dialogue — exporting now would leave it out.
+              </p>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" data-tour="step5-export-options-group">
               <button type="button"
                 onClick={() => runExport('pdf', () => exportPdf(includeMetadata, panelBubbles))}
-                disabled={!hasImages || exportStatus === 'exporting'}
+                disabled={exportBlocked}
                 className={`text-left p-4 rounded-2xl border-2 transition-all ${
-                  !hasImages || exportStatus === 'exporting'
+                  exportBlocked
                     ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
                     : 'border-gray-200 hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
                 }`}>
@@ -313,9 +333,9 @@ export default function Step5Export() {
               </button>
               <button type="button"
                 onClick={() => runExport('print-pdf', () => exportPrintPdf(includeMetadata, panelBubbles))}
-                disabled={!hasImages || exportStatus === 'exporting'}
+                disabled={exportBlocked}
                 className={`text-left p-4 rounded-2xl border-2 transition-all ${
-                  !hasImages || exportStatus === 'exporting'
+                  exportBlocked
                     ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
                     : 'border-gray-200 hover:border-indigo-400/40 hover:bg-indigo-50/50 cursor-pointer'
                 }`}>
@@ -330,9 +350,9 @@ export default function Step5Export() {
               </button>
               <button type="button"
                 onClick={() => runExport('zip', () => exportZip(includeMetadata, panelBubbles))}
-                disabled={!hasImages || exportStatus === 'exporting'}
+                disabled={exportBlocked}
                 className={`text-left p-4 rounded-2xl border-2 transition-all ${
-                  !hasImages || exportStatus === 'exporting'
+                  exportBlocked
                     ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
                     : 'border-gray-200 hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
                 }`}>
@@ -347,9 +367,9 @@ export default function Step5Export() {
               </button>
               <button type="button"
                 onClick={() => runExport('epub', () => exportEpub(includeMetadata, panelBubbles))}
-                disabled={!hasImages || exportStatus === 'exporting'}
+                disabled={exportBlocked}
                 className={`text-left p-4 rounded-2xl border-2 transition-all ${
-                  !hasImages || exportStatus === 'exporting'
+                  exportBlocked
                     ? 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
                     : 'border-gray-200 hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
                 }`}>
@@ -375,7 +395,7 @@ export default function Step5Export() {
                 const hasBubbles = Object.values(panelBubbles).some(bs =>
                   bs.some(b => b.bubbleType !== 'none' && (b.dialogue?.trim() ?? '') !== '' && b.dialogue?.toUpperCase().trim() !== 'NONE')
                 );
-                const disabled = !hasPanelsWithImages || exportingDialogue;
+                const disabled = !hasPanelsWithImages || exportingDialogue || bubblesLoading;
                 return (
                   <button type="button" onClick={handleExportWithDialogue} disabled={disabled}
                     className={`col-span-3 flex items-start gap-3 p-4 rounded-2xl border-2 transition-all text-left ${
