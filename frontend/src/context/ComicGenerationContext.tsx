@@ -3452,6 +3452,10 @@ export function ComicGenerationProvider({
     const allPanelImages: string[][] = [];
     const allLayouts: string[] = [];
     const pageNumbers: number[] = [];
+    // Panels whose bubble compositing failed. They still export (as the raw
+    // image), but silently dropping their dialogue is indistinguishable from
+    // "this panel had no dialogue" — so collect them and warn afterwards.
+    const bubbleCompositeFailures: { panelId: string; pageNumber: number }[] = [];
 
     for (const [pageNumber, panelList] of sortedByPage) {
       const sorted = [...panelList].sort((a, b) => a.panelNumber - b.panelNumber);
@@ -3475,7 +3479,17 @@ export function ComicGenerationProvider({
             const refCellWidth = getPanelBoxWidth(layoutName, idx);
             const blob = await compositePanelToBlob(url, bubbles, targetAspectRatio, refCellWidth);
             return URL.createObjectURL(blob);
-          } catch { /* fallback to raw image */ }
+          } catch (err) {
+            // Most common cause: loadImage() sets crossOrigin='anonymous', so a
+            // panel image served without CORS headers (or a stale cached
+            // response from before CORS was configured) rejects here.
+            console.warn(
+              `[buildExportPages] Bubble compositing failed for panel ${id} (page ${pageNumber}) — ` +
+              `exporting the raw image without its ${bubbles.length} bubble(s).`,
+              { url, error: err }
+            );
+            bubbleCompositeFailures.push({ panelId: id, pageNumber });
+          }
         }
         return url;
       }));
@@ -3486,6 +3500,19 @@ export function ComicGenerationProvider({
     }
 
     if (!allPanelImages.length) return [];
+
+    if (bubbleCompositeFailures.length) {
+      const pages = Array.from(new Set(bubbleCompositeFailures.map((f) => f.pageNumber))).sort((a, b) => a - b);
+      addNotification({
+        title: 'Some dialogue missing from export',
+        message:
+          `${bubbleCompositeFailures.length} panel${bubbleCompositeFailures.length === 1 ? '' : 's'} on page ` +
+          `${pages.join(', ')} exported without dialogue because the panel image could not be read. ` +
+          `Try a hard refresh (Ctrl+Shift+R) and export again.`,
+        variant: 'partial',
+        projectId,
+      });
+    }
 
     // Collect any object URLs we created for composited panels so we can revoke them after
     const blobUrls = allPanelImages.flat().filter(u => u.startsWith('blob:'));

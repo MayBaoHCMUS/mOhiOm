@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useComicGeneration } from '@/context/ComicGenerationContext';
+import { useNotifications } from '@/context/NotificationContext';
 import type { Step4Panel } from '@/context/ComicGenerationContext';
 import { comicLayoutApi, bubblesApi } from '@/services/api';
 import type { ConfirmLayoutResponse, SuggestLayoutResponse, BubbleDataPayload } from '@/services/api';
@@ -924,6 +925,7 @@ export default function Step4CanvasEditor() {
 
   const [panelBubbles, setPanelBubbles] = useState<Record<string, PanelBubbles>>({});
   const bubblesLoadedRef = useRef(false);
+  const { addNotification } = useNotifications();
 
   const [dialogueBannerDismissed, setDialogueBannerDismissed] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState<null | 'layout' | 'generation' | 'script'>(null);
@@ -1039,16 +1041,38 @@ export default function Step4CanvasEditor() {
     // Persist every auto-imported panel to MongoDB so navigation to Step 5
     // or Save to Cloud picks them up (saveBubbles is only called on manual edits).
     if (projectId) {
-      for (const [panelId, panelBubbleList] of Object.entries(bubbles)) {
-        bubblesApi.upsert(panelId, projectId, panelBubbleList as BubbleDataPayload[]).catch(() => {});
-      }
+      const entries = Object.entries(bubbles);
+      void Promise.allSettled(
+        entries.map(([panelId, panelBubbleList]) =>
+          bubblesApi.upsert(panelId, projectId, panelBubbleList as BubbleDataPayload[])
+        )
+      ).then((results) => {
+        const failed = results.filter(r => r.status === 'rejected').length;
+        if (!failed) return;
+        console.warn(`[Step4CanvasEditor.autoImport] ${failed}/${entries.length} panel bubble saves failed`, results);
+        addNotification({
+          title: 'Dialogue not fully saved',
+          message: `${failed} of ${entries.length} panels could not be saved to the server. They will be missing from the export — try Auto-import again.`,
+          variant: 'error',
+          projectId,
+        });
+      });
     }
-  }, [step4PanelsByPage, projectId]);
+  }, [step4PanelsByPage, projectId, addNotification]);
 
   const _saveBubbles = useCallback((panelId: string, bubbles: PanelBubbles) => {
     setPanelBubbles(prev => ({ ...prev, [panelId]: bubbles }));
-    if (projectId) bubblesApi.upsert(panelId, projectId, bubbles as BubbleDataPayload[]).catch(() => {});
-  }, [projectId]);
+    if (!projectId) return;
+    bubblesApi.upsert(panelId, projectId, bubbles as BubbleDataPayload[]).catch((err) => {
+      console.warn(`[Step4CanvasEditor] Failed to persist bubbles for panel ${panelId}`, err);
+      addNotification({
+        title: 'Dialogue not saved',
+        message: 'A bubble change could not be saved to the server and will be missing from the export.',
+        variant: 'error',
+        projectId,
+      });
+    });
+  }, [projectId, addNotification]);
 
   const handleGenerateAllOnPage = useCallback(() => {
     const pending = panelsForPage.filter(p => !panelStates[p.id]?.imageUrl);

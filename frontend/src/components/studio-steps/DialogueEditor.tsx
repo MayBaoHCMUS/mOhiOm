@@ -55,7 +55,10 @@ interface DialogueEditorProps {
   panelBubbles: Record<string, PanelBubbles>;
   pageLayoutNames: Record<number, string>;
   comicPageMode: 'page' | 'panel';
-  onSaveBubbles: (panelId: string, bubbles: PanelBubbles) => void;
+  // Returns a promise that rejects if persisting to the server failed, so the
+  // save indicator reflects what actually reached MongoDB rather than just the
+  // local state update.
+  onSaveBubbles: (panelId: string, bubbles: PanelBubbles) => void | Promise<void>;
   onExport: () => void;
   onAutoImport: () => void;
 }
@@ -217,6 +220,8 @@ export function getPanelBoxAspectRatio(layoutName: string, panelIndex: number): 
   const absBboxes = ABSOLUTE_LAYOUT_BBOXES[layoutName];
   if (absBboxes?.[panelIndex]) {
     const bb = absBboxes[panelIndex];
+    // bb.w/bb.h are percentages (0–100), but the /100 cancels in a ratio, so
+    // this is correct as written. Do not "fix" it to match getPanelBoxWidth.
     return (bb.w * BASE_PAGE_W) / (bb.h * BASE_PAGE_H);
   }
   const rows = LAYOUT_ROW_STRUCTURES[layoutName] ?? [[0]];
@@ -241,7 +246,10 @@ export function getPanelBoxAspectRatio(layoutName: string, panelIndex: number): 
 export function getPanelBoxWidth(layoutName: string, panelIndex: number): number {
   const absBboxes = ABSOLUTE_LAYOUT_BBOXES[layoutName];
   if (absBboxes?.[panelIndex]) {
-    return absBboxes[panelIndex].w * BASE_PAGE_W;
+    // bb.w is a percentage (0–100) — the editor renders it as `width: ${bb.w}%`
+    // of BASE_PAGE_W. Without /100 this returned a box ~100x too wide, which made
+    // compositePanelToBlob shrink every bubble to a sub-pixel dot on export.
+    return (absBboxes[panelIndex].w / 100) * BASE_PAGE_W;
   }
   const rows = LAYOUT_ROW_STRUCTURES[layoutName] ?? [[0]];
   const maxCols = Math.max(...rows.map(r => r.length));
@@ -1894,26 +1902,37 @@ export default function DialogueEditor({
   const pendingSaveRef = useRef<{ panelId: string; bubbles: PanelBubbles } | null>(null);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const flushSave = useCallback(() => {
+  const flushSave = useCallback(async () => {
     if (!pendingSaveRef.current) return;
-    const { panelId, bubbles } = pendingSaveRef.current;
-    pendingSaveRef.current = null;
+    const inFlight = pendingSaveRef.current;
+    const { panelId, bubbles } = inFlight;
     setSaveStatus('saving');
     try {
-      onSaveBubbles(panelId, bubbles);
+      // Await so a failed server write shows as 'error' with a working retry,
+      // instead of reporting 'saved' the moment the local state updates.
+      await onSaveBubbles(panelId, bubbles);
+      // Only clear if no newer edit arrived while this write was in flight.
+      if (pendingSaveRef.current === inFlight) pendingSaveRef.current = null;
       setSaveStatus('saved');
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       idleTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000);
-    } catch {
+    } catch (err) {
+      // Keep pendingSaveRef so Ctrl+S / the retry button can try the same edit again.
+      console.warn(`[DialogueEditor] Failed to persist bubbles for panel ${panelId}`, err);
       setSaveStatus('error');
     }
   }, [onSaveBubbles]);
 
   // Apply change immediately (so bubbles stay at new position), mark for persistence via Ctrl+S/30s
   const triggerSave = useCallback((panelId: string, bubbles: PanelBubbles) => {
-    onSaveBubbles(panelId, bubbles);   // update parent state now — no snap-back
     pendingSaveRef.current = { panelId, bubbles };
     setSaveStatus('unsaved');
+    // update parent state now — no snap-back. The parent also persists on this
+    // call; surface a failure right away rather than waiting for the flush.
+    void Promise.resolve(onSaveBubbles(panelId, bubbles)).catch((err) => {
+      console.warn(`[DialogueEditor] Failed to persist bubbles for panel ${panelId}`, err);
+      setSaveStatus('error');
+    });
   }, [onSaveBubbles]);
 
   const retrySave = useCallback(() => {

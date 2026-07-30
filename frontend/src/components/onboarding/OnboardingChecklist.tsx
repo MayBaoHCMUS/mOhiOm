@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useDragControls, useMotionValue } from 'framer-motion';
 import { CheckCircle2, Circle, ChevronUp, ChevronDown, GripVertical, BookOpen, Clapperboard, ImagePlus, MessageCircle, Send } from 'lucide-react';
@@ -62,6 +62,12 @@ const ITEMS: {
 export default function OnboardingChecklist() {
   const { state, completedCount, totalCount, progressPct } = useOnboardingContext();
   const [expanded, setExpanded] = useState(false);
+  // The widget is draggable, so it can sit low enough that a downward panel runs
+  // off the bottom of the viewport. Measure the real panel before paint and flip
+  // it above the header when it doesn't fit.
+  const [dropUp, setDropUp] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
   const [dismissed, setDismissed] = useState(false);
   const router = useRouter();
 
@@ -99,6 +105,27 @@ export default function OnboardingChecklist() {
     }
   };
 
+  // Measure the panel's height (which varies with the item list and the
+  // "all done" state) against the space around the header, so the result does
+  // not depend on where the panel currently sits — that makes it safe to re-run
+  // after a drag without first resetting the flip.
+  const measureDropDirection = () => {
+    const panel = panelRef.current;
+    const header = headerRef.current;
+    if (!panel || !header) return;
+    const h = panel.getBoundingClientRect().height;
+    const rect = header.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom - 8;
+    const spaceAbove = rect.top - 8;
+    setDropUp(h > spaceBelow && h <= spaceAbove);
+  };
+
+  // useLayoutEffect runs before paint, so the flip is never visible as a jump.
+  useLayoutEffect(() => {
+    if (!expanded) { setDropUp(false); return; }
+    measureDropDirection();
+  }, [expanded]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   if (dismissed) return null;
 
   return (
@@ -110,11 +137,11 @@ export default function OnboardingChecklist() {
         dragMomentum={false}
         dragElastic={0}
         dragConstraints={constraintsRef}
-        onDragEnd={persistPosition}
+        onDragEnd={() => { persistPosition(); if (expanded) measureDropDirection(); }}
         style={{ x, y, top: '5rem', left: 'calc(var(--studio-sidebar-width) + 1rem)' }}
         className="absolute pointer-events-auto w-fit"
       >
-        <div className="flex items-center gap-1 bg-surface-container-lowest border border-outline-variant rounded-lg pl-1 pr-3 py-2 shadow-lg">
+        <div ref={headerRef} className="flex items-center gap-1 bg-surface-container-lowest border border-outline-variant rounded-lg pl-1 pr-3 py-2 shadow-lg">
           <span
             onPointerDown={(e) => dragControls.start(e)}
             aria-label="Drag to move"
@@ -153,11 +180,14 @@ export default function OnboardingChecklist() {
         <AnimatePresence>
           {expanded && (
             <motion.div
-              initial={{ opacity: 0, y: -12 }}
+              ref={panelRef}
+              initial={{ opacity: 0, y: dropUp ? 12 : -12 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
+              exit={{ opacity: 0, y: dropUp ? 12 : -12 }}
               transition={{ duration: 0.2 }}
-              className="mt-2 w-80 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-xl p-4"
+              className={`absolute left-0 w-80 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-xl p-4 ${
+                dropUp ? 'bottom-full mb-2' : 'top-full mt-2'
+              }`}
             >
               {state.completed ? (
                 <div className="text-center py-2">
