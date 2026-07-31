@@ -321,10 +321,10 @@ function AblationTab({ apiUrl }: { apiUrl: string }) {
               <div key={r.ip_scale} style={{ flex: 1, textAlign: 'center', padding: 8, background: '#F9FAFB', borderRadius: 8 }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={`data:image/png;base64,${r.panel_b64}`} alt={`scale ${r.ip_scale}`}
-                  style={{ width: '100%', height: 56, objectFit: 'cover', borderRadius: 4, marginBottom: 4 }} />
-                <div style={{ fontSize: 9, color: '#6B7280', marginBottom: 2 }}>scale {r.ip_scale}</div>
+                  style={{ width: '100%', aspectRatio: '3 / 4', objectFit: 'cover', objectPosition: 'top', borderRadius: 6, marginBottom: 6 }} />
+                <div style={{ fontSize: 10, color: '#6B7280', marginBottom: 2 }}>scale {r.ip_scale}</div>
                 <div style={{
-                  fontSize: 13, fontWeight: 600,
+                  fontSize: 14, fontWeight: 600,
                   color: r.similarity_score >= 0.90 ? '#16A34A' : r.similarity_score >= 0.75 ? '#D97706' : '#DC2626',
                 }}>
                   {r.similarity_score.toFixed(4)}
