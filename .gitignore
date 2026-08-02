@@ -51,3 +51,19 @@ next-env.d.ts
 /.understand-anything/
 /Reference/
 /scripts_do_luong/
+
+# Pytest / coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
+# mutmut artifacts
+backend/mutants/
+backend/tests
+.mutmut-cache
+mutants/
+
+# Load test artifacts
+loadtest/results/
+loadtest/.seeded_users.json
