@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse, JSONResponse
+from starlette.concurrency import run_in_threadpool
 from app.config import settings
 from app.database import mongo_db
 from app.schemas import (
@@ -96,7 +97,11 @@ async def register(payload: AuthRegister):
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    hashed = hash_password(payload.password)
+    # bcrypt is ~160 ms of blocking CPU. These handlers are `async def`, so
+    # FastAPI awaits them on the event loop rather than in the thread pool —
+    # calling bcrypt directly would freeze every other in-flight request for
+    # that whole time. run_in_threadpool keeps the loop free.
+    hashed = await run_in_threadpool(hash_password, payload.password)
     user_doc = await repo.create_manual_user(
         {
             "email": payload.email,
@@ -124,7 +129,9 @@ async def login(payload: AuthLogin):
     if not user_doc or not user_doc.get("password_hash"):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if not verify_password(payload.password, user_doc["password_hash"]):
+    if not await run_in_threadpool(
+        verify_password, payload.password, user_doc["password_hash"]
+    ):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     token = create_access_token({"sub": str(user_doc["_id"]), "email": user_doc.get("email")})
@@ -172,13 +179,21 @@ async def reset_password(payload: ResetPasswordRequest):
     if not expected_hash or not expires_at:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
+    # BSON has no timezone, and the client is not opened with tz_aware=True, so
+    # the value read back here is naive UTC even though set_password_reset wrote
+    # an aware one. Comparing the two directly raises TypeError and turns every
+    # reset attempt into a 500.
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
     if expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
     if hash_reset_token(payload.token) != expected_hash:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
-    await repo.update_password(str(user_doc["_id"]), hash_password(payload.password))
+    new_hash = await run_in_threadpool(hash_password, payload.password)
+    await repo.update_password(str(user_doc["_id"]), new_hash)
     await repo.clear_password_reset(str(user_doc["_id"]))
     return MessageResponse(message="Password updated. You can sign in now.")
 
@@ -203,12 +218,15 @@ async def change_password(payload: ChangePasswordRequest, request: Request):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     if not user_doc.get("password_hash"):
         raise HTTPException(status_code=400, detail="No password set for this account")
-    if not verify_password(payload.current_password, user_doc["password_hash"]):
+    if not await run_in_threadpool(
+        verify_password, payload.current_password, user_doc["password_hash"]
+    ):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     if len(payload.new_password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
-    await repo.update_password(user_id, hash_password(payload.new_password))
+    new_hash = await run_in_threadpool(hash_password, payload.new_password)
+    await repo.update_password(user_id, new_hash)
     return MessageResponse(message="Password updated successfully.")
 
 
