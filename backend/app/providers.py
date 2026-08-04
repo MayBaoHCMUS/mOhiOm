@@ -19,7 +19,7 @@ TEXT_GEN_PROVIDERS: Dict[str, ProviderInfo] = {
     "gemini": {
         "label": "Gemini",
         "api_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-flash-latest",
     },
     "openai": {
         "label": "OpenAI",
@@ -46,7 +46,7 @@ class ImageProviderInfo(TypedDict):
 IMAGE_GEN_PROVIDERS: Dict[str, ImageProviderInfo] = {
     "gemini": {
         "label": "Gemini",
-        "default_model": "gemini-2.0-flash-preview-image-generation",
+        "default_model": "gemini-2.5-flash-image",
     },
     "openai": {
         "label": "OpenAI",
